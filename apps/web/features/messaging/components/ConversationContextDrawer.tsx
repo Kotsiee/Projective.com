@@ -4,6 +4,7 @@ import { Button, type Severity } from "@projective/ui/fields";
 import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 import { profileHref } from "@web/features/projects/core/routing.ts";
 import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx";
+import { QuotePanel } from "@web/features/quotes/components/QuotePanel.tsx";
 import type {
 	ContextAction,
 	ContextActionKind,
@@ -214,9 +215,18 @@ export function ConversationContextDrawer(props: ConversationContextDrawerProps)
 		<div class="msg-ctx">
 			<div class="msg-ctx__scroll">
 				{context.counterpart && <Counterpart person={context.counterpart} />}
+				{context.counterpart?.handle && (
+					<QuotePanel
+						handle={context.counterpart.handle}
+						idBase={`msg-ctx-${context.conversationId}`}
+						heading="Quotes"
+						sectionClass="msg-ctx__section"
+						headingClass="msg-ctx__heading"
+					/>
+				)}
 				{current
 					? <Request engagement={current} />
-					: <p class="msg-ctx__empty">No requests between you yet.</p>}
+					: <p class="msg-ctx__empty">No project requests between you yet.</p>}
 				{earlier.length > 0 && (
 					<section class="msg-ctx__section" aria-label="Earlier requests">
 						<h3 class="msg-ctx__heading">Earlier requests</h3>

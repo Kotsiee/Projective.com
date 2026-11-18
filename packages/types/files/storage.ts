@@ -37,6 +37,7 @@ export const StorageBucket = z.enum([
 	"workspace",
 	"showcase",
 	"contact",
+	"data_exports",
 ]);
 export type StorageBucket = z.infer<typeof StorageBucket>;
 
@@ -163,6 +164,14 @@ export const BUCKETS: Readonly<Record<StorageBucket, BucketMeta>> = {
 		anchor: "user_id",
 		purpose:
 			"Files attached to a /contact request (Decision #276) — written only by the upload pipeline, read by operators.",
+	},
+	data_exports: {
+		access: "service",
+		maxBytes: 50 * MiB,
+		allowedMime: ["application/zip"],
+		anchor: "user_id",
+		purpose:
+			"A person's copy of their own data (Decision #450) — written and removed by the export job, downloaded through a link minted per read.",
 	},
 };
 
@@ -402,6 +411,11 @@ export function contactLocation(
 	filename: string,
 ): StorageLocation {
 	return { bucket: "contact", path: join(userId, assetId, filename) };
+}
+
+/** `data_exports/{userId}/{requestId}.zip` — service-role ONLY (Decision #450). */
+export function dataExportLocation(userId: string, requestId: string): StorageLocation {
+	return { bucket: "data_exports", path: join(userId, `${requestId}.zip`) };
 }
 
 /**

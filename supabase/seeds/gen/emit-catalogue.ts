@@ -61,6 +61,12 @@ const DELIVERY_MODEL_PRICING: Record<string, string> = {
 	group_session: "per_seat",
 };
 
+/** Where each sponsored listing's seeded flight runs: one Home rail slot and one results slot. */
+const PLACEMENT_SURFACE: Record<string, "explore_home" | "explore_results"> = {
+	"sv-brand-identity-sprint": "explore_home",
+	"pr-iconography-set": "explore_results",
+};
+
 /**
  * The showcase a listing opens with: its own cover first, then other pictures by the SAME owner — the
  * owner's banner and the covers of their other listings. Never someone else's work: a gallery that
@@ -508,22 +514,29 @@ export function emitCatalogue(world: World): string {
 	);
 	// #endregion
 
-	// #region Paid placements
-	// One active placement per sponsored listing, so every "AD" disclosure the discovery surfaces
-	// print is answerable from a ledger row rather than from a flag nobody paid for.
+	// #region Promoted placements
+	// One live plan-allocated flight per sponsored listing, as marketplace.promote_listing writes it
+	// (Decision #454): 7 days, charged nothing, at most one live per seller.
 	const placementRows: string[][] = [];
+	const sellersWithFlight = new Set<string>();
 	const addPlacement = (key: string, handle: string, type: string, entityId: string) => {
+		const surface = PLACEMENT_SURFACE[key];
+		if (!surface) throw new Error(`seed: sponsored listing "${key}" has no PLACEMENT_SURFACE`);
+		if (sellersWithFlight.has(handle)) {
+			throw new Error(`seed: ${handle} would run two live placements (Decision #454 allows one)`);
+		}
+		sellersWithFlight.add(handle);
 		const owner = ownerOf(world, handle);
 		placementRows.push([
 			id(uuidFor("placement", key)),
 			id(owner.accountUserId),
 			q(type),
 			id(entityId),
-			"'explore_home'",
-			ago(7),
-			ahead(23),
-			String(4_900),
-			"'USD'",
+			q(surface),
+			ago(2),
+			ahead(5),
+			"0",
+			"'GBP'",
 		]);
 	};
 	for (const s of SERVICES) if (s.sponsored) addPlacement(s.key, s.owner, "service", world.serviceId(s.key));

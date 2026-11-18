@@ -578,6 +578,13 @@ BEGIN
      WHERE id = p_user;
     DELETE FROM auth.identities WHERE user_id = p_user;
     DELETE FROM auth.sessions WHERE user_id = p_user;
+    -- Data exports (Decision #450): an open request fails, and a ready archive's expiry comes forward
+    -- to now, so the export job removes the ZIP on its next run. The rows stay as the record.
+    UPDATE org.data_export_requests
+       SET status = 'failed', failed_at = now(), failure_reason = 'account_erased'
+     WHERE user_id = p_user AND status IN ('pending', 'building');
+    UPDATE org.data_export_requests SET expires_at = now()
+     WHERE user_id = p_user AND status = 'ready' AND expires_at > now();
 END;
 $$;
 

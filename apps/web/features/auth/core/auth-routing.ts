@@ -41,8 +41,13 @@ export function resolveAuthScreenBounce(url: URL, isAuthenticated: boolean): str
 	if (!isSignIn && !isSignUp) return null;
 
 	// A Google identity mid-signup, or an owner finishing step 1.6, is authenticated but has no
-	// profile yet — let them finish.
-	if (isSignUp && (url.searchParams.has("oauth") || isOwnerCompletion(url.searchParams))) {
+	// profile yet — let them finish. A person accepting a material new version of the Terms is signed
+	// in and held there by the dashboard guard (Decision #446).
+	if (
+		isSignUp &&
+		(url.searchParams.has("oauth") || isOwnerCompletion(url.searchParams) ||
+			isTermsCompletion(url.searchParams))
+	) {
 		return null;
 	}
 
@@ -64,6 +69,35 @@ export function isOwnerCompletion(params: URLSearchParams): boolean {
 export function ownerCompletionTarget(redirectTo: string): string {
 	const params = new URLSearchParams({ complete: "owner", redirectTo: safeRedirect(redirectTo) });
 	return `/join?${params.toString()}`;
+}
+
+/** Whether a `/join` URL asks a signed-in person to accept a material new version of the Terms. */
+export function isTermsCompletion(params: URLSearchParams): boolean {
+	return params.get("complete") === "terms";
+}
+
+/**
+ * The `/join` URL where a signed-in person accepts the Terms and Acceptable Use versions now in effect
+ * (Decision #446), with the captured path sanitised so the return trip can never be an auth screen.
+ */
+export function termsCompletionTarget(redirectTo: string): string {
+	const params = new URLSearchParams({ complete: "terms", redirectTo: safeRedirect(redirectTo) });
+	return `/join?${params.toString()}`;
+}
+
+/**
+ * Where a signed-in, onboarded person whose acceptance is due should be sent, or `null` to let the
+ * page render (Decision #446). `due` is the token's `termsDue` claim, or the Dev Context Switcher's
+ * override in development; only an explicit `true` bounces, so a token minted before the claim existed
+ * never does. An un-onboarded account finishes onboarding first, which records the acceptance itself.
+ */
+export function resolveTermsBounce(
+	context: { onboarded?: boolean } | null | undefined,
+	due: boolean,
+	url: URL,
+): string | null {
+	if (!due || context?.onboarded === false) return null;
+	return termsCompletionTarget(url.pathname + url.search);
 }
 
 /**

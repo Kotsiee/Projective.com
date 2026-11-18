@@ -59,7 +59,7 @@ GRANT ALL ON TABLE security.platform_params TO service_role;
 -- profile detail whose policies follow the profile (org.fn_profile_visible).
 GRANT SELECT ON org.skills, org.supported_locales, org.profile_follows, org.education_entries,
     org.experience_entries, org.user_languages, org.certifications, org.profile_showcase_items,
-    org.profile_settings
+    org.profile_settings, org.legal_document_versions
     TO anon, authenticated;
 
 -- A follow is the caller's own edge ("Users follow as themselves" / "unfollow their own"); there is
@@ -68,10 +68,10 @@ GRANT INSERT, DELETE ON org.profile_follows TO authenticated;
 
 -- Signed-in reads only. Several of these policies are `TO public` but key on auth.uid() or a
 -- membership predicate, which a guest never satisfies, so `anon` is granted nothing it could use.
--- Every write is a definer (the workspace RPCs, provisioning, 00001050 / 00001060).
+-- Every write is a definer (the workspace RPCs, provisioning, 00001050 / 00001060 / 00001061).
 GRANT SELECT ON org.teams, org.team_members, org.team_roles, org.business_members, org.business_roles,
     org.enterprises, org.enterprise_members, org.freelancer_profiles, org.user_emails,
-    org.handle_changes, org.deletion_requests
+    org.handle_changes, org.deletion_requests, org.legal_acceptances, org.data_export_requests
     TO authenticated;
 
 -- The caller's own settings and lists. Discovery history is read and cleared, never written by a
@@ -963,6 +963,11 @@ projects.lesson_progress,
 projects.cohorts,
 projects.cohort_memberships,
 projects.session_events FROM anon, authenticated;
+
+-- A waitlist place is written by projects.join_waitlist, the invite job and fn_confirm_seat only: the
+-- queue is first in, first out by `queued_at`, and a client able to write it could jump the queue or
+-- invite itself (Decision #455). Leaving a place that holds no seat stays a client DELETE.
+REVOKE INSERT, UPDATE ON projects.waitlists FROM anon, authenticated;
 
 -- The two join URLs are handed out only by projects.session_join_link — to the right party, once the
 -- seat is funded and the join window is open — so no client role may SELECT them; every other column

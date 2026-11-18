@@ -25,6 +25,14 @@ export interface CaptchaProps {
 	onVerify?: (token: string) => void;
 	/** Render slot for the app to mount its provider widget (grecaptcha/hcaptcha/turnstile/etc.). */
 	render?: (ctx: CaptchaRenderContext) => JSX.Element;
+	/**
+	 * Whether the frame shows (default `true`). `false` keeps the mount in the DOM but takes it out of
+	 * layout and the accessibility tree, for a provider that challenges only when it must (Turnstile's
+	 * `interaction-only`); the app flips it on from the provider's before-interactive callback.
+	 */
+	revealed?: boolean;
+	/** Optional caption under the frame. */
+	note?: string;
 	class?: string;
 }
 // #endregion
@@ -34,7 +42,8 @@ export interface CaptchaProps {
  * point (`container` ref) that the application wires to a real bot-detection provider; it deliberately
  * implements no challenge and bypasses nothing. The app passes the provider's public `siteKey`
  * (placeholders use `XXXX-XXXX`) and, from its own provider callback, calls `verify(token)` — which
- * forwards to `onVerify`. Announced as a `group` labelled by the frame heading.
+ * forwards to `onVerify`. Announced as a `group` labelled by the frame heading while revealed;
+ * concealed, it occupies no space and is hidden from assistive technology.
  */
 export function Captcha(props: CaptchaProps): JSX.Element {
 	const {
@@ -42,13 +51,20 @@ export function Captcha(props: CaptchaProps): JSX.Element {
 		label = "Security challenge",
 		onVerify,
 		render,
+		revealed = true,
+		note,
 		class: className,
 	} = props;
 	const container = useRef<HTMLDivElement>(null);
 	const verify = (token: string) => onVerify?.(token);
 
 	return (
-		<div class={cx("ui-captcha", className)} role="group" aria-label={label}>
+		<div
+			class={cx("ui-captcha", !revealed && "ui-captcha--concealed", className)}
+			role={revealed ? "group" : undefined}
+			aria-label={revealed ? label : undefined}
+			aria-hidden={revealed ? undefined : "true"}
+		>
 			<div class="ui-captcha__frame">
 				{render ? render({ container, verify }) : (
 					<div
@@ -59,9 +75,7 @@ export function Captcha(props: CaptchaProps): JSX.Element {
 					/>
 				)}
 			</div>
-			<p class="ui-captcha__note">
-				Provider widget is wired by the application; no challenge is implemented here.
-			</p>
+			{note ? <p class="ui-captcha__note">{note}</p> : null}
 		</div>
 	);
 }

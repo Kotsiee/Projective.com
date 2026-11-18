@@ -73,6 +73,23 @@ Deno.test("every public page stays crawlable — including a profile whose handl
 	assertFalse(isCrawlDisallowed("/changelog?category=payments&page=2"));
 });
 
+Deno.test("everything the sitemap lists stays crawlable: its files, listings and profiles", () => {
+	for (
+		const path of [
+			"/sitemap.xml",
+			"/sitemap.xml?section=pages",
+			"/sitemap.xml?section=listings&page=2",
+			"/sitemap.xml?section=profiles",
+			"/view/svc-ruxa6p25af",
+			"/view/art-ab23cd45ef",
+			"/@inesduarte",
+			"/@studiofern",
+		]
+	) {
+		assertFalse(isCrawlDisallowed(path), path);
+	}
+});
+
 Deno.test("the feedback drawer's address is disallowed wherever its parameter sits", () => {
 	assert(isCrawlDisallowed("/about?feedback=open"));
 	assert(isCrawlDisallowed("/help/escrow-and-payments/fees?q=x&feedback=open&idea=fbk-abc"));

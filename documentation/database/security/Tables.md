@@ -120,6 +120,12 @@ entity's trail by action. `org.fn_workspace_restore_target` reads a team's or a 
 (c)), so those rows are evidence a lifecycle rule depends on: a retention or partitioning scheme for
 this table must keep them (see the retention note below).
 
+**Index:** `idx_audit_logs_user_action (user_id, action, created_at DESC)` (same file) — one person's
+trail by action, newest first. `org.prepare_sign_in_change` counts a person's `user.sign_in_changed`
+rows of the last three days through it (two moves of the sign-in address per rolling three days,
+Decision #451) and `org.record_sign_in_change` reads the newest, so those rows are also evidence a
+rule depends on: a retention scheme must keep at least three days of them.
+
 ---
 
 ## ⚙️ Tunable Parameters

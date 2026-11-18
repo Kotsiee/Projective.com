@@ -8,6 +8,7 @@ import { Message, ProgressSpinner } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { createModalStack } from "@projective/ui/overlay";
 import { displayCurrency as viewerCurrency } from "@projective/ui/display/money";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { isCheckoutEligible, type TicketFundingQuote } from "@projective/types/finance";
 import { SplitModal } from "@features/profile/components/hire/SplitModal.tsx";
 import { SETTLE_MS } from "@features/view/core/cta-feedback.ts";
@@ -145,6 +146,7 @@ function accountBlockers(view: CheckoutSessionContext): CheckoutBlocker[] {
 }
 
 export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.Element | null {
+	const mask = useMaskFigures();
 	const phase = useSignal<BuyPhase>("preparing");
 	const commit = useSignal<CommitPhase>("idle");
 	const failure = useSignal<string | null>(null);
@@ -516,7 +518,7 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 		: chosenNone
 		? "Choose a stage to pay for"
 		: priced
-		? `Buy now · ${(view.buyerCharge?.quote ? view.buyerCharge : view.totals.total).display}`
+		? `Buy now · ${mask((view.buyerCharge?.quote ? view.buyerCharge : view.totals.total).display)}`
 		: "Buy now";
 
 	const commitIcon = commit.value === "pending"

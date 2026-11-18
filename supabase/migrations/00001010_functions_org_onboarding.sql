@@ -163,6 +163,9 @@ BEGIN
         PERFORM public.provision_user_profile(
             NEW.id, NEW.email, NEW.email_confirmed_at, NEW.raw_user_meta_data
         );
+        PERFORM org.fn_record_legal_acceptance(
+            NEW.id, NEW.raw_user_meta_data->'legal_acceptance', 'join'
+        );
     END IF;
 
     RETURN NEW;
@@ -182,6 +185,7 @@ DECLARE
     v_uid uuid := auth.uid();
     v_email text;
     v_confirmed timestamptz;
+    v_enterprise uuid;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Not authenticated' USING ERRCODE = '28000';
@@ -199,6 +203,20 @@ BEGIN
     FROM auth.users WHERE id = v_uid;
 
     PERFORM public.provision_user_profile(v_uid, v_email, v_confirmed, p_payload);
+
+    -- A profile-less enterprise owner finishing step 1.6 accepts for the enterprise they hold
+    -- (Decision #446); anyone else here is an OAuth sign-up.
+    SELECT e.id INTO v_enterprise
+      FROM org.enterprises e
+     WHERE e.owner_user_id = v_uid
+     ORDER BY e.created_at
+     LIMIT 1;
+    PERFORM org.fn_record_legal_acceptance(
+        v_uid,
+        p_payload->'legal_acceptance',
+        CASE WHEN v_enterprise IS NULL THEN 'join_oauth' ELSE 'join_enterprise' END::org.legal_acceptance_surface,
+        v_enterprise
+    );
 END;
 $$;
 
@@ -408,9 +426,178 @@ BEGIN
         NULL
     );
 
+    -- The owner accepts the terms for the enterprise, in the transaction that creates it (Decision #446).
+    PERFORM org.fn_record_legal_acceptance(
+        p_owner, p_payload->'legalAcceptance', 'join_enterprise', v_enterprise
+    );
+
     RETURN v_enterprise;
 END;
 $$;
+
+-- #region Legal acceptance (Decision #446)
+-- Every sign-up door records which Terms, Acceptable Use and Privacy versions the person accepted or
+-- was shown, inside the transaction that creates their profile: the email trigger (surface `join`),
+-- complete_onboarding (`join_oauth`, or `join_enterprise` for a profile-less owner finishing step 1.6)
+-- and create_enterprise (`join_enterprise`). The versions are the server's (LEGAL_VERSIONS in
+-- @projective/types/legal), stamped into the payload by AuthBackendService and re-checked here against
+-- org.legal_document_versions, so a version a client names itself, forged or stale, writes nothing. An
+-- under-13 date of birth is refused by org.fn_check_dob before any of this runs, so it records nothing.
+
+-- A `MAJOR.MINOR` label as integers, so `1.10` sorts after `1.9`.
+CREATE OR REPLACE FUNCTION org.fn_legal_version_key(p_version text)
+RETURNS integer[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.string_to_array(p_version, '.')::integer[];
+$$;
+
+-- The version of a document in effect today (UTC): the newest whose effective date has arrived, else
+-- the oldest, as the /legal pages resolve it (versionStatuses).
+CREATE OR REPLACE FUNCTION org.fn_current_legal_version(p_slug text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT v.version
+           FROM org.legal_document_versions v
+          WHERE v.slug = p_slug
+            AND v.effective_date <= (pg_catalog.now() AT TIME ZONE 'UTC')::date
+          ORDER BY org.fn_legal_version_key(v.version) DESC
+          LIMIT 1),
+        (SELECT v.version
+           FROM org.legal_document_versions v
+          WHERE v.slug = p_slug
+          ORDER BY org.fn_legal_version_key(v.version)
+          LIMIT 1)
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION org.fn_legal_acceptance_kind(p_slug text)
+RETURNS org.legal_acceptance_kind
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT (CASE WHEN p_slug = 'privacy' THEN 'shown' ELSE 'accepted' END)::org.legal_acceptance_kind;
+$$;
+
+-- Record p_user's acceptance of every sign-up document at the versions in p_legal
+-- (`{"terms": "2.0", "acceptable-use": "1.0", "privacy": "1.0"}`), one row per document not already
+-- recorded at that version. Refused (22023) when p_legal is missing or any version is not today's, so
+-- the calling door unwinds whole. Returns the rows written.
+CREATE OR REPLACE FUNCTION org.fn_record_legal_acceptance(
+    p_user uuid,
+    p_legal jsonb,
+    p_surface org.legal_acceptance_surface,
+    p_enterprise uuid DEFAULT NULL
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_slug text;
+    v_written integer;
+BEGIN
+    IF p_legal IS NULL OR pg_catalog.jsonb_typeof(p_legal) <> 'object' THEN
+        RAISE EXCEPTION 'Accept the Terms of Service to continue' USING ERRCODE = '22023';
+    END IF;
+
+    FOR v_slug IN SELECT DISTINCT v.slug FROM org.legal_document_versions v LOOP
+        IF (p_legal->>v_slug) IS DISTINCT FROM org.fn_current_legal_version(v_slug) THEN
+            RAISE EXCEPTION 'The % version accepted is not the one in effect', v_slug
+                USING ERRCODE = '22023';
+        END IF;
+    END LOOP;
+
+    INSERT INTO org.legal_acceptances (user_id, document_slug, version, kind, surface, enterprise_id)
+    SELECT p_user, d.slug, org.fn_current_legal_version(d.slug), org.fn_legal_acceptance_kind(d.slug),
+           p_surface, p_enterprise
+      FROM (SELECT DISTINCT v.slug FROM org.legal_document_versions v) d
+     WHERE NOT EXISTS (
+        SELECT 1
+          FROM org.legal_acceptances a
+         WHERE a.user_id = p_user
+           AND a.document_slug = d.slug
+           AND a.version = org.fn_current_legal_version(d.slug)
+           AND (p_enterprise IS NULL OR a.enterprise_id = p_enterprise)
+     );
+    GET DIAGNOSTICS v_written = ROW_COUNT;
+    RETURN v_written;
+END;
+$$;
+
+-- Whether p_user must accept again before using the app: they hold a profile, and for the Terms or the
+-- Acceptable Use Policy they have accepted no version, or only versions older than the newest material
+-- one in effect. A non-material version relies on the continued-use clause. Stamped into the token as
+-- `termsDue` by the access-token hook, which the dashboard guard bounces on.
+CREATE OR REPLACE FUNCTION org.fn_needs_reacceptance(p_user uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = p_user)
+       AND EXISTS (
+        SELECT 1
+          FROM (SELECT DISTINCT v.slug FROM org.legal_document_versions v) d
+          CROSS JOIN LATERAL (
+            SELECT pg_catalog.max(org.fn_legal_version_key(a.version)) AS accepted
+              FROM org.legal_acceptances a
+             WHERE a.user_id = p_user AND a.document_slug = d.slug AND a.kind = 'accepted'
+          ) mine
+          CROSS JOIN LATERAL (
+            SELECT pg_catalog.max(org.fn_legal_version_key(v.version)) AS material
+              FROM org.legal_document_versions v
+             WHERE v.slug = d.slug
+               AND v.material
+               AND v.effective_date <= (pg_catalog.now() AT TIME ZONE 'UTC')::date
+          ) newest
+         WHERE org.fn_legal_acceptance_kind(d.slug) = 'accepted'
+           AND (mine.accepted IS NULL OR mine.accepted < newest.material)
+    );
+$$;
+
+-- The re-accept door (`/join?complete=terms`): a signed-in person with a profile accepts the versions
+-- in effect today, at the versions the server stamped. Writes only the documents they have not yet
+-- recorded at those versions, surface `reaccept`, and returns how many.
+CREATE OR REPLACE FUNCTION public.accept_current_terms(p_legal jsonb)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated' USING ERRCODE = '28000';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = v_uid) THEN
+        RAISE EXCEPTION 'Finish signing up first' USING ERRCODE = '42501';
+    END IF;
+    RETURN org.fn_record_legal_acceptance(v_uid, p_legal, 'reaccept');
+END;
+$$;
+
+-- Trigger (BEFORE UPDATE OR DELETE on org.legal_acceptances): the evidence is append-only, for every role.
+CREATE OR REPLACE FUNCTION org.trg_legal_acceptances_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    RAISE EXCEPTION 'org.legal_acceptances is append-only: % refused', TG_OP USING ERRCODE = '55000';
+END;
+$$;
+-- #endregion
 
 -- Seed default user preferences on profile creation — email AND OAuth sign-up paths.
 -- ---------------------------------------------------------------------------------

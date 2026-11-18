@@ -144,6 +144,11 @@ CREATE INDEX IF NOT EXISTS idx_basket_items_item ON finance.basket_items (item_t
 CREATE UNIQUE INDEX IF NOT EXISTS uq_basket_items_live_ticket
     ON finance.basket_items (basket_id, ticket_id, stage_id) NULLS NOT DISTINCT
     WHERE ticket_id IS NOT NULL AND removed_at IS NULL AND purchased_at IS NULL;
+-- One LIVE line per accepted quote offer, across every basket (Decision #458): accepting puts exactly
+-- one in, and a hand-written second line carrying the same offer is refused here, not at checkout.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_basket_items_live_quote_offer
+    ON finance.basket_items ((metadata ->> 'quoteOfferId'))
+    WHERE metadata ? 'quoteOfferId' AND removed_at IS NULL AND purchased_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_saved_cards_owner ON finance.saved_cards (owner_type, owner_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_saved_card_default_per_owner
@@ -190,6 +195,12 @@ CREATE INDEX IF NOT EXISTS idx_payouts_bank_payout_ref
 -- polymorphic item they bought.
 CREATE INDEX IF NOT EXISTS idx_order_lines_item
     ON finance.order_lines (item_id, item_type);
+-- The line a One-Off or Task engagement was bought on, and the line an escrow refund maps back to
+-- (Decision #457).
+CREATE INDEX IF NOT EXISTS idx_order_lines_project
+    ON finance.order_lines (project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_order_lines_escrow
+    ON finance.order_lines (escrow_id) WHERE escrow_id IS NOT NULL;
 -- The daily listing rollup reads one UTC day of orders (placed, or last changed for refunds) and of
 -- basket additions.
 CREATE INDEX IF NOT EXISTS idx_orders_placed_at ON finance.orders (placed_at);

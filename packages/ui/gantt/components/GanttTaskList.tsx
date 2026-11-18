@@ -22,6 +22,7 @@ import { Avatar } from "../../display/components/Avatar.tsx";
 import type { GanttStore } from "../core/gantt-store.ts";
 import { laneTop } from "../core/layout.ts";
 import type { GanttLane } from "../core/types.ts";
+import { maskFigures, screenShareActive } from "../../utils/core/screen-share.ts";
 
 export interface GanttTaskListProps {
 	store: GanttStore;
@@ -72,7 +73,8 @@ export function GanttTaskList(props: GanttTaskListProps): JSX.Element {
 	for (let i = win.first; i <= win.last && i < lanes.length; i++) {
 		const lane = lanes[i];
 		const count = props.countByLane.get(lane.id) ?? 0;
-		const trailing = lane.meta ?? (count > 0 ? `${count}` : "");
+		const meta = lane.meta && screenShareActive.value ? maskFigures(lane.meta) : lane.meta;
+		const trailing = meta ?? (count > 0 ? `${count}` : "");
 		const content = (
 			<>
 				{lane.avatar

@@ -96,7 +96,13 @@ async function signedIn(browser: Browser): Promise<BrowserContext> {
 		} catch { /* storage blocked: the fixtures' defaults (rich, busy) answer the same */ }
 	});
 	const res = await context.request.post("/api/auth/login", {
-		data: { identifier: IDENTIFIER, password: await password(), remember: true },
+		// Cloudflare's Turnstile test token; the local GoTrue runs the always-pass test secret (#447).
+		data: {
+			identifier: IDENTIFIER,
+			password: await password(),
+			remember: true,
+			captchaToken: "XXXX.DUMMY.TOKEN.XXXX",
+		},
 		// The `/api` write guard wants this site's Origin, which a browser would send.
 		headers: { origin: new URL(BASE).origin },
 	});

@@ -147,6 +147,16 @@ paid in its own currency.
 Zod row schema: `EscrowSchema` (`@projective/types/finance`, `ledger.ts`). Every finance row schema is
 held to its table column for key by `packages/types/finance/finance-tables.contract.test.ts`.
 
+**Triggers (Decision #456, `00001830`).** `trg_escrows_ended_service_guard` (`BEFORE INSERT`, a
+`held` or `reserved` row with a stage) refuses new escrow on a bought service that is `cancelled` or
+`archived` (`55000`). `trg_escrows_activate_funded_service` (`AFTER INSERT OR UPDATE OF status`, a
+`held` row with a stage) moves a bought Pipeline service `draft → active` at its first held escrow.
+Both are `projects.*` functions ([projects/Functions.md](../projects/Functions.md) § A bought
+service). On a bought service the payee is **not** unbound until the claim: the seller is seated on
+every stage, so `fn_ticket_payee` binds them when the escrow is held, and "prepaid"
+(`payee_id IS NULL`) never describes one — `projects.cancel_service` reads "claimed" from the
+ticket's assignee instead.
+
 **One held base escrow per ticket (Decision #189).** `uq_escrows_ticket_base_held` is a partial
 UNIQUE index on `(ticket_id) WHERE status = 'held' AND ticket_id IS NOT NULL AND revision_id IS NULL`:
 the hold path checks, then inserts, so two concurrent holds both passed the check and debited the payer
@@ -410,6 +420,15 @@ The **PAID ladder**. Zod SSOT: `packages/types/finance/plans.ts` + `entitlements
 | `businesses_owned`                   | 1                   | 3                       |
 | `teams_joined` / `businesses_joined` | **Uncapped**        | Uncapped                |
 | `storage_megabytes`                  | 25600 (25 GiB)      | 153600 (150 GiB)        |
+| `promoted_placement`                 | —                   | ✅ one live 7-day flight |
+| `discovery_boost`                    | — (retired)         | — (retired, #454)       |
+
+`promoted_placement` (Individual Pro, Pro Team, Business Pro) allocates the subject's **one** live
+promoted placement, a 7-day flight charged nothing, through `marketplace.promote_listing` (Decision
+#454; Business Pro holds the flag but sells no listing, so it is inert there). `discovery_boost` is
+**retired** by the same decision: organic ranking is never for sale, so the key is kept (never
+dropped) but seeded `false` on every plan and read by nothing. The earned newcomer Discovery Boost is
+the `search.search_weights` coefficient of the same name, which no plan touches.
 
 | Lever                     | Team Free | Pro Team (£29)  | Lever                      | Business Free | Business Pro |
 | :------------------------ | :-------- | :-------------- | :------------------------- | :------------ | :----------- |
@@ -692,6 +711,23 @@ the rate its escrow lines follow. Orders placed before this rule was built, the 
 carry an order-level fee and lines with no recorded rate. Projected as `OrderLine.promoDiscount`,
 `platformFee` and `platformFeeBp` (`packages/types/finance/order.ts`); the seller reads their own
 lines' totals through `finance.get_seller_commission` ([Functions.md](Functions.md)).
+
+**The buyer's intake answers (Decision #453).** `finance.order_lines.intake_answers` (`jsonb`, NOT
+NULL `DEFAULT '{}'`, CHECK `jsonb_typeof = 'object'`): on a `service_session`, `set_session` or
+`course_group_session` line, the buyer's answers to the listing's own intake (`IntakeAnswersSchema`,
+keyed by `service_blueprints.intake_fields[].id`), copied by `place_wallet_order` from the basket
+line's `metadata.answers` and reduced to the questions the listing asks
+(`projects.fn_session_intake_answers`); `{}` on every other line. Read by the buyer under the order
+lines' own policy; projected as `OrderLine.intakeAnswers`.
+
+**The engagement a One-Off or Task bought (Decision #457).** `finance.order_lines.project_id` (FK
+`projects.projects`, `ON DELETE SET NULL`) and `escrow_id` (FK `finance.escrows`, `ON DELETE SET
+NULL`), both NULL on every other line. They hold the engagement `place_wallet_order` created for a
+`one_off_service` / `single_service_task` line and the escrow its payment held there (milestone 1;
+any later milestone prepaid under the whole-project prepay is found through `ticket_id`). The
+receipt links the engagement by `project_id` (`OrderLine.engagementHref`, `/projects/<slug>`), and
+an escrow refund maps back to its line by `escrow_id`. Partial indexes
+`idx_order_lines_project` and `idx_order_lines_escrow` (`00004005`).
 
 ### `finance.purchasable_item_kind`
 

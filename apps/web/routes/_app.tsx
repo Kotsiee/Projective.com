@@ -11,6 +11,12 @@ import ExploreHistoryTracker from "@web/features/explore/islands/ExploreHistoryT
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 import { a11yRootAttributes, DEFAULT_A11Y } from "@web/utils/a11y-context.ts";
 import { PageMetaTags } from "@web/features/marketing/components/PageMetaTags.tsx";
+import { ScreenShareContext } from "@projective/ui/utils/screen-share";
+import ScreenShareBridge from "@web/features/shell/islands/ScreenShareBridge.island.tsx";
+import {
+	SCREEN_SHARE_PREPAINT_SCRIPT,
+	screenShareRootAttributes,
+} from "@web/utils/screen-share-context.ts";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
 // first paint is correctly themed for either mode with no flash; the DesignSystemRoot island then
@@ -86,12 +92,14 @@ export default define.page(function App({ Component, state }) {
 	// <html> here so high contrast, OpenDyslexic, a CVD shift or reduced motion are in force for the
 	// very first paint. Only overlays that are ON become attributes; the OS media queries cover the rest.
 	const a11y = a11yRootAttributes(state.a11y ?? DEFAULT_A11Y, currency?.locale);
+	const screenShare = state.screenShare === true;
 	return (
 		<html
 			lang="en"
 			data-currency={currency?.displayCurrency ?? "GBP"}
 			data-currency-locale={currency?.locale ?? "en-GB"}
 			{...a11y}
+			{...screenShareRootAttributes(screenShare)}
 		>
 			<head>
 				<meta charset="utf-8" />
@@ -136,6 +144,7 @@ export default define.page(function App({ Component, state }) {
 							`(()=>{try{if(document.cookie.indexOf("pj.a11y=")>=0)return;const p=JSON.parse(localStorage.getItem("pj.local.a11y")||"null");if(!p)return;const d=document.documentElement.dataset,ok=(v,a)=>a.indexOf(v)>=0;const c=ok(p.contrast,["standard","high"])?p.contrast:"standard",f=ok(p.font,["sans","dyslexic"])?p.font:"sans",v=ok(p.cvd,["none","protan","deutan","tritan"])?p.cvd:"none",m=ok(p.motion,["standard","reduced"])?p.motion:"standard";if(c==="high")d.contrast="high";if(f==="dyslexic")d.font="dyslexic";if(v!=="none")d.cvd=v;const r=ok(p.dir,["ltr","rtl","auto"])?p.dir:"auto";if(m==="reduced")d.motion="reduced";if(r!=="auto")document.documentElement.dir=r;document.cookie="pj.a11y=contrast-"+c+"_font-"+f+"_cvd-"+v+"_motion-"+m+"_dir-"+r+"; path=/; max-age=31536000; samesite=lax";}catch(_){/* noop */}})();`,
 					}}
 				/>
+				<script dangerouslySetInnerHTML={{ __html: SCREEN_SHARE_PREPAINT_SCRIPT }} />
 				<script
 					// Set data-sidebar before first paint so the global rail renders at the cached width with
 					// no flash-of-wrong-state (the ShellSidebar island re-syncs after hydration). The default
@@ -203,6 +212,7 @@ export default define.page(function App({ Component, state }) {
 					locale={currency?.locale ?? "en-GB"}
 					table={currency?.table ?? null}
 				/>
+				<ScreenShareBridge />
 				{
 					/* The shell cache behind offline editing. Renders nothing; registers `/sw.js` in
 				    production and unregisters any leftover worker in development. Mounted globally
@@ -250,9 +260,11 @@ export default define.page(function App({ Component, state }) {
 						table: currency?.table ?? null,
 					}}
 				>
-					<DesignSystemRoot>
-						<Component />
-					</DesignSystemRoot>
+					<ScreenShareContext.Provider value={{ active: screenShare }}>
+						<DesignSystemRoot>
+							<Component />
+						</DesignSystemRoot>
+					</ScreenShareContext.Provider>
 				</CurrencyContext.Provider>
 				{
 					/* DEV-ONLY developer tools (speed dial + context switcher + log inspector). Renders null

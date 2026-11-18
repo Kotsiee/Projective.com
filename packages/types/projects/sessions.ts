@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { FundingStatusSchema } from "../finance/funding.ts";
 import { DisputeSummarySchema } from "../finance/disputes.ts";
+import { IntakeAnswersSchema } from "../services/intake.ts";
 
 /**
  * projects.sessions — the Zod SSOT for session and group-session engagements (Decision #171): the
@@ -115,27 +116,100 @@ export const CohortOfferSchema = z.object({
 });
 export type CohortOffer = z.infer<typeof CohortOfferSchema>;
 
-/** `POST /api/sessions/reserve` — hold seats on a listing's current cohort. */
+/** `POST /api/services/reserve-seat` — hold seats on a listing's current cohort. */
 export const ReserveSeatInputSchema = z.object({
 	/** The listing (its discovery id). The server resolves the cohort; a client never names one. */
 	subjectId: z.string().min(1).max(160),
 	seats: z.number().int().min(1).max(500).default(1),
+	/** Anything the buyer wants the provider to know before the first sitting. */
+	note: z.string().max(2000).optional(),
+	/**
+	 * The buyer's answers to the listing's own intake (Decision #453), held to it by the same
+	 * `intakeRefusal` a 1-on-1 booking runs, and carried on the seat line to its order line.
+	 */
+	answers: IntakeAnswersSchema.default({}),
 });
 export type ReserveSeatInput = z.infer<typeof ReserveSeatInputSchema>;
 
-/** `projects.waitlist_status` — a waitlist place's lifecycle, mirrored 1:1. */
+/**
+ * `projects.waitlist_status` — a waitlist place's lifecycle (Decision #455), mirrored 1:1: `waiting` in
+ * the queue → `invited` (a seat held for `waitlist_invite_hold_hours`) → `converted` (a seat bought) or
+ * `expired` (the hold lapsed unused; joining again re-queues at the back). A place that is still
+ * `waiting` converts too when its buyer buys a seat directly.
+ */
 export const WaitlistStatusSchema = z.enum(["waiting", "invited", "expired", "converted"]);
 export type WaitlistStatus = z.infer<typeof WaitlistStatusSchema>;
 
-/** One `projects.waitlists` row (Decision #424): a buyer queued on a group-session listing. */
+/** `waitlist_invite_hold_hours`'s seeded default — what a missing param reads as, here and in SQL. */
+export const DEFAULT_WAITLIST_INVITE_HOLD_HOURS = 48;
+
+/** One `projects.waitlists` row (Decisions #424, #455): a buyer queued on a group-session listing. */
 export const WaitlistRowSchema = z.object({
 	id: uuid,
 	service_blueprint_id: uuid,
 	user_id: uuid,
 	status: WaitlistStatusSchema,
 	created_at: iso,
+	/** The place in the queue: first in, first out by `(queued_at, id)`; reset by a rejoin. */
+	queued_at: iso,
+	/** The invite's cohort and seat hold, and when it went out and lapses. Set together on `invited`. */
+	cohort_id: uuid.nullable(),
+	hold_id: uuid.nullable(),
+	invited_at: iso.nullable(),
+	invite_expires_at: iso.nullable(),
+	/** When the place reached `converted` or `expired`. */
+	resolved_at: iso.nullable(),
 });
 export type WaitlistRow = z.infer<typeof WaitlistRowSchema>;
+
+/**
+ * The viewer's own place on a listing's waitlist (`projects.get_waitlist_place`, Decision #455). An
+ * invite whose hold has lapsed already reads `expired`. `seatsOpen` is how many seats of the listing's
+ * enrolling cohort this viewer could hold now, the queue's first call counted (`null` with no cohort
+ * enrolling) — an invited buyer's held seat is open to them and to nobody else.
+ */
+export const ViewerWaitlistPlaceSchema = z.object({
+	status: WaitlistStatusSchema,
+	/** 1-based among the people waiting; `null` unless `waiting`. */
+	position: z.number().int().min(1).nullable(),
+	/** When the held seat is released; `null` unless `invited`. */
+	holdExpiresAt: iso.nullable(),
+	seatsOpen: z.number().int().min(0).max(500).nullable(),
+	inviteHoldHours: z.number().int().min(1).max(720),
+});
+export type ViewerWaitlistPlace = z.infer<typeof ViewerWaitlistPlaceSchema>;
+
+/** One place on the seller's view of a listing's waitlist. The buyer is named by the profile directory. */
+export const ListingWaitlistEntrySchema = z.object({
+	userId: uuid,
+	handle: z.string().min(2).max(64),
+	name: z.string().min(1).max(120),
+	avatar: z.string().max(2000),
+	status: WaitlistStatusSchema,
+	/** 1-based queue position; `null` unless `waiting`. */
+	position: z.number().int().min(1).nullable(),
+	queuedAt: iso,
+	invitedAt: iso.nullable(),
+	inviteExpiresAt: iso.nullable(),
+	resolvedAt: iso.nullable(),
+});
+export type ListingWaitlistEntry = z.infer<typeof ListingWaitlistEntrySchema>;
+
+/**
+ * A listing's waitlist as its seller reads it (`projects.get_listing_waitlist`, Decision #455): how many
+ * places are in each state, and the places — the invited first, then the queue in order, then the
+ * converted and expired, newest first.
+ */
+export const ListingWaitlistSchema = z.object({
+	counts: z.object({
+		waiting: z.number().int().min(0),
+		invited: z.number().int().min(0),
+		expired: z.number().int().min(0),
+		converted: z.number().int().min(0),
+	}),
+	entries: z.array(ListingWaitlistEntrySchema).max(500),
+});
+export type ListingWaitlist = z.infer<typeof ListingWaitlistSchema>;
 
 /** `POST /api/services/waitlist` — queue the caller on a listing's waitlist. The server resolves it. */
 export const JoinWaitlistInputSchema = z.object({

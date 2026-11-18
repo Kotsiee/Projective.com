@@ -1,18 +1,20 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
-import type { AccountLifecycle, DateFormat, UserEmail } from "@projective/types/org";
+import type { AccountLifecycle, DataExportState, DateFormat, UserEmail } from "@projective/types/org";
 import type { SettingsSectionDataOf } from "@projective/types/settings";
 import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { SectionHead } from "../SettingsParts.tsx";
 import { sectionMeta } from "../../core/settings-registry.ts";
 import { type AccountSimulation, simulatedAccountData } from "../../core/account-simulation.ts";
+import { type DataExportSimulation, simulatedDataExport } from "../../core/data-export-model.ts";
 import { IdentityBlock } from "./account/IdentityBlock.tsx";
 import { HandleBlock } from "./account/HandleBlock.tsx";
 import { AccountTypeBlock } from "./account/AccountTypeBlock.tsx";
 import { EmailsBlock } from "./account/EmailsBlock.tsx";
 import { PasswordBlock } from "./account/PasswordBlock.tsx";
 import { ConnectedAccountsBlock } from "./account/ConnectedAccountsBlock.tsx";
+import { DataExportBlock } from "./account/DataExportBlock.tsx";
 import { DeleteAccountBlock } from "./account/DeleteAccountBlock.tsx";
 
 // #region Stylesheet carrier
@@ -26,8 +28,9 @@ import "../../styles/settings-account.css";
  * two pieces of state more than one block reads — the addresses (the password reset goes to the
  * sign-in one) and the lifecycle (the account type and the deletion both change it).
  *
- * The dev `accountLifecycle` axis substitutes the handle policy or the lifecycle; the blocks remount
- * per position, so each one re-seeds from what it is given.
+ * The dev `accountLifecycle` axis substitutes the handle policy or the lifecycle, and the dev
+ * `dataExport` axis the data export's state (Decision #450); the blocks remount per position, so each
+ * one re-seeds from what it is given.
  */
 
 export interface AccountSectionProps {
@@ -41,20 +44,30 @@ export interface AccountSectionProps {
 export function AccountSection(props: AccountSectionProps): JSX.Element {
 	const meta = sectionMeta("account");
 	const simulation = useSignal<AccountSimulation>("auto");
+	const exportSimulation = useSignal<DataExportSimulation>("auto");
 
 	useEffect(() => {
-		const apply = () => (simulation.value = readDevSeam()?.accountLifecycle ?? "auto");
+		const apply = () => {
+			const seam = readDevSeam();
+			simulation.value = seam?.accountLifecycle ?? "auto";
+			exportSimulation.value = seam?.dataExport ?? "auto";
+		};
 		apply();
 		return subscribeDevSeam(apply);
 	}, []);
 
-	const data = simulatedAccountData(simulation.value, props.data, new Date());
+	const now = new Date();
+	const account = simulatedAccountData(simulation.value, props.data, now);
+	const data = {
+		...account,
+		dataExport: simulatedDataExport(exportSimulation.value, account.dataExport, now),
+	};
 
 	return (
 		<div class="stg-section">
 			<SectionHead title={meta.label} description={meta.description} />
 			<AccountBlocks
-				key={simulation.value}
+				key={`${simulation.value}:${exportSimulation.value}`}
 				data={data}
 				locale={props.locale}
 				dateFormat={props.dateFormat}
@@ -67,6 +80,7 @@ export function AccountSection(props: AccountSectionProps): JSX.Element {
 function AccountBlocks(props: AccountSectionProps): JSX.Element {
 	const emails = useSignal<UserEmail[] | null>(props.data.emails);
 	const lifecycle = useSignal<AccountLifecycle | null>(props.data.lifecycle);
+	const dataExport = useSignal<DataExportState | null>(props.data.dataExport);
 	const signIn = emails.value?.find((e) => e.isSignIn)?.email ?? null;
 
 	return (
@@ -81,6 +95,7 @@ function AccountBlocks(props: AccountSectionProps): JSX.Element {
 			<EmailsBlock emails={emails} />
 			<PasswordBlock signIn={signIn} />
 			<ConnectedAccountsBlock connected={props.data.connected} />
+			<DataExportBlock dataExport={dataExport} locale={props.locale} />
 			<DeleteAccountBlock lifecycle={lifecycle} locale={props.locale} />
 		</>
 	);

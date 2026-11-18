@@ -4,13 +4,15 @@ import { parseExploreParams } from "@features/explore/core/explore-state.ts";
 import { toExploreResponse } from "@features/explore/core/respond.ts";
 import { semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 
 /**
  * `GET /api/explore/search` — thin route: parse the discovery query (+ optional `offset`/`limit`),
  * then delegate to the fat {@link ExploreBackendService}, which returns the grouped merged sections
  * (cross-category) or a single page of the isolated-category feed. Islands call this via
  * `ExploreService` for client-side refinement; the `/explore` route handler calls the service directly
- * for SSR first paint. Whether voyage-4 similarity re-ranks it is this request's embeddings switch.
+ * for SSR first paint. Whether voyage-4 similarity re-ranks it is this request's embeddings switch;
+ * a 13–17 viewer gets no promoted slot (Decision #454).
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -23,6 +25,7 @@ export const handler = define.handlers({
 			limit: Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined,
 			actor: readActor(ctx),
 			semantic: semanticRankingFor(ctx.req),
+			showPromoted: !isRestrictedRequest(ctx.req, ctx.state.userContext),
 		});
 		ctx.state.discoveryRanking = result.ranking;
 		return toExploreResponse(result);

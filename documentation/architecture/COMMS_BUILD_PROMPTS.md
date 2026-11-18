@@ -983,8 +983,13 @@ ACCEPTANCE:
 > `resendTransport` and `configuredTransport()` (a `re_…` key and `MAIL_FROM`; the placeholder
 > counts as absent) live in `services/mail/transport.ts`, not a separate `transport-resend.ts`, and
 > `deliverMail` serves the verification and guest mailers. The 🧑 stop is settled: Decision #391,
-> ruling (4), chose Resend. The Idempotency-Key, List-Unsubscribe, the email registration in
-> `dispatch-transports.ts` and steps 2–5 remain. ⏳ NT2.
+> ruling (4), chose Resend. **2026-11-18:** the FILES item `supabase/config.toml` `[auth.email.smtp]`
+> landed through the identity track's AU5 (Decision #448): Resend SMTP with
+> `env(SUPABASE_AUTH_SMTP_PASS)` and `env(SUPABASE_AUTH_SMTP_ADMIN_EMAIL)` (the bare address inside
+> `MAIL_FROM`; GoTrue takes the address and the sender name apart), declared `enabled = false` so
+> local mail stays in Mailpit, with the hosted runbook in EPI §8.5; step 4's local half is done,
+> and its hosted half is that runbook. The Idempotency-Key, List-Unsubscribe, the email registration
+> in `dispatch-transports.ts` and steps 2–5 remain. ⏳ NT2.
 
 ```text
 PROMPT NT3: Transactional email — one provider, signed bounces; a hard bounce blocks the address
@@ -1022,6 +1027,10 @@ FILES (Option A; swap the names for B or C):
     out of verification-mailer.ts, which then imports them) and transport-resend.ts (new) + tests
   - packages/backend/services/comms/{dispatch-transports.ts (register email),
     DeliveryEventService.ts (new)} + tests
+  - packages/backend/services/comms/channel-liveness.ts (ST2's liveness map must flip here:
+    deliverySources() reads `transports.email` from the email registration in dispatch-transports.ts,
+    and `dispatcher` from NT2's running dispatcher if NT2 left it false, so Settings → Notifications
+    says "Sent to your primary email address." only once email sends) + its test
   - apps/web/routes/api/comms/webhooks/resend.ts (new, thin; the Svix check lives in the service)
   - an unsubscribe route (reuse packages/backend/services/newsletter's token if it has one;
     otherwise a signed one-click route)
@@ -1113,6 +1122,9 @@ CONTEXT:
 FILES:
   - packages/backend/services/comms/{transport-webpush.ts (new: the VAPID ES256 JWT, RFC 8291
     aes128gcm, the TTL, Urgency and Topic headers), dispatch-transports.ts} + tests
+  - packages/backend/services/comms/channel-liveness.ts (ST2's liveness map must flip here:
+    deliverySources() reads `transports.push` from the push registration in dispatch-transports.ts,
+    so the Push channel's copy claims delivery only once push sends) + its test
   - apps/web/routes/api/notifications/push/config.ts (GET: the public key, or 404 when VAPID is
     not configured) and apps/web/routes/api/notifications/devices.ts (POST register and DELETE
     revoke → comms.register_device / comms.revoke_device under the caller's JWT) (new, thin)

@@ -36,7 +36,9 @@
 - Digital asset sales (templates, codebases, design assets): **8–20%** commission.
 - Base rate (8%) is comparable to Etsy; the 20% tier applies to listings using internal "Search
   Boosts" or promoted placement. **Planned** (Decision #337, ruling M1): the 20% tier waits for
-  boosts; until then every sale pays its seller's rung rate below.
+  boosts; until then every sale pays its seller's rung rate below. Promoted placements now exist,
+  plan-allocated (§1.4, Decision #454); whether they start this tier is open (#454 FLAG (a)), and
+  until ruled they do not.
 - **The base rate tapers with earned Standing, never with the plan** (§16.3):
 
   | Standing rung          | L1 New | L2 Established | L3 Trusted | L4 Expert | L5 Elite |
@@ -102,8 +104,12 @@ adding seats requires the subscription, the same draft-first pattern used everyw
   `PRODUCT_SPEC.md` entry before its engine is built, and its control stays locked until then (§13).
 - **Instant Payouts:** optional fee to bypass standard Stripe clearing periods. **Planned**
   (Decision #337, ruling P3): the fee stays unset until it is priced.
-- **Search Boosts:** paid promotion for profiles/templates on the Explore page or hiring
-  suggestions.
+- **Search Boosts — promoted placements:** paid visibility on Explore as a separately labelled
+  "Promoted" slot, never rank (Decision #454, PRODUCT_SPEC §Dynamic Search & Availability Boost).
+  **Built** for a seller's services and products as a plan entitlement (`promoted_placement`, §16.7)
+  while plans cannot be bought; a per-slot price, and promotion of profiles or in hiring suggestions,
+  are **not set**. Whether a promoted listing's sales take the 20% tier of §1.2 is open (#454
+  FLAG (a)); until ruled, every sale pays its seller's rung rate.
 
 ### 1.5 Entity Limits (The Scale Ladder)
 
@@ -963,7 +969,7 @@ and `personalise.ts`.
 
 | Dial                     | Value                                                                       |
 | :----------------------- | :-------------------------------------------------------------------------- |
-| Coefficients (seeded)    | `review_sentiment` 1.75 · `review_count` 1.00 · `workload` 1.50 · `discovery_boost` 1.25 · `penalty` 2.50 · `interest_history` 1.25 |
+| Coefficients (seeded)    | `review_sentiment` 1.75 · `review_count` 1.00 · `workload` 1.50 · `discovery_boost` 1.25 · `penalty` 2.50 · `interest_history` 1.25 · `text_relevance` 6.00 (Best match) |
 | Cold-start prior         | 5 pseudo-reviews at the track's corpus mean (delivery reviews and client reviews kept apart) |
 | Review volume            | Logarithmic, saturating at 50 reviews                                       |
 | Availability             | The free share of the Global Intensity Cap; zero at the cap                 |
@@ -974,11 +980,16 @@ and `personalise.ts`.
 | New on Projective        | Published in the last 30 days                                               |
 | Personal rails           | 3 items to show, 12 at most · "Because you viewed" anchors on the last 3 views |
 | Topic affinity           | +1 per opening, decaying with a 14-day half-life                            |
-| Semantic blend           | Weight 0.5 · floor 0.30 · relative 0.8 · at most 12 extra results (Decision #339, ruling N4) |
+| Semantic blend           | Weight 0.5 · floor 0.30 · relative 0.8 · at most 12 extra results (Decision #339, ruling N4); it re-ranks Best match and Recommended alike |
+| Best match               | A typed search's default order: quality score + `text_relevance` × a 0–1 word match, an exact title first. The match: a BM25 (k1 1.2) over title 3 · skills and category 2 · description 1 · seller name 0.5, weighted 50%; title coverage 35%; the words in the order typed 15% (half inside one skill); a word a longer word begins earns ½, a word inside another 0 (Decision #459) |
 | Load and reliability     | **Not built yet** (Decision #338, ruling P4): a freelancer's current load ($W_i$, through Availability) and the Reliability Index's efficiency terms (§16.3) each carry a large weight; the coefficients are not set yet |
+| Promoted placement       | Provisional, plan-allocated while plans cannot be bought (Decision #454): a subject holding `promoted_placement` (Pro, Pro Team) runs **1** live flight at a time · **7 days** from start (`marketplace.fn_promotion_flight`) · on `explore_home` or `explore_results` · stoppable any time · charged **0** |
+| Promoted slot            | One per services / products rail, at its head; several live flights for one rail share it, rotating **hourly** · results: drawn only from listings matching the search, first page only · never for a 13–17 viewer |
 
 **What never moves the score:** verification (discovery weight comes from Standing alone, §16.5) and
-any plan or payment. Paid visibility is the labelled sponsored placement (§1.4), never rank.
+any plan or payment. Paid visibility is the labelled "Promoted" slot (§1.4), never rank, and never a
+mark on a listing's organic card. Pro's former `discovery_boost` entitlement is retired, unread
+(Decision #454).
 
 ### 16.8 Asset protection (Decision #393)
 
@@ -1034,12 +1045,19 @@ override, never a constant. **Not built yet.**
 | Presence with no dispute (a room's join and leave records)                                   | 13 months, `presence_retention_days` (Decision #383, ruling R8). Built: `scheduling-presence-retention` | Proof of attendance if a payment is disputed late                              |
 | Unmatched room participants (no Projective account behind them)                              | 30 days, `presence_unmatched_retention_days`. Built, same job       | Minimisation                                                                   |
 | Webhook delivery ledger                                                                      | 90 days                                                             | Replay protection only                                                         |
-| Consent and terms-acceptance records                                                         | Life of the account, plus 6 years                                   | Proof of lawful basis                                                          |
+| Consent and terms-acceptance records (sign-up acceptances: `org.legal_acceptances`, Decision #446; append-only, never cascaded with the person) | Life of the account, plus 6 years                                   | Proof of lawful basis                                                          |
 | Security and auth logs                                                                       | 12 months                                                           | Incident investigation                                                         |
 | Messages, files and profiles not under a hold                                                | Erased with the account                                             | No obligation                                                                  |
 | Search query logs and embeddings                                                             | 90 days, and erased with the account                                | Minimisation                                                                   |
+| A person's data-export archive (Decision #450; the request row is kept as the record)        | 7 days after it is ready, or until the account is erased. Built: `account-data-exports`, a constant for now | Minimisation: a full copy of one person's data, held only to be downloaded     |
 
 **Erasure windows** (ruling I1 (b)): giving up a freelancer profile ("switch to client") waits **90
 days**, and an explicit erasure request completes within **30 days**. Both become
 `security.platform_params` dials (`PRODUCT_MANAGEMENT.md` §3.5, Scheduled removal). The legal-hold
 vault that keeps the identity set above is `PRODUCT_SPEC.md` §Identity, Taxes & Compliance's.
+
+**Data export windows** (Decision #450; `PRODUCT_SPEC.md` §Settings — Downloading your data): an
+archive downloads for **7 days**; a person asks at most **once per 24 hours** (a failed copy does not
+count); the session must have signed in within **10 minutes**; one download link works for **60
+seconds**. Constants in `00001061` mirrored by `DATA_EXPORT_POLICY`, not yet `security.platform_params`
+dials.

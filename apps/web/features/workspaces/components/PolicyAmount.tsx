@@ -1,6 +1,8 @@
 import type { JSX } from "preact";
 import { cx } from "@ui/core/cx.ts";
 import { currencyExponent, type MoneyView } from "@projective/types/finance";
+import { MoneyView as MoneyFigure } from "@projective/ui/display/money";
+import { useScreenShareActive } from "@projective/ui/utils/screen-share";
 
 /**
  * PolicyAmount — the way a {@link MoneyView} reaches the screen in the business money editors (the
@@ -75,6 +77,17 @@ export interface PolicyAmountProps {
 /** Render a server-computed money figure with its minor units de-emphasised. */
 export function PolicyAmount(props: PolicyAmountProps): JSX.Element {
 	const { value, size = "body", muted = false } = props;
+	if (useScreenShareActive()) {
+		return (
+			<MoneyFigure
+				value={value}
+				size={size}
+				tone={muted ? "muted" : "default"}
+				exact
+				class={cx("wsp-money", `wsp-money--${size}`, muted && "wsp-money--muted", props.class)}
+			/>
+		);
+	}
 	const parts = splitAmount(value.display, value.currency);
 	const spoken = props.srLabel ?? null;
 

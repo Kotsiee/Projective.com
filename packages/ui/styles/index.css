@@ -426,6 +426,9 @@
 	*/
 	--scrim-blur-heavy: 18px;
 	--scrim-tint-heavy: 64%;
+	--obscure-blur: 12px;
+	--obscure-bleed: 1.04;
+	--obscure-mask: "••••••";
 
 	/*
 	* --- The glass veil scale ---

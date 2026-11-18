@@ -23,10 +23,12 @@ import {
 	isCheckoutEligible,
 	itemKindMeta,
 	listedStagesOf,
+	scheduledSittingStarts,
+	type SittingSchedule,
 	STAGE_SELECTION_REFUSAL,
 } from "@projective/types/finance";
 import { stageCostCents, TicketIntensity } from "@projective/types/projects";
-import type { ExploreItem } from "@projective/types/explore";
+import { BlueprintStageSchema, type ExploreItem, parseStoredList } from "@projective/types/explore";
 import { getUserClient } from "../../core/supabase.ts";
 import {
 	type BlueprintRow,
@@ -528,7 +530,8 @@ interface Price {
  * rate, everything else at its fixed engagement price. The session kinds scale by what the unit IS:
  * a set-session package is `session_count` sittings, and a group-session line is ONE booking of
  * `seats` seats — `seats` is a priced quantity in its own right and is not folded into `quantity`
- * (the column says so), so it scales the unit rather than the line.
+ * (the column says so), so it scales the unit rather than the line. A One-Off or a Task is what
+ * checkout holds for it ({@link scopedPriceCents}), read from the line's own scope.
  *
  * `null` when the thing cannot be priced today — the line is then shown, never charged.
  */
@@ -537,6 +540,7 @@ function unitPriceOf(
 	p: Purchasable,
 	stage: StageFact | null,
 	seats: number | null,
+	meta: unknown = null,
 ): Price | null {
 	if (p.family === "product") {
 		return p.product ? { minor: p.product.price_cents, currency: p.product.currency } : null;
@@ -565,9 +569,45 @@ function unitPriceOf(
 			return { minor: session * Math.max(1, b.session_count ?? 1), currency: b.currency };
 		case "course_group_session":
 			return { minor: session * Math.max(1, seats ?? 1), currency: b.currency };
+		case "one_off_service":
+		case "single_service_task": {
+			const minor = scopedPriceCents(b, wholeProjectOf(meta));
+			return minor === null ? null : { minor, currency: b.currency };
+		}
 		default:
 			return { minor: b.price_cents, currency: b.currency };
 	}
+}
+
+/** Whether a One-Off line's scope prepays every milestone (`ScopedLineMeta.fundingScope`). */
+function wholeProjectOf(meta: unknown): boolean {
+	return typeof meta === "object" && meta !== null &&
+		(meta as { fundingScope?: unknown }).fundingScope === "whole_project";
+}
+
+/**
+ * What checkout charges for a One-Off or a Task (Decision #457), the twin of
+ * `marketplace.fn_scoped_service_price`: milestone 1, or every milestone under the whole-project
+ * prepay, each at its own `priceCents` — a One-Off milestone sells locked at its stated price, the
+ * figure the configure dialog totals, with no ticket-rate fallback. A Direct Deliverable (a Task) is
+ * the listing's price. `null` when any charged milestone is unpriced or free: the provider confirms
+ * the price before anyone pays.
+ */
+export function scopedPriceCents(
+	b: Pick<BlueprintRow, "delivery_model" | "price_cents" | "stage_template">,
+	whole: boolean,
+): number | null {
+	if (b.delivery_model === "direct_deliverable") return b.price_cents > 0 ? b.price_cents : null;
+	if (b.delivery_model !== "one_off") return null;
+	const stages = parseStoredList(BlueprintStageSchema, b.stage_template);
+	const charged = whole ? stages : stages.slice(0, 1);
+	if (charged.length === 0) return null;
+	let total = 0;
+	for (const stage of charged) {
+		if (stage.priceCents === undefined || stage.priceCents <= 0) return null;
+		total += stage.priceCents;
+	}
+	return total;
 }
 
 /** The purchasable kind a ticket of this project is bought as (Decision #166). */
@@ -974,6 +1014,26 @@ function slotLabel(iso: string, timezone: string | null, minutes: number | null)
 	return clip(`${day} · ${range}`, 80);
 }
 
+/**
+ * A set-session block line's sittings (Decision #453): the block's size from its listing, and the
+ * times the buyer chose — the line's own `scheduled_at`, then `metadata.laterStarts` — each labelled in
+ * the line's zone. `null` for anything that is not a block of two or more.
+ */
+function sittingsOf(
+	line: Pick<LineRow, "item_type" | "scheduled_at" | "timezone" | "metadata">,
+	total: number | null,
+	minutes: number | null,
+): SittingSchedule | null {
+	if (line.item_type !== "set_session" || !total || total < 2 || !line.scheduled_at) return null;
+	const first = new Date(line.scheduled_at).toISOString();
+	const starts = scheduledSittingStarts(first, line.metadata?.laterStarts, Math.min(total, 52));
+	if (starts.length === 0) return null;
+	return {
+		total: Math.min(total, 52),
+		scheduled: starts.map((at) => ({ at, label: slotLabel(at, line.timezone, minutes) })),
+	};
+}
+
 /** `Stage 2 · Concept routes`. */
 function stageLabelOf(stage: StageFact): string {
 	return clip(`Stage ${stage.position} · ${stage.name}`, 120);
@@ -1015,7 +1075,7 @@ function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketI
 		: line.ticket_id
 		? facts.ticket?.price ?? null
 		: p
-		? unitPriceOf(line.item_type, p, stage, line.seats)
+		? unitPriceOf(line.item_type, p, stage, line.seats, line.metadata)
 		: null;
 	let closed = facts.closed ?? (current ? null : "This isn't priced yet.");
 	const unitSource: Price = current ??
@@ -1091,6 +1151,7 @@ function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketI
 			? slotLabel(line.scheduled_at, line.timezone, sessionMinutes)
 			: null,
 		timezone: line.timezone,
+		sittings: sittingsOf(line, p?.blueprint?.session_count ?? null, sessionMinutes),
 		stageLabel,
 		seats: line.seats,
 		available: closed === null,
@@ -1352,7 +1413,8 @@ export const PROMO_NOT_APPLICABLE =
 function isEscrowLine(item: BasketItem): boolean {
 	return !!item.ticketId || item.itemType === "paid_revision" ||
 		item.itemType === "course_group_session" || item.itemType === "service_session" ||
-		item.itemType === "set_session";
+		item.itemType === "set_session" || item.itemType === "one_off_service" ||
+		item.itemType === "single_service_task";
 }
 
 /**
@@ -1872,7 +1934,7 @@ export async function addItem(
 		}
 	}
 	const seats = input.seats ?? null;
-	const price = unitPriceOf(input.itemType, p, stage, seats);
+	const price = unitPriceOf(input.itemType, p, stage, seats, input.metadata);
 	if (!price) return refuse(409, "This isn't priced yet, so it can't be bought.", { itemId: "unpriced" });
 
 	const scheduledAt = meta.needsSchedule && input.scheduledAt

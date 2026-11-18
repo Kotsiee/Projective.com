@@ -4,6 +4,7 @@ import { cx } from "@ui/core/cx.ts";
 import { displayLocale, formatMoney, MoneyView } from "@projective/ui/display";
 import { InlineNotice } from "@projective/ui/feedback";
 import { FormControl, MoneyInput } from "@projective/ui/fields";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import type { TeamSplitPreview } from "@projective/types/workspace";
 import { ledgerRows, PREVIEW_MAX_MINOR } from "../core/payout-model.ts";
 
@@ -53,6 +54,7 @@ export function PayoutPreview(props: PayoutPreviewProps): JSX.Element {
 	const { preview } = props;
 	/** The viewer's locale — the amount box's and every figure's, so the two read as one format. */
 	const locale = displayLocale.value;
+	const mask = useMaskFigures();
 	return (
 		<section class="wsp-payout__section" aria-labelledby="wsp-payout-preview">
 			<div class="wsp-payout__head">
@@ -102,7 +104,7 @@ export function PayoutPreview(props: PayoutPreviewProps): JSX.Element {
 					<ul
 						class="wsp-ledger"
 						aria-label={`How ${
-							formatMoney(preview.gross.minor, preview.gross.currency, locale)
+							mask(formatMoney(preview.gross.minor, preview.gross.currency, locale))
 						} splits`}
 						aria-busy={props.pricing ? "true" : undefined}
 					>

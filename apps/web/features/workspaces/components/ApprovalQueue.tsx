@@ -13,6 +13,7 @@ import {
 	type RequestTab,
 } from "../core/spend-model.ts";
 import { PolicyAmount } from "./PolicyAmount.tsx";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
@@ -100,6 +101,7 @@ function Avatar(props: { request: SpendRequest }) {
 // #region Component
 /** One tab of the spend-request queue. */
 export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
+	const mask = useMaskFigures();
 	if (props.view === "decided") {
 		const decided = props.decided ?? [];
 		if (decided.length === 0) return <p class="wsp-approvals__empty">{REQUEST_EMPTY.decided}</p>;
@@ -137,7 +139,7 @@ export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
 							<PolicyAmount
 								value={request.amount}
 								size="body"
-								srLabel={`${request.amount.display}, requested by ${request.name}`}
+								srLabel={`${mask(request.amount.display)}, requested by ${request.name}`}
 							/>
 						</span>
 						<div class="wsp-approvals__actions">
@@ -155,7 +157,7 @@ export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
 													label="Approve"
 													loading={working("approve")}
 													disabled={held}
-													aria-label={`Approve ${request.amount.display} for ${request.name}`}
+													aria-label={`Approve ${mask(request.amount.display)} for ${request.name}`}
 													onClick={() => props.onDecide?.(request.id, true)}
 												/>
 											)
@@ -167,7 +169,7 @@ export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
 													label="Approve"
 													loading={working("approve")}
 													disabled={held}
-													aria-label={`Approve ${request.amount.display} for ${request.name}`}
+													aria-label={`Approve ${mask(request.amount.display)} for ${request.name}`}
 													onClick={() => props.onDecide?.(request.id, true)}
 												/>
 											)}
@@ -178,7 +180,7 @@ export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
 											label="Decline"
 											loading={working("decline")}
 											disabled={held}
-											aria-label={`Decline ${request.amount.display} for ${request.name}`}
+											aria-label={`Decline ${mask(request.amount.display)} for ${request.name}`}
 											onClick={() => props.onDecide?.(request.id, false)}
 										/>
 									</>
@@ -194,7 +196,7 @@ export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
 											label="Withdraw"
 											loading={working("withdraw")}
 											disabled={held}
-											aria-label={`Withdraw your request for ${request.amount.display}`}
+											aria-label={`Withdraw your request for ${mask(request.amount.display)}`}
 											onClick={() => props.onWithdraw?.(request.id)}
 										/>
 									</>

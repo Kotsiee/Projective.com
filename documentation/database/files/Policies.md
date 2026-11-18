@@ -379,4 +379,10 @@ Full predicate, path convention and the metering consequence:
   rows cannot be deleted from SQL). The library's own upload-complete steps refuse a row with a
   `target_bucket`, so only the contact pipeline finishes a contact declaration.
 
+## `storage.objects` — the `data_exports` bucket (Decision #450)
+
+- **No policy at all** — service-role only, like `verification`. The export job writes and removes
+  `data_exports/{user_id}/{request_id}.zip`; a person downloads their own through a 60-second link the
+  server mints after reading their request under their own JWT ([Storage.md](Storage.md)).
+
 See also [Tables.md](Tables.md) · [Functions.md](Functions.md) · [Storage.md](Storage.md).

@@ -9,6 +9,14 @@
 \set QUIET on
 BEGIN;
 
+-- The legal stamp every sign-up door requires (Decision #446): today's version of each document.
+CREATE FUNCTION pg_temp.legal_stamp() RETURNS jsonb LANGUAGE sql AS $$
+    SELECT jsonb_build_object(
+        'terms', org.fn_current_legal_version('terms'),
+        'acceptable-use', org.fn_current_legal_version('acceptable-use'),
+        'privacy', org.fn_current_legal_version('privacy'));
+$$;
+
 -- #region Helpers
 CREATE FUNCTION pg_temp.ok(p_cond boolean, p_what text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
@@ -57,7 +65,7 @@ DECLARE
 BEGIN
     INSERT INTO auth.users (id, email, aud, role, raw_user_meta_data, email_confirmed_at)
     VALUES (v_uid, 'toggles-probe-' || v_tag || '@projective.invalid', 'authenticated', 'authenticated',
-            jsonb_build_object('username', 'togprobe_' || v_tag, 'dob', (CURRENT_DATE - interval '30 years')::date,
+            jsonb_build_object('legal_acceptance', pg_temp.legal_stamp(), 'username', 'togprobe_' || v_tag, 'dob', (CURRENT_DATE - interval '30 years')::date,
                                'timezone', 'Europe/London'),
             now());
     PERFORM pg_temp.ok(

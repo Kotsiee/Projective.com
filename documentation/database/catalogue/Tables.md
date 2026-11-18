@@ -79,7 +79,7 @@ carrying a product id (or neither) unrepresentable.
 | `create_category`                              | `org.create_category`, NULL until chosen: the CREATE category the listing counts towards in the seller's Standing. |
 | `amount_cents`, `ticket_price_cents`, `session_price_cents`, `seats_per_session`, `currency` | Pricing config. The optional three are NULL for "not priced", never 0. |
 | `free_revisions`, `extra_revision_price_cents` | NULL = undeclared; 0 is a stated offer.                                            |
-| `promoted`                                     | The seller's request to promote. A listing renders as sponsored only when an ACTIVE `marketplace.promoted_placements` row also exists for it — the flag alone buys nothing. |
+| `promoted`                                     | A console hint, set by `marketplace.promote_listing` and cleared by `stop_listing_promotion` (Decision #454). The flag alone buys nothing and no reader trusts it: the console's "Promoted" state and the Explore slot both answer from a LIVE `marketplace.promoted_placements` row, and an organic card is never marked. |
 | `view_count`, `order_count`, `rating_average`, `rating_count` | **Derived** console metrics, guarded against client writes (`trg_listings_derived`). |
 
 ## Child tables

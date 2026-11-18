@@ -24,3 +24,23 @@ Deno.test("an explicit DENO_ENV is taken as given", () => {
 	withDenoEnv("development", () => assertEquals(serverEnv().appEnv, "development"));
 	withDenoEnv("production", () => assertEquals(serverEnv().appEnv, "production"));
 });
+
+Deno.test("the Turnstile pair is read from its canonical names", () => {
+	const names = ["TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"] as const;
+	const before = names.map((name) => Deno.env.get(name));
+	try {
+		Deno.env.set("TURNSTILE_SITE_KEY", "site-key");
+		Deno.env.set("TURNSTILE_SECRET_KEY", "secret-key");
+		assertEquals(serverEnv().turnstileSiteKey, "site-key");
+		assertEquals(serverEnv().turnstileSecretKey, "secret-key");
+		for (const name of names) Deno.env.delete(name);
+		assertEquals(serverEnv().turnstileSiteKey, undefined);
+		assertEquals(serverEnv().turnstileSecretKey, undefined);
+	} finally {
+		names.forEach((name, i) => {
+			const value = before[i];
+			if (value === undefined) Deno.env.delete(name);
+			else Deno.env.set(name, value);
+		});
+	}
+});

@@ -23,7 +23,9 @@ import { AllowanceDisclosure } from "@features/proposals/components/AllowanceDis
  *
  * A guest's Apply bounces to sign-in with a return path, and so does a guest's Message: the DM
  * namespace is authed-only, and a link that lands a guest on a login wall with no way back is worse
- * than one that says where it is taking them.
+ * than one that says where it is taking them. A brief a team or a business posted is messaged through
+ * its owner (`messageHrefFor`); when the read names nobody, Message client is withheld rather than
+ * pointing at `dm-{slug}`, which reaches nobody (Decision #422 (b)).
  *
  * Apply opens the listing's one `ProjectApplyModal` (stage, role, applicant, cover note, and the
  * proposal allowance's pre-flight gate). Beneath it sits the cost disclosure — `1 proposal token · N
@@ -43,7 +45,8 @@ export function ProjectCtaRig(
 ): JSX.Element {
 	const primary = useCtaFeedback();
 	const applied = projectApplied.value;
-	const contactHref = authed ? messageHrefFor(item) : signInHref(item, ctx);
+	const messageHref = messageHrefFor(item);
+	const contactHref = messageHref === null ? null : authed ? messageHref : signInHref(item, ctx);
 
 	return (
 		<div class={layout === "bar" ? "evp-cta evp-cta--bar" : "evp-cta"}>
@@ -59,10 +62,12 @@ export function ProjectCtaRig(
 			/>
 			<AllowanceDisclosure authed={authed} />
 
-			<a class="evp-cta__ghost" href={contactHref}>
-				<Icon name="message" size="sm" aria-hidden />
-				<span>Message client</span>
-			</a>
+			{contactHref !== null && (
+				<a class="evp-cta__ghost" href={contactHref}>
+					<Icon name="message" size="sm" aria-hidden />
+					<span>Message client</span>
+				</a>
+			)}
 		</div>
 	);
 }

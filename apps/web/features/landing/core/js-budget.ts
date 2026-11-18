@@ -213,6 +213,7 @@ export const ISLAND_SOURCES = {
 export const APP_ISLANDS: readonly BudgetIsland[] = [
 	{ path: "apps/web/features/theme/islands/DesignSystemRoot.island.tsx", audience: "everyone" },
 	{ path: "apps/web/features/shell/islands/CurrencyBridge.island.tsx", audience: "everyone" },
+	{ path: "apps/web/features/shell/islands/ScreenShareBridge.island.tsx", audience: "everyone" },
 	{ path: "apps/web/features/shell/islands/ServiceWorkerBridge.island.tsx", audience: "everyone" },
 	{ path: "apps/web/features/shell/islands/ImageFallbackBridge.island.tsx", audience: "everyone" },
 	{ path: "apps/web/features/shell/islands/OfflineBridge.island.tsx", audience: "everyone" },

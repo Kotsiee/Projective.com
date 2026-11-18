@@ -4,6 +4,12 @@
  */
 
 import { isDisplayCurrency } from "@projective/types/finance";
+import {
+	currentLegalVersions,
+	LEGAL_VERSIONS,
+	legalAcceptanceKind,
+	SIGNUP_LEGAL_SLUGS,
+} from "@projective/types/legal";
 import { ago, arr, HEADER, id, insert, jsonb, q, splitName, uuidFor } from "./sql.ts";
 import type { World } from "./resolve.ts";
 import { SKILLS } from "./world.ts";
@@ -173,6 +179,32 @@ export function emitIdentities(world: World): string {
 				];
 			}),
 			"(user_id)",
+		),
+	);
+
+	// Every persona accepted the sign-up documents in effect when this seed was generated (Decision #446),
+	// so no seeded login meets the re-accept gate. Dated at sign-up, or at the version's effective date
+	// when that came later.
+	const legal = currentLegalVersions();
+	out.push(
+		insert(
+			"org.legal_acceptances",
+			["id", "user_id", "document_slug", "version", "kind", "surface", "accepted_at"],
+			personas.flatMap((p) =>
+				SIGNUP_LEGAL_SLUGS.map((slug) => {
+					const effective = LEGAL_VERSIONS[slug].find((v) => v.version === legal[slug])
+						?.effectiveDate ?? "1970-01-01";
+					return [
+						id(uuidFor("legal-acceptance", `${p.handle}:${slug}:${legal[slug]}`)),
+						id(p.userId),
+						q(slug),
+						q(legal[slug]),
+						q(legalAcceptanceKind(slug)),
+						"'join'",
+						`GREATEST(${ago(p.joinedDaysAgo)}, TIMESTAMPTZ ${q(`${effective} 00:00:00+00`)})`,
+					];
+				})
+			),
 		),
 	);
 

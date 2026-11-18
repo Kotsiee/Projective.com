@@ -4,10 +4,11 @@ import { RailFrame } from "./RailFrame.tsx";
 import { RailCell } from "./RailCell.tsx";
 import { HomeGrid } from "./HomeGrid.tsx";
 import { EntityCard } from "./cards/EntityCard.tsx";
+import { PromoSlot } from "./promos/PromoSlot.tsx";
 import { resultHeading } from "../core/home-model.ts";
 import { RESULTS_RAIL_CAP } from "../core/detail-nav.ts";
 import type { HrefContext } from "../core/routing.ts";
-import type { ExploreItem, ResultGroup } from "../types/explore-types.ts";
+import type { ExploreItem, ResultGroup, SponsoredPromo } from "../types/explore-types.ts";
 
 /** Cap on how many cards a merged section reveals before "Show all" takes over. Even, so the grid
  * variant never ends on a ragged half row; the drawer's step order stops at the same card. */
@@ -39,8 +40,13 @@ const RAIL_CAP = RESULTS_RAIL_CAP;
  * hydration root would push these children, which carry `onSelect`, through props serialization.
  */
 export function ResultsGroupRow(
-	{ group, showAllHref, onSelect, ctx, authed = false }: {
+	{ group, promoted, showAllHref, onSelect, ctx, authed = false }: {
 		group: ResultGroup;
+		/**
+		 * The labelled "Promoted" slot at the head of this rail (Decision #454), beside the group's
+		 * cells, which stay exactly as ranked.
+		 */
+		promoted?: SponsoredPromo;
 		showAllHref: string;
 		onSelect?: (item: ExploreItem) => void;
 		ctx: HrefContext;
@@ -82,17 +88,26 @@ export function ResultsGroupRow(
 			label={group.title}
 			action={showAll}
 		>
-			{shown.map((it) => (
-				<RailCell key={it.id}>
-					<EntityCard
-						item={it}
-						ctx={ctx}
-						onSelect={onSelect}
-						authed={authed}
-						productLayout="fixed"
-					/>
-				</RailCell>
-			))}
+			{[
+				...(promoted
+					? [
+						<RailCell featured key={promoted.id}>
+							<PromoSlot slot={promoted} />
+						</RailCell>,
+					]
+					: []),
+				...shown.map((it) => (
+					<RailCell key={it.id}>
+						<EntityCard
+							item={it}
+							ctx={ctx}
+							onSelect={onSelect}
+							authed={authed}
+							productLayout="fixed"
+						/>
+					</RailCell>
+				)),
+			]}
 		</RailFrame>
 	);
 }

@@ -46,8 +46,6 @@ export interface ListingCardSource {
 		"amount" | "ticketPrice" | "sessionPrice" | "freeRevisions" | "extraRevisionPrice"
 	>;
 	metrics: Pick<ListingMetrics, "avgRating" | "ratingCount">;
-	/** Whether the card carries the sponsored mark. */
-	promoted: boolean;
 	/** A Pipeline service sold at tiered intensity (`service_blueprints.allow_tiered_intensity`). */
 	tieredIntensity?: boolean;
 	/** A workspace listing's offer; a Pipeline's tier flag is read off it when the source states none. */
@@ -114,7 +112,6 @@ export function listingCardItem(source: ListingCardSource): ServiceItem | Produc
 		summary: source.descriptionText,
 		media: cover?.src || undefined,
 		mediaPlaceholder: cover?.placeholder,
-		sponsored: source.promoted,
 		createdAt: source.listedAt ?? source.updatedAt,
 		price: amountMinor === undefined ? UNPRICED_LABEL : displayPrice(amountMinor, currency),
 		priceMinor: amountMinor,

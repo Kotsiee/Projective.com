@@ -51,6 +51,10 @@ DECLARE
   -- mint, so it lifts on the 18th birthday at the next refresh. Chrome only: it lets the app explain a
   -- locked buy/sell control up front; org.fn_assert_adult in each door is what refuses.
   v_restricted boolean := false;
+  -- Whether the person must accept the Terms again before using the app (org.fn_needs_reacceptance,
+  -- Decision #446): no accepted version, or one older than the newest material version in effect.
+  -- Chrome only: the dashboard guard bounces on it to /join?complete=terms.
+  v_terms_due boolean := false;
 
   -- The account's standing facts the sidebar gates on (BUSINESSES_AUDIT BF3), whichever context it
   -- acts in: an active seat in a live (non-archived) team / business, and whether the plan's
@@ -92,6 +96,7 @@ BEGIN
   -- matters.
   v_onboarded := FOUND;
   v_restricted := v_onboarded AND org.fn_is_minor(v_user_id);
+  v_terms_due := v_onboarded AND org.fn_needs_reacceptance(v_user_id);
 
   IF v_onboarded THEN
     v_belongs_team := EXISTS (
@@ -249,6 +254,7 @@ BEGIN
       'isOperator', v_is_operator,
       'onboarded', v_onboarded,
       'isRestricted', v_restricted,
+      'termsDue', v_terms_due,
       -- Account facts, not context facts: the same in every context the person acts in.
       'belongsToTeam', v_belongs_team,
       'belongsToBusiness', v_belongs_business,

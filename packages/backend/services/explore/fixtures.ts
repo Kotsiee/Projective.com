@@ -63,6 +63,7 @@ const OWNERS = {
 		kind: "team",
 		verified: true,
 		verificationStamp: "id_verified",
+		messageTo: { handle: "@inesduarte", name: "Inês Duarte" },
 	},
 	maris: {
 		handle: "@marisdelacroix",
@@ -79,6 +80,7 @@ const OWNERS = {
 		avatar: unsplash("1633356122544-f134324a6cee", 160, 160),
 		avatarPlaceholder: placeholder("1633356122544-f134324a6cee", 160, 160),
 		kind: "team",
+		messageTo: { handle: "@kwamemensah", name: "Kwame Mensah" },
 	},
 	ren: {
 		handle: "@renkoda",
@@ -95,6 +97,7 @@ const OWNERS = {
 		avatar: unsplash("1573496359142-b8d87734a5a2", 160, 160),
 		avatarPlaceholder: placeholder("1573496359142-b8d87734a5a2", 160, 160),
 		kind: "team",
+		messageTo: { handle: "@saoirsebyrne", name: "Saoirse Byrne" },
 	},
 	juno: {
 		handle: "@juno",
@@ -111,6 +114,7 @@ const OWNERS = {
 		kind: "business",
 		verified: true,
 		verificationStamp: "corporate_verified",
+		messageTo: { handle: "@priyaraman", name: "Priya Raman" },
 	},
 	atlas: {
 		handle: "@atlaslabs",
@@ -118,6 +122,7 @@ const OWNERS = {
 		avatar: unsplash("1451187580459-43490279c0fa", 160, 160),
 		avatarPlaceholder: placeholder("1451187580459-43490279c0fa", 160, 160),
 		kind: "business",
+		messageTo: { handle: "@danielokafor", name: "Daniel Okafor" },
 	},
 } as const satisfies Record<string, ProfileItem["owner"]>;
 // #endregion
@@ -136,8 +141,6 @@ export const FREELANCERS: ProfileItem[] = [
 		summary: "Senior product designer shaping design systems and end-to-end product work.",
 		skills: resolveSkills(["UX", "Design systems", "Figma"]),
 		rating: dual([5.0, 61], [4.9, 22]),
-		// A promoted talent placement — surfaced as a subtle "Promoted" card badge.
-		sponsored: true,
 		// Includes a $5 loss-leader that the IQR fence trims, so the floor reads $120, not $5.
 		servicePrices: [5, 120, 130, 140, 150, 160],
 		serviceCurrency: CORPUS_CURRENCY,
@@ -546,8 +549,6 @@ export const SERVICES: ServiceItem[] = SERVICE_SEED.map(
 		rating: OWNERS[owner].kind === "team" ? helperOnly(4.8, 40 + i) : helperOnly(4.9, 30 + i),
 		media: unsplash(photo, 800, 600),
 		mediaPlaceholder: placeholder(photo, 800, 600),
-		// The first service is a promoted placement — surfaced as a subtle "Promoted" card badge.
-		sponsored: i === 0,
 		createdAt: `2026-07-0${(i % 6) + 1}`,
 	}),
 );
@@ -648,8 +649,6 @@ export const PROJECTS: ProjectItem[] = PROJECT_SEED.map(
 		summary: description,
 		skills: resolveSkills(roles),
 		rating: clientOnly(4.8, 20 + i),
-		// The first project is a promoted placement — surfaced as a plain-text "Promoted" note.
-		sponsored: i === 0,
 		createdAt: `2026-07-0${(i % 6) + 1}`,
 	}),
 );
@@ -743,8 +742,6 @@ export const PRODUCTS: ProductItem[] = PRODUCT_SEED.map(
 		// The crop IS the measurement here: the corpus fetches each cover at exactly this size, so the
 		// dimensions a real upload would have extracted are known without reading the bytes.
 		mediaMeta: productDimensions(span),
-		// The first product is a promoted placement — surfaced as a subtle "Promoted" card badge.
-		sponsored: i === 0,
 		createdAt: `2026-07-0${(i % 6) + 1}`,
 	}),
 );

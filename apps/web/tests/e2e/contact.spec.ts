@@ -319,7 +319,12 @@ Deno.test({
 				async () => {
 					const context = await guarded(browser);
 					const login = await context.request.post("/api/auth/login", {
-						data: { identifier: `${PERSONA}@projective.dev`, password: await password() },
+						// Cloudflare's Turnstile test token; the local GoTrue runs the always-pass test secret (#447).
+						data: {
+							identifier: `${PERSONA}@projective.dev`,
+							password: await password(),
+							captchaToken: "XXXX.DUMMY.TOKEN.XXXX",
+						},
 						// The `/api` write guard wants this site's Origin, which a browser would send.
 						headers: { origin: new URL(BASE).origin },
 					});

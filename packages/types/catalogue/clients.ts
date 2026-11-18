@@ -42,13 +42,13 @@ export const ActionReason = z.enum([
 export type ActionReason = z.infer<typeof ActionReason>;
 
 /**
- * The source statuses that end an engagement, per kind: an archived thread, a withdrawn quote, a
+ * The source statuses that end an engagement, per kind: an archived thread, a withdrawn or declined quote, a
  * call that is over or never happened, a reversed order, a sitting that ran or was cancelled, and a
  * project that finished, was cancelled or archived.
  */
 export const CLOSED_STATUSES: Readonly<Record<EngagementKind, readonly string[]>> = {
 	inquiry: ["archived"],
-	quote: ["withdrawn"],
+	quote: ["withdrawn", "declined"],
 	discovery_call: ["declined", "cancelled", "completed", "no_show", "expired"],
 	order: ["refunded", "cancelled"],
 	session_booking: ["completed", "cancelled", "cancelled_by_freelancer", "cancelled_by_client"],

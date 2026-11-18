@@ -3,6 +3,7 @@ import { useRef } from "preact/hooks";
 import { Tooltip } from "@projective/ui/feedback";
 import { SelectionCheck } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { ActionMenu } from "@projective/ui/navigation";
 import { listingHref, statusMeta } from "../core/catalogue-model.ts";
 import type { ListingAction } from "../core/console-actions.ts";
@@ -48,6 +49,7 @@ function metaParts(listing: ListingSummary): string[] {
 
 export function ListingCard(props: ListingCardProps): JSX.Element {
 	const { listing, href, selected, selecting, onSelect, onAction } = props;
+	const mask = useMaskFigures();
 	const cardRef = useRef<HTMLElement>(null);
 	const meta = statusMeta(listing.status);
 
@@ -102,7 +104,7 @@ export function ListingCard(props: ListingCardProps): JSX.Element {
 				<h3 class="cat-card__title">
 					{href ? <a class="cat-card__link" href={href}>{listing.title}</a> : listing.title}
 				</h3>
-				<span class="cat-card__price">{listing.price.display}</span>
+				<span class="cat-card__price">{mask(listing.price.display)}</span>
 				<p class="cat-card__meta">
 					{metaParts(listing).map((part, i) => (
 						<span key={part} class="cat-card__metapart">

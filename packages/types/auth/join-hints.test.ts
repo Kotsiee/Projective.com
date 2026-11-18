@@ -5,11 +5,12 @@ const individual = {
 	type: "individual",
 	intent: "client",
 	email: "ada@example.com",
-	password: "correct horse",
+	password: "Correct horse 1",
 	firstName: "Ada",
 	lastName: "Lovelace",
 	username: "ada",
 	dob: "1990-03-14",
+	acceptTerms: true,
 };
 
 const enterprise = {
@@ -20,11 +21,12 @@ const enterprise = {
 	address: { street: "1 Acme Way", city: "London", postcode: "EC1A 1AA", country: "GB" },
 	employeeTier: "1-50",
 	industry: "software",
-	password: "correct horse",
+	password: "Correct horse 1",
 	ownerFirstName: "Grace",
 	ownerLastName: "Hopper",
 	dob: "1980-12-09",
 	timeZone: "UTC",
+	acceptTerms: true,
 };
 
 Deno.test("join hints: a supported locale and display currency are kept, canonical", () => {

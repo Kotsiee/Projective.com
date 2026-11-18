@@ -15,6 +15,8 @@
  *   Drive file or a link to Google Docs, YouTube, Vimeo, Loom or Figma in that provider's own
  *   viewer. `EMBED_FRAME_ORIGINS` (`@projective/types/files`) is both the resolver's allowlist and
  *   these `frame-src` entries, so a frame the policy would refuse is never built.
+ * - **Cloudflare Turnstile** (Decision #447): the auth forms' bot check loads its script from, and
+ *   renders its challenge frame on, `challenges.cloudflare.com` — the two directives Cloudflare lists.
  *
  * `'unsafe-inline'` stays on `script-src` and `style-src`: Fresh 2 renders inline bootstrap scripts
  * and the theme's pre-paint script without nonces, and the design system sets custom properties through
@@ -72,6 +74,7 @@ export function originOf(url: string | null | undefined): string | null {
 const STRIPE_SCRIPT = ["https://js.stripe.com", "https://*.js.stripe.com"];
 const STRIPE_FRAME = ["https://js.stripe.com", "https://*.js.stripe.com", "https://hooks.stripe.com"];
 const STRIPE_CONNECT = ["https://api.stripe.com"];
+const TURNSTILE = ["https://challenges.cloudflare.com"];
 
 /** Build the `Content-Security-Policy` header value. */
 export function contentSecurityPolicy(options: CspOptions): string {
@@ -80,7 +83,7 @@ export function contentSecurityPolicy(options: CspOptions): string {
 	const blobConnect = options.relax?.blobConnect === true ? ["blob:"] : [];
 	const directives: [string, string[]][] = [
 		["default-src", ["'self'"]],
-		["script-src", ["'self'", "'unsafe-inline'", ...wasm, ...STRIPE_SCRIPT]],
+		["script-src", ["'self'", "'unsafe-inline'", ...wasm, ...STRIPE_SCRIPT, ...TURNSTILE]],
 		["style-src", ["'self'", "'unsafe-inline'"]],
 		["img-src", ["'self'", "data:", "blob:", "https:", ...supabase]],
 		["font-src", ["'self'", "data:"]],
@@ -97,7 +100,13 @@ export function contentSecurityPolicy(options: CspOptions): string {
 		],
 		[
 			"frame-src",
-			["'self'", ...STRIPE_FRAME, "https://www.youtube-nocookie.com", ...EMBED_FRAME_ORIGINS],
+			[
+				"'self'",
+				...STRIPE_FRAME,
+				...TURNSTILE,
+				"https://www.youtube-nocookie.com",
+				...EMBED_FRAME_ORIGINS,
+			],
 		],
 		["worker-src", ["'self'", "blob:"]],
 		["object-src", ["'none'"]],

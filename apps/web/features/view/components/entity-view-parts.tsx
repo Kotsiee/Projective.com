@@ -3,6 +3,7 @@ import { Icon } from "@projective/ui/icons";
 import { Avatar, RatingStars, VerificationStampBadge } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { displayCurrency, displayLocale, formatMoney } from "@projective/ui/display/money";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import type { EntitySeller, EntityView } from "@projective/types/explore";
 import { ownerVerificationStamp } from "@projective/types/org";
 import type { SeatCapacity } from "../core/entity-archetype.ts";
@@ -302,12 +303,13 @@ export function PriceOrigin(
 		class?: string;
 	},
 ): JSX.Element | null {
+	const mask = useMaskFigures();
 	const viewing = displayCurrency.value?.toUpperCase();
 	const origin = currency.toUpperCase();
 	if (!viewing || viewing === origin) return null;
 	return (
 		<span class={cls}>
-			Listed at {formatMoney(minor, origin, displayLocale.value || "en-GB")} {origin}
+			Listed at {mask(formatMoney(minor, origin, displayLocale.value || "en-GB"))} {origin}
 		</span>
 	);
 }

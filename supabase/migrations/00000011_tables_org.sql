@@ -152,6 +152,44 @@ CREATE TABLE org.deletion_requests (
     CONSTRAINT deletion_requests_metadata_check CHECK (jsonb_typeof(metadata) = 'object')
 );
 
+-- A request for a copy of the person's own data (Decision #450). Lifecycle `pending → building →
+-- ready → expired`, or `failed` (a build attempt that ran out of retries, or an erasure that overtook
+-- it); nothing is deleted — an expired request keeps its row after the job removes the archive.
+-- `storage_path` names the ZIP in the private `data_exports` bucket; a download link is minted per
+-- read and never stored. Written only by the 00001061 definers; the person reads their own rows.
+CREATE TABLE org.data_export_requests (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL,
+    status text NOT NULL DEFAULT 'pending',
+    requested_at timestamptz NOT NULL DEFAULT now(),
+    started_at timestamptz,
+    attempts integer NOT NULL DEFAULT 0,
+    ready_at timestamptz,
+    expires_at timestamptz,
+    expired_at timestamptz,
+    failed_at timestamptz,
+    failure_reason text,
+    storage_path text,
+    byte_size bigint,
+    manifest_version integer,
+    CONSTRAINT data_export_requests_pkey PRIMARY KEY (id),
+    CONSTRAINT data_export_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    CONSTRAINT data_export_requests_status_check CHECK (status IN ('pending', 'building', 'ready', 'expired', 'failed')),
+    CONSTRAINT data_export_requests_reason_check CHECK (
+        failure_reason IS NULL OR failure_reason IN ('build_failed', 'too_large', 'account_erased')
+    ),
+    CONSTRAINT data_export_requests_attempts_check CHECK (attempts >= 0),
+    CONSTRAINT data_export_requests_size_check CHECK (byte_size IS NULL OR byte_size >= 0),
+    CONSTRAINT data_export_requests_state_check CHECK (
+        (status = 'pending' AND ready_at IS NULL AND expired_at IS NULL AND failed_at IS NULL AND storage_path IS NULL)
+        OR (status = 'building' AND started_at IS NOT NULL AND ready_at IS NULL AND expired_at IS NULL AND failed_at IS NULL)
+        OR (status = 'ready' AND ready_at IS NOT NULL AND expires_at >= ready_at AND storage_path IS NOT NULL
+            AND byte_size IS NOT NULL AND manifest_version IS NOT NULL AND expired_at IS NULL AND failed_at IS NULL)
+        OR (status = 'expired' AND ready_at IS NOT NULL AND expired_at IS NOT NULL AND failed_at IS NULL)
+        OR (status = 'failed' AND failed_at IS NOT NULL AND failure_reason IS NOT NULL AND ready_at IS NULL AND expired_at IS NULL)
+    )
+);
+
 CREATE TABLE org.user_preferences (
     user_id uuid NOT NULL,
     theme text DEFAULT 'system',
@@ -987,6 +1025,45 @@ CREATE TABLE org.enterprise_members (
     -- its holder departs, `left`. Every reader matches `status = 'active'`, so a free-text value was a
     -- seat that silently counted for nothing.
     CONSTRAINT ck_enterprise_member_status CHECK (status IN ('active', 'left'))
+);
+-- #endregion
+
+-- #region Legal acceptance (Decision #446)
+-- The versions of the three documents sign-up records: reference data seeded in 00005050 and mirrored
+-- by LEGAL_VERSIONS in @projective/types/legal (a unit test holds them equal). A material version asks
+-- everyone who accepted an older one to accept again (org.fn_needs_reacceptance); any other relies on
+-- the Terms' continued-use clause.
+CREATE TABLE org.legal_document_versions (
+    slug text NOT NULL,
+    version text NOT NULL,
+    effective_date date NOT NULL,
+    material boolean NOT NULL DEFAULT false,
+    CONSTRAINT legal_document_versions_pkey PRIMARY KEY (slug, version),
+    CONSTRAINT legal_document_versions_slug_check CHECK (slug IN ('terms', 'acceptable-use', 'privacy')),
+    CONSTRAINT legal_document_versions_version_check CHECK (version ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')
+);
+
+-- Which version of each sign-up document a person accepted (Terms, Acceptable Use) or was shown
+-- (Privacy), on which surface, and for an enterprise owner the enterprise they accepted for. Written
+-- only inside the door that creates the profile, or by public.accept_current_terms; append-only
+-- (org.trg_legal_acceptances_append_only). Contract evidence, retained for the life of the account
+-- plus 6 years (finance-model.md §17), so a person's row is never cascaded away. No IP address and
+-- no user agent (data minimisation).
+CREATE TABLE org.legal_acceptances (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL,
+    document_slug text NOT NULL,
+    version text NOT NULL,
+    kind org.legal_acceptance_kind NOT NULL,
+    surface org.legal_acceptance_surface NOT NULL,
+    enterprise_id uuid,
+    accepted_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT legal_acceptances_pkey PRIMARY KEY (id),
+    CONSTRAINT legal_acceptances_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE RESTRICT,
+    CONSTRAINT legal_acceptances_version_fkey FOREIGN KEY (document_slug, version) REFERENCES org.legal_document_versions (slug, version) ON DELETE RESTRICT,
+    CONSTRAINT legal_acceptances_enterprise_id_fkey FOREIGN KEY (enterprise_id) REFERENCES org.enterprises (id) ON DELETE RESTRICT,
+    CONSTRAINT legal_acceptances_kind_check CHECK ((document_slug = 'privacy') = (kind = 'shown')),
+    CONSTRAINT legal_acceptances_enterprise_check CHECK ((surface = 'join_enterprise') = (enterprise_id IS NOT NULL))
 );
 -- #endregion
 

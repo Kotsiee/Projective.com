@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseIsoDate } from "../scheduling/civil.ts";
 import { ServiceBookingFormat } from "./common.ts";
 import { IntakeAnswersSchema } from "./intake.ts";
 
@@ -71,6 +72,16 @@ export type SessionBookingInput = z.infer<typeof SessionBookingInputSchema>;
 export const StageFundingScope = z.enum(["first_stage", "whole_project"]);
 export type StageFundingScope = z.infer<typeof StageFundingScope>;
 
+/**
+ * The buyer's optional target date for a scoped engagement, `YYYY-MM-DD` (Decision #457): the soft
+ * deadline written on its final milestone. No deadline bonus rides on it until the bonus is held with
+ * the escrow. Not in the past is checked where "today" is known — the configure service and checkout.
+ */
+export const ScopedTargetDateSchema = z.string().refine(
+	(s) => parseIsoDate(s) !== null,
+	"Expected a date as YYYY-MM-DD.",
+);
+
 /** One attachment staged with a brief. Staged by NAME until the upload path lands. */
 export const BriefAttachmentSchema = z.object({
 	name: z.string().min(1).max(260),
@@ -113,8 +124,31 @@ export const ServiceBriefInputSchema = z.object({
 	 * rule and a later surface can render them as fields rather than re-parsing prose.
 	 */
 	answers: IntakeAnswersSchema.default({}),
+	/** The optional soft deadline for the final milestone ({@link ScopedTargetDateSchema}). */
+	targetDate: ScopedTargetDateSchema.nullable().default(null),
 });
 export type ServiceBriefInput = z.infer<typeof ServiceBriefInputSchema>;
+
+/**
+ * What a One-Off or Task basket line carries (`finance.basket_items.metadata`, Decision #457): the
+ * scope checkout re-prices and the engagement is created from. It never carries a price — checkout
+ * prices the line from the listing's own milestones (`marketplace.fn_scoped_service_price`) — and no
+ * bonus. Loose, so a field another flow adds to the same line (a quote's offer id) survives a read.
+ */
+export const ScopedLineMetaSchema = z.object({
+	serviceId: z.string().min(1).max(160),
+	sourceType: z.string().max(40).optional(),
+	bookingFormat: ServiceBookingFormat,
+	/** `whole_project` prepays every milestone; otherwise milestone 1 is held and the rest follow. */
+	fundingScope: StageFundingScope.default("first_stage"),
+	/** The listing's own stage ids the dialog showed as funded — for display, never for pricing. */
+	stageIds: z.array(z.string().min(1).max(120)).max(24).default([]),
+	requirements: z.string().min(1).max(8000),
+	answers: IntakeAnswersSchema.default({}),
+	attachments: z.array(BriefAttachmentSchema.omit({ mimeType: true })).max(10).default([]),
+	targetDate: ScopedTargetDateSchema.nullable().default(null),
+}).loose();
+export type ScopedLineMeta = z.infer<typeof ScopedLineMetaSchema>;
 // #endregion
 
 // #region Outcome

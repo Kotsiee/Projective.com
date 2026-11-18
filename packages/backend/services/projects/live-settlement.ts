@@ -1,15 +1,22 @@
 import type { SupabaseClient } from "supabaseClient";
 import type {
 	ApproveStage,
+	CancelService,
 	CancelStageFairExit,
 	FairExitBlocked,
 	FairExitPreview,
 	FairExitQuote,
 	FairExitTier,
 	PaidRevisionRaised,
+	PreviewServiceCancel,
 	PreviewStageFairExit,
 	RequestPaidRevision,
 	ReviewSubmission,
+	ServiceCancelBlocked,
+	ServiceCancelled,
+	ServiceCancelPreview,
+	ServiceCancelStage,
+	ServiceExitQuote,
 	StageApproved,
 	StageExited,
 	SubmissionReviewed,
@@ -20,8 +27,9 @@ import { clampOr, projectsDb, toSubmissionStatus, UUID_RE } from "./live-support
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes.ts";
 
 /**
- * live-settlement — the RLS-scoped write path for the three client decisions that move deliverables
- * and money: a submission verdict, a stage approval, and a Fair Exit cancellation.
+ * live-settlement — the RLS-scoped write path for the client decisions that move deliverables and
+ * money: a submission verdict, a stage approval, a Fair Exit cancellation and a bought service's
+ * cancellation.
  *
  * Every write here is ONE call to a guarded SECURITY DEFINER door — `projects.review_submission`,
  * `projects.approve_stage`, `projects.cancel_stage_fair_exit` — issued under the caller's own JWT, so
@@ -148,13 +156,7 @@ async function resolveTarget(
 	projectRef: string,
 	stageRef: string,
 ): Promise<SettlementTarget | null> {
-	const project = await db
-		.from("projects")
-		.select("id")
-		.eq(UUID_RE.test(projectRef) ? "id" : "slug", projectRef)
-		.maybeSingle();
-	if (project.error) throw new Error(`projects.projects read failed: ${project.error.message}`);
-	const projectId = (project.data as { id?: string } | null)?.id;
+	const projectId = await resolveProject(db, projectRef);
 	if (!projectId) return null;
 
 	const stage = await db
@@ -166,6 +168,16 @@ async function resolveTarget(
 	if (stage.error) throw new Error(`projects.project_stages read failed: ${stage.error.message}`);
 	const stageId = (stage.data as { id?: string } | null)?.id;
 	return stageId ? { projectId, stageId } : null;
+}
+
+async function resolveProject(db: SupabaseClient, projectRef: string): Promise<string | null> {
+	const project = await db
+		.from("projects")
+		.select("id")
+		.eq(UUID_RE.test(projectRef) ? "id" : "slug", projectRef)
+		.maybeSingle();
+	if (project.error) throw new Error(`projects.projects read failed: ${project.error.message}`);
+	return (project.data as { id?: string } | null)?.id ?? null;
 }
 
 /** A non-negative integer from a jsonb number (bigints arrive as numbers or numeric strings). */
@@ -442,5 +454,110 @@ export async function exitStageRow(
 	if (error) return { refusal: settlementRefusal(error, "tier") };
 
 	return { data: toStageExited((data ?? {}) as Record<string, unknown>, target.stageId, input.tier) };
+}
+// #endregion
+
+// #region Cancelling a bought service (Decision #456)
+/** The notice a cancelled service answers with — what the seller was paid and what came back. */
+export function serviceCancelledMessage(cancelled: ServiceCancelled): string {
+	const refunded = formatMoney(cancelled.clientRefundedCents, cancelled.currency);
+	if (cancelled.freelancerPaidCents === 0) {
+		return `Service cancelled — ${refunded} refunded to your wallet.`;
+	}
+	const paid = formatMoney(cancelled.freelancerPaidCents, cancelled.currency);
+	return `Service cancelled — ${paid} paid for the work delivered, ${refunded} refunded to your wallet.`;
+}
+
+function toServiceExitQuote(raw: Record<string, unknown>, tier: FairExitTier): ServiceExitQuote {
+	return {
+		tier,
+		ticketCount: cents(raw.ticket_count),
+		freelancerPaidCents: cents(raw.freelancer_paid_cents),
+		feeCents: cents(raw.fee_cents),
+		clientRefundedCents: cents(raw.client_refunded_cents),
+	};
+}
+
+/**
+ * Map `projects.preview_service_cancel`'s answer onto {@link ServiceCancelPreview}. A stage whose id is
+ * not a uuid is dropped rather than trusted, and each tier is looked up by its own `tier` key — exported
+ * for its tests.
+ */
+export function toServiceCancelPreview(payload: Record<string, unknown>): ServiceCancelPreview {
+	const blocked: ServiceCancelBlocked | null =
+		payload.blocked === "ended" || payload.blocked === "settling" ? payload.blocked : null;
+	const rawStages = Array.isArray(payload.stages)
+		? payload.stages as Record<string, unknown>[]
+		: [];
+	const stages: ServiceCancelStage[] = rawStages
+		.filter((s) => UUID_RE.test(String(s?.stage_id ?? "")))
+		.slice(0, 60)
+		.map((s) => {
+			const raw = Array.isArray(s.tiers) ? s.tiers as Record<string, unknown>[] : [];
+			const quoteOf = (tier: FairExitTier) => raw.find((q) => Number(q?.tier) === tier) ?? {};
+			return {
+				stageId: String(s.stage_id),
+				stageName: clampOr(String(s.stage_name ?? ""), 200, "Untitled stage"),
+				tiers: FAIR_EXIT_TIERS.map((tier) => toServiceExitQuote(quoteOf(tier), tier)),
+			};
+		});
+	return {
+		currency: currencyOf(payload.currency),
+		cancellable: payload.cancellable === true && blocked === null,
+		blocked,
+		returnedCents: cents(payload.returned_cents),
+		ticketsToCancel: cents(payload.tickets_to_cancel),
+		stages,
+	};
+}
+
+/** Map `projects.cancel_service`'s answer onto {@link ServiceCancelled} — exported for its tests. */
+export function toServiceCancelled(payload: Record<string, unknown>): ServiceCancelled {
+	return {
+		status: "cancelled",
+		currency: currencyOf(payload.currency),
+		freelancerPaidCents: cents(payload.freelancer_paid_cents),
+		feeCents: cents(payload.fee_cents),
+		clientRefundedCents: cents(payload.client_refunded_cents),
+		ticketsCancelled: cents(payload.tickets_cancelled),
+	};
+}
+
+/**
+ * Read what cancelling a bought service would settle, through `projects.preview_service_cancel`. The
+ * function checks the client person itself (a 403 for anyone else, the seller included).
+ */
+export async function previewServiceCancelRow(
+	actor: ReadActor & { accessToken: string },
+	input: PreviewServiceCancel,
+): Promise<WriteOutcome<ServiceCancelPreview>> {
+	const db = projectsDb(actor);
+	const projectId = await resolveProject(db, input.projectId);
+	if (!projectId) return null;
+
+	const { data, error } = await db.rpc("preview_service_cancel", { p_project_id: projectId });
+	if (error) return { refusal: settlementRefusal(error, "projectId") };
+	return { data: toServiceCancelPreview((data ?? {}) as Record<string, unknown>) };
+}
+
+/**
+ * Cancel a bought service through `projects.cancel_service`: unclaimed escrow back whole, claimed work
+ * settled under Fair Exit at each stage's tier, the open tickets and stages closed, then Cancelled.
+ */
+export async function cancelServiceRow(
+	actor: ReadActor & { accessToken: string },
+	input: CancelService,
+): Promise<WriteOutcome<ServiceCancelled>> {
+	const db = projectsDb(actor);
+	const projectId = await resolveProject(db, input.projectId);
+	if (!projectId) return null;
+
+	const { data, error } = await db.rpc("cancel_service", {
+		p_project_id: projectId,
+		p_tiers: input.tiers,
+		p_reason: input.reason ?? null,
+	});
+	if (error) return { refusal: settlementRefusal(error, "tiers") };
+	return { data: toServiceCancelled((data ?? {}) as Record<string, unknown>) };
 }
 // #endregion

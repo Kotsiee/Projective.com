@@ -9,9 +9,11 @@ import {
 	Password,
 } from "@projective/ui/fields";
 import { WarnIcon } from "./icons.tsx";
+import { CaptchaField } from "./CaptchaField.tsx";
 import { identifierError, isEmailIdentifier, requiredError } from "../core/validate.ts";
 import { AuthService } from "../core/AuthService.ts";
 import { safeRedirect, withRedirect } from "../core/redirect.ts";
+import { useCaptcha } from "../hooks/useCaptcha.ts";
 
 /**
  * CredentialsForm — the identifier + password sign-in form: client-side validation, the
@@ -29,12 +31,17 @@ import { safeRedirect, withRedirect } from "../core/redirect.ts";
  * form that could only fail on the field the reader has not reached yet; Enter on the password
  * submits (native implicit submission — the Sign-in button is the form's only submit control, the
  * show/hide toggle inside `Password` being `type="button"`).
+ *
+ * Every attempt carries a fresh Turnstile token, which GoTrue's password grant requires
+ * (Decision #447); the widget is reset after each one, because a token is spent once.
  */
 export interface CredentialsFormProps {
 	/** The sanitised in-app path to land on after signing in. */
 	redirectTo: string;
 	/** Fired the moment the form starts navigating away (a host dialog can lock itself). */
 	onSuccess?: () => void;
+	/** The page's Turnstile site key; omitted, the form asks `GET /api/auth/captcha`. */
+	captchaSiteKey?: string | null;
 }
 
 const PASSWORD_FIELD = "password";
@@ -49,7 +56,10 @@ function passwordInputOf(form: HTMLFormElement | null): HTMLInputElement | null 
 	return el instanceof HTMLInputElement ? el : null;
 }
 
-export function CredentialsForm({ redirectTo, onSuccess }: CredentialsFormProps): JSX.Element {
+export function CredentialsForm(
+	{ redirectTo, onSuccess, captchaSiteKey }: CredentialsFormProps,
+): JSX.Element {
+	const captcha = useCaptcha();
 	const identifier = useSignal("");
 	const password = useSignal("");
 	const remember = useSignal(true);
@@ -69,12 +79,15 @@ export function CredentialsForm({ redirectTo, onSuccess }: CredentialsFormProps)
 
 		const typed = identifier.value.trim();
 		submitting.value = true;
+		const captchaToken = await captcha.take();
 		const result = await AuthService.login({
 			identifier: typed,
 			password: password.value,
 			remember: remember.value,
 			redirectTo,
+			captchaToken,
 		});
+		captcha.reset();
 		if (!result.ok) {
 			submitting.value = false;
 			if (result.errors) errors.value = result.errors;
@@ -170,6 +183,8 @@ export function CredentialsForm({ redirectTo, onSuccess }: CredentialsFormProps)
 						Forgot password?
 					</a>
 				</div>
+
+				<CaptchaField controller={captcha} siteKey={captchaSiteKey} action="login" />
 
 				<Button
 					type="submit"

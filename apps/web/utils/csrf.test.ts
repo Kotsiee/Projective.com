@@ -39,6 +39,20 @@ Deno.test("no Origin: Sec-Fetch-Site same-origin stands in, anything else is ref
 	assertEquals(refuseCrossSiteWrite(req("/api/auth/login", json()))?.status, 403);
 });
 
+Deno.test("Origin null (a no-referrer page's form post): Sec-Fetch-Site decides", () => {
+	const opaque = (site?: string) =>
+		json(site ? { origin: "null", "sec-fetch-site": site } : { origin: "null" });
+	assertEquals(refuseCrossSiteWrite(req("/api/auth/login", opaque("same-origin"))), null);
+	assertEquals(refuseCrossSiteWrite(req("/api/auth/login", opaque("cross-site")))?.status, 403);
+	assertEquals(refuseCrossSiteWrite(req("/api/auth/login", opaque("same-site")))?.status, 403);
+	assertEquals(refuseCrossSiteWrite(req("/api/auth/login", opaque()))?.status, 403);
+});
+
+Deno.test("a real cross-site Origin is refused even beside Sec-Fetch-Site same-origin", () => {
+	const forged = json({ origin: EVIL, "sec-fetch-site": "same-origin" });
+	assertEquals(refuseCrossSiteWrite(req("/api/auth/login", forged))?.status, 403);
+});
+
 Deno.test("APP_URL's origin is accepted behind a proxy", () => {
 	const proxied = () => req("/api/auth/login", json({ origin: "https://projective.example" }));
 	assertEquals(refuseCrossSiteWrite(proxied())?.status, 403);
@@ -58,14 +72,25 @@ Deno.test("a same-origin non-JSON body is a 415; a bodiless write passes", () =>
 	assertEquals(refuseCrossSiteWrite(req("/api/auth/logout", { headers: { origin: BASE } })), null);
 });
 
-Deno.test("the two no-JavaScript forms accept a same-origin form body, never a cross-site one", () => {
-	const form = (origin: string) => ({
-		headers: { origin, "content-type": "application/x-www-form-urlencoded" },
+Deno.test("the plain HTML forms accept a same-origin form body, never a cross-site one", () => {
+	const form = (origin: string, site?: string) => ({
+		headers: {
+			origin,
+			"content-type": "application/x-www-form-urlencoded",
+			...(site ? { "sec-fetch-site": site } : {}),
+		},
 		body: "a=1",
 	});
 	assertEquals(refuseCrossSiteWrite(req("/api/contact", form(BASE))), null);
 	assertEquals(refuseCrossSiteWrite(req("/api/help/feedback", form(BASE))), null);
+	assertEquals(refuseCrossSiteWrite(req("/api/auth/confirm", form("null", "same-origin"))), null);
 	assertEquals(refuseCrossSiteWrite(req("/api/contact", form(EVIL)))?.status, 403);
+	assertEquals(refuseCrossSiteWrite(req("/api/auth/confirm", form(EVIL)))?.status, 403);
+	assertEquals(
+		refuseCrossSiteWrite(req("/api/auth/confirm", form("null", "cross-site")))?.status,
+		403,
+	);
+	assertEquals(refuseCrossSiteWrite(req("/api/auth/login", form(BASE)))?.status, 415);
 });
 
 Deno.test("webhooks and scheduler endpoints are exempt; a look-alike path is not", () => {

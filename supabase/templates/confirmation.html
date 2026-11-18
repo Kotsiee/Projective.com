@@ -86,7 +86,7 @@
 						<tr>
 							<td class="pj-px" align="left" style="padding: 24px 32px 0 32px">
 								<!--[if mso]>
-								<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ .RedirectTo }}/api/auth/confirm?token_hash={{ .TokenHash }}&type=email" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="25%" stroke="f" fillcolor="#007680">
+								<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ .RedirectTo }}/verify/confirm?token_hash={{ .TokenHash }}&type=email" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="25%" stroke="f" fillcolor="#007680">
 								<w:anchorlock/>
 								<center style="color:#ebfdff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:600;">Confirm my email</center>
 								</v:roundrect>
@@ -95,7 +95,7 @@
 								<table role="presentation" cellpadding="0" cellspacing="0">
 									<tr>
 										<td align="center" bgcolor="#007680" style="border-radius: 12px">
-											<a href="{{ .RedirectTo }}/api/auth/confirm?token_hash={{ .TokenHash }}&type=email" style="display: inline-block; padding: 14px 32px; font-size: 16px; line-height: 20px; font-weight: 600; color: #ebfdff; text-decoration: none; border-radius: 12px">
+											<a href="{{ .RedirectTo }}/verify/confirm?token_hash={{ .TokenHash }}&type=email" style="display: inline-block; padding: 14px 32px; font-size: 16px; line-height: 20px; font-weight: 600; color: #ebfdff; text-decoration: none; border-radius: 12px">
 												Confirm my email
 											</a>
 										</td>
@@ -111,7 +111,7 @@
 									Button not working? Paste this link into your browser:
 								</p>
 								<p style="margin: 0; font-size: 13px; line-height: 1.6; word-break: break-all">
-									<a class="pj-link" href="{{ .RedirectTo }}/api/auth/confirm?token_hash={{ .TokenHash }}&type=email" style="color: #007680">{{ .RedirectTo }}/api/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email</a>
+									<a class="pj-link" href="{{ .RedirectTo }}/verify/confirm?token_hash={{ .TokenHash }}&type=email" style="color: #007680">{{ .RedirectTo }}/verify/confirm?token_hash={{ .TokenHash }}&amp;type=email</a>
 								</p>
 							</td>
 						</tr>

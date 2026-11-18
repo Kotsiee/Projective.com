@@ -6,6 +6,7 @@ import "../styles/checkout-payment.css";
 import "../styles/checkout-gate.css";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
 import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
 import { loadStripe } from "@features/payments/core/stripe-js.ts";
@@ -154,6 +155,7 @@ const QUOTE_REFRESH_LEAD_MS = 4 * 60 * 1000;
 
 export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps): JSX.Element {
 	const { initial } = props;
+	const mask = useMaskFigures();
 
 	// #region Local state
 	const resultRef = useRef<HTMLElement | null>(null);
@@ -686,7 +688,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		view.owner.ownerType === "business" || view.owner.ownerType === "enterprise";
 	const detailsHref = props.detailsHref;
 	const payable = view.buyerCharge?.quote ? view.buyerCharge : view.totals.total;
-	const buyLabel = submitting.value ? "Taking payment…" : `Buy Now · ${payable.display}`;
+	const buyLabel = submitting.value ? "Taking payment…" : `Buy Now · ${mask(payable.display)}`;
 	// The route the confirmation is actually about, so the dialog never names the instrument the buyer
 	// had selected when they pressed an express button instead.
 	const confirmProvider = chosenProvider.value;
@@ -750,7 +752,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 											mode="payment"
 											clientSecret={result.payment.clientSecret}
 											publishableKey={result.payment.publishableKey}
-											submitLabel={`Pay ${result.payment.amount.display}`}
+											submitLabel={`Pay ${mask(result.payment.amount.display)}`}
 											returnPath={typeof globalThis.location !== "undefined"
 												? `${globalThis.location.pathname}${globalThis.location.search}`
 												: "/checkout"}

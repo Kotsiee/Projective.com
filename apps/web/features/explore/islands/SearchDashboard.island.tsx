@@ -20,6 +20,7 @@ import { ProjectsList } from "../components/collections/ProjectsList.tsx";
 import { ArticlesGrid } from "../components/collections/ArticlesGrid.tsx";
 import { ResultDetailDrawer } from "../components/ResultDetailDrawer.tsx";
 import { CardSkeletonGrid } from "../components/CardSkeleton.tsx";
+import { PromoSlot } from "../components/promos/PromoSlot.tsx";
 import { adjacentScope, DRAWER_SCOPES, resultOrder } from "../core/detail-nav.ts";
 import { activeFilterConfigs } from "../core/filter-config.ts";
 import { ExploreService } from "../core/ExploreService.ts";
@@ -32,6 +33,7 @@ import {
 	parseExploreParams,
 	serializeExploreParams,
 	withFilter,
+	withQuery,
 } from "../core/explore-state.ts";
 import type { HrefContext } from "../core/routing.ts";
 import { recordSearch } from "../core/search-history.ts";
@@ -44,6 +46,7 @@ import type {
 	ProductItem,
 	ProjectItem,
 	SearchPayload,
+	SponsoredPromo,
 } from "../types/explore-types.ts";
 
 /** Human title for the Dribbble-style results header when there is no free-text query. */
@@ -116,6 +119,7 @@ const EMPTY_PAYLOAD: SearchPayload = {
 	groups: [],
 	related: [],
 	hasMore: false,
+	promoted: [],
 };
 // #endregion
 
@@ -402,8 +406,12 @@ function SearchDashboardView(
 				related={pl.related}
 				onSearch={(q, category) =>
 					// A new scope has its own facet vocabulary, so the old scope's selections do not travel.
-					commit({ ...p, q, category, filters: category === p.category ? p.filters : {} })}
-				onRelated={(term) => commit({ ...p, q: term })}
+					commit({
+						...withQuery(p, q),
+						category,
+						filters: category === p.category ? p.filters : {},
+					})}
+				onRelated={(term) => commit(withQuery(p, term))}
 			/>
 
 			<div class="ex-dash__body">
@@ -468,7 +476,7 @@ function SearchDashboardView(
 									Filters{activeCount > 0 ? ` (${activeCount})` : ""}
 								</button>
 							)}
-							<SortControl value={p.sort} onChange={setSort} />
+							<SortControl value={p.sort} query={p.q} onChange={setSort} />
 						</div>
 					</div>
 
@@ -494,6 +502,7 @@ function SearchDashboardView(
 								? (
 									<UnifiedFeed
 										items={items.value}
+										promoted={pl.promoted.find((s) => s.rail === p.category)}
 										type={p.category as ExploreEntity}
 										loading={loadingMore.value}
 										tail={stall.stalled.value
@@ -518,6 +527,7 @@ function SearchDashboardView(
 											<ResultsGroupRow
 												key={g.key}
 												group={g}
+												promoted={pl.promoted.find((s) => s.rail === g.primary)}
 												showAllHref={serializeExploreParams({ ...p, category: g.primary })}
 												onSelect={onSelect}
 												ctx={ctx}
@@ -569,8 +579,10 @@ function SearchDashboardView(
  * (the parent guards + pages).
  */
 function UnifiedFeed(
-	{ items, type, loading, tail, onReachEnd, onSelect, ctx, authed }: {
+	{ items, promoted, type, loading, tail, onReachEnd, onSelect, ctx, authed }: {
 		items: ExploreItem[];
+		/** The labelled "Promoted" slot before the feed (Decision #454); the feed itself is organic. */
+		promoted?: SponsoredPromo;
 		type: ExploreEntity;
 		/** Whether a page is actively loading — drives the spinner. */
 		loading: boolean;
@@ -653,6 +665,11 @@ function UnifiedFeed(
 
 	return (
 		<div class="ex-uni">
+			{promoted && (
+				<div class="ex-uni__promoted">
+					<PromoSlot slot={promoted} />
+				</div>
+			)}
 			{body}
 			<div ref={sentinelRef} class="ex-uni__sentinel" aria-hidden="true" />
 			{tail}

@@ -16,6 +16,7 @@
 --   workspace     - read: active membership of the {entity_id} anchor (team OR business OR enterprise)
 --   invoices      - read: owner on {owner_id}
 --   verification  - NO authenticated policy at all → service-role ONLY (RLS-bypass)
+--   data_exports  - NO authenticated policy at all → service-role ONLY; links minted per read (#450)
 --   public_assets - public read
 --   avatars       - public read
 --   showcase      - public read

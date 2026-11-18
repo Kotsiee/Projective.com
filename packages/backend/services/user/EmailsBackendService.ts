@@ -3,6 +3,8 @@ import type {
 	EmailDeliveryOutcome,
 	EmailVerificationIssued,
 	EmailVerifyOutcome,
+	MakeSignIn,
+	SignInChanged,
 	UserEmail,
 	UserEmailList,
 } from "@projective/types/org";
@@ -19,10 +21,13 @@ import {
 	toUserEmails,
 	verifyOutcomeFor,
 } from "./emails-refusals.ts";
+import { runSignInChange } from "./sign-in-change.ts";
+import { liveSignInPorts } from "./sign-in-change-live.ts";
 
 /**
  * EmailsBackendService — the FAT service behind the account settings' email addresses: list, add,
- * resend a confirmation, make primary, remove, and redeem a confirmation link.
+ * resend a confirmation, make primary, remove, redeem a confirmation link, and move the sign-in
+ * address to a confirmed one ({@link EmailsBackendService.makeSignIn}).
  *
  * ## The trust model, in one paragraph
  *
@@ -52,6 +57,9 @@ import {
 /** Verification mails one person may trigger: five per fifteen minutes, adds and resends together. */
 export const SEND_LIMIT = { max: 5, windowMs: 15 * 60_000 } as const;
 const sends = new SlidingWindowLimiter(SEND_LIMIT);
+
+/** People with a sign-in change in flight, so two concurrent moves cannot both pass the limit. */
+const signInMoves = new Set<string>();
 
 /** The 429 a caller over {@link SEND_LIMIT} gets, with when they may try again. */
 function rateLimited(retryAfterMs: number): ServiceResult<never> {
@@ -197,6 +205,38 @@ export class EmailsBackendService {
 		return await EmailsBackendService.mutate(actor, emailId, "remove_user_email", {
 			message: "The address is removed.",
 		});
+	}
+	// #endregion
+
+	// #region Sign-in change
+	/**
+	 * Sign in with one of the caller's CONFIRMED addresses from now on (Decision #451), after
+	 * re-authenticating with their current password. The steps, their order and why the service role
+	 * is safe where it is used are `sign-in-change.ts` and `sign-in-change-live.ts`. The old address
+	 * stays on the account as an ordinary confirmed address; the other sessions are signed out; the
+	 * old address is told by mail and the account in-app. One change per person runs at a time.
+	 */
+	static async makeSignIn(
+		actor: ReadActor,
+		emailId: string,
+		input: MakeSignIn,
+	): Promise<ServiceResult<SignInChanged>> {
+		const token = sessionToken(actor);
+		if (typeof token !== "string") return token;
+		if (!isEmailId(emailId)) return notFound();
+		if (signInMoves.has(actor.userId)) {
+			return fail(409, {
+				message: "A sign-in change is already under way. Try again in a moment.",
+			});
+		}
+		signInMoves.add(actor.userId);
+		try {
+			return await runSignInChange(liveSignInPorts(actor.userId, token), emailId, input);
+		} catch {
+			return unreachable();
+		} finally {
+			signInMoves.delete(actor.userId);
+		}
 	}
 	// #endregion
 

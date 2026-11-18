@@ -81,7 +81,7 @@ or Upwork-style platform that pipes every message through a hosted trust-and-saf
 | 16 | Firebase Cloud Messaging (HTTP v1)                      | Outbound               | Growth (native app)  | **Planned (SSOT)**                                           | same                                                              | same                                                                                         |
 | 17 | Transactional email                                     | Outbound               | **MVP blocker**      | GoTrue → Mailpit locally; the app's transport is built (Resend, Decision #391) and has no key in any environment yet | none                                                              | `services/mail/transport.ts` `configuredTransport()`                               |
 | 18 | Twilio SMS                                              | Outbound / Level 1 KYC | Growth               | Config scaffold only (`[auth.sms.twilio]`)                   | GoTrue config                                                     | none                                                                                         |
-| 19 | Cloudflare Turnstile                                    | Bot mitigation         | MVP                  | Table + dumb UI mount only                                   | none                                                              | `security.turnstile_verifications` · `@projective/ui` `Captcha`                              |
+| 19 | Cloudflare Turnstile                                    | Bot mitigation         | MVP                  | **Built** (#447): GoTrue CAPTCHA + `/join` verified          | none                                                              | `core/turnstile.ts` · `CaptchaField` · `@projective/ui` `Captcha`                            |
 | 20 | Supabase Storage (12 buckets)                           | Storage                | MVP                  | **Shipped**                                                  | `FILES_BACKEND_LIVE` for the hub                                  | `core/storage-*.ts` · `services/files/*` · `services/media/*`                                |
 | 21 | Supabase Vault                                          | Secrets                | MVP                  | **Shipped**; secrets provisioned nowhere yet (#203 (b))      | none                                                              | `ops.fn_dispatch_http_job`                                                                   |
 | 22 | The `ENCRYPTION_KEY` token vault                        | Key management         | Growth               | **Built**: the envelope (§9.4, ruling C4 (c))                | `INTEGRATIONS_BACKEND_LIVE`                                       | `services/integrations/token-vault.ts`                                                       |
@@ -108,7 +108,8 @@ In order of risk:
    reaches a public bucket. Today avatars, showcase and catalogue media publish unscreened. See
    §6.3.
 4. **CAPTCHA on GoTrue.** The anon key is public by design, so `/auth/v1/signup` is reachable
-   without going through the app at all. See §9.1.
+   without going through the app at all. Built locally (Decision #447); each deployed environment
+   still needs its own widget, its keys and the dashboard secret. See §9.1.
 5. **Stripe live configuration.** The event destinations, the restricted key, Identity activation
    and the Connect platform profile are not set up, and the manual test-mode run is still
    outstanding (`SYSTEM_ARCHITECTURE.md` §1.3: hosted onboarding, the 3-D Secure UI and live
@@ -208,7 +209,7 @@ These are the hosts each runtime must reach. The table feeds the production fire
 
 | Store                                                                   | Holds                                                                                                                                                         | Read by                                       | Provisioned by                                                       | Rotation                               |
 | :---------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------- | :------------------------------------------------------------------- | :------------------------------------- |
-| App env (`.env.local` locally; the host's secret manager when deployed) | Stripe, Voyage, link safety, OAuth clients, cron bearers, the S3 principal, the vault key, and (**Proposed**) Turnstile, email and the safety-node bearer | `packages/backend/core/env.ts` → fat services | Operator, per environment                                            | Redeploy                               |
+| App env (`.env.local` locally; the host's secret manager when deployed) | Stripe, Voyage, link safety, OAuth clients, cron bearers, the S3 principal, the vault key, Turnstile (#447), (**Proposed**) email and the safety-node bearer  | `packages/backend/core/env.ts` → fat services | Operator, per environment                                            | Redeploy                               |
 | Supabase Vault (`vault.secrets`)                                        | `CRON_APP_URL`, `*_CRON_SECRET`, and (**Proposed**) `COMMS_DISPATCH_SECRET`                                                                                   | pg_net dispatchers inside Postgres            | `SELECT vault.create_secret('<value>', '<NAME>')` per environment    | `vault.update_secret(id, '<value>')`   |
 | Edge Function secrets                                                   | (**Proposed**) VAPID private key, APNs `.p8`, FCM service account, the email API key, `COMMS_DISPATCH_SECRET`                                                 | Edge Functions (`Deno.env.get`)               | `supabase secrets set`                                               | Set again with `supabase secrets set`  |
 | Enveloped rows (`integrations.connection_secrets`)                      | Per-user OAuth access and refresh tokens; S3-compatible key pairs                                                                                             | `token-vault.ts`, service role only           | The consent callback                                                 | No rewrap yet: reconnect (§9.4)        |
@@ -244,7 +245,7 @@ Each provider fails in a fixed direction:
 | Publication gate | 503, retryable; nothing is published unscreened (Decision #148)                                    | Fail closed                 |
 | Malware scan     | **Proposed**: 503 and the row returns to `pending_upload` so the client can retry                  | Fail closed                 |
 | Presidio Tier 3  | The queue backs up; Tier 2 still masks                                                             | Fail open (the floor holds) |
-| Turnstile        | **Proposed**: production refuses the protected write; development with no secret skips it and logs | Fail closed (prod)          |
+| Turnstile        | **Built** for `/join` (#447): production refuses (503); development with no secret skips and logs  | Fail closed (prod)          |
 | Email            | `logged` in development; `unavailable` in production, and the UI says no mail went out             | Surfaced                    |
 | Push             | Deliveries stay pending: `fn_process_queue` runs (`00005060`), no push transport yet               | Deferred                    |
 | Connectors       | 409 / 503 refusal in words; a manual link is the fallback                                          | Fail closed                 |
@@ -340,7 +341,7 @@ These **Proposed** axes land with their providers. Each is a cookie honoured onl
 | :------------------ | :-------------------------------------------- | :---------------------------------------------------------------------------------------------- |
 | `pj.dev.moderation` | `auto` · `clean` · `flagged` · `unavailable`  | The publication gate's verdict without the safety node (§6.3)                                   |
 | `pj.dev.malware`    | `auto` · `clean` · `infected` · `unavailable` | The upload scan's verdict without ClamAV (§6.4)                                                 |
-| `pj.dev.captcha`    | `auto` · `pass` · `fail` · `interactive`      | Which of Cloudflare's documented dummy site/secret key pairs the widget and verifier use (§9.1) |
+| `pj.dev.captcha`    | `auto` · `pass` · `fail` · `interactive`      | **Built** (#447): which of Cloudflare's test pairs the widget and `/join`'s verifier use (§9.1) |
 
 ---
 
@@ -1580,8 +1581,10 @@ app server.
 
 **Two senders, one domain reputation.**
 
-- GoTrue sends the auth mail: confirmation, recovery, email change. Its branded templates are in
-  `supabase/templates/`.
+- GoTrue sends the auth mail: confirmation, recovery, reauthentication, the magic-link and
+  email-change notices, and the password, identity and MFA security notifications. Its branded
+  templates are in `supabase/templates/`; the set, and what reaches each, is SYSTEM_ARCHITECTURE
+  §Authentication & Identity (Decision #448).
 - The app sends secondary-email verification (`verification-mailer.ts`) and notification email
   (`comms-dispatch`).
 
@@ -1617,21 +1620,39 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
      days.
 3. **An API key** scoped to sending, restricted to the domain → `RESEND_API_KEY` (app env **and**
    Edge secret). `MAIL_FROM` = `Projective <no-reply@notify.<domain>>`.
-4. **GoTrue SMTP** (`supabase/config.toml` locally; Dashboard → Auth → SMTP when hosted):
+4. **GoTrue SMTP.** Built in `supabase/config.toml` (Decision #448), declared off so local mail
+   stays in Mailpit:
 
    ```toml
    [auth.email.smtp]
-   enabled = true
+   enabled = false
    host = "smtp.resend.com"
    port = 465
    user = "resend"
    pass = "env(SUPABASE_AUTH_SMTP_PASS)"
-   admin_email = "no-reply@notify.example.com"
+   admin_email = "env(SUPABASE_AUTH_SMTP_ADMIN_EMAIL)"
    sender_name = "Projective"
    ```
 
-   Raise `[auth.rate_limit] email_sent` to match the provider plan. Re-check
-   `enable_confirmations = true` on every non-local deployment, as the `config.toml` comment asks.
+   **Hosted runbook, per project (staging, then production):**
+   1. Dashboard → Authentication → SMTP Settings: enable custom SMTP with the values above, the
+      password = the Resend sending key (`SUPABASE_AUTH_SMTP_PASS`, the same value as
+      `RESEND_API_KEY`), the sender email = the bare address inside `MAIL_FROM`
+      (`SUPABASE_AUTH_SMTP_ADMIN_EMAIL`), sender name `Projective`.
+   2. Dashboard → Authentication → URL Configuration: **Site URL = the app's public origin**. The
+      reauthentication email and every security notification build their logo and links on
+      `{{ .SiteURL }}`; GoTrue passes them no `RedirectTo`.
+   3. Templates, subjects, the five notifications and the 30 s minimum interval (equal to the app's
+      Resend cooldown): either paste each `supabase/templates/*.html` body and its subject from
+      `config.toml` into Dashboard → Authentication → Email Templates, or run
+      `SUPABASE_AUTH_EMAIL_SMTP_ENABLED=true supabase config push --project-ref <ref>` with both
+      secrets in the environment. Without that variable the push sends `enabled = false`, which
+      switches hosted SMTP **off**. Verified locally: the variable turns the same block on.
+   4. Rate limits: raise `email_sent` (Dashboard → Authentication → Rate Limits) to the provider
+      plan. Re-check `enable_confirmations = true`.
+   5. Prove it: request a reset from `/forgot-password` and change a password, then confirm both
+      emails arrive branded, with DKIM pass, a reset link of `/forgot-password?step=reset` (no
+      address) and the logo loading. Only then is PRD-E6 ✅.
 5. **App transport.** Built (Decision #391): `configuredTransport()` returns a Resend HTTP transport
    when `RESEND_API_KEY` is well formed (`re_…`; the placeholder counts as absent) and `MAIL_FROM` is
    an address. A guest's message sends no `Idempotency-Key`, because each retry carries a new link,
@@ -1675,12 +1696,16 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
 **Role.** Turnstile works in two layers.
 
 1. **GoTrue's native CAPTCHA** protects the auth API that the public anon key exposes. Without it, a
-   bot can call `/auth/v1/signup` directly and bypass every app-side control.
-2. **App-verified Turnstile** protects the anonymous write routes the app owns.
+   bot can call `/auth/v1/signup` directly and bypass every app-side control. GoTrue skips the check
+   for admin (service-role) credentials.
+2. **App-verified Turnstile** protects the anonymous write routes the app owns, and the one auth
+   write GoTrue cannot see: `/join` creates its account with `auth.admin.createUser` (Decision #447).
 
 | Surface                                                                        | Layer  | Status                                                                                                                                                      |
 | :----------------------------------------------------------------------------- | :----- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/join` (sign-up), `/login` (password), `/forgot-password`, `/verify` resend   | GoTrue | **Proposed**                                                                                                                                                |
+| `/login` and the sign-in dialog, `/forgot-password`, `/verify` resend          | GoTrue | **Built** (Decision #447): the token rides the password grant, recover and resend                                                                           |
+| `/join` (password and enterprise sign-up)                                      | App    | **Built** (Decision #447): `/api/auth/join` verifies before `createUser`; the confirmation that follows goes through the service role                       |
+| Direct `/auth/v1/signup`, `/otp`, `/magiclink`, `/sso` with the anon key       | GoTrue | **Built**: refused without a token. `/sso` forwards none yet (flag (b) of #447)                                                                             |
 | Newsletter opt-in (`POST /api/newsletter/subscribe`)                           | App    | **Proposed**                                                                                                                                                |
 | Feedback board and help-vote writes (`community`, open to signed-out visitors) | App    | **Proposed**                                                                                                                                                |
 | `/contact`                                                                     | none   | **Excluded.** PUBLIC_ROUTES P3 rules "No CAPTCHA dependency" (honeypot + per-IP and per-email ceilings, Decision #276). Revisit only by a ruling (flag (h)) |
@@ -1733,8 +1758,10 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
 **Development.** Cloudflare publishes dummy site and secret key pairs that always pass, always fail,
 or force an interactive challenge. `pj.dev.captcha` picks one. With no secret configured under
 `DENO_ENV=development`, app verification is skipped with one log line. In production, a missing
-secret refuses the protected write (503). Keep GoTrue's `[auth.captcha]` disabled locally unless you
-are testing it.
+secret refuses the protected write (503), and Cloudflare's test keys count as missing. GoTrue's
+`[auth.captcha]` is **on** locally with the always-pass test secret from `.env.local` (owner
+ruling, Decision #447). A probe that signs in through GoTrue's password grant sends any non-empty
+`gotrue_meta_security.captcha_token`; seeds use the admin API and need none.
 
 ### 9.2 Supabase Storage: the bucket matrix
 
@@ -1931,8 +1958,9 @@ removed.
 | `MODERATION_BACKEND_LIVE` · `MALWARE_SCAN_LIVE`                                                                | **Proposed**                      | the moderation and upload services                            | gate                   |
 | `SAFETY_NODE_URL` · `SAFETY_NODE_TOKEN`                                                                        | **Proposed**                      | `services/moderation/`, upload scan                           | config · secret        |
 | `MODERATION_CRON_SECRET`                                                                                       | **Proposed**                      | cron routes + Vault                                           | secret                 |
-| `TURNSTILE_SITE_KEY` · `TURNSTILE_SECRET_KEY`                                                                  | **Proposed**                      | `core/turnstile.ts`; site key served by a route               | public · secret        |
-| `SUPABASE_AUTH_CAPTCHA_SECRET` · `SUPABASE_AUTH_SMTP_PASS`                                                     | **Proposed**                      | `supabase/config.toml` `env(...)`                             | secret                 |
+| `TURNSTILE_SITE_KEY` · `TURNSTILE_SECRET_KEY`                                                                  | **In contract** (#447)            | `core/turnstile.ts`; site key served by a route               | public · secret        |
+| `SUPABASE_AUTH_CAPTCHA_SECRET`                                                                                 | **In contract** (#447)            | `supabase/config.toml` `env(...)`                             | secret                 |
+| `SUPABASE_AUTH_SMTP_PASS` · `SUPABASE_AUTH_SMTP_ADMIN_EMAIL`                                                   | **Built** (#448), off locally     | `supabase/config.toml` `env(...)`                             | secret · config        |
 | `RESEND_API_KEY` · `MAIL_FROM` (built) · `RESEND_WEBHOOK_SECRET` (proposed)                                    | **Built, no key yet**             | `services/mail/transport.ts`, `comms-dispatch`, the webhook route | secret · config        |
 | `VAPID_PUBLIC_KEY`                                                                                             | **Proposed**                      | app (served)                                                  | public                 |
 | `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`                                                                          | **Proposed**                      | Edge secret                                                   | secret · config        |
@@ -1950,16 +1978,10 @@ SAFETY_NODE_URL=XXXX-XXXX               # e.g. the node's private https origin; 
 SAFETY_NODE_TOKEN=XXXX-XXXX             # ≥ 32 chars; the gateway's bearer
 MODERATION_CRON_SECRET=XXXX-XXXX        # ≥ 32 chars; also a Vault secret
 
-# Bot mitigation (§9.1)
-TURNSTILE_SITE_KEY=XXXX-XXXX
-TURNSTILE_SECRET_KEY=XXXX-XXXX
-SUPABASE_AUTH_CAPTCHA_SECRET=XXXX-XXXX  # the same value as TURNSTILE_SECRET_KEY; read by supabase/config.toml
-
 # Transactional email (§8.5)
 RESEND_API_KEY=XXXX-XXXX
 RESEND_WEBHOOK_SECRET=XXXX-XXXX
 MAIL_FROM=XXXX-XXXX                     # Projective <no-reply@notify.<domain>>
-SUPABASE_AUTH_SMTP_PASS=XXXX-XXXX       # the same value as RESEND_API_KEY; read by supabase/config.toml
 
 # Web Push (§8.2). The public key is served to browsers; the private key is an Edge secret only.
 VAPID_PUBLIC_KEY=XXXX-XXXX
@@ -1976,7 +1998,7 @@ Switcher control together.
 | :------------------ | :--------------------------------------------------------------------------- | :----------------------------------- | :----------------------------------------------------------------------------------------------------- |
 | **MVP-0: blockers** | 1. Disable and delete `scan-file` (flag (d))                                 | A go-ahead                           | `config.toml` diff; `supabase functions list` on every project                                         |
 |                     | 2. Email: domain + DNS + GoTrue SMTP + the app transport (§8.5)              | Flag (f) ruling                      | A confirmation from `/join` arrives with DKIM pass; `/settings` secondary email verifies               |
-|                     | 3. Turnstile on GoTrue + the auth schemas (§9.1)                             | Keys                                 | A bot sign-up via `/auth/v1/signup` without a token is refused; the dummy "fail" key refuses in the UI |
+|                     | 3. Turnstile keys per environment (§9.1; the code is built, #447)            | Keys                                 | A bot sign-up via `/auth/v1/signup` without a token is refused; the dummy "fail" key refuses in the UI |
 |                     | 4. Stripe live configuration (§4.3) + the Vault cron secrets (§9.3)          | Stripe account review                | SSOT §1.3 manual checklist in the sandbox; one live end-to-end, refunded                               |
 |                     | 5. Web Risk in `link-reputation.ts` (§6.5): built (ruling T5)                | A GCP project, a restricted key      | `link-scan.test.ts` against a stubbed Web Risk; the Safe Browsing test host still `blocked` offline    |
 |                     | 6. Safety node: ClamAV + the publication gate (§6.1, §6.3, §6.4)             | Flag (g) sizing, a VM                | EICAR → `quarantined`; a flagged fixture image → 422; node down → 503                                  |

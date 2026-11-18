@@ -9,8 +9,8 @@ import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-s
 import { cardMenu, type CardMenuFacts } from "../core/card-menu.ts";
 
 /**
- * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Save**, as one
- * horizontal row.
+ * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Save · More**,
+ * as one horizontal row.
  *
  * Every button is icon-only, so each carries all three things §B.8.5 makes a merge gate: an
  * `aria-label`, a portal `Tooltip` (never a native `title`), and a hit target past the 24px floor —
@@ -23,10 +23,12 @@ import { cardMenu, type CardMenuFacts } from "../core/card-menu.ts";
  * with no backend and are gone (UI gate 11, as Decision #140); hiring into a project lives on the
  * profile's own Add-to-project flow.
  *
- * The cluster is revealed on card hover/focus via CSS. Right-clicking anywhere on the card opens
- * `cardMenu`: the split Open row over Copy link · Share · Save (Decisions #222, #373), then the item's
- * own verbs and its creator's profile (Decision #422); there is no kebab, so the menu has no trigger
- * of its own. Dumb island: it fetches internal routes only.
+ * The cluster is revealed on card hover/focus via CSS, and always shown where there is no hover.
+ * `cardMenu` — the split Open row over Copy link · Share · Save (Decisions #222, #373), then the item's
+ * own verbs and its creator's profile (Decision #422) — opens from **More** (⋯) and from a right-click,
+ * the ContextMenu key or Shift+F10 anywhere on the card. More is the touch route: iOS Safari raises no
+ * `contextmenu`, and a long-press would fight the page's scroll. Dumb island: it fetches internal
+ * routes only.
  */
 export default function CardActions(
 	{ facts, authed = false }: {
@@ -66,11 +68,6 @@ export default function CardActions(
 
 	return (
 		<div class="ex-actions" data-stop ref={root}>
-			<ActionMenu
-				model={menu}
-				surface={() => root.current?.closest<HTMLElement>(".ex-card") ?? null}
-				aria-label={`Actions for ${title}`}
-			/>
 			<Tooltip content="Share">
 				<Button
 					type="button"
@@ -111,6 +108,28 @@ export default function CardActions(
 						</a>
 					</Tooltip>
 				)}
+
+			<ActionMenu
+				model={menu}
+				surface={() => root.current?.closest<HTMLElement>(".ex-card") ?? null}
+				aria-label={`Actions for ${title}`}
+				trigger={(api) => (
+					<Tooltip content="More">
+						<Button
+							type="button"
+							class="ex-actions__btn"
+							triggerRef={api.ref}
+							aria-label={`More actions for ${title}`}
+							aria-haspopup="menu"
+							aria-expanded={api.expanded}
+							aria-controls={api.expanded ? api.panelId : undefined}
+							onClick={api.toggle}
+						>
+							<Icon name="kebab-horizontal" />
+						</Button>
+					</Tooltip>
+				)}
+			/>
 
 			<span class="ex-actions__status" role="status" aria-live="polite">{status.value}</span>
 		</div>

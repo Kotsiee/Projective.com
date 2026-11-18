@@ -911,6 +911,31 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
 Returns `{ order_id, reference, status, charged_minor, currency, replayed }` — the charge in the
 currency the wallet actually moved, never re-converted.
 
+**Session and seat lines keep the buyer's intake answers (Decision #453).** A `service_session`,
+`set_session` or `course_group_session` line's `metadata.answers` is passed through
+`projects.fn_session_intake_answers(listing, answers)` while the line is priced — absent → `{}`, not an
+object or over 32 KB → `22023` before any money moves, otherwise reduced to the ids the listing's intake
+declares — and written to the order line's `intake_answers`. Probe
+`supabase/probes/session_intake_order_line.sql`.
+
+**One-Off and Task lines (Decision #457).** A `one_off_service` / `single_service_task` line buys a
+listing's scoped engagement, and the payment creates it. While it is priced, the line is refused
+`PU422` from any account but a person's own (no business, team or enterprise buys one yet) or on the
+buyer's own listing, and `PC409` when the listing is no longer a published One-Off or Direct
+Deliverable, is priced in another currency, carries no `metadata.requirements` brief, or carries a
+`metadata.targetDate` that has passed. It is priced by `marketplace.fn_scoped_service_price(listing,
+metadata.fundingScope = 'whole_project')`: milestone 1, or every milestone under the whole-project
+prepay, a Task at the listing's price. An unpriced milestone is `PS501`, and a unit that is not that
+price is `PC409`. Like a ticket it is an escrow line: no promo applies, and no product debit is made
+for it. Once the order row exists, `marketplace.fn_buy_scoped_service` runs as the buyer, keyed
+`order:<basket line>`. It writes the seller-owned engagement, its one master ticket and
+`projects.fund_ticket` (milestone 1 held, every later one reserved under the prepay), and moves the
+engagement `draft → active`. A held amount that is not the line's price is `PC409`, and every
+refusal rolls the whole order back. The order line records `fulfilment = 'engagement'`, the first
+milestone as `stage_id`, the master ticket, the new `project_id` and the held `escrow_id`, and the
+answers the door kept as `intake_answers`. Its subtitle is "Every milestone funded" under the
+prepay, else "Escrow held". Probe `supabase/probes/one_off_checkout.sql` §8.
+
 **Ticket lines (Decisions #166, #430).** A `project_ticket` / `one_off_project` / `one_off_task` line
 that carries `ticket_id` is not a sale: it buys ONE stage of the ticket, the line's `stage_id` (a
 legacy stage-less line: the stage it is funded in, `projects.fn_ticket_funding_stage`, #428). It is

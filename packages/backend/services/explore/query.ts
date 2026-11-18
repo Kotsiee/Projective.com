@@ -1,6 +1,7 @@
 import { parsePriceMajor } from "./pricing.ts";
 import { peekCatalog } from "./live-catalog.ts";
-import { byScore } from "./ranking.ts";
+import { lexicalScorer } from "./lexical.ts";
+import { bestMatchScore, byScore, NO_WEIGHTS, type RankingWeights } from "./ranking.ts";
 import { toMajorUnits } from "@projective/types/finance";
 import {
 	type ExploreEntity,
@@ -77,6 +78,34 @@ export function rankRecommended<T extends ExploreItem>(
 	scores: ReadonlyMap<string, number>,
 ): T[] {
 	return [...items].sort(byScore(scores));
+}
+
+const NO_SCORES: ReadonlyMap<string, number> = new Map();
+
+/**
+ * `items` in Best match order for `q`: an item whose title is exactly the query first, then
+ * {@link bestMatchScore} (quality + `text_relevance` × the lexical match), then the recommended
+ * tie-break. Word rarity is measured over `corpus`. `null` when `q` holds no word to match.
+ */
+function rankBestMatch(
+	items: readonly ExploreItem[],
+	corpus: readonly ExploreItem[],
+	q: string,
+	scores: ReadonlyMap<string, number> | undefined,
+	weights: RankingWeights,
+): ExploreItem[] | null {
+	const scorer = lexicalScorer(corpus, q);
+	if (!scorer) return null;
+	const quality = scores ?? NO_SCORES;
+	const tie = byScore(quality);
+	return items
+		.map((item) => ({
+			item,
+			exact: scorer.exactTitle(item),
+			total: bestMatchScore(quality.get(item.id) ?? 0, scorer.score(item), weights),
+		}))
+		.sort((a, b) => Number(b.exact) - Number(a.exact) || b.total - a.total || tie(a.item, b.item))
+		.map((ranked) => ranked.item);
 }
 // #endregion
 
@@ -161,7 +190,10 @@ export function categoryEntities(category: ExploreParams["category"]): ExploreEn
 	return CATEGORY_TYPES[category] ?? [category];
 }
 
-/** Whether a sort is one a reader chose; every other value is the default "recommended" order. */
+/**
+ * Whether a sort is a field order a reader picked (rating, price, newest). The two ranked orders —
+ * Best match and Recommended — and any unknown value are not.
+ */
 export function isExplicitSort(sort: string): boolean {
 	return sort === "rating" || sort === "price_asc" || sort === "newest";
 }
@@ -181,13 +213,16 @@ function matchesQuery(item: ExploreItem, q: string): boolean {
 
 /**
  * The discovery query. Filters the corpus by free-text `q` and top-level `category`, then applies the
- * adaptive facet filters and the `sort`. The default (`recommended`) sort ranks by `scores` — the
+ * adaptive facet filters and the `sort`. `recommended` (and any unknown sort) ranks by `scores` — the
  * catalogue's `scoreById`; without them the corpus keeps its own order (see {@link compareRecommended}).
+ * `best_match` ranks by how well each item matches `q` blended with those scores through `weights`'
+ * `text_relevance` (the catalogue's `weights`), and is the recommended order when `q` has no word.
  */
 export function getResults(
 	corpus: readonly ExploreItem[],
 	params: ExploreParams,
 	scores?: ReadonlyMap<string, number>,
+	weights: RankingWeights = NO_WEIGHTS,
 ): ExploreItem[] {
 	const category = params.category;
 	let items = corpus.filter((it) => inCategory(it, category) && matchesQuery(it, params.q));
@@ -237,7 +272,7 @@ export function getResults(
 		items = items.filter((it) => topScore(it) >= ratingMin);
 	}
 
-	const sorted = [...items];
+	let sorted = [...items];
 	switch (params.sort) {
 		case "rating":
 			sorted.sort((a, b) => topScore(b) - topScore(a));
@@ -248,6 +283,12 @@ export function getResults(
 		case "newest":
 			sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 			break;
+		case "best_match": {
+			const ranked = rankBestMatch(sorted, corpus, params.q, scores, weights);
+			if (ranked) sorted = ranked;
+			else if (scores) sorted.sort(byScore(scores));
+			break;
+		}
 		default:
 			if (scores) sorted.sort(byScore(scores));
 	}

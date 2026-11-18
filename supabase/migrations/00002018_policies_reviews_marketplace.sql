@@ -88,43 +88,27 @@ SELECT TO authenticated USING (sponsor_user_id = auth.uid ());
 -- Readable by its two parties and nobody else — a quote request carries a budget and a brief, which
 -- is exactly what a competing buyer or seller should not be able to page through.
 --
--- A request can only be raised by the caller, against the host who actually sells that blueprint, on
--- a blueprint that is published: the EXISTS pins `host_user_id` to the listing's owner, so a caller
--- cannot address an arbitrary user as "the seller" and have them notified about a service they do
--- not offer.
+-- No client writes (Decision #458). Each move belongs to one party — the buyer raises and withdraws,
+-- the host prices and declines — and a policy cannot tell which party is moving which status, so a
+-- shared UPDATE let a buyer mark their own request `answered`. Every write is a door in 00001177
+-- (`request_quote` pins the host to the blueprint's seller); `trg_quote_requests_parties` still pins
+-- the parties and the blueprint against the doors themselves.
 CREATE POLICY "Parties see their quote requests" ON marketplace.quote_requests FOR
 SELECT TO authenticated USING (
         requester_user_id = auth.uid ()
         OR host_user_id = auth.uid ()
     );
 
-CREATE POLICY "Buyers raise quote requests" ON marketplace.quote_requests FOR
-INSERT
-    TO authenticated
-WITH
-    CHECK (
-        requester_user_id = auth.uid ()
-        AND requester_user_id <> host_user_id
-        AND EXISTS (
+-- --- marketplace.quote_offers: the host's priced answers ---
+-- Readable by the request's two parties. No client writes: `send_quote_offer`, `withdraw_quote_offer`,
+-- `accept_quote_offer` and `decline_quote_offer` (00001177) are the only way in.
+CREATE POLICY "Parties see their quote offers" ON marketplace.quote_offers FOR
+SELECT TO authenticated USING (
+        EXISTS (
             SELECT 1
-            FROM marketplace.service_blueprints b
+            FROM marketplace.quote_requests q
             WHERE
-                b.id = quote_requests.blueprint_id
-                AND b.is_published = true
-                AND b.freelancer_profile_id = quote_requests.host_user_id
+                q.id = quote_offers.quote_request_id
+                AND (q.requester_user_id = auth.uid () OR q.host_user_id = auth.uid ())
         )
-    );
-
--- Either party may move the request (the host answers, the buyer withdraws). A policy sees only the
--- post-image, so the parties and the blueprint are pinned by `trg_quote_requests_parties`
--- (`security.fn_guard_immutable_columns`, 00001895): an update cannot re-address the request.
-CREATE POLICY "Parties update their quote requests" ON marketplace.quote_requests FOR
-UPDATE TO authenticated USING (
-    requester_user_id = auth.uid ()
-    OR host_user_id = auth.uid ()
-)
-WITH
-    CHECK (
-        requester_user_id = auth.uid ()
-        OR host_user_id = auth.uid ()
     );

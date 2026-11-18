@@ -99,6 +99,14 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Set-session scheduling handshakes: one reminder 24h before a booking''s earliest deadline, then each handshake still open at its deadline (set_session_schedule_hours) lapses — the pencilled-in sitting time stands and both people are told.')
 ON CONFLICT (name) DO NOTHING;
 
+-- Cohort waitlists (Decision #455). Every minute, because a freed seat sits idle (fenced from walk-ins)
+-- until this run invites someone into it; a run with nothing to do reads two partial indexes.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('cohort-waitlist-invites', 'sql', '* * * * *',
+        'SELECT projects.fn_waitlist_dispatch();', NULL, NULL,
+        'Cohort waitlists: expires each invite whose held seat lapsed unused (the buyer is told), then invites the people waiting in join order, one per seat nobody holds on the listing''s enrolling cohort, each holding its seat for waitlist_invite_hold_hours (48).')
+ON CONFLICT (name) DO NOTHING;
+
 -- Listing analytics (Decision #217). Writes yesterday's UTC listing rollups; a SQL job, so it needs no
 -- secret. A late or missed run is repaired by `analytics.fn_backfill_listing_rollups`.
 INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
@@ -269,5 +277,17 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
     ('ops-prune-job-history', 'sql', '53 4 * * *',
         'SELECT ops.fn_prune_job_history();', NULL, NULL,
         'Deletes pg_cron run history (cron.job_run_details) older than 7 days; ops-watch-jobs has already reported every failed run in it.')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
+-- #region [account] Personal data exports (Decision #450)
+-- Building a ZIP and removing an expired one go through the Storage API, so an http job on the
+-- erasure route's secret. Every 15 minutes, on minutes no other job uses; a run builds at most five
+-- archives. Registered only where its claim door exists, like the M3 / M4 sweeps above.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
+SELECT 'account-data-exports', 'http', '9,24,39,54 * * * *', NULL, '/api/user/cron/data-exports?limit=5',
+       'ACCOUNT_CRON_SECRET',
+       'Builds each requested personal data export into a ZIP in the private data_exports bucket and tells its owner, then removes archives past their 7 days (DataExportBackendService.sweep).'
+ WHERE pg_catalog.to_regprocedure('security.claim_data_exports(integer)') IS NOT NULL
 ON CONFLICT (name) DO NOTHING;
 -- #endregion

@@ -1232,7 +1232,7 @@ export const PRODUCTS: CorpusProduct[] = [
 		"priceMinor": 7900,
 		"currency": "USD",
 		"span": 3,
-		"sponsored": true,
+		"sponsored": false,
 		"skills": [
 			"figma",
 			"design-systems",
@@ -1580,7 +1580,7 @@ export const PRODUCTS: CorpusProduct[] = [
 		"priceMinor": 3800,
 		"currency": "USD",
 		"span": 1,
-		"sponsored": false,
+		"sponsored": true,
 		"skills": [
 			"illustration",
 			"figma",

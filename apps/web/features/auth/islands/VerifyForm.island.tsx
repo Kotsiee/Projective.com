@@ -4,7 +4,9 @@ import { Button } from "@projective/ui/fields";
 import { AuthHeading } from "../components/AuthShell.tsx";
 import { OtpField } from "../components/OtpField.tsx";
 import { EmailConfirmedPanel } from "../components/EmailConfirmedPanel.tsx";
+import { CaptchaField } from "../components/CaptchaField.tsx";
 import { CheckIcon, WarnIcon } from "../components/icons.tsx";
+import { useCaptcha } from "../hooks/useCaptcha.ts";
 import { useOtpInput } from "../hooks/useOtpInput.ts";
 import { useVerifyPollSimulation } from "../hooks/useVerifyPollSimulation.ts";
 import { AuthService } from "../core/AuthService.ts";
@@ -29,17 +31,21 @@ const POLL_INTERVAL_MS = 4000;
  * The pending email + resend cooldown persist to `sessionStorage` (see {@link SessionKeys}) so a hard
  * refresh doesn't lose the countdown or the address being confirmed. A fresh signup arrives with the
  * cooldown already armed by the join form, because its code was sent on submit; `sendFailed` marks the
- * one arrival where it was not, and opens with Resend available.
+ * one arrival where it was not, and opens with Resend available. Resend carries the Turnstile token
+ * GoTrue's resend endpoint requires (Decision #447); a refused check keeps Resend available.
  */
 export default function VerifyForm(
-	{ redirectTo, email, sendFailed = false }: {
+	{ redirectTo, email, sendFailed = false, captchaSiteKey = null }: {
 		redirectTo: string;
 		email?: string;
 		sendFailed?: boolean;
+		captchaSiteKey?: string | null;
 	},
 ) {
+	const captcha = useCaptcha();
 	const otp = useOtpInput(6);
 	const submitting = useSignal(false);
+	const resending = useSignal(false);
 	const error = useSignal<string | null>(null);
 	const unsent = useSignal(sendFailed);
 	const cooldown = useSignal(0);
@@ -137,10 +143,19 @@ export default function VerifyForm(
 	}, []);
 	// #endregion
 
-	function resend() {
-		if (cooldown.value > 0) return;
+	async function resend() {
+		if (cooldown.value > 0 || resending.value) return;
+		resending.value = true;
+		error.value = null;
+		const captchaToken = await captcha.take();
+		const result = await AuthService.resend({ email, captchaToken });
+		captcha.reset();
+		resending.value = false;
+		if (!result.ok) {
+			error.value = result.message ?? "We couldn't send a new code. Please try again.";
+			return;
+		}
 		unsent.value = false;
-		void AuthService.resend({ email });
 		startCooldown(resendDeadline(Date.now()));
 	}
 
@@ -174,11 +189,11 @@ export default function VerifyForm(
 					? (
 						<>
 							We sent a 6-digit code to{" "}
-							<strong>{email}</strong>. Enter it below, or just tap the link in the email — this
-							page will let you in automatically.
+							<strong>{email}</strong>. Enter it below, or open the link in the email and press
+							Confirm — this page will let you in automatically.
 						</>
 					)
-					: "Enter the 6-digit code we emailed you, or tap the link in the email to confirm automatically."}
+					: "Enter the 6-digit code we emailed you, or open the link in the email and press Confirm."}
 			/>
 
 			{unsent.value
@@ -217,12 +232,17 @@ export default function VerifyForm(
 				<button
 					type="button"
 					class="auth-resend__btn"
-					disabled={cooldown.value > 0}
-					onClick={resend}
+					disabled={cooldown.value > 0 || resending.value}
+					onClick={() => void resend()}
 				>
-					{cooldown.value > 0 ? `Resend in ${cooldown.value}s` : "Resend code"}
+					{cooldown.value > 0
+						? `Resend in ${cooldown.value}s`
+						: resending.value
+						? "Sending…"
+						: "Resend code"}
 				</button>
 			</p>
+			<CaptchaField controller={captcha} siteKey={captchaSiteKey} action="resend" />
 
 			<p class="auth-alt">
 				Wrong address? <a class="auth-link" href="/join">Start over</a>

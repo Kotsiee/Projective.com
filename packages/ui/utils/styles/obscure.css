@@ -1,0 +1,106 @@
+.ui-obscure__mask {
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+	user-select: none;
+}
+
+.ui-obscure__placeholder {
+	display: inline-block;
+	inline-size: var(--obscure-solid-size, 12ch);
+	max-inline-size: 100%;
+	block-size: 1em;
+	vertical-align: middle;
+	background: var(--surface-2);
+	border-radius: var(--radius-xs);
+	user-select: none;
+	forced-color-adjust: none;
+}
+
+.ui-obscure--blur {
+	display: contents;
+}
+
+.ui-reveal-hold {
+	touch-action: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+.ui-obscure--blur img,
+.ui-obscure--blur video,
+img.ui-obscure--blur,
+video.ui-obscure--blur {
+	transition:
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard),
+		fill var(--dur-slow) var(--ease-standard),
+		filter var(--dur-slow) var(--ease-standard),
+		transform var(--dur-slow) var(--ease-standard);
+}
+
+:root[data-screen-share="active"] .ui-obscure--blur img,
+:root[data-screen-share="active"] .ui-obscure--blur video,
+:root[data-screen-share="active"] img.ui-obscure--blur,
+:root[data-screen-share="active"] video.ui-obscure--blur {
+	filter: blur(var(--obscure-blur));
+	transform: scale(var(--obscure-bleed));
+}
+
+:root[data-screen-share="active"] .ui-obscure--mask:not([data-obscure-masked], [data-money-masked]),
+:root[data-screen-share="active"] .ui-money:not([data-money-masked]) .ui-money__major {
+	position: relative;
+	visibility: hidden;
+	user-select: none;
+}
+
+:root[data-screen-share="active"] .ui-obscure--mask:not([data-obscure-masked], [data-money-masked])::after,
+:root[data-screen-share="active"] .ui-money:not([data-money-masked]) .ui-money__major::after {
+	content: var(--obscure-mask);
+	position: absolute;
+	inset-inline-start: 0;
+	visibility: visible;
+	white-space: nowrap;
+}
+
+:root[data-screen-share="active"] .ui-money:not([data-money-masked]) .ui-money__minor,
+:root[data-screen-share="active"] .ui-money:not([data-money-masked]) .ui-money__origin,
+:root[data-screen-share="active"] .ui-money:not([data-money-masked]) .ui-money__reference {
+	visibility: hidden;
+}
+
+:root[data-screen-share="active"] .ui-obscure--solid:not([data-obscure-masked]) {
+	background: var(--surface-2);
+	color: transparent;
+	user-select: none;
+	border-radius: var(--radius-xs);
+	forced-color-adjust: none;
+}
+
+:root[data-screen-share="active"] .ui-obscure--solid:not([data-obscure-masked]) * {
+	visibility: hidden;
+}
+
+:root[data-screen-share="active"] .ui-obscure--omit:not([data-obscure-masked]) {
+	display: none;
+}
+
+:root[data-screen-share="active"] .ui-pimg[data-obscure="ground"]:not([data-obscure-masked]) img {
+	visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-obscure--blur img,
+	.ui-obscure--blur video,
+	img.ui-obscure--blur,
+	video.ui-obscure--blur {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-obscure--blur img,
+:root[data-motion="reduced"] .ui-obscure--blur video,
+:root[data-motion="reduced"] img.ui-obscure--blur,
+:root[data-motion="reduced"] video.ui-obscure--blur {
+	transition: none;
+}

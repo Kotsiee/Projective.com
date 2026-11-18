@@ -786,7 +786,12 @@ on failure instead of stale results.
 penalised `search.profiles_index` rows, `search.ranking_weights()` and `search.trending_entities()`
 (definers projecting coefficients and an aggregate floored at three people) — and scores every item
 once (`ranking.ts`), so the catalogue is assembled best-first and every "recommended" order reads
-`catalog.scoreById`. `home({ actor, sim })` composes the SHARED feed (sections, promos, the
+`catalog.scoreById`. A typed search's default order is **Best match** (Decision #459): `query.ts`
+adds `text_relevance` × the pure `lexical.ts` word match (a field-weighted BM25 over the fields the
+text filter reads, plus title coverage and the words in the order typed, 0–1) to each item's
+quality score (`ranking.ts` `bestMatchScore`), puts an exact title first and never changes the
+filter's result set; `?sort=recommended` keeps the quality order.
+`home({ actor, sim })` composes the SHARED feed (sections, promos, the
 Recommended lists, Trending) from that cache, then, for a signed-in viewer, runs a VIEWER-SCOPED pass
 (`viewer-signals.ts`): `org.recent_views`, `org.user_bookmarks`, `search.user_affinity` and their
 stated interests, read with `getUserClient(jwt)` per request and never cached, composed into the
@@ -795,14 +800,13 @@ is recorded by `recordView` → `search.record_view` (a definer, the only writer
 fired in the background by the `/view/[entity]`, `/[handle]/view/[item]` and `/[handle]` routes and,
 for the results drawer's in-place open, `POST /api/explore/views`. `/explore` renews a lapsed session
 in place and forwards the Dev Context Switcher's `pj.dev.discovery` cookie in development only.
-Saves: a card's Star writes through `GET|POST /api/explore/bookmark` (`{ itemId, saved }`, Zod
-`BookmarkWriteSchema`) → `services/explore/ExploreBookmarkService.ts`, which resolves the discovery id
-against the catalogue (`bookmark-target.ts`) and upserts or deletes the caller's
-`org.user_bookmarks` row under their own JWT. Only `SaveableEntity` types carry a Star — a service, a
-project, a freelancer/team/business profile — because `org.bookmark_entity_type` cannot name a
-product, an article or a buyer. On the client every `CardActions` island reads one page-wide
-`core/bookmark-state.ts` store (one `GET` per page, optimistic toggles reverted on refusal). With the
-gate off, saves are kept in process memory per user.
+Saves: a card's Star and the results drawer's Save are the shared saved system (Decision #180):
+`features/saved/core/saved-state.ts` answers a whole grid's flags with one batched
+`GET /api/saved/state`, and a press writes `POST|DELETE /api/saved` optimistically →
+`SavedBackendService` → the caller's `org.user_bookmarks` row under their own JWT, rolled back on
+refusal. `/api/explore/bookmark` and its `ExploreBookmarkService` are removed (DS3, Decision #422),
+so the table has one door. Live only: without Supabase a save answers 503 and rolls back, and the
+Dev Context Switcher's `saved` axis simulates the set client-side.
 **Semantic ranking (Decision #179).** Discovery can rank with Voyage AI `voyage-4` vectors (1024
 dimensions, unit length — inner product ranks as cosine) behind one switch, `isEmbeddingsLive(req?)`
 (`core/supabase.ts`): not mocked, Supabase configured, `VOYAGE_API_KEY` present, and
@@ -819,8 +823,9 @@ and raw search text never reaches a key; a KV read slower than 50 ms, a failed r
 wrong length is a miss, a KV hit fills the memory layer and bills no tokens, a fresh vector is written
 to both (KV fire-and-forget) and a failure to neither; KV is optional — without `--unstable-kv`
 `core/kv.ts`'s `openSharedKv` answers `null` and only the in-memory layer runs), asks `search.fn_nearest` for the category's nearest public entities, and the pure
-`services/explore/semantic.ts` re-ranks the JS candidate set on the default sort through
-`SEMANTIC_BLEND_WEIGHT` and adds up to 12 high-similarity neighbours that pass the same facets; the
+`services/explore/semantic.ts` re-ranks the JS candidate set on a ranked sort (Best match or
+Recommended; an exact title stays first under Best match) through `SEMANTIC_BLEND_WEIGHT` and adds
+up to 12 high-similarity neighbours that pass the same facets; the
 `/view` "Similar" rail reads `search.fn_nearest_to_entity` (the item's stored vector, its owner's
 items excluded) and keeps the heuristic rail when there is no vector. A search's non-empty resolved
 neighbours are kept per isolate for 60 s (an LRU of 256 keyed by normalised query and category,
@@ -1329,6 +1334,8 @@ one (`404`), so the answer never reveals that it exists.
 
 **Analytics and Clients (plan §4.7, §9.2).** Two read-only fat services sit beside it, behind
 `GET /api/catalogue/analytics` and `GET /api/catalogue/clients` · `/api/catalogue/clients/<handle>`
+· `/api/catalogue/waitlist` (a group-session listing's queue, `projects.get_listing_waitlist`,
+Decision #455)
 (thin: auth guard, then `?listing=` (a `svc-`/`prd-` slug, the workspace tab) or `?scope=`
 (`ConsoleScope`, the console view), `?period=` and the dev-axis `?sim=`, each refused with a `422`
 keyed by parameter; the handle is a `ClientKey` with its `@` stripped). Both resolve a scope to the
@@ -2174,7 +2181,13 @@ through the `useAttention` hook. Account composes three new services: `AccountLi
 `/auth/v1/settings` cached five minutes, a link as a PKCE `linkIdentity` whose verifier alone leaves as
 a cookie and comes back through `/api/auth/callback`, an unlink over REST refused for the email
 identity and the last sign-in method; linking needs `[auth] enable_manual_linking = true`) and
-`PlanBackendService` (the held plan or the free default, read-only). Language reads and writes the new
+`PlanBackendService` (the held plan or the free default, read-only). A fourth, `DataExportBackendService`
+(Decision #450), files a request for a copy of the person's own data and mints its download link per
+read over the `00001061` definers in the caller's JWT, and its `sweep` is the `account-data-exports`
+job: claim, collect 15 domains through `security.collect_data_export`, map each through a pure
+collector (`data-export-collectors.ts`) into its versioned `@projective/types/org` schema, ZIP them
+(`data-export-archive.ts`, `fflate`) into the service-only `data_exports` bucket, settle, and remove
+archives past their 7 days. Language reads and writes the new
 `date_format` column in its own statement so an older database degrades to "follow the locale". The
 dev `accountLifecycle` axis substitutes the handle policy or the lifecycle answers.
 
@@ -2511,6 +2524,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `auto-release-session-escrow`       | every 15 min                      | `finance.auto_release_session_escrow()`                                  | Sessions & cohorts (`00001155`, Decisions #171 / #211)            | State-gated: only `scheduled` sittings complete and only `held` escrows move — a 1-1 sitting's own escrow 24h after it, a cohort seat's after the last sitting, never under an open dispute.                                                                                                                                                                                                                                                                                                           |
 | `finance-sweep-expired-prepaid-escrows` | :04 / :19 / :34 / :49         | `finance.fn_sweep_expired_prepaid_escrows()`                             | Finance — prepaid ticket escrow (`00001200`, Decision #428)       | Each ticket row is locked `SKIP LOCKED` in the claim's order and its escrow re-read under the lock, so a claim that binds it first wins; only a `held`, unbound escrow past `expires_at` (120h a service, 168h a client project) is refunded, once, to its payer's wallet — logged `prepaid_ttl_expired`, told as `escrow.refunded`. |
 | `session-scheduling-handshakes`     | :07 / :22 / :37 / :52             | `projects.fn_lapse_session_handshakes()`                                 | Sessions — set-session blocks (`00001155`, Decision #211)         | One reminder per booking (the notification row is the mark); a round is closed once (`close_reschedule_round` answers NULL for a closed round).                                                                                                                                                                                                                                                                                                                                                        |
+| `cohort-waitlist-invites`           | every minute                      | `projects.fn_waitlist_dispatch()`                                        | Sessions — cohort waitlists (`00001155` §15, Decision #455)       | Expires only `invited` places whose hold is no longer live, then invites only `waiting` places, one per seat nobody holds, under the cohort row lock `reserve_seat` takes (rows `FOR UPDATE`, the expiry pass `SKIP LOCKED`), so a rerun or an overlapping run invites nobody twice and a full cohort invites nobody. |
 | `finance-dispute-sweep`             | :07 / :22 / :37 / :52             | `finance.sweep_disputes()`                                               | Finance — platform disputes (`00001260`, Decision #212)           | Each case is locked and re-checked by the function it is handed to: a settled escrow closes its dispute once, an `open` claim is audited once its sitting ends, an `awaiting_response` case past `respond_by` escalates once (`dispute.escalated`, stamping the review SLA `review_by`); an `under_review` case past `review_by` is never ruled — it writes one `ops.log_entries` `warn` row and notifies every operator (`dispute.review_overdue`) at most once a day per case (`review_alerted_at`). |
 | `finance-sweep-stale-payouts`       | every 10 min                      | `POST /api/finance/cron/payouts?limit=50` · `FINANCE_CRON_SECRET`        | Finance — `PaymentBackendService.sweepStalePayouts`               | Each payout is leased once per window (`finance.fn_claim_stale_payouts`, `SKIP LOCKED`); every transfer carries its payout's Stripe idempotency key. Seeded only where the claim function exists (Decision #202).                                                                                                                                                                                                                                                                                      |
 | `finance-recurring-deposits`        | hourly :15                        | `POST /api/finance/cron/deposits?limit=50` · `FINANCE_CRON_SECRET`       | Finance — `PaymentBackendService.processDueDeposits`              | A period is claimed once (`finance.claim_due_deposit_rules`) and each charge carries a Stripe idempotency key; a run left unbound by a transient failure is re-sent by the next sweep under the same key (≤ 23 h).                                                                                                                                                                                                                                                                                     |
@@ -2520,6 +2534,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `scheduling-forget-guest-addresses` | daily 04:25                       | `SELECT scheduling.fn_forget_guest_addresses()`                          | Scheduling — blanks a guest's address 30 days on (#391) |
 | `contact-attachment-sweep`          | hourly :25                        | `POST /api/contact/cron/attachments?limit=100` · `CONTACT_CRON_SECRET`   | Contact — `ContactBackendService.sweepAttachments` (#276)         | Each unsent contact upload older than 6 h is claimed once (`ops.fn_claim_stale_contact_attachments` soft-deletes it, `SKIP LOCKED`, so a file a submission or a Remove holds is skipped) and its object deleted through the Storage API; an object that fails to delete is logged — its row is already gone from every reader.                                                                                                                                                                         |
 | `account-erasures`                  | daily 04:10                       | `POST /api/user/cron/erasures?limit=100` · `ACCOUNT_CRON_SECRET`         | Account — `AccountLifecycleBackendService.sweepDue` (#156)        | A request completes once; one whose blockers came back is deferred, not forced.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `account-data-exports`              | :09, :24, :39, :54                | `POST /api/user/cron/data-exports?limit=5` · `ACCOUNT_CRON_SECRET`       | Account — `DataExportBackendService.sweep` (#450)                 | Claims with `SKIP LOCKED`; a build that throws goes back to pending (failing on its third attempt), an archive is settled once, and an expired one is marked only after its object is removed. Registered only where `security.claim_data_exports` exists.                                                                                                                                                                                                                                              |
 | `ops-watch-jobs`                    | every 10 min                      | `ops.fn_watch_jobs()`                                                    | Ops — the registry itself                                         | `SKIP LOCKED`; a dispatch is settled (and reported) once, a failed run is reported once (keyed by run id).                                                                                                                                                                                                                                                                                                                                                                                             |
 | `comms-process-queue`               | every minute                      | `comms.fn_process_queue(500)`                                            | Comms — the notification engine (`00001310`)                      | Overlapping ticks skip each other's rows (`SKIP LOCKED`); a promise that fails three times is parked as failed.                                                                                                                                                                                                                                                                                                                                                                                        |
 | `comms-escalate-unread`             | every 5 min from :04              | `comms.fn_escalate_unread(500)`                                          | Comms — the notification engine                                   | Falls back to email once per notification.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -2752,31 +2767,34 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   real peer. **No forwarded header is trusted:** behind a reverse proxy every caller is the proxy
   and a per-IP limit becomes one bucket per proxy, so such a deployment must wire the proxy's own
   client-address header into this one function (Decision #296 (F)).
-- **Auth rate limits (IW-H3):** every `POST /api/auth/*` (login, join, verify, resend,
+- **Auth rate limits (IW-H3):** every `POST /api/auth/*` (login, join, verify, confirm, resend,
   forgot-password, reset, sso, refresh, logout) is counted by
   `packages/backend/services/auth/auth-throttle.ts` before it reaches GoTrue, on the sliding-window
   limiter in `packages/backend/core/rate-limit.ts` (`takeAll` counts a request against every bucket
   or none). Two buckets per action: per client address (`clientKey`) and per identifier (the email,
   username or SSO domain, lowercased). Credential guesses (login, verify, reset) count every attempt
-  per address but only **failed** attempts per identifier (10 in 15 minutes), so a correct sign-in is
-  never slowed by its own history; mail senders (join, resend, forgot-password) count every attempt
-  per identifier, so one address cannot be mail-bombed; refresh, logout and sso count per address
-  only. A refusal is a uniform `429` with `Retry-After` and the same copy whether or not the account
-  exists; a throttled sign-out still clears the cookies (it skips only the GoTrue revocation). The
-  `/api/auth/*` middleware also forwards the same client address to GoTrue as `X-Forwarded-For`
-  (`runWithClientAddress` in `core/supabase.ts`, read by the anon and OAuth clients), so GoTrue's own
-  per-IP limits count the client, not this server. Per process, like every limiter here.
+  per address but only **failed** attempts per identifier (10 in 15 minutes), so a correct sign-in
+  is never slowed by its own history; mail senders (join, resend, forgot-password) count every
+  attempt per identifier, so one address cannot be mail-bombed; refresh, logout, sso and confirm
+  count per address only (a confirmation link's `token_hash` hides its account). A refusal is a
+  uniform `429` with `Retry-After` and the same copy whether or not the account exists; a throttled
+  sign-out still clears the cookies (it skips only the GoTrue revocation), and a throttled confirm
+  returns to `/verify/confirm` with the token unspent. The `/api/auth/*` middleware also forwards
+  the same client address to GoTrue as `X-Forwarded-For` (`runWithClientAddress` in
+  `core/supabase.ts`, read by the anon and OAuth clients), so GoTrue's own per-IP limits count the
+  client, not this server. Per process, like every limiter here.
 - **Cross-site write guard (IW-M2):** `routes/api/_middleware.ts` runs `apps/web/utils/csrf.ts`
   `refuseCrossSiteWrite` on every `/api/*` POST, PUT, PATCH and DELETE before a handler reads the
   body. The `Origin` must be the request's own origin or `APP_URL`'s (a browser that sends no
-  `Origin` must send `Sec-Fetch-Site: same-origin`), else `403`; a body must be declared
-  `application/json`, else `415` (a bodiless write passes). That is what stops login CSRF: another
-  site can post a form or a `text/plain` body without a preflight, but not JSON, and it cannot forge
-  `Origin`. Exempt: webhooks (`/api/…/webhooks/…`) and scheduler endpoints (`/api/…/cron/…`), which
-  are server-to-server and authenticate with a signature or a bearer secret; `/api/contact` and
-  `/api/help/feedback` additionally accept their no-JavaScript form bodies, still same-origin only.
-  The `pj_csrf` double-submit cookie in `utils/storage-keys.ts` is unnecessary under this check and
-  stays unset.
+  `Origin`, or the opaque `Origin: null` it sends for a form posted from a `no-referrer` page, must
+  send `Sec-Fetch-Site: same-origin`, which an opaque initiator never gets; Decision #445), else
+  `403`; a body must be declared `application/json`, else `415` (a bodiless write passes). That is
+  what stops login CSRF: another site can post a form or a `text/plain` body without a preflight,
+  but not JSON, and it cannot forge `Origin`. Exempt: webhooks (`/api/…/webhooks/…`) and scheduler
+  endpoints (`/api/…/cron/…`), which are server-to-server and authenticate with a signature or a
+  bearer secret; `/api/contact`, `/api/help/feedback` and `/api/auth/confirm` additionally accept
+  their plain HTML form bodies, still same-origin only. The `pj_csrf` double-submit cookie in
+  `utils/storage-keys.ts` is unnecessary under this check and stays unset.
 - **Content Security Policy (CSP):** every response gets one policy, built by the pure
   `apps/web/utils/csp.ts` and set by the global `routes/_middleware.ts` (only when the response has
   none of its own). Third-party origins are exactly the ones a page talks to: **Stripe** —
@@ -2871,8 +2889,71 @@ PostgreSQL RLS.
   confirmed answer carries `signedIn` (whether the request holds a session), so the page continues
   in, or shows "Email confirmed — sign in" when the link was opened on another device. Resend and
   forgot-password were already uniform.
+- **Email-confirmation link (Decision #445):** the one-time `token_hash` is spent only by a person's
+  press, never by a GET, because mail scanners open every link before the recipient does. The email
+  links to `/verify/confirm?token_hash=…&type=email`, a server-rendered page
+  (`features/auth/routes/confirm-handler.ts`) that shape-checks the token and renders one Confirm
+  button. It reads no account, so it reveals nothing about whose link it is (#185), and every answer
+  is `noindex`, `no-store` and `no-referrer`. The button is a plain form (`ConfirmEmailForm`)
+  posting to `POST /api/auth/confirm`: the `/api` write guard (a form body allowed, same-origin
+  only), Zod `ConfirmLinkSchema`, the per-client `confirm` throttle (30 per 10 minutes; a throttled
+  press returns to the page with `notice=throttled`, token unspent), then `confirmEmailLink` →
+  `verifyOtp`. Success mints the session cookies on the pressing device and lands on `/home`; a
+  malformed, expired or spent token lands on `/login?notice=confirm_failed`. Nothing submits the
+  form for the person: a scanner that runs scripts must still not spend the token, and the hydrated
+  island only refuses a second submit, which would abort the first response and drop its cookies.
+  `GET /api/auth/confirm` (the link in emails sent before this change) spends nothing: it `303`s to
+  the page with the same query.
 - **Environment:** an unset `DENO_ENV` is production, so stub auth, dev overrides and relaxed
   cookies need `DENO_ENV=development` by name (K10, IW-M1; §Environment Variable Contract).
+- **One password rule, enforced by GoTrue too (Decision #449).** `PasswordSchema`
+  (`@projective/types/auth`, `password.ts`): at least 8 characters, at most 72 UTF-8 bytes (GoTrue's
+  bcrypt cap, so an accented letter or an emoji counts double or more), and at least one lower-case
+  letter, one capital and one digit, ASCII as GoTrue tests them. `/join`, the reset and the Settings
+  change validate with it, and the islands' instant check reads its `passwordIssue`. Sign-in never
+  applies it: a password set before the rule still signs in, and GoTrue's `weak_password` note on
+  that response is ignored. `supabase/config.toml` drives only the local GoTrue, and
+  `packages/types/auth/gotrue-config.contract.test.ts` fails `test:unit` when it drifts. A hosted
+  project holds the same values in its dashboard, set by hand (or by the Management API's
+  `PATCH /v1/projects/{ref}/config/auth`, field names in brackets):
+  - **Password strength:** minimum length 8, required characters "lowercase, uppercase letters and
+    digits" (Authentication → Providers → Email; `password_min_length`,
+    `password_required_characters` =
+    `abcdefghijklmnopqrstuvwxyz:ABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789`).
+  - **Secure password change on** (the same page;
+    `security_update_password_require_reauthentication`). A change from a session over 24 hours
+    old then needs the code GoTrue mails from `/reauthenticate`. No app flow meets it: every change
+    is a recovery-code reset (Settings mails the reset, ID-38), and the recovery verify mints a
+    fresh session.
+  - **Google's "Skip nonce checks" off** (Providers → Google; `external_google_skip_nonce_check`).
+    GoTrue reads it only in the ID-token grant (`signInWithIdToken`, One Tap). The app signs in
+    through the PKCE redirect (`signInWithOAuth` → `exchangeCodeForSession`), which never meets it.
+    An ID-token flow must pass a nonce rather than turn this on.
+  - **Manual identity linking stays on** (`security_manual_linking_enabled`), reviewed and kept:
+    Settings → Account → Connected accounts links and unlinks providers with `linkIdentity` /
+    `unlinkIdentity` (ID-39). A link needs a signed-in session and the provider's own consent, and
+    the email identity is never unlinked from there.
+- **Bot protection: Cloudflare Turnstile on every anonymous auth write (Decision #447).** GoTrue's
+  own CAPTCHA (`config.toml` `[auth.captcha]`, `turnstile`, secret
+  `env(SUPABASE_AUTH_CAPTCHA_SECRET)`) refuses a token-less signup, password grant, recover, resend,
+  otp, magiclink or sso call, including a direct `/auth/v1/*` call with the public anon key.
+  `AuthBackendService` forwards the widget's token as `options.captchaToken` on
+  `signInWithPassword`, `resetPasswordForEmail` and a person's `resend`, and answers GoTrue's
+  `captcha_failed` with one retryable `CAPTCHA_REFUSAL` (400). That refusal is decided before any
+  account lookup, so recovery and resend stay anti-enumeration. GoTrue skips the check for admin
+  credentials, and `/join` creates its account with `auth.admin.createUser`, so
+  `POST /api/auth/join` verifies the token itself (`refuseIfCaptchaFails` →
+  `packages/backend/core/turnstile.ts`: siteverify, the `APP_URL` hostname, action `join`, 300 s;
+  400 on a bad token, 503 when Cloudflare is unreachable or no secret outside development) before
+  provisioning, and the confirmation that follows goes through the service client, because the
+  token is single-use. The widget (`CaptchaField` in the `@projective/ui` `Captcha` frame,
+  `interaction-only`) gets its site key from the page handler or, in the sign-in dialog, from
+  `GET /api/auth/captcha`, and resets after every submit. Cloudflare's test keys count only under
+  `DENO_ENV=development`; locally GoTrue runs with the always-pass test secret, and the `pj.dev.captcha`
+  axis swaps in the always-fail or forced-challenge pair. A hosted project needs its own widget,
+  `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` in the app's secrets, and the secret under
+  Authentication → Bot and Abuse Protection. `features/auth/core/captcha.contract.test.ts` fails
+  `test:unit` while the CAPTCHA is on and a gated call drops the token.
 - **Enterprise SSO is SAML-first and flag-hidden.** Today `/login` and the sign-in prompt still show
   the SSO entry (`SsoPanel`) with no provider configured. The ruled roadmap is to hide the panel
   now, then verified domains → SAML through GoTrue → JIT seats, on the Enterprise plan only. **Not
@@ -2881,24 +2962,52 @@ PostgreSQL RLS.
   traction builds, the platform will expand to include Microsoft (Azure AD), GitHub, and Apple SSO.
 - **Database Sync:** A Supabase trigger automatically creates a corresponding public `users` profile
   record whenever a new identity is registered in the `auth.users` schema.
-- **Transactional emails:** GoTrue sends branded, dual-path emails from `supabase/templates/` (wired
-  in `config.toml` `[auth.email.template.*]`). The **confirmation** and **recovery** templates each
+- **Transactional emails:** GoTrue sends branded emails from `supabase/templates/` (wired in
+  `config.toml` `[auth.email.template.*]` and `[auth.email.notification.*]`; the full set is the next
+  bullet). The **confirmation** and **recovery** templates each
   surface the **6-digit OTP** (`{{ .Token }}`, `otp_length = 6`) _and_ a link, matching the
   `/verify` and `/forgot-password` "type the code or click the link" flows. Every URL hangs off
   `{{ .RedirectTo }}`, which `AuthBackendService` sets to the bare `APP_URL` origin (GoTrue
   substitutes `site_url`, also a bare origin, when it refuses one): the confirmation button opens
-  `GET /api/auth/confirm?token_hash=…&type=email` (thin route → `confirmEmailLink` → `verifyOtp`,
-  session cookies minted on the clicking device, `/home`; a spent link lands on
-  `/login?notice=confirm_failed`), and the recovery button opens `/forgot-password?email=…&step=reset`
-  on the code step. Design follows the design-system palette for seed `#288690` resolved to literal
-  hex (no card: one column on the `--bg` tone, the code on a `--surface-2` tint, `--primary` /
-  `--on-primary` button, semibold headings, `tabular-nums` code), responsive, dark-mode-aware
-  (`prefers-color-scheme`), inline CSS + table layout with VML buttons for Outlook. The one image is
+  `/verify/confirm?token_hash=…&type=email`, where the person's press of Confirm spends the token
+  (Decision #445), and the recovery button opens `/forgot-password?step=reset` on the code step. No
+  link carries the address (Decision #448): the code step asks for it when the page didn't send the
+  code itself, and the route 303s away any `?email=`. Design follows the design-system palette for
+  seed `#288690` resolved to literal hex (no card: one column on the `--bg` tone, the code on a
+  `--surface-2` tint, `--primary` / `--on-primary` button, semibold headings, `tabular-nums` code),
+  responsive, dark-mode-aware (`prefers-color-scheme`), inline CSS + table layout. GoTrue renders
+  through Go's `html/template`, which strips every HTML comment, so the templates' Outlook
+  conditional-comment VML buttons never ship; Outlook gets the table button. The one image is
   the self-contained app-icon mark, `apps/web/static/email/logo-mark.png` (rendered from
   `static/logo.svg`), with an empty `alt` because the live-text wordmark follows it. Locally GoTrue
   fetches the bind-mounted templates from Kong's `:8088` server; a `kong reload` drops that server and GoTrue
   silently falls back to its default email (fix: `docker restart supabase_kong_<project_id>`).
   Mail lands in Mailpit (`http://127.0.0.1:54324`).
+- **Every email GoTrue can send has a template, and its sender is the production provider**
+  (Decision #448; inventory and reasons in `apps/web/features/auth/core/gotrue-mail.test.ts`).
+
+  | Type                                    | Reached by                                                                    | Built on                              |
+  | :-------------------------------------- | :---------------------------------------------------------------------------- | :------------------------------------ |
+  | `confirmation` · `recovery`             | sign-up, `/verify` Resend, `/forgot-password`, Settings → Password            | `{{ .RedirectTo }}`, code + link      |
+  | `reauthentication`                      | GoTrue's `/reauthenticate` only; the app's resets mint a fresh session        | `{{ .SiteURL }}`, code only           |
+  | `magic_link` · `email_change`           | GoTrue's public API only (`/otp`, `PUT /user`); GoTrue cannot switch them off | `{{ .SiteURL }}`, **no link or code** |
+  | `password_changed` notification         | every recovery reset                                                          | `{{ .SiteURL }}`                      |
+  | `identity_linked` · `identity_unlinked` | Settings → Connected accounts                                                 | `{{ .SiteURL }}`                      |
+  | `mfa_factor_enrolled` · `_unenrolled`   | wired ahead of MFA1 (TOTP enrolment is off)                                   | `{{ .SiteURL }}`                      |
+
+  Not wired, so GoTrue keeps its default: `invite` (service role only, no caller), `email_changed`
+  (follows a change `email_change.html` never confirms) and `phone_changed` (no SMS). GoTrue passes
+  `RedirectTo` only to the link-bearing types, so the rest build their logo and links on
+  `{{ .SiteURL }}`, and **`site_url` must be the app's public origin** in every hosted project.
+  `magic_link` and `email_change` are notices, not credentials: the app signs in by password or a
+  provider and moves the sign-in address only through the admin API (Decision #451, below), so a
+  direct API call mails a "nothing has changed" notice rather than a working link. `max_frequency` (30 s) equals the app's Resend cooldown
+  (`RESEND_COOLDOWN_S`). Sender: `[auth.email.smtp]` is Resend SMTP (`smtp.resend.com:465`, user
+  `resend`, `env(SUPABASE_AUTH_SMTP_PASS)`, `env(SUPABASE_AUTH_SMTP_ADMIN_EMAIL)`, sender name
+  `Projective`), declared with `enabled = false` so local mail stays in Mailpit. Hosted, the same
+  values go in Dashboard → Authentication → SMTP Settings, plus the subjects and template bodies under
+  Email Templates. `supabase config push` sends `enabled = false` as "SMTP off", so push only with
+  `SUPABASE_AUTH_EMAIL_SMTP_ENABLED=true` and both secrets in the environment. Runbook: EPI §8.5.
 - **Secondary email addresses are verified by token, never by a column write** (Decision #151).
   `org.user_emails.verified_at` unlocks invitations sent to an address (`projects.project_invitations`,
   `org.fn_is_invitee`, `projects.invite_by_email`), so clients have SELECT only on the table and every
@@ -2911,6 +3020,29 @@ PostgreSQL RLS.
   sign-in address is still confirmed by GoTrue (`public.handle_email_confirmed`). The link leaves
   through `packages/backend/services/mail/verification-mailer.ts` — see the Environment Variable
   Contract for its no-transport behaviour.
+- **The sign-in address moves through GoTrue's admin API, to an address the app's token already
+  proved** (Decision #451). `POST /api/user/emails/:id/sign-in` → `EmailsBackendService.makeSignIn`
+  (`services/user/sign-in-change.ts`, live ports in `sign-in-change-live.ts`), in this order:
+  `org.prepare_sign_in_change` under the caller's token (theirs, confirmed, not already the sign-in,
+  not another account's sign-in, account not closing, a password exists, at most 2 moves per rolling 3 days counted from
+  `user.sign_in_changed` audit rows); the current password through GoTrue's own anon password grant
+  (the Turnstile token passed through, the throwaway session revoked at once, the `reauth`
+  auth-throttle bucket per client and per account); then the service role's
+  `auth.admin.updateUserById(sub, { email, email_confirm: true })`; then
+  `org.record_sign_in_change` under the caller's token, which refuses unless `auth.users.email`
+  already IS the address, and writes the one audit row and the required `account.sign_in_changed`
+  notice; then `auth.admin.signOut(callerJwt, "others")`; then a notice to the old address
+  (`services/mail/sign-in-change-mailer.ts`, masked new address). The service role is safe there
+  because the subject is the verified session's, the address is the caller's own confirmed row as
+  their own token returned it, and it runs only after the password checked out. `email_confirm`
+  because the app's single-use token already proved the inbox; GoTrue's own change flow stays shut
+  (`email_change.html` carries no link, Decision #448), and an admin update sends no GoTrue mail. A
+  clash with another account's sign-in answers the generic `sign_in_unavailable`, never "taken" (the
+  #185 posture): `org.prepare_sign_in_change` checks `auth.users` first, because GoTrue v2.197's
+  admin update reports the clash only as an opaque `500 unexpected_failure`, and a failed update
+  asks it again to tell a clash that slipped in between from an outage. Revoked sessions stop refreshing at once,
+  but their access tokens live out their hour until MFA2's live-session check; this is the sixth
+  step-up action (#336 ruling I3, amended by #451).
 - **Age guardrails are enforced in Postgres (Decision #190).** PRODUCT_SPEC §Age guardrails holds on
   every path, not only `/join`: `public.provision_user_profile` runs `org.fn_check_dob` before any
   write, so an under-13 date of birth is refused (`PM422`) whether it arrives through
@@ -3230,8 +3362,8 @@ shown.
 | Cookie `pj.screen_share` | `1`; deleted (`max-age=0`) when off | `ScreenShareBridge`, and the pre-paint restorer | Mirror only: `path=/; max-age=31536000; samesite=lax`, `Secure` on HTTPS (Decision #201's builders), **not** HttpOnly. It is **non-authoritative**: it can only remove output, never widen access. |
 | `ctx.state.screenShare: boolean` | `true` only for exactly `1` | `routes/_middleware.ts` via `utils/screen-share-context.ts` `resolveScreenShare(req)` | A header read with no I/O, like `resolveA11yContext`. Anything malformed means off. |
 | `<html data-screen-share="active">` | present only when on | `_app.tsx` (SSR), the pre-paint restorer, then the bridge | The one selector every CSS treatment keys on. Like the a11y overlays, only ON becomes an attribute. |
-| `ScreenShareContext` | `{ active: boolean }` | `_app.tsx` provider | Per-request **context**, never a module signal, for `CurrencyContext`'s reason: one server process renders many viewers at once. |
-| `screenShareActive` signal | seeded from the `<html>` attribute | `@projective/ui/utils` store | What islands read. `MoneyView` / `NumberInput` / `Obscure` resolve **context → store**, the way `useCurrencyView` resolves currency. |
+| `ScreenShareContext` | `{ active: boolean }` | `_app.tsx` provider | Per-request **context**, never a module signal, for `CurrencyContext`'s reason: one server process renders many viewers at once. The root provider does not reach a server component inside an island subtree, so `utils/screen-share-scope.ts` also opens a request-scoped `AsyncLocalStorage` (`runWithScreenShare`, around `ctx.next()`) and installs it as the ambient resolver — `CurrencyContext`'s measured remedy. |
+| `screenShareActive` signal | seeded from the `<html>` attribute when the module loads | `@projective/ui/utils/screen-share` store | What islands read. `MoneyView` / the money fields / `Obscure` resolve **context → ambient → store**, the way `useCurrencyView` resolves currency. |
 
 **`_app.tsx` duties.** Three things, in the same discipline as `data-theme` and `pj.a11y`:
 1. **Write `data-screen-share="active"` on `<html>`** when `state.screenShare` is true.
@@ -3240,7 +3372,10 @@ shown.
 3. **Run a pre-paint restorer** `<script>`. If the cookie is absent but the `localStorage` key is
    `"1"`, it sets the attribute before first paint and re-writes the cookie, so the next request
    is server-masked again. Its literal key **MUST** match `LocalKeys.SCREEN_SHARE`, and its cookie
-   format **MUST** match `screen-share-context.ts`. It does nothing when the cookie exists.
+   format **MUST** match `screen-share-context.ts` (`SCREEN_SHARE_PREPAINT_SCRIPT`, pinned by a unit
+   test that runs it against a fake document). When the cookie exists it re-writes nothing, and
+   paints the attribute only if the cookie is exactly `1` — a guard for a shell document the
+   service worker served from an earlier request. It never removes the attribute.
 
 **Standalone route inheritance.** Every route group renders through `routes/_app.tsx` under
 `routes/_middleware.ts`. That includes `(standalone)` (`/inspect/[fileId]`), `(public)`,
@@ -3266,7 +3401,10 @@ attribute → cookie → `localStorage` (the `storage` event carries it to other
 live-region announcement ("Screen sharing mode on" / "off"). Turning it off restores swept nodes
 from the `WeakMap`, and islands re-render from props they already hold. A figure that was masked
 **from the first byte** never reached the client, so it stays masked until the next navigation.
-A toast says so. A reload is never forced, because it would discard unsaved drafts.
+A toast says so. A reload is never forced, because it would discard unsaved drafts. Every
+control (and devtools) asks for a change through `setScreenShareMode(active?)`
+(`features/shell/core/screen-share-state.ts`) or a `pj:screen-share` `CustomEvent` on `document`
+(`detail.active`; omitted = toggle); the bridge is the only code that applies one.
 
 **Keyboard.** `shell/core/shortcuts.ts` gains `isScreenShareShortcut`: `ctrlKey || metaKey`, plus
 Shift and S, with no Alt, not `repeat`, and not already `defaultPrevented`. It matches by `code ===
@@ -3864,7 +4002,10 @@ The application relies on a strict set of environment variables. The canonical s
 > `CLAUDE.md` §6 — a real key is never committed). Every `*_BACKEND_LIVE` gate carries its literal
 > **default, `false`**, because it is a boolean parsed by `serverEnv()` as
 > `(value ?? "false").toLowerCase() === "true"` — an `XXXX-XXXX` there is not a redacted secret, it is
-> a value that silently parses as `false` while *looking* configured.
+> a value that silently parses as `false` while *looking* configured. One deliberate exception: the
+> three Turnstile keys carry Cloudflare's published always-pass **test** keys, because a placeholder
+> secret would make the local GoTrue refuse every sign-in; the app refuses test keys outside
+> development, so a copied file fails closed (Decision #447).
 
 > **Where real values go.** `apps/web/main.ts` loads exactly two files from the repo root —
 > `.env.local` first, then `.env` (`@std/dotenv` `export: true` never overwrites, so the first file
@@ -3873,7 +4014,7 @@ The application relies on a strict set of environment variables. The canonical s
 > `.env.local`, `.env.development` and `.env.production` are git-ignored and untracked
 > (Decision #125(i)), so a fresh clone starts by copying `.env.example` to `.env.local`. No
 > `deno task`, script or CI job reads a tracked env file. The Supabase CLI resolves `env(...)` in `supabase/config.toml`
-> (Google sign-in, Twilio, Apple, S3) from the process environment and the dotenv files it finds in
+> (Google sign-in, Twilio, Apple, S3, GoTrue SMTP, the Turnstile secret) from the process environment and the dotenv files it finds in
 > `supabase/` and the repo root, `.env.local` included.
 
 > **Share mode (`deno task share`, `scripts/share.ts`).** Serves the production build on loopback
@@ -3892,7 +4033,11 @@ The application relies on a strict set of environment variables. The canonical s
 > `delivery: "logged"`; under `DENO_ENV=production` nothing is sent, a warning is logged WITHOUT the
 > address or the token, and `delivery` is `"unavailable"`. `mailCanLeave()` is what a surface asks
 > before it offers anything that needs an email, so production with no key offers no such thing.
-> `APP_URL` builds every link, so it must be the public origin anywhere deployed.
+> `APP_URL` builds every link, so it must be the public origin anywhere deployed. GoTrue's auth mail
+> goes through the same provider (Decision #448): `SUPABASE_AUTH_SMTP_PASS` (the Resend sending key)
+> and `SUPABASE_AUTH_SMTP_ADMIN_EMAIL` (the bare address inside `MAIL_FROM`) are read only by
+> `supabase/config.toml` `[auth.email.smtp]`, which stays off locally; hosted, they are entered in the
+> Dashboard (§Authentication & Identity).
 
 > **`DENO_ENV` — unset means production (IW-M1 / K10).** `serverEnv().appEnv` and the web layer's
 > `apps/web/utils/app-env.ts` both read a missing `DENO_ENV` as `production`. Every development-only
@@ -3921,6 +4066,14 @@ SUPABASE_JWT_SECRET=XXXX-XXXX
 # Authentication (OAuth) — SIGN-IN only; GoTrue owns this and retains no API token
 GOOGLE_CLIENT_ID=XXXX-XXXX
 GOOGLE_CLIENT_SECRET=XXXX-XXXX
+
+# Bot mitigation — Cloudflare Turnstile (Decision #447). Cloudflare's published always-pass TEST
+# keys, not credentials; outside DENO_ENV=development the app treats them as absent. The site key is
+# public (served by a route); the secret is server-only, and GoTrue reads the same value as
+# SUPABASE_AUTH_CAPTCHA_SECRET through supabase/config.toml [auth.captcha].
+TURNSTILE_SITE_KEY=1x00000000000000000000AA
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+SUPABASE_AUTH_CAPTCHA_SECRET=1x0000000000000000000000000000000AA
 
 # Integrations (connection OAuth) — a SEPARATE consent that stores a long-lived API grant.
 # Never share a client or a token store with the sign-in credentials above.

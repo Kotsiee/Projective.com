@@ -732,6 +732,126 @@ Deno.test("fetchBoardPage answers null — after ONE read — for a project RLS 
 });
 // #endregion
 
+// #region fetchBoardPage — seats read through projects.get_viewer_stage_seats
+const BUYER_ID = "66666666-6666-4666-8666-666666666666";
+const MEMBER_ID = "77777777-7777-4777-8777-777777777777";
+const TEAM_ID = "88888888-8888-4888-8888-888888888888";
+const MEMBER = actorOf(MEMBER_ID);
+const SEATS_RPC = "projects.rpc.get_viewer_stage_seats";
+
+const TEAM_SERVICE_ROW = {
+	...PROJECT_ROW,
+	client_user_id: BUYER_ID,
+	owner_team_id: TEAM_ID,
+	source_blueprint_id: "99999999-9999-4999-8999-999999999990",
+};
+
+const TEAM_SEAT_ROWS = [S1, S2].map((id) => ({
+	project_stage_id: id,
+	assignee_type: "team",
+	freelancer_profile_id: null,
+	status: "accepted",
+}));
+
+const SERVICE_TICKETS = [
+	ticket(T1, {
+		current_stage_id: S1,
+		payment_status: "escrow_funded",
+		required_stages: [{ stage_id: S1, order: 0 }],
+	}),
+	ticket(T2, {
+		current_stage_id: S2,
+		payment_status: "escrow_funded",
+		required_stages: [{ stage_id: S2, order: 0 }],
+	}),
+	ticket(T3, { title: "Still in New", payment_status: "escrow_funded" }),
+];
+
+function teamSeat(stageId: string, status = "accepted") {
+	return { project_stage_id: stageId, status, team_id: TEAM_ID };
+}
+
+Deno.test("a member of the team holding a service's seat sees that stage's paid cards", async () => {
+	const routes = boardRoutes({
+		"projects.projects": [TEAM_SERVICE_ROW],
+		"projects.tickets": SERVICE_TICKETS,
+		"projects.stage_assignments": [],
+		[SEATS_RPC]: [teamSeat(S1)],
+	});
+	await withPostgrest(routes, async () => {
+		const page = await fetchBoardPage(MEMBER, { projectId: SLUG });
+		assert(page);
+		BoardPageSchema.parse(page);
+		assertEquals(page.engagementKind, "service");
+		assertEquals(page.viewerIsClient, false);
+		assertEquals(page.viewerStageIds, [S1]);
+		assertEquals(page.cards.map((c) => c.id), [T1], "S2 is unseated for them and T3 is in New");
+	});
+});
+
+Deno.test("the seller of a team's service sees every stage its team seat is onboarded to", async () => {
+	const routes = boardRoutes({
+		"projects.projects": [TEAM_SERVICE_ROW],
+		"projects.tickets": SERVICE_TICKETS,
+		"projects.stage_assignments": TEAM_SEAT_ROWS,
+		[SEATS_RPC]: [teamSeat(S1), teamSeat(S2)],
+	});
+	await withPostgrest(routes, async () => {
+		const page = await fetchBoardPage(OWNER, { projectId: SLUG });
+		assert(page);
+		assertEquals(page.viewerIsClient, false, "the seller of a bought service is its provider");
+		assertEquals(page.viewerStageIds, [S1, S2]);
+		assertEquals(page.cards.map((c) => c.id), [T1, T2]);
+	});
+});
+
+Deno.test("a seat read through the definer answers to the same deny-list as an RLS-read one", async () => {
+	for (const status of ["declined", "pending_funding"]) {
+		const routes = boardRoutes({
+			"projects.projects": [TEAM_SERVICE_ROW],
+			"projects.tickets": SERVICE_TICKETS,
+			"projects.stage_assignments": [],
+			[SEATS_RPC]: [teamSeat(S1, status)],
+		});
+		await withPostgrest(routes, async () => {
+			const page = await fetchBoardPage(MEMBER, { projectId: SLUG });
+			assert(page);
+			assertEquals(page.viewerStageIds, [], status);
+			assertEquals(page.cards, [], status);
+		});
+	}
+});
+
+Deno.test("a hired freelancer RLS hides their own seat from still sees their stage's paid cards", async () => {
+	const routes = boardRoutes({
+		"projects.stage_assignments": [],
+		"projects.tickets": [ticket(T2, { current_stage_id: S2, payment_status: "released" })],
+		[SEATS_RPC]: [{ project_stage_id: S2, status: "accepted", team_id: null }],
+	});
+	await withPostgrest(routes, async () => {
+		const page = await fetchBoardPage(PROVIDER, { projectId: SLUG });
+		assert(page);
+		assertEquals(page.viewerStageIds, [S2]);
+		assertEquals(page.cards.map((c) => c.id), [T2]);
+	});
+});
+
+Deno.test("the client side never reads seats, and a failed seat read falls back to the RLS rows", async () => {
+	await withPostgrest(boardRoutes(), async (calls) => {
+		const page = await fetchBoardPage(OWNER, { projectId: SLUG });
+		assert(page?.viewerIsClient);
+		assertEquals(calls.filter((c) => c.rpc && c.name === "get_viewer_stage_seats"), []);
+	});
+	const denied = boardRoutes({ [SEATS_RPC]: pgFail("42501", "permission denied", 403) });
+	await withPostgrest(denied, async () => {
+		const page = await fetchBoardPage(PROVIDER, { projectId: SLUG });
+		assert(page);
+		assertEquals(page.viewerStageIds, [S2, S1]);
+		assertEquals(page.cards.map((c) => c.id), [T1]);
+	});
+});
+// #endregion
+
 // #region fetchBoardPage — failures
 Deno.test("fetchBoardPage: failed secondary reads degrade (USD, no history, no rosters) instead of throwing", async () => {
 	const denied = pgFail("42501", "permission denied", 403);

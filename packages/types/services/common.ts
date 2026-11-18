@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { WaitlistStatus } from "../projects/sessions.ts";
 
 /**
  * services.common — the **booking format** vocabulary shared by every service CTA on the platform.
@@ -178,6 +179,12 @@ export interface CtaInput {
 	 * cohort open yet" and "this cohort is full" are different facts.
 	 */
 	cohortOpen?: boolean;
+	/**
+	 * The viewer's own place on a group session's waitlist (Decision #455). Optional (absent reads as
+	 * none). `invited` offers the held seat even though the public count reads full; `waiting` states the
+	 * place instead of offering a second join; `expired` offers joining again, at the back.
+	 */
+	waitlist?: { status: WaitlistStatus; position: number | null } | null;
 	/** The board href of an existing pipeline draft, or `null` when there is none. */
 	draftHref: string | null;
 	/** Whether the provider is currently accepting bookings at all. */
@@ -201,10 +208,15 @@ export interface CtaInput {
  * **A full cohort, or none enrolling, is a waitlist, not a dead end (Decision #424).** The primary
  * stays enabled as `join_waitlist` and its `note` states which of the two facts holds, because "no
  * cohort yet" and "this cohort is full" are different reasons to wait.
+ *
+ * **The viewer's own place answers first (Decision #455).** An invited buyer is offered the seat held
+ * for them; a waiting one is told their place rather than offered a second join, which would do
+ * nothing; an expired one may join again, at the back of the queue.
  */
 export function resolveCta(input: CtaInput): ServiceCtaRig {
 	const { format, sessionCount, seatsRemaining, draftHref, bookingsOpen, cohortOpen = true } =
 		input;
+	const place = input.waitlist ?? null;
 
 	const basket: BookingCta = {
 		kind: "add_to_basket",
@@ -294,19 +306,61 @@ export function resolveCta(input: CtaInput): ServiceCtaRig {
 
 		case "cohort": {
 			const left = seatsRemaining ?? 0;
+			if (cohortOpen && place?.status === "invited") {
+				return {
+					format,
+					primary: {
+						kind: "reserve_seat",
+						label: "Reserve your held seat",
+						ariaLabel: "Reserve the seat held for you from the waitlist",
+						href: null,
+						disabled: false,
+						disabledReason: null,
+						note: "A seat is held for you from the waitlist.",
+					},
+					secondary: null,
+				};
+			}
 			if (!cohortOpen || left <= 0) {
+				if (place?.status === "waiting") {
+					return {
+						format,
+						primary: {
+							kind: "join_waitlist",
+							label: "On the waitlist",
+							ariaLabel: place.position
+								? `You're on the waitlist, number ${place.position} in the queue`
+								: "You're on the waitlist",
+							href: null,
+							disabled: true,
+							disabledReason: place.position
+								? `You're number ${place.position} in the queue. When a seat is yours, it's held for you.`
+								: "You're in the queue. When a seat is yours, it's held for you.",
+						},
+						secondary: null,
+					};
+				}
+				const again = place?.status === "expired";
 				return {
 					format,
 					primary: {
 						kind: "join_waitlist",
-						label: cohortOpen ? "Join the waitlist" : "Notify me when a cohort opens",
-						ariaLabel: cohortOpen
+						label: again
+							? "Join the waitlist again"
+							: cohortOpen
+							? "Join the waitlist"
+							: "Notify me when a cohort opens",
+						ariaLabel: again
+							? "Your held seat was released — join the waitlist again, at the back of the queue"
+							: cohortOpen
 							? "This cohort is full — join the waitlist for the next one"
 							: "No cohort is enrolling — get notified when the next one opens",
 						href: null,
 						disabled: false,
 						disabledReason: null,
-						note: cohortOpen
+						note: again
+							? "The seat held for you was released. Joining again puts you at the back of the queue."
+							: cohortOpen
 							? "Every seat in this cohort is taken."
 							: "No cohort is enrolling yet.",
 					},

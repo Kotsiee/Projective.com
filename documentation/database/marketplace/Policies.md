@@ -33,18 +33,30 @@ cascaded into `catalogue.listings`, and named no team check at all. A blueprint 
 | Active placements are public      | SELECT  | anon, authenticated | `cancelled_at IS NULL AND starts_at <= now() AND ends_at > now()` |
 | Sponsors see their own placements | SELECT  | authenticated       | `sponsor_user_id = auth.uid()`                                   |
 
-An active placement is public on purpose — it is what the "AD" disclosure is answerable from. There
-is deliberately **no client write policy**: a placement is paid for, so it is written by the billing
-path that took the payment (a definer or the service role), never by a PostgREST insert.
+An active placement is public on purpose — it is what the "Promoted" slot's disclosure is
+answerable from. There is deliberately **no client write policy**: a placement is allocated by the
+seller's plan (Decision #454), so it is written only by the entitlement-checked
+`marketplace.promote_listing` / `stop_listing_promotion` definers, never by a PostgREST insert (the
+probe `promoted_placements.sql` asserts both roles are refused).
 
 ### `marketplace.quote_requests`
 
-| Policy                              | Command | Roles         | Rule                                                                                         |
-| :---------------------------------- | :------ | :------------ | :------------------------------------------------------------------------------------------- |
-| Parties see their quote requests    | SELECT  | authenticated | The caller is the requester or the host.                                                     |
-| Buyers raise quote requests         | INSERT  | authenticated | The caller is the requester, not the host, and the blueprint is published AND sold by that host. |
-| Parties update their quote requests | UPDATE  | authenticated | The caller is a party (pre- and post-image).                                                 |
+| Policy                           | Command | Roles         | Rule                                     |
+| :------------------------------- | :------ | :------------ | :--------------------------------------- |
+| Parties see their quote requests | SELECT  | authenticated | The caller is the requester or the host. |
 
-A policy sees only the post-image, so the parties and the blueprint are pinned by
-`trg_quote_requests_parties` (`security.fn_guard_immutable_columns`): the host answers, the buyer
-withdraws, and neither can re-address the request. Verified by execution against the seeded corpus.
+**No client write (Decision #458).** The former INSERT and UPDATE policies are gone. A shared UPDATE
+could not tell which party moved which status, so a buyer could mark their own request `answered`
+(reproduced on the shared DB before the change). Every write is a door in
+[`00001177`](Functions.md#quote-requests-and-offers--00001177_functions_marketplace_quotessql), and
+`trg_quote_requests_parties` still pins the parties and the blueprint against the doors themselves.
+
+### `marketplace.quote_offers`
+
+| Policy                         | Command | Roles         | Rule                                                 |
+| :----------------------------- | :------ | :------------ | :--------------------------------------------------- |
+| Parties see their quote offers | SELECT  | authenticated | The caller is the requester or the host of its request. |
+
+No client write: the offer doors in 00001177 are the only way in. Both tables are verified by
+execution in `supabase/probes/quote_offers.sql`: a direct insert answers `42501`, a buyer's
+direct status update changes nothing, and a stranger reads neither table.

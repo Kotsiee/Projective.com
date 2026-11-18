@@ -15,6 +15,7 @@ domain `CLAUDE.md` files ([`business/`](business/CLAUDE.md), [`database/`](datab
 | Per-domain schema                               | [`database/`](database/README.md)                                                                |
 | API / integrations / route tables               | [`api/`](api/README.md)                                                                          |
 | Per-route UI expansion, flows                   | [`flows/`](flows/Projects.md)                                                                    |
+| Readiness: launch gaps, user-flow status, tiers | [`readiness/`](readiness/PRODUCTION_READINESS.md) (Decision #444)                                |
 
 `brain.md` and `brain2.md` are now **redirect stubs**. Never add content to them — edit the
 canonical file they point to.

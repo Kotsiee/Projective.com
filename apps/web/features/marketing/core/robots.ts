@@ -41,13 +41,12 @@ export const APP_PATHS: readonly string[] = [
 	"/notifications",
 	"/projects",
 	"/saved",
-	"/services",
 	"/settings",
 	"/teams",
 	"/wallet",
 ];
 
-/** Where the sitemap is served (`GET /sitemap.xml`). */
+/** Where the sitemap index is served (`GET /sitemap.xml`); its files share the path (Decision #452). */
 export const SITEMAP_PATH = "/sitemap.xml";
 
 /** Exact rules for one app path: the path itself, everything under it, and the path with a query. */

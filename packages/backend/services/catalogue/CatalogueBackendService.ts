@@ -7,6 +7,8 @@ import type {
 	CreateListingInput,
 	ListingDetail,
 	ListingMediaSlot,
+	ListingPromotion,
+	PromoteListingInput,
 	ReorderListingMediaInput,
 	SaveListingShowcaseInput,
 	SetListingStatusInput,
@@ -33,6 +35,7 @@ import {
 	updateListing,
 } from "./live-catalogue-writes.ts";
 import { matchSkillLabels } from "./skill-match.ts";
+import { promoteListing, readListingPromotion, stopListingPromotion } from "./listing-promotion.ts";
 
 /**
  * CatalogueBackendService — the FAT half of the seller-side Catalogue surface (`/catalogue` +
@@ -64,6 +67,12 @@ function afterWrite<T>(
 	if (!result.ok || result.data === undefined) return result;
 	invalidateCatalog();
 	reembedInBackground(itemIds(result.data), reason);
+	return result;
+}
+
+/** After a promotion starts or stops: discovery shows or drops the slot without waiting out its TTL. */
+function afterPromotion<T>(result: Result<T>): Result<T> {
+	if (result.ok) invalidateCatalog();
 	return result;
 }
 
@@ -250,6 +259,37 @@ export class CatalogueBackendService {
 			"duplicate",
 			actor,
 			async (a) => afterWrite(await duplicateListing(id, a), listingId, "a duplicate"),
+		);
+	}
+
+	/**
+	 * What the listing's Promote control shows (Decision #454): the owning subject's entitlement, the
+	 * listing's live flight, and the seller's flight on another listing.
+	 */
+	static promotion(id: string, actor: ReadActor): Promise<Result<{ promotion: ListingPromotion }>> {
+		return guarded("promotion", actor, (a) => readListingPromotion(id, a));
+	}
+
+	/**
+	 * Start the seller's one plan-allocated 7-day flight. A seller without `promoted_placement` is a
+	 * 402, one with a flight already live a 409. Discovery's cache is dropped so the slot shows at once.
+	 */
+	static promote(
+		input: PromoteListingInput,
+		actor: ReadActor,
+	): Promise<Result<{ promotion: ListingPromotion }>> {
+		return guarded("promote", actor, async (a) => afterPromotion(await promoteListing(input, a)));
+	}
+
+	/** Stop the listing's live flight now; its window stays on the ledger as what it ran. */
+	static stopPromotion(
+		id: string,
+		actor: ReadActor,
+	): Promise<Result<{ promotion: ListingPromotion }>> {
+		return guarded(
+			"promotion-stop",
+			actor,
+			async (a) => afterPromotion(await stopListingPromotion(id, a)),
 		);
 	}
 

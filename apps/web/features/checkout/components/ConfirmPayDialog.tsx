@@ -3,6 +3,8 @@ import type { Signal } from "@preact/signals";
 import { Dialog } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
+import { RevealHold } from "@projective/ui/utils";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { feeDisclosure, listedReference, PROVIDER_LABEL } from "../core/checkout-model.ts";
 import { Amount } from "./Amount.tsx";
 import type { CheckoutSessionContext, SavedCard } from "../types/checkout-types.ts";
@@ -64,6 +66,7 @@ export function ConfirmPayDialog(props: ConfirmPayDialogProps): JSX.Element {
 	const quote = charge?.quote ?? null;
 	const reference = listedReference(session);
 	const payable = charge && quote ? charge : session.totals.total;
+	const mask = useMaskFigures();
 
 	const footer = (
 		<div class="cko-confirm__foot">
@@ -82,7 +85,7 @@ export function ConfirmPayDialog(props: ConfirmPayDialogProps): JSX.Element {
 				rounded
 				loading={busy}
 				// The SERVER's string, printed verbatim. This dialog composes no figure of its own.
-				label={busy ? "Taking payment…" : `Pay ${payable.display}`}
+				label={busy ? "Taking payment…" : `Pay ${mask(payable.display)}`}
 				onClick={props.onConfirm}
 			/>
 		</div>
@@ -102,9 +105,11 @@ export function ConfirmPayDialog(props: ConfirmPayDialogProps): JSX.Element {
 		>
 			<div class="cko-confirm__body">
 				<p class="cko-confirm__figure">
-					{charge && quote && reference
-						? <Amount value={charge} size="hero" exact reference={reference} />
-						: <Amount value={session.totals.total} size="hero" hideOrigin />}
+					<RevealHold label="Show amount">
+						{charge && quote && reference
+							? <Amount value={charge} size="hero" exact reference={reference} />
+							: <Amount value={session.totals.total} size="hero" hideOrigin />}
+					</RevealHold>
 				</p>
 
 				<dl class="cko-confirm__rows">

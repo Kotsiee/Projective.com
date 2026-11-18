@@ -7,6 +7,11 @@ import type {
 	ClientReschedule,
 	EngagementKind,
 } from "@projective/types/catalogue";
+import type {
+	ListingWaitlist,
+	ListingWaitlistEntry,
+	WaitlistStatus,
+} from "@projective/types/projects";
 import { fixtureScopedListings } from "./analytics-fixtures.ts";
 import { buildPipeline, summarise, toEngagements } from "./client-pipeline.ts";
 import { type ClientScope, filterByScope, type ScopedListing } from "./listing-scope.ts";
@@ -289,6 +294,72 @@ export function fixtureClient(
 		...summarise(mine, display, null),
 		threadId: inquiry ? inquiry.id.slice("inquiry-".length) : null,
 		reschedules,
+	};
+}
+// #endregion
+
+// #region Waitlist
+interface WaitlistSeed {
+	buyer: number;
+	status: WaitlistStatus;
+	/** When they joined the queue. */
+	hoursAgo: number;
+	/** When an invite went out, for the invited and the expired. */
+	invitedHoursAgo?: number;
+	/** When the place converted or expired. */
+	resolvedHoursAgo?: number;
+}
+
+const WAITLIST_SEEDS: readonly WaitlistSeed[] = [
+	{ buyer: 2, status: "invited", hoursAgo: 70, invitedHoursAgo: 6 },
+	{ buyer: 3, status: "waiting", hoursAgo: 50 },
+	{ buyer: 6, status: "waiting", hoursAgo: 26 },
+	{ buyer: 7, status: "waiting", hoursAgo: 3 },
+	{ buyer: 4, status: "converted", hoursAgo: 120, invitedHoursAgo: 60, resolvedHoursAgo: 40 },
+	{ buyer: 5, status: "expired", hoursAgo: 160, invitedHoursAgo: 110, resolvedHoursAgo: 62 },
+];
+
+/**
+ * A fixture group-session listing's waitlist (Decision #455), shaped like
+ * `projects.get_listing_waitlist`: one place in each state, the queue in order. The `clientPipeline`
+ * axis's `empty` empties it with the board.
+ */
+export function fixtureWaitlist(
+	sim: ClientPipelineSim,
+	now: number,
+	holdHours: number,
+): ListingWaitlist {
+	const seeds = sim === "empty" ? [] : WAITLIST_SEEDS;
+	const at = (hours: number | undefined) =>
+		hours === undefined ? null : new Date(now - hours * HOUR).toISOString();
+	let position = 0;
+	const entries: ListingWaitlistEntry[] = seeds.map((seed) => {
+		const buyer = BUYERS[seed.buyer];
+		const invitedAt = at(seed.invitedHoursAgo);
+		return {
+			userId: uuidOf(seed.buyer, "b"),
+			handle: buyer.handle,
+			name: buyer.name,
+			avatar: buyer.avatar,
+			status: seed.status,
+			position: seed.status === "waiting" ? ++position : null,
+			queuedAt: at(seed.hoursAgo) as string,
+			invitedAt,
+			inviteExpiresAt: invitedAt
+				? new Date(Date.parse(invitedAt) + holdHours * HOUR).toISOString()
+				: null,
+			resolvedAt: at(seed.resolvedHoursAgo),
+		};
+	});
+	const count = (status: WaitlistStatus) => entries.filter((e) => e.status === status).length;
+	return {
+		counts: {
+			waiting: count("waiting"),
+			invited: count("invited"),
+			expired: count("expired"),
+			converted: count("converted"),
+		},
+		entries,
 	};
 }
 // #endregion

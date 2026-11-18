@@ -13,7 +13,7 @@ import ContinueRail from "../islands/ContinueRail.island.tsx";
 import HomeRail from "../islands/HomeRail.island.tsx";
 import PromoGate from "../islands/PromoGate.island.tsx";
 import { HOME_SECTIONS } from "../core/home-model.ts";
-import { featureInRail, promosAfter } from "../core/promo-model.ts";
+import { promosAfter, promotedInRail } from "../core/promo-model.ts";
 import type {
 	ArticleItem,
 	HomeFeed,
@@ -47,10 +47,11 @@ import type {
  * The body opens with the discovery rails ({@link DiscoveryRails}): the viewer's own, composed under
  * their token, then the shared Trending rail.
  *
- * Promos are one {@link PromoSlot} in three variants, all on the rails' measure. A paid placement is a
- * two-cell featured cell at the head of the rail it belongs to, with that listing removed from the
- * rail's own cells; conversion and editorial slots follow the section their `after` names, and the
- * conversion slots pass through {@link PromoGate} for their audience and the device's dismissals.
+ * Promos are one {@link PromoSlot} in three variants, all on the rails' measure. A promoted placement
+ * is a labelled two-cell featured cell at the head of the rail it belongs to, BESIDE the rail's own
+ * cells, which stay exactly as ranked — the promoted listing keeps its organic cell too (Decision
+ * #454); conversion and editorial slots follow the section their `after` names, and the conversion
+ * slots pass through {@link PromoGate} for their audience and the device's dismissals.
  *
  * One consequence worth naming: Businesses and Individuals have no dedicated body sections. They are
  * reachable from the freelancers-and-teams rail, the header's Explore megamenu and the footer.
@@ -65,8 +66,8 @@ export function ExploreHome(
 		viewerRestricted?: boolean;
 	},
 ): JSX.Element {
-	const services = featureInRail(feed.services, feed.promos, "services");
-	const products = featureInRail(feed.products, feed.promos, "products");
+	const promotedServices = promotedInRail(feed.promos, "services");
+	const promotedProducts = promotedInRail(feed.promos, "products");
 	const after = (anchor: PromoAnchor) => (
 		<Promos
 			slots={promosAfter(feed.promos, anchor)}
@@ -95,12 +96,12 @@ export function ExploreHome(
 
 					<Section def={HOME_SECTIONS.services}>
 						{[
-							...services.featured.map((slot) => (
+							...promotedServices.map((slot) => (
 								<Cell featured key={slot.id}>
 									<PromoSlot slot={slot} />
 								</Cell>
 							)),
-							...services.rest.map((s) => (
+							...feed.services.map((s) => (
 								<Cell key={s.id}>
 									<ServiceCard item={s} authed={authed} />
 								</Cell>
@@ -148,16 +149,16 @@ export function ExploreHome(
 
 					<Section
 						def={HOME_SECTIONS.products}
-						facets={productFacets(products.rest)}
+						facets={productFacets(feed.products)}
 						facetLabel="Product categories"
 					>
 						{[
-							...products.featured.map((slot) => (
+							...promotedProducts.map((slot) => (
 								<Cell featured key={slot.id}>
 									<PromoSlot slot={slot} />
 								</Cell>
 							)),
-							...products.rest.map((p) => (
+							...feed.products.map((p) => (
 								<Cell key={p.id} facet={p.category}>
 									<ProductCard item={p} authed={authed} layout="fixed" />
 								</Cell>

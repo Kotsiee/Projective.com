@@ -175,7 +175,12 @@ function functionBody(sql: string, signature: string): string {
 
 Deno.test("every key the mappers read is one the SQL emits", () => {
 	const sql = Deno.readTextFileSync(new URL(SQL, REPO));
-	const quote = functionBody(sql, "projects.fn_fair_exit_quote(");
+	assertStringIncludes(
+		functionBody(sql, "projects.fn_fair_exit_quote("),
+		"projects.fn_fair_exit_quote_scoped(p_stage_id, p_tier, false)",
+		"fn_fair_exit_quote no longer quotes every held ticket",
+	);
+	const quote = functionBody(sql, "projects.fn_fair_exit_quote_scoped(");
 	const preview = functionBody(sql, "projects.preview_stage_fair_exit(");
 	const door = functionBody(sql, "projects.cancel_stage_fair_exit(");
 	for (
@@ -228,5 +233,9 @@ Deno.test("the preview is callable by a signed-in user, the quote by nobody", ()
 			.test(grants),
 	);
 	assert(!/GRANT EXECUTE ON FUNCTION projects\.fn_fair_exit_quote/.test(grants));
+	assert(
+		/REVOKE ALL ON FUNCTION projects\.fn_fair_exit_quote_scoped \(uuid, integer, boolean\) FROM PUBLIC, anon, authenticated, service_role;/
+			.test(grants),
+	);
 });
 // #endregion

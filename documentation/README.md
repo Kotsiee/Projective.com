@@ -60,6 +60,13 @@ expanding the flat sitemap from `PRODUCT_SPEC.md`. Scaffolded; populated as hand
 Implementation-level workflow detail (state diagrams, stage archetypes) complementing
 `PRODUCT_SPEC.md`'s business-level "Projects & Services" description.
 
+### [readiness/](readiness/PRODUCTION_READINESS.md)
+
+Two living trackers (Decision #444), each scored for Investor MVP, UAT and Production by one
+published formula: [PRODUCTION_READINESS.md](readiness/PRODUCTION_READINESS.md) lists every gap
+between the code and a public launch; [USER_FLOWS.md](readiness/USER_FLOWS.md) lists every user flow
+and what it still lacks. Updated in the same change as the work.
+
 ### [PRODUCT_MANAGEMENT.md](PRODUCT_MANAGEMENT.md)
 
 The delivery-tracking system of record: work hierarchy, the unified status state-machine (Draft →

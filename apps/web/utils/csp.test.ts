@@ -15,6 +15,15 @@ Deno.test("csp: Stripe.js, the Payment Element frames and the Stripe API are all
 	assert(directive(policy, "connect-src").includes("https://api.stripe.com"));
 });
 
+Deno.test("csp: Turnstile's script and challenge frame are allowed, and nothing else of Cloudflare's", () => {
+	const policy = contentSecurityPolicy({ dev: false, supabaseOrigin: null });
+	const turnstile = "https://challenges.cloudflare.com";
+	assert(directive(policy, "script-src").includes(turnstile));
+	assert(directive(policy, "frame-src").includes(turnstile));
+	assert(!directive(policy, "connect-src").includes(turnstile));
+	assert(!policy.includes("*.cloudflare.com"));
+});
+
 Deno.test("csp: frames load from exactly the allowlisted embed providers, in every profile", () => {
 	for (const profile of ["app", "inspector", "framed"] as const) {
 		const frames = directive(cspHeaderFor(profile), "frame-src");
@@ -32,6 +41,7 @@ Deno.test("csp: frames load from exactly the allowlisted embed providers, in eve
 			"https://js.stripe.com",
 			"https://*.js.stripe.com",
 			"https://hooks.stripe.com",
+			"https://challenges.cloudflare.com",
 			"https://www.youtube-nocookie.com",
 			"https://drive.google.com",
 			"https://docs.google.com",

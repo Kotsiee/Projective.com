@@ -56,6 +56,7 @@ export async function exploreResponse(ctx: Context<State>, session: SessionState
 			params,
 			actor: readActor(ctx),
 			semantic: semanticRankingFor(ctx.req),
+			showPromoted: !viewerRestricted,
 		});
 		return page({
 			params,
@@ -81,7 +82,11 @@ export async function exploreResponse(ctx: Context<State>, session: SessionState
 	const sim = IS_DEV
 		? parseDiscoverySim(readCookies(ctx.req)[DISCOVERY_SIM_COOKIE])
 		: NO_DISCOVERY_SIM;
-	const res = await ExploreBackendService.home({ actor: readActor(ctx), sim });
+	const res = await ExploreBackendService.home({
+		actor: readActor(ctx),
+		sim,
+		showPromoted: !viewerRestricted,
+	});
 	return page({
 		params,
 		initial: undefined,

@@ -28,6 +28,7 @@ import { Drawer } from "../../feedback/islands/Drawer.tsx";
 import { Icon } from "../../icons/mod.ts";
 import { fmtDayLabel, fmtFullDate, fmtTime } from "../../calendar/core/time.ts";
 import { durationLabel } from "../core/time-scale.ts";
+import { maskFigures, screenShareActive } from "../../utils/core/screen-share.ts";
 import type {
 	GanttAnchor,
 	GanttItem,
@@ -158,7 +159,7 @@ function ItemPane(
 					? (
 						<div class="gantt-pop__fact gantt-pop__fact--quiet">
 							<dt class="gantt-pop__srdt">Note</dt>
-							<dd>{item.meta}</dd>
+							<dd>{screenShareActive.value ? maskFigures(item.meta) : item.meta}</dd>
 						</div>
 					)
 					: null}

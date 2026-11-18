@@ -3,7 +3,9 @@ import type {
 	AppearancePreferences,
 	DisplayPreferences,
 	EmailDeliveryOutcome,
+	MakeSignIn,
 	ResolvedUiSettings,
+	SignInChanged,
 	UserEmail,
 	UserPreferencesUpdate,
 } from "@projective/types/org";
@@ -15,6 +17,7 @@ import type {
 } from "@projective/types/settings";
 import type {
 	AccountLifecycle,
+	DataExportState,
 	DeletionScope,
 	HandlePolicy,
 	ScheduleDeletion,
@@ -105,6 +108,9 @@ export interface EmailsSaved {
 	delivery?: EmailDeliveryOutcome;
 }
 
+/** What a sign-in change answers with (`SignInChanged`, plus the session re-issue flag). */
+export interface SignInSaved extends SignInChanged, ClaimsReissue {}
+
 export const SettingsService = {
 	// #region Sections
 	/** One section's payload — the same read the console page is server-rendered from. */
@@ -163,6 +169,26 @@ export const SettingsService = {
 	},
 	// #endregion
 
+	// #region Data export
+	/** Where the person's copy of their own data stands (Decision #450). */
+	dataExport(): Promise<SettingsResult<{ dataExport: DataExportState }>> {
+		return call<{ dataExport: DataExportState }>(
+			"/api/user/data-export",
+			undefined,
+			"Your data copy's status couldn't be read.",
+		);
+	},
+
+	/** Ask for a copy of the person's own data. */
+	requestDataExport(): Promise<SettingsResult<{ dataExport: DataExportState }>> {
+		return call<{ dataExport: DataExportState }>(
+			"/api/user/data-export",
+			{ method: "POST" },
+			"Your request couldn't be sent.",
+		);
+	},
+	// #endregion
+
 	// #region Connected accounts
 	/** Disconnect one sign-in provider. */
 	disconnectIdentity(id: string): Promise<SettingsResult<ConnectedAccounts>> {
@@ -213,6 +239,14 @@ export const SettingsService = {
 		return call<EmailsSaved>(`/api/user/emails/${encodeURIComponent(id)}/resend`, {
 			method: "POST",
 		}, "The link couldn't be sent again.");
+	},
+	/** Sign in with a confirmed address from now on, re-authenticated by the current password. */
+	makeSignInEmail(id: string, input: MakeSignIn): Promise<SettingsResult<SignInSaved>> {
+		return call<SignInSaved>(
+			`/api/user/emails/${encodeURIComponent(id)}/sign-in`,
+			json("POST", input),
+			"Your sign-in address couldn't be changed.",
+		);
 	},
 	/** Email a password-reset link to the sign-in address (GoTrue sends it). */
 	requestPasswordReset(email: string): Promise<SettingsResult<Record<string, unknown>>> {

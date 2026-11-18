@@ -10,6 +10,7 @@ import {
 	LANDING_SIM_COOKIE,
 	NO_LANDING_SIM,
 	parseLandingSim,
+	serviceSideAccess,
 } from "./landing-sim.ts";
 import { projectsNoticeHref } from "./project-notice.ts";
 
@@ -99,15 +100,22 @@ export async function resolveProjectAccess(
 	if (!detail) return null;
 
 	const sim = IS_DEV ? parseLandingSim(readCookies(ctx.req)[LANDING_SIM_COOKIE]) : NO_LANDING_SIM;
+	const service = detail.kind === "service";
+	const side = serviceSideAccess(sim, service);
 	const resolved: ResolvedProjectAccess = {
 		slug,
 		title: detail.title,
-		access: sim.access ?? detail.viewerAccess,
+		access: sim.access ?? side?.access ?? detail.viewerAccess,
 		status: sim.status ?? detail.status,
 		// A simulated access speaks for the configuration too: simulating a participant must lock the
-		// owner out of `/details` exactly as a real participant is.
-		canConfigure: sim.access ? sim.access === "owner" : detail.viewerCanConfigure,
-		service: detail.kind === "service",
+		// owner out of `/details` exactly as a real participant is. On a service the simulated side
+		// decides it, because its owner side (the client) never configures it.
+		canConfigure: side
+			? side.canConfigure
+			: sim.access
+			? sim.access === "owner"
+			: detail.viewerCanConfigure,
+		service,
 		discussion: discussionOf(detail) !== null,
 		personal: detail.personal === true,
 		simulated: isLandingSimActive(sim),

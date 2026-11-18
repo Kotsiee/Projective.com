@@ -23,6 +23,7 @@
 		"./calendar": "./calendar/mod.ts",
 		"./gantt": "./gantt/mod.ts",
 		"./utils": "./utils/mod.ts",
+		"./utils/screen-share": "./utils/screen-share.ts",
 		"./hooks": "./hooks/mod.ts",
 		"./system": "./system/mod.ts",
 		"./styles": "./styles/index.css"

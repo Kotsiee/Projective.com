@@ -54,6 +54,23 @@ SELECT TO authenticated USING (
         OR security.is_admin ()
     );
 
+-- Owner read only (Decision #450): an archive holds everything about one person, so not even an admin
+-- reads another person's request through RLS; every write is a 00001061 definer.
+CREATE POLICY "Users can view their own data export requests" ON org.data_export_requests FOR
+SELECT TO authenticated USING (user_id = auth.uid ());
+
+-- A person reads the terms they accepted; NO write policy, deliberately (Decision #446). Every row is
+-- written inside a sign-up door or public.accept_current_terms (00001010), and the table is
+-- append-only for every role.
+CREATE POLICY "Users can view their own legal acceptances" ON org.legal_acceptances FOR
+SELECT TO authenticated USING (
+        user_id = auth.uid ()
+        OR security.is_admin ()
+    );
+
+CREATE POLICY "Anyone can read legal document versions" ON org.legal_document_versions FOR
+SELECT TO anon, authenticated USING (true);
+
 
 -- --- from 0204_projects.sql ---
 

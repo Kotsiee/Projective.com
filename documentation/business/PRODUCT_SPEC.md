@@ -194,7 +194,11 @@ released after its last.
    either a **fixed number of sessions** (one purchase holds them all, and the Freelancer may give
    each a title and description — the session plan the listing shows) or **ongoing** (each booking is
    one session, and the Client books again whenever they need the next; no cap and no plan)
-   (Decision #411).
+   (Decision #411). A session is booked in the same dialog wherever it is bought — its listing page
+   or the seller's profile — and the Client answers the seller's own intake questions for every
+   session format, a group seat included; the answers travel with the booking onto its order line,
+   where the receipt keeps them. Checkout names a block by how much of it is timed ("2 of 6 sittings
+   scheduled") and lists each chosen time, never the first sitting alone (Decision #453).
 2. **Coordination:** Parties finalize time/location via the Calendar Proposal interface. A
    **set-session block** needs ONE chosen time — session 1 — and the Client may also choose times
    for any of the later sessions when booking; every chosen sitting is confirmed. The sessions left
@@ -627,6 +631,38 @@ price never above the stage's price, a High price never below it. Either way the
 seller's commitment once the service is instantiated: like the revision allotment, they are frozen on
 the engagement, for its seller as much as its client.
 
+**A One-Off or a Task is paid for at checkout, and the payment starts it (Decision #457).** A
+Pipeline is added to the client's projects and funded ticket by ticket. A One-Off or a Task is
+scoped in the configure dialog instead: the brief, the seller's questions, what to fund now and an
+optional target date. Then it is bought. Payment creates the engagement in the same transaction as
+the order. The seller owns it and the buyer is its client, as above. Its stages are the listing's
+milestones (a Task has one), and its one master ticket carries the brief. Milestone 1's escrow is
+held at payment, or every milestone's when the buyer chose to fund the whole project, each later one
+held as the work reaches it. Otherwise each later milestone locks when it begins, after the previous
+one is approved (the Chain Reaction), or waits as Needs funding. The charge is the funded
+milestones' own prices, the figure the dialog totalled; a Task is charged the listing's price. The
+target date is the soft deadline on the final milestone, with no deadline bonus until the bonus is
+held with the escrow. The seller starts the work by claiming the ticket. A payment that fails leaves
+no engagement behind, and an engagement that cannot be funded takes no payment: a card payment
+refused after it was captured stays in the buyer's wallet (Decision #200). The order's confirmation
+links the new engagement. **Not built yet:** a business account cannot buy a One-Off or a Task
+(checkout says so before Pay); a person buys it for themselves.
+
+**A team's service is worked by its team (Decision #456).** When a team sells a service, the team
+holds every stage's seat, so every active member of that team sees the funded tickets on those stages
+and may claim them, the member who listed it included.
+
+**A bought service has no Publish, and its client may cancel it once funded (Decision #456).** A
+bought service is a private engagement between its client and its seller, so it is never published.
+Its seller configures it but never sets its status: it becomes active when its first escrow is held.
+The client may cancel it at any time before it ends, and cancelling settles first. Every ticket nobody
+has claimed, and every later stage the client prepaid, comes back to the client's wallet whole. Work
+the seller has claimed, in progress or in review, is settled under Fair Exit at the share of each
+stage the client says was delivered (25, 50 or 75%, until a derived floor replaces the choice). Then
+the service is Cancelled and its open tickets and stages close. Nothing is deleted, both sides keep
+the record, and a cancelled service takes no more money. Cancelling a client's own project is not
+ruled yet (PRD-F22).
+
 **Who adds a stage (Decision #421).** On a project the client architected, the client adds stages to
 it. Once the client has added a freelancer's service, its stages are the seller's template, so only a
 freelancer working the engagement — one holding a seat on one of its stages — adds a stage, and the
@@ -690,20 +726,32 @@ quiet route to ask the seller a question. The full render contract is
 **Configuring an order happens in one two-column dialog (Decision #424).** Scoping a One-Off,
 writing a brief, booking a session and reserving cohort seats all open the same dialog the public
 profile uses for a listing (§The Public Profile): the buyer's inputs on the left in a fixed order —
-the commitment (what to fund now, the date and time, or the seats), what they need, then the
-seller's own questions — and, on the right, the order as it stands: the listing's cover, title and
-seller, a line per stage, time or seat, and the total the buyer will be charged, updating as they
-choose. The footer states the order in words and offers Cancel beside one commit, **Continue to
-checkout**; nothing is charged until checkout. A failure says what went wrong with a Try again
-beside it, and a provider with no open times says so and offers the next fortnight — the picker is
-never silently absent. On a phone the dialog is a bottom sheet with the order summary and the commit
-pinned.
+the commitment (what to fund now and an optional target date, the date and time, or the seats), what
+they need, then the seller's own questions — and, on the right, the order as it stands: the
+listing's cover, title and seller, a line per stage, time or seat, and the total the buyer will be
+charged, updating as they choose. The footer states the order in words and offers Cancel beside one
+commit, **Continue to checkout**; nothing is charged until checkout. A failure says what went wrong
+with a Try again beside it, and a provider with no open times says so and offers the next fortnight
+— the picker is never silently absent. On a phone the dialog is a bottom sheet with the order
+summary and the commit pinned.
 
 **A cohort is never a dead end.** When a group session has no cohort enrolling, or the open one is
 full, the buyer can **join its waitlist** in one press — recorded against the listing so the seller
 can see the demand — or ask for **a private cohort for their team**, which opens a scoped request to
 the seller. A disabled "No cohort open" button tells a motivated buyer nothing; a waitlist keeps
 them.
+
+**A waitlist is served in order, and an invite holds a seat (Decision #455).** When a cohort opens or
+a seat frees, the people waiting are invited first in, first out — one invite per free seat — and
+each invite holds its seat for the invited buyer for 48 hours (a platform dial). Nobody else can take
+a held seat, and a seat that frees is the queue's before anyone outside it may book it: the queue is
+the reason that seat exists. A buyer who buys a seat leaves the queue as converted. An invite left
+unused expires, the seat goes to the next person, and the expired buyer may join again at the back.
+Invites are in-app until email is wired. The listing tells a waiting buyer their place in the queue,
+and an invited one that the seat is theirs and until when. The seller sees the queue on the listing's
+Clients tab: how many are waiting, who holds an invite and until when, who bought and whose invite
+lapsed. Notifying everyone at once and letting the first payer win was considered and refused: most
+buyers would be told of a seat already gone, which teaches them to ignore the notice.
 
 **What every archetype must disclose before purchase.** These are business requirements, not
 presentation:
@@ -750,6 +798,34 @@ Two rules follow, and both exist because the near-miss is easy:
 - **A signed-out visitor is asked to sign in BEFORE composing, not after.** Messaging is
   authenticated, so letting a guest write a paragraph and then bouncing them to sign-in throws that
   paragraph away. Bounce first, with a return path back to the listing.
+
+**A custom quote is answered with a priced offer the buyer can accept (Decision #458).** When a
+listing's fixed scope does not fit, the buyer requests a custom quote: their scope in their own
+words, an optional soft budget and a timeline in a sentence. Requesting it commissions nothing, and
+a buyer holds one open request per listing, so one ask cannot flood a seller's pipeline. A request
+for **a private cohort for their team** (above) is the same request on a group-session listing.
+
+- **The seller answers with an offer, or declines.** An offer states the scope, its deliverables as
+  a checklist, **one price** in the listing's own currency, a turnaround in days and how long it
+  stays open — the seller picks 3 to 30 days, 14 by default. The deliverables are a checklist inside
+  **one escrow**, never separately funded stages. The price is the seller's; the buyer accepts it or
+  declines it, and never counters, so a quote never becomes a haggle the platform does not model. A
+  seller who declines can say why, and the buyer reads it.
+- **A revision replaces the open offer.** Sending a new offer withdraws the one the buyer holds, so
+  they only ever hold one, and every earlier offer stays on record. The seller can also withdraw an
+  open offer and send another later.
+- **Accepting is not paying.** The buyer accepts an open offer before it expires; an expired offer can
+  be neither accepted nor declined, and the seller sends a new one. Accepting puts exactly one line in
+  the buyer's basket, and nothing is charged until checkout. There the offer — never the line — is
+  the price, and it is bought as a One-Off: one stage at the offer's price, its deliverables that
+  stage's checklist, held in escrow and released on approval like any One-Off, with the listing's
+  revision allotment and a due date of the turnaround from the day it is paid. Once accepted, the
+  seller can no longer withdraw or reprice it; the buyer can still withdraw the request until they
+  have paid, which takes the line out of their basket.
+- **Each move tells the other party.** The seller is told of a request, an accepted or declined offer
+  and a withdrawn request, from their client pipeline; the buyer of an offer, a revision, a withdrawn
+  offer and a declined request, beside their conversation with the seller, where the offer and its
+  actions sit. Money never moves on a notice.
 
 ---
 ### The Public Profile — the entity's editorial front page
@@ -856,15 +932,17 @@ it (Teams P1). Both conversion controls open a popover **at the button**, never 
 to the Services row. **Hire** lists the seller's listings (thumbnail · title · starting price ·
 rating) and, when the seller takes discovery calls, a "Book consultation" row carrying its price or
 the word Free; it renders only when there is something to list. Picking a listing opens the
-**service modal**: a two-column dialog whose left column holds the buyer's inputs (for a session,
-the date rail and slot picker; an optional message; the seller's own intake questions — text,
+**service modal**: a two-column dialog whose left column holds the buyer's inputs (an optional
+message; the seller's own intake questions — text,
 numbers with an optional slider, yes/no, single and multiple choice as dropdowns, radios, pills or
 checkboxes, each required or not as the seller marked it) and whose right column is the listing in
 the entity view's own vocabulary (cover · title · meta line · summary · seller line · the stage run
 or session facts · what is included); the footer states the starting price, the rating and the
 turnaround, and its one primary does what the listing's own page would — a scoped engagement stages
-its brief and continues to checkout, a session books the chosen slot and continues to checkout, a
-pipeline is added to the buyer's projects as a draft. Picking the consultation opens the
+its brief and continues to checkout, a pipeline is added to the buyer's projects as a draft. A
+Session or Group Session listing opens the listing page's own booking dialog instead — the date
+rail with session 1 and any later sittings of a block, or a cohort's fixed sittings and seats, then
+the intake — and continues to checkout exactly as the page does (Decision #453). Picking the consultation opens the
 **consultation modal**: the same date rail and slots, a **custom start time** inside the provider's
 working hours with the end computed from the provider's configured duration (never chosen by
 the buyer), the **platform** restricted to those the provider has connected (one is stated, several
@@ -3172,11 +3250,21 @@ To prevent "Marketplace Entrenchment," the search algorithm is **Workload-Aware*
 - **Load and efficiency weigh heavily.** A freelancer's current Workload Intensity load and the
   Reliability Index's efficiency measures (§1) are both large factors in ranking (Decision #338,
   ruling P4). **Not built yet** for the efficiency measures.
-- **Meaning, not only words.** A typed search is re-ranked by meaning: each result's quality score
-  is blended with how close it is in meaning to the search, a match below a similarity floor gains
-  nothing, and a few close matches the words alone missed join the results if they pass the same
-  filters. If the meaning service fails, the search falls back to the plain order (Decision #339,
-  ruling N4; the weight, the floor and the number of extras are in `finance-model.md` §16.7).
+- **Words first, when you search (Best match).** A typed search is ordered by how well each result
+  matches the words typed, blended with its quality score; browsing with no words keeps the quality
+  order ("Recommended"), and a reader can still pick Recommended, Top rated, Price or Newest. A word
+  counts most in a title, then in the skills and category, then in the description, then in the
+  seller's name; the words in the order typed count extra; a word found only inside another word
+  counts for nothing, and repeating a word buys nothing. A result whose title is exactly what was
+  typed comes first, even after the re-rank by meaning below. Between results that match about
+  equally, the quality score decides, so the Discovery Boost and the Discovery Loop still apply,
+  and a far better-reviewed result can still pass a slightly better match. Nothing paid moves it
+  (Decision #459; the weight and the word rules are in `finance-model.md` §16.7).
+- **Meaning, not only words.** A typed search is re-ranked by meaning: each result's place in the
+  order is blended with how close it is in meaning to the search, a match below a similarity floor
+  gains nothing, and a few close matches the words alone missed join the results if they pass the
+  same filters. If the meaning service fails, the search falls back to the plain order (Decision
+  #339, ruling N4; the weight, the floor and the number of extras are in `finance-model.md` §16.7).
 
 How these apply (Decision #178; the concrete dials are in `finance-model.md` §16.7):
 
@@ -3190,6 +3278,16 @@ How these apply (Decision #178; the concrete dials are in `finance-model.md` §1
 - **The Discovery Boost is earned, never sold.** It goes to a seller who is new or still on the first
   Standing rung, has nothing claimed against their cap, and carries no penalty and no rating below
   the clean bar. No plan buys it.
+- **Organic ranking is never for sale; a promotion is a labelled slot beside it** (Decision #454).
+  Paid visibility never reorders results, never adds a listing to a search it does not match, and
+  never marks a listing's own card. A promoted listing appears in a separate slot at a fixed
+  position — the head of an Explore rail, or before a services or products results feed — marked
+  "Promoted", and keeps its organic place, unmarked. A slot only ever shows a listing that already
+  matches the search, and is never shown to a 13–17 account (no targeted promotion of a child, under
+  the Children's Code). While plans cannot be bought, promotion is allocated by the seller's plan
+  rather than sold per slot: a seller on Pro (or a team on Pro Team) runs one promotion at a time, on
+  the Explore home or in search results, for a fixed run, and may stop it early. The run length and
+  how a contested slot is shared are in `finance-model.md` §16.7.
 - **Personal rails.** A signed-in person's Explore Home adds "Because you viewed …" — relatives of
   something they recently opened, or, without such history, picks matched to what they have been
   exploring and else to their stated skills and interests: briefs for someone who takes work, what
@@ -3497,6 +3595,8 @@ Projective treats sensitive identity data with "Zero-Trust" principles.
   the longest period any obligation could require; every period is a platform setting with a
   per-country override, and the periods are in `finance-model.md` (retention) (Decision #336, ruling
   I1, pending counsel).
+- **A copy on request is self-serve.** A person downloads a copy of their own data from Settings →
+  Account; nobody has to ask support (§Settings — Downloading your data; Decision #450).
 - **Erasure keeps only a legal-hold record.** When an account is erased, the platform keeps a
   minimal, encrypted identity record (legal name, date of birth, country, verification references),
   linked to the money records it must retain, readable only by the platform's own service, and
@@ -3621,11 +3721,13 @@ session on this device for 30 days between visits. Unticked, the session ends wh
 closed (Decision #201). Canonical routes: **`/join`** (account creation),
 `/login`, `/forgot-password`, `/verify` (6-digit
 email code — the `CodeField` OTP pattern). Email confirmation still ultimately rides on GoTrue's
-single-use token; the 6-digit entry is the in-app confirmation surface. `/verify` also notices a
-confirmation made through the email's link, but only for the account this browser just created or
-signed in to, and it never reveals whether some other address has an account (Decision #185). If the
-link was opened in this browser, the page continues in. If it was opened on another device, the
-page says "Email confirmed" and asks the reader to sign in here.
+single-use token; the 6-digit entry is the in-app confirmation surface. The email's link opens
+`/verify/confirm`, which spends the token only when the reader presses **Confirm my email**, so a
+mail scanner that opens links before the reader does cannot use it up (Decision #445). `/verify`
+also notices a confirmation made through the email's link, but only for the account this browser
+just created or signed in to, and it never reveals whether some other address has an account
+(Decision #185). If the link was confirmed in this browser, the page continues in. If it was
+confirmed on another device, the page says "Email confirmed" and asks the reader to sign in here.
 
 **Enterprise SSO is Planned, and hidden until it works** (Decision #336, ruling S7). `/login` shows
 no SSO path while no identity provider can answer it. The roadmap is verified company domains first,
@@ -3637,10 +3739,11 @@ colleagues when someone signs up with it is off, and will return only for DNS-ve
 free-mail domains excluded — **Planned** (ruling S7 (a)).
 
 **Two-step verification.** Anyone may turn on an authenticator-app code. A withdrawal, a change of
-payout account, an ownership transfer, a co-owner grant and an erasure always ask for that second
-step first, and the same actions re-check that the session has not been signed out elsewhere, since
-a signed-out session can otherwise act for up to an hour (Decision #336, ruling I3). **Not built
-yet.**
+payout account, an ownership transfer, a co-owner grant, an erasure and a change of sign-in address
+always ask for that second step first, and the same actions re-check that the session has not been
+signed out elsewhere, since a signed-out session can otherwise act for up to an hour (Decision #336,
+ruling I3; the sign-in address added by Decision #451). **Not built yet.** Until it is, a change of
+sign-in address asks for the current password instead (§Settings, Email addresses).
 
 ### Onboarding step sequence (single-screen, non-scrolling wizard)
 
@@ -3671,6 +3774,27 @@ without a profile, so it cannot act, and a person is flagged to follow up. **Pas
 skipped entirely for OAuth/SSO signups.** Individuals may reach for **Google OAuth at any step** —
 authenticating mid-flow pre-fills their identity and returns them to the flow rather than bypassing
 it.
+
+**Terms acceptance (Decision #446).** The final step of every path carries an unticked box: "I
+agree to the Terms of Service and the Acceptable Use Policy, and I have read the Privacy Policy".
+Each document is linked and opens in a new tab. That step is individual 1.6, enterprise 1.6, an
+OAuth sign-up's 1.5, or a profile-less owner's completion. The account cannot be created until the
+box is ticked.
+
+The record is written in the same transaction that creates the profile. It holds:
+
+- the Terms and Acceptable Use versions **accepted**;
+- the Privacy Policy version **shown** (a privacy notice informs, and its lawful basis is not
+  consent);
+- where it was given and when;
+- for an enterprise owner, the enterprise they accepted for.
+
+It never holds the IP address or the browser. The versions are the ones in effect that day; a
+client cannot name its own. An under-13 attempt records nothing. A new version of the Terms or the
+Acceptable Use Policy may be marked **material**. Once it takes effect, a signed-in person who has
+accepted only an older version, or none, must accept it on `/join?complete=terms` before using the
+app again. Any other new version applies through the Terms' continued-use clause. Acceptance records
+are kept for the life of the account plus 6 years (`finance-model.md` §17).
 
 The optional Purpose/Skills tags are chosen from an interactive **pill cluster** with a combobox for
 adding custom tags, capped at **5** per cluster.
@@ -3885,6 +4009,23 @@ full **Settings console** (`/settings`), one page per section. One search finds 
   money, a project they own is running or they own a team, business or enterprise. Erasure
   anonymises; records of money that moved are kept anonymised for the retention period
   (§Security — Retention Policies).
+- **Downloading your data.** Anyone, minors included, can ask for a copy of everything their account
+  holds from Settings → Account → Download your data (GDPR Art. 15 access and Art. 20 portability;
+  Decision #450). It is prepared in the background as a ZIP of machine-readable JSON, one file per
+  part, and announced in-app (and by email once notification email is live); it can be downloaded
+  for **7 days**, through a link minted each time it is opened, then it is deleted. A person may have
+  one copy being prepared at a time and ask at most once a day (a copy that failed does not count),
+  must have signed in within the last **10 minutes** — so a stolen session cannot take a copy — and
+  cannot ask while their account's deletion is scheduled. The copy holds: their identity and
+  profile, email addresses and preferences; the projects they hold (as owner or as the client) and
+  what they did in other people's projects; the messages **they sent** and the details of each
+  conversation they are in, other people named only by @handle — never anyone else's messages;
+  their own wallets' ledgers, the invoices they issued, their statements and orders; reviews they
+  wrote and those about them or their listings, never who wrote one; saved items, calendar entries
+  and invitation answers, notifications, searches and recent views; and their sign-ins, sessions and
+  account activity. Their files are listed with size and checksum and a link that opens each once
+  they are signed in; the files themselves are not inside the copy. Secrets (tokens, passcodes,
+  payment references) are never included. Deleting the account deletes any copy waiting.
 - **Connected accounts.** A person can sign in with Google, Apple, Facebook, LinkedIn, Microsoft or
   Amazon as well as, or instead of, their email and password — where that provider is switched on.
   One that is not shows "Not available yet", never a button that does nothing. A sign-in method can be
@@ -3907,6 +4048,16 @@ full **Settings console** (`/settings`), one page per section. One search finds 
   24 hours. Only a confirmed address can become the **primary** (where Projective writes to them), and
   only a confirmed address unlocks invitations sent to it. The sign-in address and the primary cannot
   be removed from Settings.
+- **Moving the sign-in address** (Decision #451). A person can sign in with any of their confirmed
+  addresses instead, from that address's "Use to sign in". They prove it is them first: their
+  current password today, and the two-step code as well once two-step verification is built, if
+  they use it. An account that only signs in with Google sets a password first, from Password. The
+  move signs every other device out, tells the account in-app (a required notice), and emails the
+  old address. The old address stays on the account as an ordinary confirmed address, which can then
+  be removed unless it is also the primary; the person can move the primary in the same step. Two
+  moves are allowed in any three days. An account scheduled for deletion cannot move it. If the
+  address is already another account's sign-in, the refusal says only that the move could not be
+  made and to contact support; it never says the address is taken.
 - **Accessibility follows the person, and applies at once.** Appearance choices take effect on the
   device the moment they are made, are remembered on that device from the very first screen of the
   next visit, and are saved to the account so another device can adopt them. "Off" never overrides
@@ -4208,9 +4359,6 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/legal/workspace`        | `index`                  | The IP chain-of-title workspace (signed in; moved from the bare `/legal`, which is now the public document hub — Decision #270). Not built yet |
 |               |                           | `audit-packs`            | A project's agreements, invoices and IP deeds in one verified bundle (§Identity, Taxes & Compliance 4) |
 |               |                           | `transfers`              | The deeds of transfer issued on escrow release (§Identity, Taxes & Compliance 4)               |
-|               | `/services`               | `index`                  |                                                                                                |
-|               |                           | `create`                 |                                                                                                |
-|               |                           | `availability`           |                                                                                                |
 | **Public**    | `/index`                  |                          | Front page (Decision #349): a guest's Explore Home (the `/explore` feed); a signed-in visitor is sent on to `/explore`|
 |               | `/features`               |                          | Everything Projective does (L5, [`flows/LANDING.md`](../flows/LANDING.md) §2.5–§2.6, §4.12): an editorial chapter index — Find & hire · Run the work · Money · Trust · Coming soon — where each feature is a row with its one-line description, "Try it" (the landing's example demo, example data, no real money moves) only where a demo exists, and "Learn more" only where a help article exists; the Coming soon rows are static. After the index, the deep dives that left `/` (Decision #349): the demo stage, Payment protection, Pricing and the common questions. Off-system (`LandingShell`, Decision #280), indexable, listed in the sitemap, linked from the header, the footer and `/about` |
 |               | `/about`                  |                          | The mission page (Decision #277): the shift from working alone to protected teamwork, the friction set against the model, live platform figures (money protected in escrow, stages delivered, median funding → approval, the platform fee — real aggregates only, each hidden below `public_metrics_min_n`, updated hourly), an interactive walkthrough of one stage's money (Fund → Prepaid escrow → Claim → In progress → Submit → Accept & release → 7-day clearing → Withdraw), the founders (once real ones are supplied; until then the band is not drawn), how it's built (no certification claims), and Start a project / Talk to sales |
@@ -4239,7 +4387,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `schedule`               | Bookable availability leaf for Session / Group-Session archetypes — fills the content region itself (no lane) |
 |               | `/articles`               | `index`                  | Projective's own articles (Decision #271): a lead story, two features and the rest, filtered by topic (`?topic=`, repeatable, any of) and paged (`?page=`) |
 |               | `/articles/[slug]`        |                          | One Projective article on the shared document reader — its one canonical address, a readable slug that never changes. Member posts stay at `/view` and `/[handle]/posts` (Decision #271) |
-|               | `/sitemap.xml`            |                          | Every public page a search engine should index (Decision #279): the home page, the features index, Explore, About, Contact, Feedback, the help centre (hub, categories, articles), the changelog and its releases, Projective's articles, and a legal document only once a lawyer has reviewed it |
+|               | `/sitemap.xml`            |                          | Every public page a search engine should index (Decisions #279, #452), as an index of files: the home page, the features index, Explore, About, Contact, Feedback, the help centre (hub, categories, articles), the changelog and its releases, Projective's articles, a legal document only once a lawyer has reviewed it, every published service, product and member post (at `/view/…`), and every public person, team and business profile. Never a draft, paused or archived listing, a project brief, or anything an unlisted or private account holds — so never a 13–17 account's |
 |               | `/robots.txt`             |                          | What crawlers may fetch (Decision #279): never the signed-in app, the API or a page's `?feedback=open` drawer; names the sitemap |
 |               | `/[handle]/view/[item]`   | `index` / `schedule`     | Profile-scoped twin of the above; identical body, back-links scoped to the profile              |
 

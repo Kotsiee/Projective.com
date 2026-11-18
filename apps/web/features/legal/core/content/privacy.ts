@@ -282,6 +282,33 @@ const YOUR_RIGHTS: LegalClause = {
 	],
 };
 
+/** Version 1.1 of {@link YOUR_RIGHTS}: a copy of your data is self-serve from Settings (Decision #450). */
+const YOUR_RIGHTS_SELF_SERVE_COPY: LegalClause = {
+	id: "your-rights",
+	heading: "Your rights",
+	tldr:
+		"You can see, correct, download or delete your data, and object to how we use it. Most of it you can do yourself in Settings.",
+	body: [
+		{
+			type: "list",
+			items: [
+				"Correct your details and preferences yourself in Settings.",
+				"Download a copy of your data from Settings → Account → Download your data. We prepare it as a ZIP of machine-readable files, with a list of your files, and you can download it for 7 days. You can ask once a day, and we ask you to sign in again first.",
+				"Delete your account from Settings → Account (see the Terms of Service for what this needs).",
+				"Object to or restrict how we use your data.",
+			],
+		},
+		{
+			type: "p",
+			content: [
+				"For anything you can't do in Settings, ",
+				{ type: "link", href: "/contact?intent=support", text: "contact us" },
+				". You can also complain to your data protection authority — in the UK, the Information Commissioner's Office.",
+			],
+		},
+	],
+};
+
 /** SYSTEM_ARCHITECTURE.md §Security (RLS everywhere, HttpOnly session cookies, verified access tokens — Decision #205). */
 const SECURITY: LegalClause = {
 	id: "security",
@@ -314,6 +341,31 @@ const CHANGES: LegalClause = {
 
 /** The Privacy Policy, newest version first. */
 export const PRIVACY_VERSIONS = defineLegalVersions([
+	{
+		id: "privacy-policy",
+		slug: "privacy",
+		title: "Privacy Policy",
+		summary:
+			"What personal data Projective stores, why, who processes it for us, how long we keep it and the rights you have over it.",
+		version: "1.1",
+		updatedAt: "2026-11-18",
+		effectiveDate: "2026-11-18",
+		reviewedAt: null,
+		changeSummary:
+			"Your rights: download a copy of your data yourself from Settings → Account instead of asking us for it.",
+		sections: [
+			WHO_WE_ARE,
+			WHAT_WE_COLLECT,
+			HOW_WE_USE,
+			YOUNG_PEOPLE,
+			SHARING,
+			IDENTITY_DATA,
+			RETENTION,
+			YOUR_RIGHTS_SELF_SERVE_COPY,
+			SECURITY,
+			CHANGES,
+		],
+	},
 	{
 		id: "privacy-policy",
 		slug: "privacy",

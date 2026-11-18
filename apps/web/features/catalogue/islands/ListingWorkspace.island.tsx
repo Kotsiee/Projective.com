@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import {
+	formArchetypeOf,
 	type ListingDetail,
 	workspaceHref,
 	type WorkspaceTab,
@@ -129,6 +130,9 @@ export default function ListingWorkspace(props: ListingWorkspaceProps): JSX.Elem
 								label: "Back to Edit",
 								onPress: () => setWorkspaceUrl({ tab: "edit" }, "push"),
 							}}
+							waitlist={formArchetypeOf(listing.kind, listing.serviceType) === "cohort"
+								? listing.id
+								: undefined}
 						/>
 					)
 					: <TabPending tab={tab} />}

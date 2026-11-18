@@ -53,6 +53,12 @@ FROM org.business_members bm
 -- and none for a team. A card, a review byline and a listing's seller line therefore draw the crest
 -- the owner's profile hero draws, instead of guessing one from `verified` and the kind.
 --
+-- The contact (`contact_handle` / `contact_name`, Decision #422 (b)) is who a Message to the entity
+-- reaches when that is not the entity itself. A DM is person-to-person (comms.get_or_create_dm_thread),
+-- so a team's or a business's is its owner: the same `contact` org.get_profile_view answers (#244 (C)),
+-- already public on the roster. A person is their own recipient and carries NULL. Discovery cards and
+-- a brief's Message client read it, so neither addresses `dm-{slug}`, which reaches nobody.
+--
 -- Columns are APPENDED after the original set, never reordered: `CREATE OR REPLACE VIEW` may only add
 -- trailing columns, so reordering would make this file unappliable over a database that already has
 -- the view.
@@ -143,7 +149,9 @@ u.active_project_count,
     COALESCE((
         SELECT es_v.verification_stamp FROM org.entity_standing es_v
         WHERE es_v.subject_type = 'freelancer'::org.standing_subject AND es_v.subject_id = u.user_id
-    ), 'none') as verification_stamp
+    ), 'none') as verification_stamp,
+    NULL::text as contact_handle,
+    NULL::text as contact_name
 FROM org.users_public u
     LEFT JOIN org.freelancer_profiles f ON u.user_id = f.user_id
     LEFT JOIN org.entity_standing es ON u.is_freelancer
@@ -214,8 +222,11 @@ b.active_project_count,
     NULL::integer as discovery_weight_bp,
     NULL::numeric as workload_cap,
     CASE WHEN b.kyb_status = 'verified'::finance.kyc_status
-        THEN 'corporate_verified' ELSE 'none' END as verification_stamp
+        THEN 'corporate_verified' ELSE 'none' END as verification_stamp,
+    cu.username as contact_handle,
+    NULLIF(btrim(concat_ws(' ', cu.first_name, cu.last_name)), '') as contact_name
 FROM org.business_profiles b
+    LEFT JOIN org.users_public cu ON cu.user_id = b.owner_user_id
     LEFT JOIN files.items fa ON fa.id = b.logo_file_id AND fa.visibility = 'public' AND fa.deleted_at IS NULL
     LEFT JOIN files.items fb ON fb.id = b.banner_file_id AND fb.visibility = 'public' AND fb.deleted_at IS NULL
     LEFT JOIN org.profile_showcase_items si ON si.owner_type = 'business' AND si.owner_id = b.id AND si.position = 1
@@ -301,8 +312,11 @@ t.active_project_count,
           WHERE pp.key = 'global_workload_cap_default'),
         10.00))::numeric as workload_cap,
     -- A team holds no verification of its own; its members' crests are their own.
-    'none'::text as verification_stamp
+    'none'::text as verification_stamp,
+    cu.username as contact_handle,
+    NULLIF(btrim(concat_ws(' ', cu.first_name, cu.last_name)), '') as contact_name
 FROM org.teams t
+    LEFT JOIN org.users_public cu ON cu.user_id = t.owner_user_id
     LEFT JOIN org.entity_standing es ON es.subject_type = 'team'::org.standing_subject AND es.subject_id = t.id
     LEFT JOIN org.standing_levels sl ON sl.level = COALESCE(es.level, 1)
     LEFT JOIN files.items fa ON fa.id = t.avatar_file_id AND fa.visibility = 'public' AND fa.deleted_at IS NULL

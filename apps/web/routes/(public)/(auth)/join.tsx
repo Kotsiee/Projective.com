@@ -3,7 +3,10 @@ import { define } from "@web/utils/state.ts";
 import JoinExperience from "@features/auth/islands/JoinExperience.island.tsx";
 import { readRedirect } from "@features/auth/core/redirect.ts";
 import { parseOAuthPrefill } from "@features/auth/core/oauth.ts";
-import { isOwnerCompletion } from "@features/auth/core/auth-routing.ts";
+import { isOwnerCompletion, isTermsCompletion } from "@features/auth/core/auth-routing.ts";
+import { reacceptDocuments } from "@features/legal/core/reaccept.ts";
+import { isTermsDueRequest } from "@web/utils/terms-gate.ts";
+import { captchaSiteKeyFor } from "@features/auth/core/captcha.ts";
 import type { AccountType, UserIntent } from "@features/auth/types/mod.ts";
 
 /**
@@ -17,6 +20,13 @@ import type { AccountType, UserIntent } from "@features/auth/types/mod.ts";
  * sees it. Anyone else goes to the captured path: a guest's session may need renewing, which the
  * dashboard guard does before it sends the owner back here, and an account with a profile has
  * nothing to complete.
+ *
+ * `/join?complete=terms` is the re-accept state (Decision #446): a signed-in, onboarded person whose
+ * token says `termsDue` (or the Dev Context Switcher's `pj.dev.terms` override) sees the changed
+ * documents and the consent box. Anyone else goes to the captured path.
+ *
+ * A sign-up's final step carries the Turnstile bot check `/api/auth/join` verifies (Decision #447);
+ * both completion states are signed in, so they get no site key.
  */
 export const handler = define.handlers({
 	GET(ctx) {
@@ -24,13 +34,25 @@ export const handler = define.handlers({
 		ctx.state.description = "Create your Projective account — hire, work, and get paid by stage.";
 		const params = ctx.url.searchParams;
 		const redirectTo = readRedirect(params);
-		const complete = isOwnerCompletion(params) ? "owner" as const : null;
-		if (complete && !(ctx.state.isAuthenticated && ctx.state.userContext?.onboarded === false)) {
+		const complete = isOwnerCompletion(params)
+			? "owner" as const
+			: isTermsCompletion(params)
+			? "terms" as const
+			: null;
+		const context = ctx.state.userContext;
+		const allowed = complete === "owner"
+			? ctx.state.isAuthenticated && context?.onboarded === false
+			: complete === "terms"
+			? ctx.state.isAuthenticated && context?.onboarded !== false &&
+				isTermsDueRequest(ctx.req, context)
+			: true;
+		if (!allowed) {
 			return new Response(null, {
 				status: 302,
 				headers: { location: new URL(redirectTo, ctx.url).href },
 			});
 		}
+		if (complete === "terms") ctx.state.title = "Accept the updated terms";
 		const accountType: AccountType = params.get("type") === "enterprise"
 			? "enterprise"
 			: "individual";
@@ -46,6 +68,8 @@ export const handler = define.handlers({
 			intent,
 			prefill: parseOAuthPrefill(params),
 			complete,
+			reaccept: complete === "terms" ? reacceptDocuments() : undefined,
+			captchaSiteKey: complete ? null : captchaSiteKeyFor(ctx.req),
 		});
 	},
 });

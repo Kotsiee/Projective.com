@@ -9,6 +9,13 @@
 	font-variant-numeric: tabular-nums;
 }
 
+.ui-input-number__show {
+	flex: 0 0 auto;
+	touch-action: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
 /* #region Prefix / suffix adornments (non-interactive) */
 .ui-input-number__prefix,
 .ui-input-number__suffix {

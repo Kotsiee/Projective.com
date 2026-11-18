@@ -9,4 +9,6 @@ export * from "./user-context.ts";
 export * from "./session-context.ts";
 export * from "./identities.ts";
 export * from "./age.ts";
+export * from "./password.ts";
+export * from "./captcha.ts";
 export * from "./join.ts";

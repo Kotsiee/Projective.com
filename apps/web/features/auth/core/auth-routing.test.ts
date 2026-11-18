@@ -4,8 +4,11 @@ import {
 	joinCompletionTarget,
 	oauthSimulationTarget,
 	ownerCompletionTarget,
+	isTermsCompletion,
 	resolveAuthScreenBounce,
 	resolveOnboardingBounce,
+	resolveTermsBounce,
+	termsCompletionTarget,
 } from "./auth-routing.ts";
 import { DEFAULT_REDIRECT } from "./redirect.ts";
 
@@ -231,5 +234,30 @@ Deno.test("only complete=owner marks the owner step", () => {
 	assertEquals(isOwnerCompletion(new URLSearchParams("complete=owner&redirectTo=/home")), true);
 	assertEquals(isOwnerCompletion(new URLSearchParams("complete=Owner")), false);
 	assertEquals(isOwnerCompletion(new URLSearchParams("oauth=google")), false);
+});
+// #endregion
+
+// #region The re-accept gate (Decision #446)
+Deno.test("a due acceptance bounces to /join?complete=terms with the captured path", () => {
+	const target = resolveTermsBounce({ onboarded: true }, true, at("/projects?tab=board"))!;
+	const url = at(target);
+	assertEquals(url.pathname, "/join");
+	assertEquals(isTermsCompletion(url.searchParams), true);
+	assertEquals(url.searchParams.get("redirectTo"), "/projects?tab=board");
+});
+
+Deno.test("nothing due, or an account still onboarding, is not bounced to the terms", () => {
+	assertEquals(resolveTermsBounce({ onboarded: true }, false, at("/projects")), null);
+	assertEquals(resolveTermsBounce({ onboarded: false }, true, at("/projects")), null);
+	assertEquals(resolveTermsBounce(undefined, false, at("/projects")), null);
+});
+
+Deno.test("a signed-in person accepting the terms is let through /join", () => {
+	assertEquals(resolveAuthScreenBounce(at(termsCompletionTarget("/wallet")), true), null);
+});
+
+Deno.test("the terms completion never returns to an auth screen", () => {
+	const url = at(termsCompletionTarget("/join?complete=terms"));
+	assertEquals(url.searchParams.get("redirectTo"), DEFAULT_REDIRECT);
 });
 // #endregion

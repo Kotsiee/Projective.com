@@ -14,26 +14,16 @@ import type {
  */
 
 // #region Placement
-/** A rail's featured sponsored slots, and its items with those listings removed. */
-export interface FeaturedRail<T> {
-	featured: SponsoredPromo[];
-	rest: T[];
-}
-
 /**
- * Feature every sponsored slot that belongs to `rail` at the head of that rail, and drop the promoted
- * listing from the rail's own items so a reader never meets the same listing twice in one row.
+ * The promoted slots that head `rail` (Decision #454). They sit before the rail's organic items, which
+ * the caller renders exactly as ranked: a promoted listing keeps its own organic position, unlabelled,
+ * so a promotion never moves anything the ranking placed.
  */
-export function featureInRail<T extends { id: string }>(
-	items: readonly T[],
+export function promotedInRail(
 	promos: readonly PromoSlot[],
 	rail: SponsoredPromo["rail"],
-): FeaturedRail<T> {
-	const featured = promos.filter((p): p is SponsoredPromo =>
-		p.variant === "sponsored" && p.rail === rail
-	);
-	const promoted = new Set(featured.map((p) => p.itemId));
-	return { featured, rest: items.filter((it) => !promoted.has(it.id)) };
+): SponsoredPromo[] {
+	return promos.filter((p): p is SponsoredPromo => p.variant === "sponsored" && p.rail === rail);
 }
 
 /** The conversion and editorial slots placed after `anchor`, in feed order. */

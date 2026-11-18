@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DualRatingSchema, SkillRefSchema } from "../explore/items.ts";
+import { DualRatingSchema, MessageTargetSchema, SkillRefSchema } from "../explore/items.ts";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
 import { AvailabilityRuleSchema } from "../scheduling/scheduling.ts";
 import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
@@ -294,15 +294,9 @@ export type ProfileWorkspaceFacts = z.infer<typeof ProfileWorkspaceFactsSchema>;
 
 /**
  * Who a Message from this profile reaches when that is not the profile itself — a team's or a
- * business's owner, because a direct message is person-to-person (PRODUCT_SPEC §Direct & Group
- * Conversations).
+ * business's owner — the one shape discovery's owner attribution carries too (`MessageTargetSchema`).
  */
-export const ProfileMessageTargetSchema = z.object({
-	/** The person's canonical `@handle` (the `dm-{handle}` thread). */
-	handle: z.string().max(41),
-	/** Their display name, for the conversation's title. */
-	name: z.string().max(120),
-});
+export const ProfileMessageTargetSchema = MessageTargetSchema;
 export type ProfileMessageTarget = z.infer<typeof ProfileMessageTargetSchema>;
 
 /**

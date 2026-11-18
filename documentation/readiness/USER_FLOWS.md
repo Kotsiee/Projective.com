@@ -1,0 +1,523 @@
+# User Flows — every flow, and what each still lacks
+
+> Living tracker (Decision #444). Every user flow the product specifies, by persona, with its
+> implementation status and the gap that stands between it and done, scored for the three readiness
+> tiers. Seeded from the 2026-11-18 static audit at `d63ab286` (+ #443): four read-only flow
+> inventories checked against routes, `/api` handlers, services and migrations, with spot checks.
+> Companion: [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) holds the platform-wide gaps (the
+> `PRD-` IDs cited below).
+>
+> **Last verified:** 2026-11-18 · **Basis:** static reading of the code; live provider accounts
+> (Zoom, Microsoft), hosted Supabase and Stripe were not exercised.
+
+## How this file works
+
+Status, Crit, Gate and the score are defined once, in
+[PRODUCTION_READINESS.md §How this file works](PRODUCTION_READINESS.md#how-this-file-works): ✅ 1 ·
+🟡 0.5 · ❌ 0 · ⏸ excluded; Critical 3 · High 2 · Normal 1; a tier counts every flow gated at it or
+earlier. Here a **row is one flow**, and its Status is the flow's end-to-end state on the live path
+(every `*_BACKEND_LIVE` gate on): ✅ a user can complete it with no known blocker · 🟡 it completes,
+but a step, a notification, hardening or a defect is missing · ❌ it cannot be completed (no door,
+no UI, or a placeholder).
+
+**Updating** follows the same-change rule (`reference/pr-checklist.md`): flip the row, cite the
+commit or decision, recompute the scoreboard, add a §Score history line. A flow the spec gains gets
+a row at the end of its section; IDs are never reused.
+
+**Personas.** Guest (signed out) · Client · Freelancer · Seller (a freelancer or team selling from
+`/catalogue`) · Buyer · Team admin · Business member (owner, billing or spend roles) · Enterprise
+owner · Minor (13–17) · Operator (`ops.admin_users`) · System (a job or webhook) · Any (any
+signed-in person).
+
+## Scoreboard
+
+| Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
+| :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
+| **Investor MVP** | **82%** |            61 | 41 |  19 |  1 |              15 |
+| **UAT**          | **68%** |           190 | 92 |  76 | 22 |              28 |
+| **Production**   | **62%** |           243 | 97 | 101 | 45 |              39 |
+
+Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
+flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
+(delivery, safety, operations, compliance), which a flow inherits as 🟡 rather than ❌.
+
+| Cluster                                          | Flows | ✅ | 🟡 | ❌ |  ⏸ | Score |
+| :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
+| ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
+| MK — Discovery, marketplace, checkout & sessions |    56 | 23 | 21 | 10 |  2 |   63% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 25 | 35 | 15 |  2 |   58% |
+| MW — Money, workspaces, legal & operator         |    63 | 21 | 23 | 16 |  3 |   59% |
+
+**Critical flows not yet ✅, by the tier they gate:**
+
+- **MVP:** ID-31 ❌ · MK-09 · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
+- **UAT:** ID-16, 20 · MK-29 ❌, MK-31 ❌ · PJ-21, 25 ❌, 31 ❌, 39, 42, 43 ❌, 60 ❌ · MW-14, 59
+- **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62 ❌
+
+## What breaks the most flows
+
+These platform gaps account for most 🟡 and ❌ rows. Each is tracked once, in
+PRODUCTION_READINESS.md.
+
+| Gap                                                              | Tracked as             | Flows it holds back                                                           |
+| :--------------------------------------------------------------- | :--------------------- | :---------------------------------------------------------------------------- |
+| No email, push or SMS reaches anyone; in-app only                | PRD-E4, E5, E6, E7, E9 | ID-06, 16, 20, 38, 42 · MK-13, 16, 50 · PJ-17, 60, 61, 62, 71 · MW-16, 20, 33 |
+| Chat has no live delivery and no single send door                | PRD-E2, E3             | PJ-47, 49, 50                                                                 |
+| `/home` is a placeholder; every sign-in lands there              | PRD-A1                 | ID-25, 31                                                                     |
+| Fixtures served under a live gate                                | PRD-B1                 | PJ-01 – PJ-42 (any read that fails)                                           |
+| No malware scan; the link scan fails open                        | PRD-D3, D4             | ID-50 · PJ-54, 56, 63, 64 · MK-37                                             |
+| No MFA or step-up before money and ownership moves               | PRD-C17                | ID-24 · MW-12, 15, 39                                                         |
+| Plans enforced but nothing can be bought                         | PRD-F14                | MW-20, 25, 27, 38 · MK-07, 24                                                 |
+| Escrow can strand (claim TTL paused, no ghosting timer, archive) | PRD-G2, F22, F23       | PJ-21, 25, 31, 41, 42                                                         |
+
+---
+
+## ID — Identity, account, profile & public site
+
+### Public site
+
+| ID    | Flow                                                    | Persona | Entry                                                    | Status | Crit     | Gate | What's missing                                                                                                         |
+| :---- | :------------------------------------------------------ | :------ | :------------------------------------------------------- | :----- | :------- | :--- | :--------------------------------------------------------------------------------------------------------------------- |
+| ID-01 | Front page (guest Explore Home; signed in → `/explore`) | Guest   | `/`                                                      | ✅     | High     | MVP  | — (#349)                                                                                                               |
+| ID-02 | Features index, demo stage, FAQ                         | Guest   | `/features`                                              | 🟡     | High     | PROD | Landing launch gate open: #303 (a) compression, (b) head placement (`flows/LANDING.md` §0)                             |
+| ID-03 | About with live platform metrics                        | Guest   | `/about`, `/api/public/metrics`                          | 🟡     | Normal   | PROD | Metrics would count seed and test-mode money (#303 (c)); founders band undrawn until real founders are supplied (#277) |
+| ID-04 | Public pricing                                          | Guest   | `/pricing`                                               | ❌     | High     | PROD | Planned (#252, SBP S6); no route                                                                                       |
+| ID-05 | Help centre, search, "Was this helpful?"                | Any     | `/help/[...path]`, `/api/help/{search,feedback}`         | ✅     | High     | UAT  | —                                                                                                                      |
+| ID-06 | Contact intake (sales, support, dispute, security)      | Any     | `/contact`, `/api/contact`, `/api/contact/attachments/*` | 🟡     | High     | UAT  | No acknowledgement mail; triage has no UI (MW-60); attachments unscanned (PRD-D3)                                      |
+| ID-07 | Feedback board: suggest, vote, follow                   | Any     | `/feedback`, `/api/feedback/ideas/*`                     | 🟡     | Normal   | UAT  | The status door is operator-API only, so every idea stays "Under review", visible to its author alone                  |
+| ID-08 | Newsletter subscribe                                    | Guest   | footer, changelog, `/api/newsletter/subscribe`           | 🟡     | Normal   | PROD | No double opt-in, no provider sync, nothing ever sent (PRD-E11)                                                        |
+| ID-09 | Articles                                                | Guest   | `/articles`, `/articles/[slug]`                          | ✅     | Normal   | PROD | —                                                                                                                      |
+| ID-10 | Changelog and RSS                                       | Guest   | `/changelog`, `/changelog/[version]`, `rss.xml`          | ✅     | Normal   | PROD | —                                                                                                                      |
+| ID-11 | Legal hub: documents, versions, compare, PDF            | Any     | `/legal`, `/legal/[slug]{,/pdf}`                         | 🟡     | Critical | PROD | Every version `reviewedAt: null` → "Draft — pending legal review", noindexed (PRD-M1)                                  |
+| ID-12 | Share-link resolution                                   | Guest   | `/share/[slug]`                                          | ✅     | Normal   | UAT  | —                                                                                                                      |
+| ID-13 | Outbound-link exit interstitial                         | Any     | `/exit?url=`                                             | ✅     | Normal   | PROD | Needs `LINK_SAFETY_API_KEY` in production (PRD-D5)                                                                     |
+
+### Sign-up, sign-in & onboarding
+
+| ID    | Flow                                                    | Persona          | Entry                                                              | Status | Crit     | Gate | What's missing                                                                                                                            |
+| :---- | :------------------------------------------------------ | :--------------- | :----------------------------------------------------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| ID-14 | Terms and privacy accepted at sign-up                   | Guest            | `/join`, `/join?complete=terms`                                    | ✅     | Critical | PROD | Every path's final step requires the unticked box. Terms + AUP are recorded accepted and Privacy shown, in the profile's own transaction at the server's versions. A material version re-asks on `/join?complete=terms` (#446, PRD-M2). The documents are still unreviewed drafts (ID-11) |
+| ID-15 | Sign up with email and password                         | Guest            | `/join`, `/api/auth/join`                                          | 🟡     | Critical | PROD | Bot check built locally, hosted Turnstile keys unset (PRD-C15, #447); hosted password rule unset (PRD-C13, #449)                          |
+| ID-16 | Email confirmation (code, link, resend, poll)           | Guest            | `/verify`, `/api/auth/{verify,confirm,resend,verification-status}` | 🟡     | Critical | UAT  | Hosted SMTP unproven (PRD-E6). The link's token is spent only by a POST from `/verify/confirm` (#445)                                     |
+| ID-17 | Google sign-up and sign-in (PKCE, pre-fill)             | Guest            | `/api/auth/oauth/google`, `/api/auth/callback`                     | 🟡     | High     | PROD | Email and name ride the `/join` query string (LOW1-4); nonce check on locally, hosted unset (PRD-C14); no live Google run (#449 (b))      |
+| ID-18 | Sign in (email or @handle, keep me signed in)           | Any              | `/login`, `/api/auth/login`                                        | ✅     | Critical | MVP  | — (#382; rate limit and CSRF `12a80862`)                                                                                                  |
+| ID-19 | Sign out and silent refresh                             | Any              | `/api/auth/{logout,refresh}`                                       | ✅     | Critical | MVP  | A revoked session can act for up to an hour (`jwt_expiry`)                                                                                |
+| ID-20 | Forgot and reset password (6-digit code)                | Any              | `/forgot-password`, `/api/auth/{forgot-password,reset}`            | 🟡     | Critical | UAT  | Completes live: no address in the link, and the reset saves the password (#448). Hosted SMTP unproven (PRD-E6)                            |
+| ID-21 | Return-path redirect (`redirectTo`)                     | Any              | every auth surface                                                 | 🟡     | Normal   | PROD | `safeRedirect` accepts `/api/*` (LOW1-7)                                                                                                  |
+| ID-22 | Legacy auth aliases                                     | Guest            | `/register`, `/reset`, `/onboarding`                               | 🟡     | Normal   | PROD | `/register` and `/reset` 404 (LOW1-6); the PRODUCT_SPEC sitemap still lists them (#444 (c))                                               |
+| ID-23 | Enterprise SSO                                          | Enterprise owner | `/login` SsoPanel, `/api/auth/sso`                                 | ⏸      | Normal   | UAT  | Ruled hidden (#336 S7 (b)); the dead panel still renders until SSO1 (PRD-C18)                                                             |
+| ID-24 | Two-step verification (TOTP) and step-up                | Any              | Settings → Account                                                 | ❌     | Critical | PROD | TOTP off; MFA1–MFA3 not started (PRD-C17)                                                                                                 |
+| ID-25 | Individual onboarding wizard                            | Guest            | `/join`                                                            | ✅     | Critical | MVP  | Ends on the `/home` placeholder (ID-31)                                                                                                   |
+| ID-26 | Enterprise onboarding (multi-step, owner date of birth) | Guest            | `/join` (enterprise)                                               | 🟡     | High     | UAT  | Initial stakeholder invites missing from `EnterpriseJoinSchema`; no enterprise console (MW-52); KYB deferred                              |
+| ID-27 | An owner without a profile completes step 1.6           | Enterprise owner | `/join?complete=owner`                                             | ✅     | High     | UAT  | — (OWN1, OWN2)                                                                                                                            |
+| ID-28 | Under-13 block                                          | Guest            | `/join`                                                            | 🟡     | Critical | PROD | The page ignores the `pj_join_age_lock` cookie in a new tab (LOW1-5); the server lock holds                                               |
+| ID-29 | 13–17 restricted experience                             | Minor            | app-wide (`restricted-surfaces.ts`, `age-gate.ts`, the DB)         | 🟡     | Critical | PROD | `GET /api/settings/[section]` serves adult-only payloads (IW-L5); under-16 marketing rule unbuilt (MIN1); private names readable (IW-M13) |
+| ID-30 | An adult proxy for minors in teams and businesses       | Minor            | —                                                                  | ⏸      | Normal   | PROD | Pending counsel (#336 I4); the DB refuses every minor seat                                                                                |
+| ID-31 | Post-login home                                         | Any              | `/home`                                                            | ❌     | Critical | MVP  | A `PagePlaceholder`, yet the default redirect and every bounce target (PRD-A1)                                                            |
+| ID-32 | Switch acting context                                   | Any              | account menu, `/api/context/{switch,enterprises}`                  | ✅     | Critical | MVP  | No unit tests (IW-L4)                                                                                                                     |
+| ID-33 | Become a freelancer / partner                           | Client           | `/become-partner`, `/api/user/freelancer`                          | ✅     | Critical | MVP  | —                                                                                                                                         |
+| ID-34 | Freelancer back to client (90-day restore)              | Freelancer       | Settings → Account, `/api/user/lifecycle`                          | 🟡     | Normal   | PROD | Window hard-coded (ERA2); doubles as an erasure window; erasure scope short (ERA1)                                                        |
+
+### Account & settings
+
+| ID    | Flow                                                         | Persona | Entry                                               | Status | Crit     | Gate | What's missing                                                                                              |
+| :---- | :----------------------------------------------------------- | :------ | :-------------------------------------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------------------------------------------- |
+| ID-35 | Settings hub, search, attention, completeness, modal         | Any     | `/settings`, `/api/settings/attention`              | ✅     | High     | UAT  | —                                                                                                           |
+| ID-36 | Identity view and @handle change (2 per 3 days, 90-day hold) | Any     | `/settings/account`, `/api/user/handle`             | ✅     | High     | UAT  | Name and birth-date corrections go through support                                                          |
+| ID-37 | Email addresses (add, verify, primary, remove, sign-in move) | Any     | `/api/user/emails/*`                                | ✅     | High     | UAT  | — (#451: the sign-in moves to a confirmed address after a password re-auth; a revoked device's token lives out its hour until MFA2, as ID-19) |
+| ID-38 | Password change                                              | Any     | Settings → Account                                  | 🟡     | High     | UAT  | Reset link works (#448); hosted SMTP unproven (PRD-E6); secure change on locally, hosted unset (PRD-C16)    |
+| ID-39 | Connected sign-in accounts                                   | Any     | `/api/user/identities/*`                            | ✅     | Normal   | UAT  | Only Google is enabled; the rest read "Not available yet", as specified                                     |
+| ID-40 | Profile privacy (visibility, local time, photo zoom)         | Any     | Settings → Profile                                  | 🟡     | High     | PROD | A private profile's name and handle stay readable over PostgREST (IW-M13; PRD-C21)                          |
+| ID-41 | Language, region, appearance, accessibility, shortcuts       | Any     | `/api/user/preferences`                             | ✅     | Normal   | UAT  | —                                                                                                           |
+| ID-42 | Notification preferences and quiet hours                     | Any     | Settings → Notifications, `/api/user/notifications` | 🟡     | High     | UAT  | Toggles save, but email, push and SMS send nothing yet (PRD-E4, E5, E7, E8); each channel now says so (ST2) |
+| ID-43 | Messaging preferences (receipts, away replies)               | Any     | Settings → Messaging                                | ✅     | Normal   | UAT  | —                                                                                                           |
+| ID-44 | Scheduling and call terms                                    | Any     | Settings → Scheduling                               | ✅     | Normal   | UAT  | —                                                                                                           |
+| ID-45 | Screen-sharing privacy mode                                  | Any     | Settings → Privacy, ⌘⇧S                             | ❌     | Normal   | PROD | ST3–ST4 built (#297 amended 2026-11-18): cookie + `localStorage` carriers, pre-paint restorer, `ScreenShareBridge` (cross-tab, sweep, announcement), `ui-obscure` tiers, masked `MoneyView` and money fields with a hold-to-Show, charts and Gantt. No switch yet: ST5's sweep (`tests/e2e/screen-share.spec.ts`) must pass first, then the Settings section, menu row, chord and indicator ship |
+| ID-46 | Delete account (30 days, cancellable)                        | Any     | Settings → Account, job `account-erasures`          | 🟡     | Critical | PROD | Erasure leaves seats and most personal rows; no legal-hold vault (PRD-C19, ERA1–ERA4)                       |
+| ID-47 | Personal data export                                         | Any     | Settings → Account, job `account-data-exports`      | 🟡     | High     | PROD | Built (#450): request (recent sign-in, one a day) → ZIP of 15 domains → 7-day download, proved live on the shared stack; the hosted job dispatch waits on PRD-G6, the email on NT3 (PRD-E5) |
+
+### Profile & saved
+
+| ID    | Flow                                                 | Persona    | Entry                                                      | Status | Crit     | Gate | What's missing                                                          |
+| :---- | :--------------------------------------------------- | :--------- | :--------------------------------------------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------- |
+| ID-48 | Public profile (Work · Experience · Reviews · Posts) | Guest      | `/[handle]`, `/[handle]/[tab]`, `/api/profile/[handle]`    | ✅     | Critical | MVP  | — (every entity kind; `org.get_profile_view`)                           |
+| ID-49 | Edit the profile in place                            | Any        | `/[handle]`, `/api/profile/[handle]/save`                  | ✅     | High     | MVP  | — (#439)                                                                |
+| ID-50 | Photo upload, crop, OAuth picture                    | Any        | File Picker, `/api/media/*`, `/api/profile/[handle]/media` | ✅     | High     | MVP  | Quarantined and re-encoded; no malware scan (PRD-D3)                    |
+| ID-51 | Showcase six-slot grid                               | Any        | `/api/profile/[handle]/showcase`                           | ✅     | Normal   | UAT  | Video refused until metadata stripping exists (#340)                    |
+| ID-52 | Portfolio add, edit, archive                         | Any        | `/api/profile/[handle]/portfolio{,/archive}`               | ✅     | High     | MVP  | —                                                                       |
+| ID-53 | Experience: roles, education, certifications         | Freelancer | Experience section                                         | 🟡     | Normal   | PROD | Nothing sets `org.certifications.verified`, so the badge can never show |
+| ID-54 | Follow; follower and following lists                 | Any        | `/api/profile/[handle]/{follow,connections}`               | ✅     | Normal   | UAT  | —                                                                       |
+| ID-55 | Public availability calendar                         | Guest      | `/[handle]/availability`                                   | ✅     | High     | UAT  | Hidden for minors                                                       |
+| ID-56 | Saved items and collections                          | Any        | `/saved`, `/api/saved/*`                                   | ✅     | High     | UAT  | —                                                                       |
+
+---
+
+## MK — Discovery, marketplace, checkout & sessions
+
+### Discovery
+
+| ID    | Flow                                                  | Persona | Entry                                          | Status | Crit   | Gate | What's missing                                                                                                                    |
+| :---- | :---------------------------------------------------- | :------ | :--------------------------------------------- | :----- | :----- | :--- | :-------------------------------------------------------------------------------------------------------------------------------- |
+| MK-01 | Explore Home and rails                                | Any     | `/`, `/explore`                                | ✅     | High   | MVP  | "Picked for you" thin while interest events are stubbed; saves don't feed ranking (#180 (c))                                      |
+| MK-02 | Keyword search with category, sort, facets, typeahead | Any     | `/explore?q=`, `/api/explore/{search,suggest}` | 🟡     | High   | PROD | Unbounded params with no Zod (S37); no rate limit (S30); offset paging reorders (S24) — COMMS SR2/SR3 · S21 built (#459)          |
+| MK-03 | Semantic re-rank and "Similar" rail                   | Any     | same                                           | 🟡     | Normal | PROD | `EMBEDDINGS_ENABLED=false` until Voyage's no-training terms are on file; `ef_search` starvation (S11 → SR1)                       |
+| MK-04 | Guest browsing and search-engine indexing             | Guest   | `/explore`, `/view/:id`, `/:handle/view/:id`   | ✅     | High   | PROD | #452: the sitemap index lists public listings, posts and profiles; both view routes declare `/view/:id` canonical                 |
+| MK-05 | Card menus and `?intent=book\|contact\|apply`         | Any     | Explore cards → `/view/:id?intent=`            | ✅     | Normal | UAT  | — (DS3: a team's or a business's Message reaches its owner; More (⋯) opens the menu on touch; #422 (b), (e))                      |
+| MK-06 | Standing and Reliability shown in discovery           | Buyer   | cards, `/view`, `/:handle`                     | 🟡     | Normal | PROD | Reliability Index unbuilt (#338 P4); #454 retired Pro's `discovery_boost` (ranking is not for sale)                               |
+| MK-07 | Buy a promoted placement                              | Seller  | `/catalogue/:slug` panel → Explore slot        | 🟡     | Normal | PROD | #454: one plan-allocated 7-day labelled slot (Home or results); Pro can't be bought (PRD-F14); 20% tier open (#454 FLAG (a))      |
+
+### Listing view, intents & saves
+
+| ID    | Flow                                                 | Persona    | Entry                                              | Status | Crit     | Gate | What's missing                                                                                                                              |
+| :---- | :--------------------------------------------------- | :--------- | :------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| MK-08 | Product: Buy now or Add to basket                    | Buyer      | `/view/:id`                                        | ✅     | High     | UAT  | Delivery broken (MK-29)                                                                                                                     |
+| MK-09 | Pipeline service: "Add to Projects"                  | Client     | `/view/:id` → `/api/services/instantiate-pipeline` | 🟡     | Critical | MVP  | Unclaimed escrow is bound to the seller at funding (PRD-F24); no Cancel service below the lane breakpoint (#456 (b), (d))                   |
+| MK-10 | One-Off or Single-Task service: scope → basket → pay | Client     | `/view/:id` → `/api/services/configure`            | ✅     | High     | UAT  | — (#457: payment creates the seller-owned engagement with milestone 1 held, or every milestone under the whole-project prepay; live wallet and card checkouts of both). A business account cannot buy one yet (MK-56) |
+| MK-11 | Book a 1-on-1 session or a block → checkout          | Buyer      | `/view/:id` or `/:handle` Hire → `/api/services/book-session` | ✅     | High     | UAT  | — (#453: a block's line reads "2 of 6 sittings scheduled" with each time; the profile books in `/view`'s dialog; answers reach the order line). The provider cannot read the answers yet (MK-55) |
+| MK-12 | Cohort: reserve a seat → checkout                    | Buyer      | `/view/:id` or `/:handle` Hire → `reserveSeat`     | 🟡     | High     | UAT  | Needs an enrolling cohort, and no seller can open one (MK-40); the seed and the shared DB hold none. Intake answers now reach the order line and #422 (a) is closed, live-checked (#453) |
+| MK-13 | Join a cohort waitlist                               | Buyer      | `/api/services/waitlist`                           | 🟡     | Normal   | UAT  | #455: invited in order with a 48-hour held seat, converts or expires, seller queue on the Clients tab. Left: the invite is in-app only (NT3), so a buyer who is away can miss the hold |
+| MK-14 | Project opening → Apply                              | Freelancer | `/view/:id?intent=apply`                           | ✅     | High     | MVP  | — (the handshake is PJ-15)                                                                                                                  |
+| MK-15 | Team or business storefront                          | Buyer      | `/:handle`, `/:handle/view/:id`                    | ✅     | Normal   | UAT  | —                                                                                                                                           |
+| MK-16 | Contact seller: a question or a custom quote         | Buyer      | `/view` → `/api/services/contact-action` → `/api/services/quotes` | 🟡     | High     | UAT  | The seller answers with a priced offer, both sides are notified, and accepting puts one basket line in (#458, probe `quote_offers`); checkout does not yet price the line from the offer (`place_wallet_order` quote branch after LV2's checkout lands), so no quote reaches a funded engagement yet |
+| MK-17 | Save an item from Explore                            | Any        | card star, results drawer                          | ✅     | Normal   | UAT  | — (DS3: the drawer saves through `/api/saved`; `/api/explore/bookmark` removed)                                                             |
+
+### Basket, checkout & orders
+
+| ID    | Flow                                                     | Persona         | Entry                                                      | Status | Crit     | Gate | What's missing                                                                                                                                 |
+| :---- | :------------------------------------------------------- | :-------------- | :--------------------------------------------------------- | :----- | :------- | :--- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
+| MK-18 | Basket: add, remove, save for later, lists, owner switch | Buyer           | drawer, `/checkout`, `/api/basket/*`                       | ✅     | High     | UAT  | No abandoned-basket nudge (`basket.abandoned` has no emitter)                                                                                  |
+| MK-19 | Buy now (one line)                                       | Buyer           | BuyNowModal → `/checkout/payment`                          | ✅     | High     | UAT  | —                                                                                                                                              |
+| MK-20 | Checkout details (delivery and billing)                  | Buyer           | `/checkout/details`                                        | 🟡     | Critical | PROD | No tax or VAT: `taxNote: null`, invoice tax 0 (FINANCE A9, PRD-M5)                                                                             |
+| MK-21 | Pay from the wallet                                      | Buyer           | `/checkout/payment` → `place_wallet_order`                 | ✅     | Critical | MVP  | Wallet + card split unsupported (CO17, planned)                                                                                                |
+| MK-22 | Pay by card (saved or new, 3DS)                          | Buyer           | same → Stripe → order                                      | ✅     | Critical | MVP  | Needs `FINANCE_BACKEND_LIVE` and a Stripe key                                                                                                  |
+| MK-23 | Express pay (Apple Pay, Google Pay, PayPal)              | Buyer           | same                                                       | 🟡     | High     | UAT  | Unverified on real devices and registered wallet domains                                                                                       |
+| MK-24 | Pay by invoice (on account)                              | Business member | same → `place_on_account_order`                            | 🟡     | Normal   | UAT  | Needs KYB and monthly invoicing, which are plan-gated while plans cannot be bought (PRD-F14)                                                   |
+| MK-25 | Business checkout spend approval                         | Business member | `/api/checkout/approval`                                   | ✅     | Normal   | UAT  | Notice in-app only                                                                                                                             |
+| MK-26 | Promo code                                               | Buyer           | `/api/basket/promo`                                        | 🟡     | Normal   | UAT  | No seller can create a code (no `finance.promo_codes` writer); per-account cap open (CO7); no rate limit (CO22)                                |
+| MK-27 | Pay in the buyer's own currency                          | Buyer           | `?pay_in=`                                                 | ⏸      | High     | PROD | Built, switched off pending counsel and a live rate feed (#435; PRD-F18)                                                                       |
+| MK-28 | Browse prices in a display currency                      | Any             | header switcher                                            | 🟡     | Normal   | PROD | Seeded rates only, no live feed (PRD-F21)                                                                                                      |
+| MK-29 | Receive and download a purchased product                 | Buyer           | `/checkout/confirmation`                                   | ❌     | Critical | UAT  | Nothing writes `order_lines.asset_id`, so every download line says the seller has not attached files (`live-orders.ts:376`); #393              |
+| MK-30 | Order confirmation, receipt, `.ics`                      | Buyer           | `/checkout/confirmation`, `/api/checkout/{order,calendar}` | ✅     | High     | UAT  | No standalone order history beyond recent orders; a block's receipt names its first sitting only (#453 (c))                                    |
+| MK-31 | Refund or cancel an order, line by line                  | Buyer, Operator | —                                                          | ❌     | Critical | UAT  | `refunded` and `cancelled` never written; no `refunds.create`; buyer and provider refunds (DB21) and the order lifecycle (DB19) open (PRD-F12) |
+
+### Reviews
+
+| ID    | Flow                                                  | Persona       | Entry                            | Status | Crit   | Gate | What's missing                                                                                                      |
+| :---- | :---------------------------------------------------- | :------------ | :------------------------------- | :----- | :----- | :--- | :------------------------------------------------------------------------------------------------------------------ |
+| MK-32 | Leave a review; seller reply                          | Buyer, Seller | —                                | ❌     | High   | UAT  | `reviews.entity_reviews` has a read policy only (`00002018:49`) and no write door; `review.received` has no emitter |
+| MK-33 | Reciprocal client review, Client Trust Score, warning | Freelancer    | —                                | ❌     | Normal | PROD | Not built (PRODUCT_SPEC §Reputation 3)                                                                              |
+| MK-34 | Read reviews and ratings                              | Any           | `/view` ReviewsPanel, `/:handle` | ✅     | Normal | UAT  | Seed data only until MK-32                                                                                          |
+
+### Seller catalogue
+
+| ID    | Flow                                                     | Persona            | Entry                                              | Status | Crit     | Gate | What's missing                                                                                                   |
+| :---- | :------------------------------------------------------- | :----------------- | :------------------------------------------------- | :----- | :------- | :--- | :--------------------------------------------------------------------------------------------------------------- |
+| MK-35 | Create a listing (Quick-Init)                            | Seller             | `/catalogue?create=…`, `/api/catalogue/create`     | ✅     | Critical | MVP  | `catalogue.listings` has no Zod row schema (PRD-I3)                                                              |
+| MK-36 | Item workspace: edit, media, offer, pricing, intake, SEO | Seller             | `/catalogue/:slug`                                 | ✅     | High     | MVP  | —                                                                                                                |
+| MK-37 | Product listing with files and licence                   | Seller             | Offer → AttachmentList                             | 🟡     | High     | UAT  | Attached files never reach a buyer (MK-29); no protection of sold originals (#393)                               |
+| MK-38 | Pipeline blueprint, fixed or tiered intensity            | Seller             | Offer, Pricing                                     | ✅     | Critical | MVP  | No seeded tiered listing (#417 (f)); stage CREATE category not copied (#417 (c))                                 |
+| MK-39 | 1-on-1 session listing: presets, RRULE, session plan     | Seller             | Availability section                               | ✅     | High     | UAT  | No seeded `session_plan` (#411 (f))                                                                              |
+| MK-40 | Open a cohort and schedule group sittings                | Seller             | —                                                  | ❌     | High     | UAT  | `schedule_sitting` has no app caller, so a new group listing is waitlist-only (S-05 → SCH-WP7); the seed opens no cohort either (#453 (e)) |
+| MK-41 | Publish, pause, archive, duplicate, batch, delete        | Seller             | console, `/api/catalogue/{status,batch,duplicate}` | 🟡     | Critical | PROD | Published unscreened (PRD-D10); `catalogue.listing_published` has no emitter                                     |
+| MK-42 | Buyer simulation / preview                               | Seller             | `/catalogue/:slug/simulate`                        | ✅     | Normal   | UAT  | `x-frame-options` loosened (#219 (d))                                                                            |
+| MK-43 | Listing analytics                                        | Seller             | `/catalogue?view=analytics`                        | 🟡     | Normal   | UAT  | No writer of `view` events (#218 (b)); impressions need the EXPLORE flag                                         |
+| MK-44 | Clients pipeline                                         | Seller             | `?view=clients`, `/api/catalogue/clients`          | 🟡     | Normal   | UAT  | Links are not slugs (#218 (a)); team or business orders have no buyer user (#218 (d)); quotes cannot be acted on |
+| MK-45 | Team catalogue                                           | Team admin         | `/teams/:h/catalogue/*`                            | ✅     | High     | UAT  | — (#312)                                                                                                         |
+| MK-46 | Request to Sell; shared IP; royalty routing              | Freelancer, Client | —                                                  | ❌     | Normal   | PROD | No table, door or UI (PRODUCT_SPEC §Digital Marketplace 3, 5)                                                    |
+| MK-47 | Asset protection, delivery APIs, takedown and report     | Seller, Operator   | proposed `/api/catalogue/files/*`                  | ❌     | High     | PROD | #393 specified, unbuilt, 21 rulings open; no inbound copyright or report path                                    |
+
+### Calls & sessions
+
+| ID    | Flow                                                       | Persona       | Entry                                               | Status | Crit   | Gate | What's missing                                                                                                         |
+| :---- | :--------------------------------------------------------- | :------------ | :-------------------------------------------------- | :----- | :----- | :--- | :--------------------------------------------------------------------------------------------------------------------- |
+| MK-48 | Set availability and the call offer                        | Seller        | `/[handle]` in place                                | ✅     | High   | UAT  | — (#439)                                                                                                               |
+| MK-49 | Request a courtesy / discovery call                        | Buyer         | profile Consultation modal, `/view` Contact         | 🟡     | High   | UAT  | Rooms never run on a live Zoom or Microsoft account (#386, #392); the visitor composer fix (S-33) unverified on `main` |
+| MK-50 | Host answers a call: confirm, decline, propose, no-show    | Seller        | `/calendar` CallActionBar                           | 🟡     | High   | UAT  | Reminders in-app only (S-18)                                                                                           |
+| MK-51 | Paid consultation                                          | Buyer         | —                                                   | ⏸      | Normal | PROD | Ruled off (#343); `PAID_CALLS_LIVE = false`                                                                            |
+| MK-52 | Attend a sitting: join, presence, lessons, "did it happen" | Buyer, Seller | session workspace, `/api/sessions/*`, `/meet/:room` | 🟡     | High   | UAT  | Unproven on live provider accounts; group sittings not on the seat-holder's calendar (SCH-WP7)                         |
+| MK-53 | Cancel a seat or session for a refund (24-hour rule)       | Buyer         | —                                                   | ❌     | High   | UAT  | `cancel_cohort_membership` exists; no UI calls `SessionService.cancelSeat` (S-22 → SCH-WP7)                            |
+| MK-54 | Reschedule a sitting (1-on-1 handshake, group vote)        | Buyer, Seller | session workspace                                   | 🟡     | Normal | UAT  | Group sittings frozen; the D2 money windows open (SCH-WP7)                                                             |
+| MK-55 | Provider reads a session booking's intake answers          | Seller        | —                                                   | ❌     | High   | UAT  | Kept on `finance.order_lines.intake_answers` (#453), but order lines are the buyer's alone under RLS and no host read (e.g. `get_session_workspace`) surfaces them |
+| MK-56 | A business buys a One-Off or Task                          | Business member | `/view/:id` → `/checkout`                         | ❌     | Normal | PROD | Ruled individuals-only for now (#457): checkout says so before Pay, and `place_wallet_order` refuses a business basket `PU422` |
+
+---
+
+## PJ — Projects, collaboration, files & calendar
+
+### Project setup
+
+| ID    | Flow                                                           | Persona            | Entry                                            | Status | Crit     | Gate | What's missing                                                                                           |
+| :---- | :------------------------------------------------------------- | :----------------- | :----------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------- |
+| PJ-01 | Quick-Init a project → draft; portfolio and proposals          | Client, Freelancer | `/projects` modal, `/api/projects/{create,list}` | ✅     | Critical | MVP  | —                                                                                                        |
+| PJ-02 | Configure (brief, IP, NDA, bonus, roles) and publish with lock | Client             | `/projects/:slug/details`, `/api/projects/setup` | ✅     | Critical | MVP  | Only moves carry optimistic concurrency                                                                  |
+| PJ-03 | Preview before publishing                                      | Client             | `/projects/:slug/preview`                        | ✅     | Normal   | UAT  | —                                                                                                        |
+| PJ-04 | A service-backed engagement from "Add to Projects"             | Client, Seller     | Overview                                         | 🟡     | High     | MVP  | The client must create every ticket (#427 (a), #409); no lane archive (b); 30 s cross-party read lag (i) |
+| PJ-05 | Overview and lane activity marks                               | Any                | `/projects/:slug`, `/api/projects/nav-seen`      | ✅     | Normal   | UAT  | — (#146)                                                                                                 |
+
+### Stages
+
+| ID    | Flow                                                 | Persona    | Entry                             | Status | Crit     | Gate | What's missing                                                                                                           |
+| :---- | :--------------------------------------------------- | :--------- | :-------------------------------- | :----- | :------- | :--- | :----------------------------------------------------------------------------------------------------------------------- |
+| PJ-06 | Create a stage (name, CREATE label, rate)            | Client     | board and timeline rigs           | ✅     | Critical | MVP  | — (#416, #421)                                                                                                           |
+| PJ-07 | Edit a stage: scope, seats, roles, price, intensity  | Client     | `/details`, `[channelId]/details` | ✅     | High     | MVP  | $W_i$ from difficulty only (#338 P4)                                                                                     |
+| PJ-08 | Reorder stages                                       | Client     | `/details`                        | ✅     | Normal   | UAT  | —                                                                                                                        |
+| PJ-09 | Delete or archive a stage                            | Client     | `/details`                        | 🟡     | High     | UAT  | An untouched stage is hard-deleted; archive-and-settle unbuilt; stageless `in_progress` tickets possible (X16 → PM-WP4b) |
+| PJ-10 | Stage dependencies (open on completion, chains)      | Client     | `/details`, `/timeline`           | ❌     | High     | UAT  | Drawn only (`live-board.ts:291`); no engine, cycle or cross-project guard (PM-D7a/D7b)                                   |
+| PJ-11 | Concurrency caps and the workload gauge              | Freelancer | claim                             | 🟡     | High     | UAT  | Caps enforced (PM-WP2); the gauge is an unmounted example island                                                         |
+| PJ-12 | Open Pull self-claim                                 | Freelancer | stage Tasks                       | ✅     | Critical | MVP  | —                                                                                                                        |
+| PJ-13 | Manual assignment                                    | Client     | —                                 | ❌     | Normal   | UAT  | `assign_ticket_manual` granted but never called; `set_stage_assignment_mode` ungranted; PRODUCT_SPEC says it ships       |
+| PJ-14 | Round Robin, Parallel Stream, Global Workload Kanban | Client     | —                                 | ⏸      | Normal   | PROD | Planned (#338 P3)                                                                                                        |
+
+### Hiring & members
+
+| ID    | Flow                                                    | Persona    | Entry                                                      | Status | Crit     | Gate | What's missing                                                                       |
+| :---- | :------------------------------------------------------ | :--------- | :--------------------------------------------------------- | :----- | :------- | :--- | :----------------------------------------------------------------------------------- |
+| PJ-15 | Apply to a seat; withdraw                               | Freelancer | `/api/projects/{apply,applications/withdraw}`              | ✅     | Critical | MVP  | Notice in-app only                                                                   |
+| PJ-16 | Answer applications (accept → fund and confirm; reject) | Client     | `/members?view=requests`                                   | ✅     | Critical | MVP  | —                                                                                    |
+| PJ-17 | Invite to a project or stage (≤10, cooldowns)           | Client     | Members, `/api/projects/hire`                              | 🟡     | Critical | MVP  | `stage.invite` email and push never delivered (PRD-E4)                               |
+| PJ-18 | Accept or decline an invitation                         | Freelancer | context panel, `/projects`                                 | ✅     | Critical | MVP  | —                                                                                    |
+| PJ-19 | Stage invite link → ask to join                         | Freelancer | `/invite/:token`                                           | ✅     | Normal   | UAT  | —                                                                                    |
+| PJ-20 | Manage invitations, roles, admins, ticket grants        | Client     | `?view=invitations`, `/api/projects/:id/members/:mid/role` | ✅     | High     | UAT  | The owner can still insert a seat without consent through RLS (PM audit §5.3)        |
+| PJ-21 | Remove a member                                         | Client     | `/api/projects/members/remove`                             | 🟡     | Critical | UAT  | Releases held escrow 100% to the freelancer; the spec says refund or split (PM-WP4b) |
+
+### Tickets & delivery
+
+| ID    | Flow                                                | Persona            | Entry                                        | Status | Crit     | Gate | What's missing                                                                                                      |
+| :---- | :-------------------------------------------------- | :----------------- | :------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------ |
+| PJ-22 | Create or edit a ticket (stages, intensity, dates)  | Client             | board, `/api/projects/board/ticket`          | ✅     | Critical | MVP  | Ticket-versus-stage price contradiction (PM-P6, 🧑)                                                                 |
+| PJ-23 | Fund a ticket stage by stage (wallet or card)       | Client             | funding line → basket or Buy now             | 🟡     | Critical | MVP  | Live path not browser-driven (#430 (a)); payees cannot see prepaid stages (b)                                       |
+| PJ-24 | Claim a ticket                                      | Freelancer         | `/api/projects/ticket/claim`                 | ✅     | Critical | MVP  | — (seat, Ready, held escrow and capacity checked in SQL)                                                            |
+| PJ-25 | An expired claim releases and refunds               | System             | job `projects-release-expired-claims`        | ❌     | Critical | UAT  | Seeded paused; the sweep has no lock, re-check, history or notice (PRD-G2, PM-WP1)                                  |
+| PJ-26 | Move a ticket (drag, menus, drop refusals)          | Client, Freelancer | `/api/projects/ticket/move`                  | 🟡     | Critical | MVP  | Any participant moves unclaimed tickets; `canDrag` is not a server rule (PM-WP6)                                    |
+| PJ-27 | Submit a deliverable or a draft                     | Freelancer         | `/api/projects/submissions/create`           | 🟡     | Critical | MVP  | Reviewers see drafts; a submitter can insert an `accepted` or foreign-ticket row; draft + files not atomic (PM-WP9) |
+| PJ-28 | Request a revision or a paid revision               | Client             | `…/submissions/:sid/review`, `paid-revision` | ✅     | Critical | MVP  | —                                                                                                                   |
+| PJ-29 | Accept a submission → release and Chain Reaction    | Client             | `…/review`                                   | 🟡     | Critical | MVP  | Next stage read from unvalidated `required_stages`; no capacity check there (PM-D7a, PM-P6)                         |
+| PJ-30 | Approve a stage → release and handover unlock       | Client             | `…/stages/:id/approve`                       | 🟡     | Critical | MVP  | Stage status never shows submitted, approved or revisions (PM-S3)                                                   |
+| PJ-31 | A silent client's delivery auto-approves (ghosting) | System             | —                                            | ❌     | Critical | UAT  | No `submitted_at` or timer; held escrow never times out (PRD-F23, PM-GH1)                                           |
+| PJ-32 | Change a due date by agreement                      | Client, Freelancer | ticket modal                                 | ❌     | Normal   | UAT  | Either side edits alone (PM-WP6)                                                                                    |
+| PJ-33 | Report Workload Intensity                           | Freelancer         | —                                            | ❌     | High     | UAT  | SQL engine only: no grant, Zod, route, UI or expiry job (PM-WP5a; PRD-G3)                                           |
+| PJ-34 | Delete or archive a ticket                          | Client             | `/api/projects/ticket/delete`                | 🟡     | High     | UAT  | Pristine tickets only; no archive or refund/split path (PRD-B6, PM-WP4b)                                            |
+| PJ-35 | Ticket deep link and Copy link                      | Any                | `?tkv=tkt-…`                                 | 🟡     | Normal   | UAT  | `TicketMenu` still builds `?ticket=<uuid>` (`TicketView.tsx:856`, PM-WP8)                                           |
+| PJ-36 | Board views, filters, grouping                      | Any                | `/board`, `[channelId]/tasks`                | 🟡     | High     | MVP  | View state in signals and localStorage, not the URL (PRD-J5); no Task/One-off guard on these routes (PM-WP8)        |
+| PJ-37 | Timeline (Gantt)                                    | Any                | `/timeline`, `/api/projects/timeline`        | ✅     | Normal   | UAT  | The API still answers for a Task (PM-WP8)                                                                           |
+| PJ-38 | Submissions explorer                                | Any                | `/submissions/*`                             | 🟡     | High     | UAT  | uuid segments, silent truncation, no Zod (PM-WP9)                                                                   |
+
+### Completion & exit
+
+| ID    | Flow                          | Persona | Entry                             | Status | Crit     | Gate | What's missing                                                                                                             |
+| :---- | :---------------------------- | :------ | :-------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------- |
+| PJ-39 | Fair Exit (end a stage early) | Client  | FairExitDialog, `…/fair-exit`     | 🟡     | Critical | UAT  | The client picks 25/50/75%; no derived floor, ticket-level exit or contest (PM-WP4a, 🧑)                                   |
+| PJ-40 | Complete a project            | Client  | —                                 | ❌     | High     | UAT  | Setup allows only `draft\|active\|on_hold` (`types/projects/setup.ts:1704`); a project stays active after its last release |
+| PJ-41 | Cancel a project              | Client  | —                                 | ❌     | High     | UAT  | No app door; the RPC cancels from any state and settles no escrow (`00001100:1292`; PRD-F22)                               |
+| PJ-42 | Archive a project             | Client  | kebab, `DELETE /api/projects/:id` | 🟡     | Critical | UAT  | Allowed while escrow is held or reserved, and settles nothing (`00001100:1296-1301`; PRD-F22)                              |
+
+### Disputes
+
+| ID    | Flow                                                         | Persona            | Entry                                | Status | Crit     | Gate | What's missing                                                                                    |
+| :---- | :----------------------------------------------------------- | :----------------- | :----------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------ |
+| PJ-43 | Raise a stage or ticket dispute (offer, Evidence Vault, PDF) | Client, Freelancer | —                                    | ❌     | Critical | UAT  | Only session no-show cases exist (#212); no raise door, split tool, vault snapshot or summary PDF |
+| PJ-44 | No-show claim → attendance audit                             | Buyer              | `/api/sessions/sittings/:id/no-show` | 🟡     | High     | UAT  | Never run on live Zoom or Teams (#386, #392)                                                      |
+| PJ-45 | Respond with evidence; escalate                              | Client, Freelancer | DisputeCaseDialog                    | ✅     | High     | UAT  | — (`finance-dispute-sweep` registered)                                                            |
+| PJ-46 | Contest a Fair Exit or workload verdict                      | Freelancer         | —                                    | ❌     | Normal   | UAT  | PM-WP4a step 6; W8                                                                                |
+
+The operator's ruling is MW-59.
+
+### Messaging
+
+| ID    | Flow                                                     | Persona                     | Entry                                       | Status | Crit     | Gate | What's missing                                                                                                     |
+| :---- | :------------------------------------------------------- | :-------------------------- | :------------------------------------------ | :----- | :------- | :--- | :----------------------------------------------------------------------------------------------------------------- |
+| PJ-47 | Stage room and Discussion chat                           | Client, Freelancer          | `/discussion`, `[channelId]/chat`           | 🟡     | Critical | MVP  | No live delivery (PRD-E3); no edit or delete; reactions local; archived rooms accept posts (SEC G5)                |
+| PJ-48 | Team and business private project rooms                  | Team admin, Business member | stage tree                                  | 🟡     | Normal   | UAT  | RLS-scoped; how rooms are created is unchecked                                                                     |
+| PJ-49 | DMs and groups (create, members, photo)                  | Any                         | `/messages/:id`, `/api/messaging/*`         | 🟡     | Critical | MVP  | No live delivery; no `cht-` route (PRD-E2); marks read on GET (PRD-C11); group photo unscreened                    |
+| PJ-50 | Project DMs shown inside the project                     | Client, Freelancer          | —                                           | ❌     | Normal   | UAT  | Stamped (MS1) but not drawn (MS2)                                                                                  |
+| PJ-51 | Inbox folders: Primary, Requests, Archived               | Any                         | `/api/messaging/conversations/[id]/folder`  | ✅     | High     | MVP  | —                                                                                                                  |
+| PJ-52 | Mute or delete a conversation                            | Any                         | `/messages` menus                           | 🟡     | Normal   | UAT  | localStorage only; the server `mute` route is unused there (MS5)                                                   |
+| PJ-53 | Context panel (accept, decline, fund and confirm a seat) | Client, Freelancer          | `/api/messaging/conversations/[id]/context` | ✅     | High     | MVP  | —                                                                                                                  |
+| PJ-54 | Link previews and the `/exit` interstitial               | Any                         | `/api/links/preview`, `/exit`               | 🟡     | High     | UAT  | Offline, the scan says `safe` and skips `/exit` (PRD-D4)                                                           |
+| PJ-55 | Find in conversation                                     | Any                         | Ctrl/⌘+F                                    | ✅     | Normal   | UAT  | — (#418)                                                                                                           |
+| PJ-56 | Chat attachments; Go to message                          | Client, Freelancer          | `/api/messaging/files`                      | 🟡     | High     | MVP  | Link-insert results unchecked (M15); audio lost on reload (M18); unscanned (PRD-D3)                                |
+| PJ-57 | Contact-detail masking and Projective Unlock             | System                      | send path                                   | 🟡     | Critical | MVP  | Tier 2 masking and the unlock work; Tier 1 and Tier 3, the marketplace window and cooling-off unbuilt (PRD-D7, D8) |
+| PJ-58 | Report a message or file                                 | Any                         | —                                           | ❌     | High     | PROD | No report surface (PRD-D9)                                                                                         |
+
+### Notifications
+
+| ID    | Flow                                      | Persona | Entry                  | Status | Crit     | Gate | What's missing                                                          |
+| :---- | :---------------------------------------- | :------ | :--------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------- |
+| PJ-59 | Notifications drawer and `/notifications` | Any     | `/api/notifications/*` | ✅     | High     | MVP  | 30 s ETag poll; in-app only                                             |
+| PJ-60 | Email notifications, digests, escalation  | System  | —                      | ❌     | Critical | UAT  | Dispatcher gated off; deliveries stuck `pending` (PRD-E4, E5; NT2, NT3) |
+| PJ-61 | Web push and SMS                          | System  | —                      | ❌     | Normal   | PROD | NT4 (VAPID), NT5 (Twilio) (PRD-E7, E8)                                  |
+| PJ-62 | Chat message notifications                | Any     | —                      | ❌     | High     | UAT  | No `message.*` emitter (MS4, PRD-E9)                                    |
+
+Notification preferences are ID-42.
+
+### Files & assets
+
+| ID    | Flow                                                          | Persona            | Entry                                                        | Status | Crit   | Gate | What's missing                                                                                                                  |
+| :---- | :------------------------------------------------------------ | :----------------- | :----------------------------------------------------------- | :----- | :----- | :--- | :------------------------------------------------------------------------------------------------------------------------------ |
+| PJ-63 | Files hub: upload, folders, move, soft delete, dedup, history | Any                | `/files/*`, `/api/files/*`                                   | 🟡     | High   | MVP  | No malware scan (PRD-D3); quota fails open (F14); no quarantine sweeper (F15)                                                   |
+| PJ-64 | Link assets                                                   | Any                | `/api/files/link`                                            | 🟡     | Normal | UAT  | The link scan fails open offline (PRD-D4)                                                                                       |
+| PJ-65 | Storage connectors                                            | Any                | Settings → Integrations, `/api/integrations/{browse,import}` | 🟡     | Normal | UAT  | Google Drive only, first page only (`live-locations.ts:117`); OneDrive, Dropbox, S3, Frame.io seeded off; no S3 credential form |
+| PJ-66 | File Inspector                                                | Any                | `/inspect/:fileId`, `/api/media/proxy/:id`                   | 🟡     | High   | UAT  | uuid route (#161 (a)); raw PDF unsandboxed (F20); broad CSP (F26)                                                               |
+| PJ-67 | Preview modal; project Files tab                              | Client, Freelancer | `/projects/:slug/files`                                      | ✅     | High   | MVP  | —                                                                                                                               |
+| PJ-68 | Share links and access grants                                 | Any                | `/api/files/{share-*,access}`                                | 🟡     | High   | UAT  | Grants notify nobody (#402 (d)); a link can outlive its tier (k)                                                                |
+
+### Calendar, integrations & rooms
+
+| ID    | Flow                                                  | Persona            | Entry                                                      | Status | Crit   | Gate | What's missing                                                          |
+| :---- | :---------------------------------------------------- | :----------------- | :--------------------------------------------------------- | :----- | :----- | :--- | :---------------------------------------------------------------------- |
+| PJ-69 | Calendar entries, reminders, routines, colour, views  | Any                | `/calendar`, `/api/scheduling/{events,reminders,routines}` | ✅     | High   | UAT  | Reminders in-app only                                                   |
+| PJ-70 | `.ics` import and export                              | Any                | `/calendar`                                                | ✅     | Normal | UAT  | — (import saves native entries, #442)                                   |
+| PJ-71 | Entry invitations and RSVP                            | Any                | `/api/scheduling/{invites,rsvp}`                           | 🟡     | High   | UAT  | Push and email not sent (#390; PRD-E4)                                  |
+| PJ-72 | Guest RSVP by token                                   | Guest              | `/rsvp/:token`                                             | 🟡     | Normal | UAT  | Guest mail needs the Resend key; the POST has no origin check (PRD-C12) |
+| PJ-73 | Reschedule handshake and vote; courtesy no-show marks | Any                | EventModal, `/api/scheduling/{reschedule,calls}`           | 🟡     | High   | UAT  | `fn_settle_votes` missing, so settlement is lazy (PRD-G4, SCH-WP7)      |
+| PJ-74 | Project calendar                                      | Client, Freelancer | `/projects/:slug/calendar`                                 | ⏸      | Normal | UAT  | Read and RSVP only by ruling (#343 C7 (a), #413)                        |
+| PJ-75 | Connect and disconnect integrations                   | Any                | Settings → Integrations, `/api/integrations/*`             | 🟡     | High   | UAT  | Off unless `INTEGRATIONS_BACKEND_LIVE`; no vault key rotation (PRD-H2)  |
+| PJ-76 | Calendar sync (busy in, mirror out)                   | Any                | jobs `integrations-calendar-sync`, `outbound-sync`         | 🟡     | High   | UAT  | Google proven; Microsoft never run (#386)                               |
+| PJ-77 | Rooms (Meet, Teams, Zoom, custom), join, presence     | Any                | `/meet/:roomSlug`, `/api/sessions/webhooks/:provider`      | 🟡     | High   | UAT  | Built (SCH-WP4b/5); unproven on live Microsoft and Zoom (#386, #392)    |
+
+---
+
+## MW — Money, workspaces, legal & operator
+
+### Wallet
+
+| ID    | Flow                                                   | Persona                     | Entry                                                             | Status | Crit     | Gate | What's missing                                                                                                 |
+| :---- | :----------------------------------------------------- | :-------------------------- | :---------------------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------- |
+| MW-01 | Wallet overview and scope carousel (`?w=`)             | Any                         | `/wallet?w=`, `/api/wallet/{overview,switcher,funding}`           | 🟡     | Critical | MVP  | Cross-currency totals skip a currency with no rate (C13, PRD-F20); FA UI gates D1/D2/D7 open (UI1/UI3)         |
+| MW-02 | Top up by card                                         | Any                         | wallet hero, `/api/wallet/action`                                 | ✅     | Critical | MVP  | Needs the FINANCE flag and a Stripe key; the lane's Top up takes the wrong tier (N15)                          |
+| MW-03 | Saved cards (add, default, remove)                     | Client, Business member     | `/api/finance/cards/*`, `/api/cards`                              | ✅     | High     | UAT  | —                                                                                                              |
+| MW-04 | Transfer between own wallets or into a vault           | Any                         | `/api/wallet/action`                                              | ✅     | High     | UAT  | Same currency only; conversion is DB18                                                                         |
+| MW-05 | Vault access rights (add, spend, withdraw, distribute) | Team admin, Business member | `/api/wallet/access`                                              | ✅     | High     | UAT  | No reconciler of vault rights against workspace capabilities                                                   |
+| MW-06 | Pots and reserves                                      | Freelancer, Team admin      | wallet lane                                                       | ❌     | Normal   | PROD | Engine and doors built (DB5); the UI is locked (`pots_not_running`) until the UI3 dialogs exist                |
+| MW-07 | Recurring deposits                                     | Client, Business member     | `/api/wallet/action`, job `/api/finance/cron/deposits`            | 🟡     | Normal   | UAT  | The HTTP job skips without the FINANCE cron secret (PRD-G6); row actions' UI open (UI3)                        |
+| MW-08 | Income Smoother                                        | Freelancer                  | wallet config                                                     | ⏸      | Normal   | PROD | Planned (#337 M6); refused `smoother_planned`                                                                  |
+| MW-09 | Transactions, CSV export, analytics                    | Any                         | `/wallet/transactions`, `/wallet/analytics`                       | ✅     | High     | UAT  | Tabular figures and accessibility (UI4)                                                                        |
+| MW-10 | Statements and bills (PDF)                             | Any                         | `/wallet/invoices`, `/api/finance/{statements,invoices}/[id]/pdf` | 🟡     | High     | UAT  | PDFs render but the UI links are UI2 (R10); tax lines planned (A9)                                             |
+| MW-11 | Multi-currency wallets and display conversion          | Any                         | `/api/finance/fx`                                                 | 🟡     | High     | PROD | Seed rates, no feed or staleness mark (PRD-F21); one exponent list is DB8; entity currency from country is DB9 |
+
+### Payouts & verification
+
+| ID    | Flow                                                   | Persona                                 | Entry                                                     | Status | Crit     | Gate | What's missing                                                                                           |
+| :---- | :----------------------------------------------------- | :-------------------------------------- | :-------------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------- |
+| MW-12 | Stripe Connect payout-account onboarding (Accounts v2) | Freelancer, Business member             | `/settings/verification`, `/api/finance/connect/*`        | ✅     | Critical | MVP  | No step-up on payout-account changes (IW-M12, PRD-C17)                                                   |
+| MW-13 | Identity verification (Stripe Identity)                | Freelancer                              | `/settings/verification`, `/api/finance/identity/session` | ✅     | Critical | MVP  | —                                                                                                        |
+| MW-14 | The payout-ready earning gate ("no forever-escrow")    | Freelancer, Team admin                  | gig and seat doors                                        | 🟡     | Critical | UAT  | Publish, booking and paid-call doors not gated (DB15); seller refusals mis-mapped to the buyer (SV7)     |
+| MW-15 | Withdraw to a bank                                     | Freelancer, Team admin, Business member | wallet hero, job `/api/finance/cron/payouts`              | 🟡     | Critical | MVP  | No step-up (PRD-C17); AED, INR, NGN cannot settle (#423, DB9); the stale-payout sweep is an HTTP job     |
+| MW-16 | A failed or cancelled bank payout                      | Freelancer, Team admin, Business member | webhook `payout.failed`                                   | 🟡     | High     | UAT  | SV8 open: owners not told, no wallet notice; money left in Stripe pending counsel (M9)                   |
+| MW-17 | Payout schedules (weekly, monthly, threshold)          | Freelancer, Team admin                  | wallet config, job `/api/finance/cron/payout-schedules`   | 🟡     | Normal   | UAT  | Built (DB4), awaiting re-verification; the HTTP job skips without the FINANCE cron secret                |
+| MW-18 | Instant payouts                                        | Freelancer                              | —                                                         | ⏸      | Normal   | PROD | Ruled (#337 P3 (d)); refused `instant_payout_planned`                                                    |
+| MW-19 | Chargebacks, money side                                | Client, Freelancer                      | webhook `charge.dispute.*`                                | 🟡     | Critical | PROD | Ledgered in any order (DB2); payee freeze and clawback unbuilt (M3, DB6); platform losses have no reader |
+
+Refunds are MK-31.
+
+### Business billing
+
+| ID    | Flow                                                 | Persona         | Entry                                                      | Status | Crit   | Gate | What's missing                                                                                             |
+| :---- | :--------------------------------------------------- | :-------------- | :--------------------------------------------------------- | :----- | :----- | :--- | :--------------------------------------------------------------------------------------------------------- |
+| MW-20 | Consolidated monthly invoice; pay on account         | Business member | Billing module, job `finance-billing-cycle`                | 🟡     | High   | UAT  | No tax (A9); `invoice.issued` in-app only; intervaled invoicing needs Business Pro, which cannot be bought |
+| MW-21 | Pay an invoice from the wallet                       | Business member | `/businesses/:h/billing`, `/api/finance/invoices/[id]/pay` | ✅     | High   | UAT  | — (KYB-gated, #247 (h))                                                                                    |
+| MW-22 | Auto-funding queue (Off, Add to basket, From wallet) | Business member | Billing module                                             | 🟡     | High   | UAT  | Notices in-app only; the wallet path has no amount assert or unfunded-ticket gate (DB14)                   |
+| MW-23 | Low-balance warning and floor top-up                 | Business member | Billing module                                             | 🟡     | Normal | UAT  | `wallet.low_balance` in-app only; the floor top-up rides the deposits HTTP job (PRD-G6)                    |
+| MW-24 | Spend approvals (request, decide, withdraw, expire)  | Business member | checkout, `/api/workspace/spend-{decide,withdraw}`         | 🟡     | High   | UAT  | Nothing asks for approval away from checkout (#239 (c)); Review shown to the wrong members (V6)            |
+| MW-25 | Business spend policy (caps, threshold, approvers)   | Business member | `/businesses/:h/spend`                                     | 🟡     | High   | UAT  | Caps and threshold need Business Pro, enforced with no way to buy it (PRD-F14)                             |
+
+### Plans & commission
+
+| ID    | Flow                                     | Persona    | Entry                         | Status | Crit   | Gate | What's missing                                                                           |
+| :---- | :--------------------------------------- | :--------- | :---------------------------- | :----- | :----- | :--- | :--------------------------------------------------------------------------------------- |
+| MW-26 | See my plan (Settings → Billing)         | Any        | `/settings/billing`           | 🟡     | Normal | UAT  | Read-only; `formatMoney`; no upgrade link (SBP S5)                                       |
+| MW-27 | Buy, upgrade, downgrade or cancel a plan | Any        | —                             | ❌     | High   | UAT  | No Stripe Billing, plan checkout or `customer.subscription.*` handling (SBP S4; PRD-F14) |
+| MW-28 | Allowances and entitlements enforced     | Any        | `get_proposal_allowance`      | 🟡     | High   | PROD | Proposal, footprint and storage enforcement switched off; only business gates enforced   |
+| MW-29 | Agency tier and annual prices            | Team admin | —                             | ⏸      | Normal | PROD | Stopped at the storage-figure question (#252 S2)                                         |
+| MW-30 | Standing-tapered marketplace commission  | Freelancer | checkout `place_wallet_order` | ✅     | High   | UAT  | — (DB11)                                                                                 |
+
+Public pricing is ID-04.
+
+### Teams
+
+| ID    | Flow                                                       | Persona                     | Entry                                             | Status | Crit     | Gate | What's missing                                                                                  |
+| :---- | :--------------------------------------------------------- | :-------------------------- | :------------------------------------------------ | :----- | :------- | :--- | :---------------------------------------------------------------------------------------------- |
+| MW-31 | Create a team (draft, handle check)                        | Freelancer                  | `/teams/create`, `/api/workspace/{create,handle}` | ✅     | Critical | MVP  | — (payout-ready gated, #196)                                                                    |
+| MW-32 | Team setup, publish, visibility                            | Team admin                  | `/teams/:h`, `/teams/:h/settings`                 | ✅     | High     | MVP  | —                                                                                               |
+| MW-33 | Invite by @handle or email (batch, revoke, resend, accept) | Team admin, Business member | Invite modal, `/api/workspace/invite*`            | 🟡     | Critical | MVP  | Email invitees get no email (PRD-E5); no step-up on role grants                                 |
+| MW-34 | Invite links and join requests                             | Team admin, Business member | `/api/workspace/{invite-link,join-request}`       | ✅     | High     | UAT  | — (#318, #405)                                                                                  |
+| MW-35 | Roles: presets, custom, templates, archive                 | Team admin, Business member | `/api/workspace/{role,role-archive}`              | ✅     | High     | UAT  | The Contributor grant is an open flag (#264 (a))                                                |
+| MW-36 | Roster: change role, remove, leave, stake redistribution   | Team admin, Business member | `/api/workspace/{member,roster}`                  | 🟡     | High     | MVP  | Payout readiness not on the roster (SV7); an erased account keeps its seats (ERA3)              |
+| MW-37 | Team and business channels                                 | Team admin, Business member | `/teams/:h/channels/*`                            | ✅     | Normal   | UAT  | — (#306)                                                                                        |
+| MW-38 | Team payout splits and distribution                        | Team admin                  | `/teams/:h/payouts`, `/api/workspace/payout`      | 🟡     | Critical | MVP  | Co-op split works; Finder's fee and Benevolent dictator need Pro Team (unbuyable); DB20 unbuilt |
+| MW-39 | Transfer ownership                                         | Team admin, Business member | `/api/workspace/transfer-ownership`               | 🟡     | High     | UAT  | Atomic, but no step-up (PRD-C17)                                                                |
+| MW-40 | Archive or restore a team                                  | Team admin                  | Settings, `/api/workspace/update`                 | 🟡     | High     | UAT  | Blockers check held escrow and live assignments only; no wallet-balance blocker (ARC1)          |
+| MW-41 | Team verification, analytics, Standing modules             | Team admin                  | `/teams/:h/{verification,analytics,standing}`     | ❌     | Normal   | PROD | `ModulePlaceholder` "Not built yet" (`ModuleScreen.tsx:224-240`; PRD-A3)                        |
+
+### Businesses & enterprise
+
+| ID    | Flow                                                  | Persona                           | Entry                                                    | Status | Crit     | Gate | What's missing                                                                                         |
+| :---- | :---------------------------------------------------- | :-------------------------------- | :------------------------------------------------------- | :----- | :------- | :--- | :----------------------------------------------------------------------------------------------------- |
+| MW-42 | Create a business                                     | Any                               | `/businesses/create`, `/api/workspace/create`            | ✅     | Critical | MVP  | —                                                                                                      |
+| MW-43 | Business KYB (Connect onboarding)                     | Business member                   | `/businesses/:h/verification`, `/api/finance/verify/kyb` | ✅     | Critical | MVP  | Needs the FINANCE flag                                                                                 |
+| MW-44 | Business setup and publish                            | Business member                   | `/businesses/:h`                                         | ✅     | High     | MVP  | — (#248)                                                                                               |
+| MW-45 | Business settings (visibility, archive, restore)      | Business member                   | `/businesses/:h/settings`                                | 🟡     | High     | UAT  | Settings unbuilt (#244 (d), #261 (c)); a published business stays invite-only, so its page never opens |
+| MW-46 | Co-owner and billing grants                           | Business member                   | Members                                                  | ✅     | High     | UAT  | — (#238, #249)                                                                                         |
+| MW-47 | Business finance head and pooled wallet               | Business member                   | `/businesses/:h/finance`                                 | ✅     | Critical | MVP  | — (#248)                                                                                               |
+| MW-48 | Talent bench and re-hire                              | Business member                   | `/businesses/:h/talent`, `/api/workspace/bench`          | ✅     | Normal   | UAT  | —                                                                                                      |
+| MW-49 | Business analytics, Standing, Projects modules        | Business member                   | `analytics`, `standing`, `projects`                      | ❌     | Normal   | PROD | Placeholders; Projects only links to `/projects`                                                       |
+| MW-50 | Departmental isolation and project "Sets"             | Business member, Enterprise owner | —                                                        | ❌     | Normal   | PROD | No departments model or access scoping                                                                 |
+| MW-51 | Enterprise sign-up                                    | Enterprise owner                  | `/join` (enterprise)                                     | ✅     | High     | UAT  | — (OWN1, OWN2)                                                                                         |
+| MW-52 | Enterprise console and departmental controls          | Enterprise owner                  | `/api/context/{enterprises,switch}` only                 | ❌     | High     | PROD | No enterprise console route                                                                            |
+| MW-53 | Enterprise KYB and vault money                        | Enterprise owner                  | —                                                        | ❌     | High     | PROD | `fn_kyb_missing` refuses enterprise vault moves until KYB, yet nothing can verify an enterprise        |
+| MW-54 | Cross-department invoicing; negotiated-rate contracts | Enterprise owner, Operator        | —                                                        | ❌     | Normal   | PROD | `finance-model.md` §16 "not built yet"; nothing writes `finance.negotiated_rates`                      |
+
+### Legal, IP & compliance
+
+| ID    | Flow                                                        | Persona                     | Entry                              | Status | Crit   | Gate | What's missing                                                   |
+| :---- | :---------------------------------------------------------- | :-------------------------- | :--------------------------------- | :----- | :----- | :--- | :--------------------------------------------------------------- |
+| MW-55 | Legal workspace: IP chain of title, audit packs             | Client, Freelancer          | `/legal/workspace`, `/audit-packs` | ❌     | Normal | PROD | Placeholders (PRD-A4)                                            |
+| MW-56 | A deed of transfer issued on escrow release                 | Client, Freelancer          | `/legal/workspace/transfers`       | ❌     | High   | PROD | No deed table, generator or signing (PRD-M4)                     |
+| MW-57 | Tax documents (invoice tax, 1099 / W-9, VAT reverse charge) | Freelancer, Business member | —                                  | ❌     | High   | PROD | Planned (A9; PRD-M5)                                             |
+| MW-58 | AML monitoring                                              | Operator                    | —                                  | ❌     | Normal | PROD | Signals unbuilt; programme off pending counsel (#336 I1; PRD-M6) |
+
+Request to Sell and shared IP are MK-46.
+
+### Operator
+
+| ID    | Flow                                  | Persona  | Entry                                                              | Status | Crit     | Gate | What's missing                                                                                                                                                          |
+| :---- | :------------------------------------ | :------- | :----------------------------------------------------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MW-59 | Dispute desk queue and rulings        | Operator | `/admin/disputes`, `/api/finance/disputes/[id]/{resolve,escalate}` | 🟡     | Critical | UAT  | Release, refund and split rulings work; release refuses an open dispute (DB3); no deadline on `under_review` (#212 (c)); freeze unbuilt (DB6); parties told in-app only |
+| MW-60 | Contact request triage                | Operator | —                                                                  | ❌     | High     | UAT  | Intake works (#276); no operator inbox; nothing calls `ops.set_contact_request_status` (PRD-A7)                                                                         |
+| MW-61 | Moderation queue, reports, penalties  | Operator | —                                                                  | ❌     | Critical | PROD | R1–R5 not started (PRD-D9)                                                                                                                                              |
+| MW-62 | Reconciliation and conservation views | Operator | —                                                                  | ❌     | Critical | PROD | Nothing reads `fn_reconcile_wallets`; DB16 and Stripe-balance reconciliation open (PRD-F8, F9)                                                                          |
+| MW-63 | Operator metrics and provisioning     | Operator | —                                                                  | ❌     | Normal   | PROD | No operator dashboard; `ops.admin_users` filled by seed or SQL only                                                                                                     |
+
+---
+
+## Merged rows
+
+Flows that two inventories both described are kept once: the 2026-11-18 sources' "become a partner"
+(ID-33), public pricing (ID-04), enterprise SSO (ID-23), screen-sharing mode (ID-45), notification
+preferences (ID-42), order refunds (MK-31), FX pay-in (MK-27), Request to Sell (MK-46), availability
+editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's dispute ruling
+(MW-59).
+
+## Score history
+
+| Date       | Change                                                                 | MVP | UAT | PROD |
+| :--------- | :--------------------------------------------------------------------- | --: | --: | ---: |
+| 2026-11-18 | Seeded from the static audit at `d63ab286`; `/services` removed (#443) | 82% | 67% |  60% |
+| 2026-11-18 | AU4 (#445): ID-16 narrowed (the link is spent by a POST); still 🟡     | 82% | 67% |  60% |
+| 2026-11-18 | AU2 (#449): ID-15, ID-17, ID-38 narrowed (GoTrue settings); still 🟡   | 82% | 67% |  60% |
+| 2026-11-18 | AU5 (#448): ID-16, ID-20, ID-38 narrowed (reset fixed); still 🟡       | 82% | 67% |  60% |
+| 2026-11-18 | ST2: ID-42 narrowed (untrue delivery copy removed); still 🟡           | 82% | 67% |  60% |
+| 2026-11-18 | AU1 (#446): ID-14 ❌ → ✅ (terms accepted at sign-up, re-accept step)  | 82% | 67% |  61% |
+| 2026-11-18 | AU3 (#447): ID-15 narrowed (bot check built locally); still 🟡         | 82% | 67% |  61% |
+| 2026-11-18 | DS2 (#452): MK-04 🟡 → ✅ (sitemap lists listings, posts and profiles) | 82% | 67% |  61% |
+| 2026-11-18 | DS1 (#459): MK-02 narrowed (Best match ranks by the words); still 🟡  | 82% | 67% |  61% |
+| 2026-11-18 | ST1 (#451): ID-37 🟡 → ✅ (the sign-in address moves, re-authenticated) | 82% | 67% |  61% |
+| 2026-11-18 | LV4 (#455): MK-13 narrowed (invited in order, held seat, seller queue); still 🟡 | 82% | 67% |  61% |
+| 2026-11-18 | LV5 (#458): MK-16 narrowed (priced offer, notices, accept to basket); still 🟡 | 82% | 67% |  61% |
+| 2026-11-18 | LV3 (#453): MK-11 🟡 → ✅ (block sittings at checkout, profile books in `/view`'s dialog); MK-12 narrowed (seat intake kept, #422 (a) closed), still 🟡; new MK-55 ❌ (provider has no read of the answers) | 82% | 67% |  61% |
+| 2026-11-18 | ST6 (#450): ID-47 ❌ → 🟡 (self-serve data export from Settings; hosted job dispatch left, PRD-G6) | 82% | 67% |  61% |
+| 2026-11-18 | DS4 (#454): MK-07 ❌ → 🟡 (plan-allocated "Promoted" slot, never rank; plans can't be bought yet, PRD-F14); MK-06 narrowed (`discovery_boost` retired), still 🟡 | 82% | 67% |  61% |
+| 2026-11-18 | DS3 (#422 (b), (e)): MK-05, MK-17 🟡 → ✅ (owners reached, More on every card, one save door) | 82% | 68% |  61% |
+| 2026-11-18 | ST3–ST4 (#297 amended): ID-45 narrowed (state carriers, restorer, bridge, `ui-obscure` tiers built; no switch until ST5's gate passes); still ❌ | 82% | 68% |  61% |
+| 2026-11-18 | LV2 (#457): MK-10 ❌ → ✅ (a One-Off or Task is paid at checkout and becomes a funded engagement); new MK-56 ❌ (a business buys one) | 82% | 68% |  62% |
+| 2026-11-18 | LV1 (#456): MK-09 narrowed (team seats reach the board; the client cancels a funded service, settled first; no dead Publish); still 🟡 (PRD-F24, no Cancel on mobile) | 82% | 68% |  62% |

@@ -16,6 +16,7 @@ import {
 	fulfilmentKindOf,
 } from "@projective/types/finance";
 import type { ExploreItem } from "@projective/types/explore";
+import { IntakeAnswersSchema } from "@projective/types/services";
 import { getUserClient } from "../../core/supabase.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -47,7 +48,7 @@ const LINE_COLS =
 	"id, order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor, " +
 	"currency, promo_discount_minor, platform_fee_bp, platform_fee_minor, fulfilment, asset_id, " +
 	"download_name, download_bytes, download_format, licence, stage_id, scheduled_at, timezone, " +
-	"duration_minutes, seats, conferencing_provider, position, ticket_id";
+	"duration_minutes, seats, conferencing_provider, intake_answers, position, ticket_id, project_id";
 
 interface OrderRow {
 	id: string;
@@ -100,9 +101,13 @@ interface LineRow {
 	duration_minutes: number | null;
 	seats: number | null;
 	conferencing_provider: string | null;
+	/** The buyer's intake answers on a session, block or seat line (Decision #453); `{}` otherwise. */
+	intake_answers: unknown;
 	position: number;
 	/** The one ticket this line funded (Decision #166); `null` for every other line. */
 	ticket_id: string | null;
+	/** The engagement a One-Off or Task line created at payment (Decision #457); `null` otherwise. */
+	project_id: string | null;
 }
 // #endregion
 
@@ -243,6 +248,7 @@ async function lineContext(actor: ReadActor & { accessToken: string }, lines: re
 	const stageIds = [...new Set(lines.map((l) => l.stage_id).filter((id): id is string => !!id))];
 	const projectKinds = new Set<PurchasableItemKind>(["project_ticket", "one_off_project", "one_off_task"]);
 	const projectIds = new Set(lines.filter((l) => projectKinds.has(l.item_type)).map((l) => l.item_id));
+	for (const line of lines) if (line.project_id) projectIds.add(line.project_id);
 
 	const stages = new Map<string, { slug: string; projectId: string; name: string; position: number }>();
 	if (stageIds.length > 0) {
@@ -360,9 +366,13 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 	const stage = line.stage_id ? ctx.stages.get(line.stage_id) : undefined;
 	const stageProject = stage ? ctx.projects.get(stage.projectId) : undefined;
 	const ownProject = ctx.projects.get(line.item_id);
+	// A One-Off or Task opens the engagement its payment created, not its first stage (Decision #457).
+	const bought = line.project_id ? ctx.projects.get(line.project_id) : undefined;
 
 	const engagement = natural !== "engagement"
 		? null
+		: bought
+		? { href: clip(`/projects/${bought.slug}`, 200), label: clip(bought.title, 120) }
 		: stage && stageProject
 		? {
 			href: clip(`/projects/${stageProject.slug}/${stage.slug}`, 200),
@@ -433,6 +443,7 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 		joinUrl: null,
 		calendar,
 		seats: line.seats,
+		intakeAnswers: IntakeAnswersSchema.safeParse(line.intake_answers ?? {}).data ?? {},
 	};
 	// The claimed route and the facts behind it are reconciled ONCE, by the SSOT's own rule.
 	const resolved = fulfilmentKindOf(draft);

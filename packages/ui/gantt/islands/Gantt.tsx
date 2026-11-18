@@ -37,6 +37,7 @@ import { styleVars } from "../../core/style.ts";
 import { createSpring, SPRING_SNAPPY } from "../../core/motion.ts";
 import { useIsMobile } from "../../hooks/useMediaQuery.ts";
 import { Icon } from "../../icons/mod.ts";
+import { maskFigures, screenShareActive } from "../../utils/core/screen-share.ts";
 import { DAY, fmtDayLabel, fmtTime, localTimezone, startOfDay } from "../../calendar/core/time.ts";
 import type { GanttScene, PaintReport, SceneItem, ScenePreview } from "../core/gantt-paint.ts";
 import { createGanttStore } from "../core/gantt-store.ts";
@@ -465,10 +466,11 @@ export default function Gantt(props: GanttProps): JSX.Element {
 				boxById.set(it.id, box);
 				if (box.x + box.w < x0 || box.x > x1) continue;
 				boxes.push(box);
+				const masked = screenShareActive.peek();
 				sceneItems.push({
 					...box,
-					label: it.label,
-					meta: it.meta ?? "",
+					label: masked ? maskFigures(it.label) : it.label,
+					meta: masked ? maskFigures(it.meta ?? "") : it.meta ?? "",
 					accent: it.accent ?? DEFAULT_ACCENT,
 					progress: typeof it.progress === "number" ? it.progress : null,
 					expanded: i === g.hoverLane,
@@ -544,6 +546,7 @@ export default function Gantt(props: GanttProps): JSX.Element {
 		draft.value;
 		ticksTop.value;
 		ticksBottom.value;
+		screenShareActive.value;
 		canvasApi.current?.redraw();
 	});
 	// #endregion
@@ -918,7 +921,7 @@ export default function Gantt(props: GanttProps): JSX.Element {
 		const when = milestone
 			? `${fmtDayLabel(item.start, tz)} ${fmtTime(item.start, tz, hour12)}`
 			: `${fmtDayLabel(item.start, tz)} to ${fmtDayLabel(item.end, tz)}`;
-		return [
+		const name = [
 			item.label,
 			lane?.label,
 			milestone ? `milestone, ${when}` : when,
@@ -927,6 +930,7 @@ export default function Gantt(props: GanttProps): JSX.Element {
 		]
 			.filter(Boolean)
 			.join(", ");
+		return screenShareActive.value ? maskFigures(name) : name;
 	}
 	// #endregion
 

@@ -29,6 +29,14 @@
 
 BEGIN;
 
+-- The legal stamp every sign-up door requires (Decision #446): today's version of each document.
+CREATE FUNCTION pg_temp.legal_stamp() RETURNS jsonb LANGUAGE sql AS $$
+    SELECT jsonb_build_object(
+        'terms', org.fn_current_legal_version('terms'),
+        'acceptable-use', org.fn_current_legal_version('acceptable-use'),
+        'privacy', org.fn_current_legal_version('privacy'));
+$$;
+
 CREATE FUNCTION pg_temp.check(p_label text, p_ok boolean, p_got text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
     IF p_ok IS DISTINCT FROM true THEN
@@ -119,7 +127,7 @@ BEGIN
     -- holds a profile with a DoB, so create_enterprise provisions nothing.
     INSERT INTO probe_ids (k, id)
     SELECT 'ENT', public.create_enterprise((SELECT id FROM probe_ids WHERE k = 'CLIENT'), jsonb_build_object(
-        'legalName', 'Guards Probe Ltd', 'handle', 'guardsprobe' || substr(md5(random()::text), 1, 8),
+        'legalAcceptance', pg_temp.legal_stamp(), 'legalName', 'Guards Probe Ltd', 'handle', 'guardsprobe' || substr(md5(random()::text), 1, 8),
         'corporateEmail', 'guards-probe@projective.invalid'));
     RAISE NOTICE 'PASS fixture';
 END $$;

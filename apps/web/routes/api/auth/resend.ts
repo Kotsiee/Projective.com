@@ -14,6 +14,7 @@ export const handler = define.handlers({
 		const body = await ctx.req.json().catch(() => ({}));
 		const parsed = ResendSchema.safeParse(body);
 		const email = parsed.success ? parsed.data.email : undefined;
+		const captchaToken = parsed.success ? parsed.data.captchaToken : undefined;
 		const refused = refuseIfThrottled(
 			ctx.req,
 			"resend",
@@ -23,7 +24,7 @@ export const handler = define.handlers({
 
 		return toAuthResponse(
 			ctx.req,
-			await AuthBackendService.resendVerification({ email }),
+			await AuthBackendService.resendVerification({ email, captchaToken }),
 		);
 	},
 });

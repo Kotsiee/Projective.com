@@ -7,6 +7,14 @@ import { styleVars } from "../../core/style.ts";
 import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
+import { Button } from "../components/Button.tsx";
+import { Icon } from "../../icons/mod.ts";
+import {
+	SCREEN_SHARE_AMOUNT_LABEL,
+	SCREEN_SHARE_MASK,
+	useHoldToReveal,
+	useScreenShareActive,
+} from "../../utils/core/screen-share.ts";
 import {
 	caretAfterSanitize,
 	clampNumber,
@@ -148,7 +156,11 @@ export function InputNumber(props: InputNumberProps): JSX.Element {
 
 	const current = ctrl.signal.value;
 	const formatted = current === null || current === undefined ? "" : formatter.format(current);
-	const displayValue = focused ? draft : formatted;
+	const hold = useHoldToReveal();
+	const obscurable = useScreenShareActive() && mode === "currency";
+	const hidden = obscurable && !hold.revealing;
+	const shownValue = focused ? draft : formatted;
+	const displayValue = hidden && shownValue !== "" ? SCREEN_SHARE_MASK : shownValue;
 	// #endregion
 
 	// #region Events
@@ -185,6 +197,23 @@ export function InputNumber(props: InputNumberProps): JSX.Element {
 		const caret = caretAfterSanitize(raw, el.selectionStart ?? raw.length, filterOptions);
 		el.value = clean;
 		el.setSelectionRange(caret, caret);
+	};
+
+	const onBeforeInput = (e: JSX.TargetedInputEvent<HTMLInputElement>) => {
+		if (!hidden) return;
+		e.preventDefault();
+		const el = e.currentTarget;
+		const whole = el.value.length > 0 && el.selectionStart === 0 &&
+			el.selectionEnd === el.value.length;
+		const type = e.inputType;
+		let next = draft;
+		if (type.startsWith("insert")) {
+			next = (whole ? "" : draft) + (e.data ?? e.dataTransfer?.getData("text/plain") ?? "");
+		} else if (whole || (type.startsWith("delete") && type.endsWith("Backward"))) {
+			next = whole || type !== "deleteContentBackward" ? "" : draft.slice(0, -1);
+		}
+		setDraft(sanitizeNumericInput(next, filterOptions));
+		el.setSelectionRange(el.value.length, el.value.length);
 	};
 
 	const commit = () => {
@@ -259,9 +288,12 @@ export function InputNumber(props: InputNumberProps): JSX.Element {
 		>
 			{horizontal && decButton}
 			{prefix !== undefined && <span class="ui-input-number__prefix">{prefix}</span>}
+			{hidden && name
+				? <input type="hidden" name={name} value={current == null ? "" : String(current)} />
+				: null}
 			<input
 				id={inputId}
-				name={name}
+				name={hidden ? undefined : name}
 				type="text"
 				inputMode="decimal"
 				role="spinbutton"
@@ -273,16 +305,34 @@ export function InputNumber(props: InputNumberProps): JSX.Element {
 				required={required}
 				aria-invalid={ariaInvalid(status)}
 				aria-required={required || undefined}
-				aria-valuenow={current ?? undefined}
+				aria-valuenow={hidden ? undefined : current ?? undefined}
+				aria-valuetext={hidden ? SCREEN_SHARE_AMOUNT_LABEL : undefined}
 				aria-valuemin={min}
 				aria-valuemax={max}
 				onFocus={onFocus}
+				onBeforeInput={onBeforeInput}
 				onInput={onInput}
 				onBlur={commit}
 				onKeyDown={onKeyDown}
 				{...aria}
 			/>
 			{suffix !== undefined && <span class="ui-input-number__suffix">{suffix}</span>}
+			{obscurable
+				? (
+					<Button
+						type="button"
+						variant="text"
+						severity="secondary"
+						size="sm"
+						class="ui-input-number__show"
+						icon={<Icon name="eye" size="xs" />}
+						label="Show"
+						aria-controls={inputId}
+						disabled={disabled}
+						{...hold.handlers}
+					/>
+				)
+				: null}
 			{horizontal && incButton}
 			{showButtons && !horizontal && (
 				<span class="ui-input-number__buttons ui-input-number__buttons--stacked">

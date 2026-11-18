@@ -116,20 +116,33 @@ const SESSION_KINDS: ReadonlySet<BasketItem["itemType"]> = new Set([
 	"set_session",
 ]);
 
+/** The scoped kinds a payment turns into a funded engagement (Decision #457). */
+const SCOPED_KINDS: ReadonlySet<BasketItem["itemType"]> = new Set([
+	"one_off_service",
+	"single_service_task",
+]);
+
+/** Whether a One-Off or Task line carries the brief its engagement is created from. */
+function hasBrief(item: BasketItem): boolean {
+	return typeof item.metadata.requirements === "string" && item.metadata.requirements.trim() !== "";
+}
+
 /**
  * Whether the wallet — and so a card or express top-up of it — can settle this line in one transaction
  * (`finance.place_wallet_order`): a digital product, or ONE board ticket, which settles by holding that
  * ticket's escrow from the wallet rather than by a sale (Decision #166), or a paid revision round, held
  * the same way on its ticket (Decision #167), or a cohort seat carrying its reservation (`holdId`,
  * Decision #171), held as the seat's escrow, or a 1-1 session or set-session block carrying its picked
- * time, held as one escrow per sitting (Decision #211). A whole project or a service still escrows
- * against something a basket line does not carry.
+ * time, held as one escrow per sitting (Decision #211), or a One-Off or Task carrying its brief, which
+ * settles by creating the funded engagement (Decision #457). A whole project still escrows against
+ * something a basket line does not carry.
  */
 function walletSettles(item: BasketItem): boolean {
 	return item.itemType === "digital_product" || item.itemType === "paid_revision" ||
 		(!!item.ticketId && TICKET_KINDS.has(item.itemType)) ||
 		(item.itemType === "course_group_session" && typeof item.metadata.holdId === "string") ||
-		(SESSION_KINDS.has(item.itemType) && !!item.scheduledAt);
+		(SESSION_KINDS.has(item.itemType) && !!item.scheduledAt) ||
+		(SCOPED_KINDS.has(item.itemType) && hasBrief(item));
 }
 // #endregion
 
@@ -271,7 +284,21 @@ function blockersFor(
 				code: "no_provider",
 				message: item.itemType === "course_group_session"
 					? `Reserve a seat for ${item.title} from its listing before paying.`
-					: `${item.title} can't be paid for here yet — only digital products, project tickets, reserved seats and booked sessions can. Save it for later to pay for the rest.`,
+					: SCOPED_KINDS.has(item.itemType)
+					? `Reopen ${item.title} from its listing and describe what you need before paying.`
+					: `${item.title} can't be paid for here yet — only digital products, project tickets, reserved seats, booked sessions, One-Offs and Tasks can. Save it for later to pay for the rest.`,
+				itemId: item.id,
+			});
+		}
+		// Bought by a person for themselves (Decision #457): a business account cannot buy one yet.
+		if (
+			SCOPED_KINDS.has(item.itemType) && owner.ownerType !== "user" &&
+			owner.ownerType !== "freelancer"
+		) {
+			blockers.push({
+				code: "no_provider",
+				message:
+					`${item.title} can only be bought from your personal account for now. Switch to your personal account to buy it, or save it for later.`,
 				itemId: item.id,
 			});
 		}

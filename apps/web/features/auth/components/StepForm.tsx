@@ -13,6 +13,11 @@ import {
 import { OAuthButtons } from "./OAuthButtons.tsx";
 import { ChoiceArt, type ChoiceArtKind } from "./JoinArt.tsx";
 import { TagSelect } from "./TagSelect.tsx";
+import { LegalConsent } from "./LegalConsent.tsx";
+import { CaptchaField } from "./CaptchaField.tsx";
+import { useCaptcha } from "../hooks/useCaptcha.ts";
+import { formatContentDate } from "@projective/types/content/text";
+import type { ReacceptDocument } from "@features/legal/core/reaccept.ts";
 import { GoogleGlyph, InfoIcon, WarnIcon } from "./icons.tsx";
 import type { JoinStore } from "../core/wizardStore.ts";
 import { buildPayload, hasErrors, validateStep } from "../core/wizardValidation.ts";
@@ -39,7 +44,9 @@ import { armResendCooldown } from "../core/resend-cooldown.ts";
  * slide/fade on change (keyed remount + `data-dir`), and choice-only steps **auto-advance** the
  * instant a card is picked. Individual and Enterprise render different field sets into the same
  * step slots (enterprises follow a client-only path — no "intent" branch, no skills step). A
- * profile-less owner on `/join?complete=owner` gets the owner half of step 1.6 as the only step.
+ * profile-less owner on `/join?complete=owner` gets the owner half of step 1.6 as the only step, and a
+ * person on `/join?complete=terms` gets the changed documents and the consent box (Decision #446).
+ * Every path's final step carries the consent box, and its submit stays disabled until it is ticked.
  *
  * Keyboard: the steps are not a `<form>`, so Enter is given one rule here (`core/enter-chain.ts`) —
  * on a field it moves to the step's next field, on the last field it does what Continue does, and
@@ -556,8 +563,10 @@ function StepFields(
 				</>
 			)
 			: (
-				<>
-					<div class="auth-form__grid">
+				// The tight stack: an OAuth sign-up's 1.5 is its final step, and carries the date of birth and
+				// the consent box, so it must fit the fixed frame unscrolled at 390 px.
+				<div class="auth-form__stack">
+					<div class="auth-form__grid auth-form__grid--pair">
 						<TextRow
 							label="First name"
 							value={store.firstName}
@@ -583,13 +592,14 @@ function StepFields(
 							required
 						/>
 					</Row>
-					{/* OAuth signups fold their date of birth up here — there's no credentials step. */}
 					{store.isOAuth ? <DobField store={store} dobDate={dobDate} /> : null}
-				</>
+				</div>
 			);
 	}
 
 	// credentials
+	if (store.termsCompletion) return <ReacceptSummary docs={store.reaccept} />;
+
 	if (store.ownerCompletion) {
 		// A signed-in owner with no profile: the owner half of step 1.6, and nothing else.
 		return (
@@ -666,8 +676,10 @@ function StepFields(
 		);
 	}
 
+	// The tight stack with the passwords paired, as on the enterprise step: the final step carries the
+	// consent box and must fit the fixed frame unscrolled at 390 px.
 	return (
-		<>
+		<div class="auth-form__stack">
 			<Row>
 				<TextRow
 					label="Email"
@@ -681,12 +693,36 @@ function StepFields(
 			</Row>
 			<DobField store={store} dobDate={dobDate} />
 			{store.isOAuth ? null : (
-				<div class="auth-form__grid">
+				<div class="auth-form__grid auth-form__grid--pair">
 					<PassRow label="Password" value={store.password} error={e.password} feedback />
 					<PassRow label="Confirm password" value={store.confirm} error={e.confirm} />
 				</div>
 			)}
-		</>
+		</div>
+	);
+}
+
+function ReacceptSummary({ docs }: { docs: readonly ReacceptDocument[] }): JSX.Element {
+	return (
+		<ul class="auth-reaccept">
+			{docs.map((doc) => (
+				<li key={doc.slug} class="auth-reaccept__item">
+					<a
+						class="auth-link auth-reaccept__title"
+						href={`/legal/${doc.slug}`}
+						target="_blank"
+						rel="noopener noreferrer"
+					>
+						{doc.title}
+					</a>
+					<p class="auth-reaccept__meta">
+						Version {doc.version} · in effect from{" "}
+						<time dateTime={doc.effectiveDate}>{formatContentDate(doc.effectiveDate)}</time>
+					</p>
+					<p class="auth-reaccept__summary">{doc.changeSummary}</p>
+				</li>
+			))}
+		</ul>
 	);
 }
 
@@ -703,7 +739,10 @@ const DEPARTMENT_SUGGESTIONS = [
 	{ value: "Support", label: "Support" },
 ];
 
-export function StepForm({ store }: { store: JoinStore }): JSX.Element {
+export function StepForm(
+	{ store, captchaSiteKey = null }: { store: JoinStore; captchaSiteKey?: string | null },
+): JSX.Element {
+	const captcha = useCaptcha();
 	const dobDate = useSignal<DateValue>(null);
 	/** Guards the auto-advance timer so a rapid double-click can't skip a step. */
 	const advancing = useSignal(false);
@@ -744,6 +783,9 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 	const last = store.stepIndex.value === store.stepCount.value - 1;
 	const submitting = store.submitting.value;
 	const errors = store.errors.value;
+	// The anonymous sign-ups `/api/auth/join` verifies itself (Decision #447); OAuth and both
+	// completion states are already signed in.
+	const botCheck = !store.isOAuth && !store.ownerCompletion && !store.termsCompletion;
 
 	// Focus follows the wizard: a step the reader has just ENTERED gets its first field (the picked
 	// card on a choice step, so Enter there advances rather than re-picks), and a step that has just
@@ -807,7 +849,9 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 			}
 		}
 		store.submitting.value = true;
-		const result = await AuthService.join(buildPayload(store));
+		const captchaToken = botCheck ? await captcha.take() : undefined;
+		const result = await AuthService.join({ ...buildPayload(store), captchaToken });
+		captcha.reset();
 		store.submitting.value = false;
 		if (result.errors?.dob === UNDER_MINIMUM_REFUSAL) return lockForAge();
 		if (!result.ok) {
@@ -882,6 +926,8 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 
 	const continueLabel = !last
 		? "Continue"
+		: store.termsCompletion
+		? "Accept and continue"
 		: store.ownerCompletion
 		? "Finish setting up"
 		: store.isEnterprise.value
@@ -898,7 +944,8 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 		? store.intent.value !== ""
 		: true;
 	// Individuals can reach for Google at any step; enterprise sign-up is corporate-credential based.
-	const showInlineOAuth = !store.isEnterprise.value && !store.isOAuth && step.id !== "account";
+	const showInlineOAuth = !store.isEnterprise.value && !store.isOAuth && !store.termsCompletion &&
+		step.id !== "account";
 	const oauthHref = withRedirect("/api/auth/oauth/google?mode=signup", store.redirectTo);
 
 	return (
@@ -923,7 +970,19 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 				onKeyDown={onStepKeyDown}
 			>
 				<StepFields store={store} dobDate={dobDate} onChoose={autoAdvance} />
+				{last
+					? (
+						<LegalConsent
+							value={store.acceptTerms}
+							error={store.acceptTerms.value ? null : errors.acceptTerms}
+						/>
+					)
+					: null}
 			</div>
+
+			{last && botCheck
+				? <CaptchaField controller={captcha} siteKey={captchaSiteKey} action="join" />
+				: null}
 
 			{store.formError.value
 				? (
@@ -954,12 +1013,13 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 				<Button
 					label={continueLabel}
 					loading={submitting}
-					disabled={advancing.value || (choiceStep && !choiceReady)}
+					disabled={advancing.value || (choiceStep && !choiceReady) ||
+						(last && !store.acceptTerms.value)}
 					onClick={goNext}
 				/>
 			</div>
 
-			{store.stepIndex.value === 0 && !store.ownerCompletion
+			{store.stepIndex.value === 0 && !store.ownerCompletion && !store.termsCompletion
 				? (
 					<p class="auth-alt">
 						Already have an account?{" "}

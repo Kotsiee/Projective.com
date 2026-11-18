@@ -89,6 +89,12 @@ CREATE TYPE org.create_category AS ENUM ('create', 'run', 'educate', 'advise', '
 CREATE TYPE org.streak_kind AS ENUM ('on_time_delivery', 'fast_response', 'dispute_free', 'client_repeat');
 
 CREATE TYPE org.achievement_tier AS ENUM ('milestone', 'bronze', 'silver', 'gold', 'designation');
+
+-- Decision #446: the Terms and the Acceptable Use Policy are accepted; the privacy notice informs and
+-- is not consented to, so it is shown.
+CREATE TYPE org.legal_acceptance_kind AS ENUM ('accepted', 'shown');
+
+CREATE TYPE org.legal_acceptance_surface AS ENUM ('join', 'join_oauth', 'join_enterprise', 'reaccept');
 -- #endregion
 
 -- #region projects

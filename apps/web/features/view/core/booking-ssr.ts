@@ -33,6 +33,8 @@ export interface BookingOfferOptions {
 	context?: UserContext;
 	/** The profile handle when the listing is being viewed profile-scoped, so the sign-in bounce returns there. */
 	handle?: string | null;
+	/** The request's session token (`sessionTokenOf`), so the viewer's own facts read as them. */
+	accessToken?: string | null;
 }
 
 /**
@@ -43,7 +45,9 @@ export async function resolveBookingOffer(
 	subjectId: string,
 	opts: BookingOfferOptions = {},
 ): Promise<ServiceBookingOffer | null> {
-	const actor = opts.context ? bookingActorFromContext(opts.context) : ANONYMOUS_ACTOR;
+	const actor = opts.context
+		? bookingActorFromContext(opts.context, opts.accessToken ?? null)
+		: ANONYMOUS_ACTOR;
 	const result = await BookingBackendService.offer(subjectId, actor, { handle: opts.handle ?? null });
 	return result.ok && result.data ? result.data.offer : null;
 }

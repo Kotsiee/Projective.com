@@ -879,12 +879,10 @@
 
 /* #endregion */
 
-/* #region Media overlays — trust chips (top-left) + the paid-placement badge (top-right) */
+/* #region Media overlays — trust chips (top-left) */
 /*
- * TWO CORNERS, TWO MEANINGS. A signal the entity EARNED and a placement the entity BOUGHT are opposite
- * kinds of claim, so they never share a stack, a shape, or a surface. Earned chips are pills on the
- * left; the paid disclosure is a circular glass token on the right. A reader can tell them apart
- * without reading either.
+ * Only EARNED signals float on a card's media. A promotion is never marked on a card: it is its own
+ * labelled slot (`.ex-promoted`, Decision #454), so a placement never shares a stack with a trust chip.
  */
 .ex-signals {
 	position: absolute;
@@ -1001,74 +999,6 @@
 	animation: none;
 }
 
-/*
- * The paid-placement token — the family's one sanctioned use of real glass.
- *
- * The chip contract bans translucency because a LABEL's legibility must not depend on the photograph
- * behind it. This is not a label: two letters at heavy weight, over a blurred backdrop, carrying both
- * a border and a text shadow. The blur is the point — it is what says "this was placed here", visibly
- * an overlay rather than part of the image. `backdrop-filter` degrades to the semi-opaque fill alone
- * where it is unsupported, which still reads.
- */
-.ex-ad {
-	position: absolute;
-	/*
-	* BOTTOM-right, not top-right. It shared the top-right corner with the actions cluster, which meant
-	* the three action buttons had to shuffle sideways whenever a card was sponsored and the disclosure
-	* was permanently crowding the controls a reader uses most. Down here it has the corner to itself,
-	* it is still unambiguously over the media rather than in the body, and it is still at rest — which
-	* is the property that matters for a disclosure: it does not appear on hover and it does not move.
-	*/
-	inset-block-end: var(--space-3);
-	inset-inline-end: var(--space-3);
-	z-index: 2;
-	display: grid;
-	place-items: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	isolation: isolate;
-	border-radius: 50%;
-	border: 1px solid color-mix(in srgb, var(--on-scrim) 35%, transparent);
-	box-shadow: var(--elevation-medium);
-}
-
-/*
- * The glass, on a `::before` underlay (§B.4.3).
- *
- * 62%, not the 38% this first shipped at. The token floats over arbitrary photography, so its worst
- * case is a BLOWN-OUT WHITE image, and at 38% the glass flattened to ~rgb(158,158,158) and put its
- * white text at a measured 2.68:1. At 62% the same worst case measures 6.19:1 and the blur still reads
- * as glass. The veil is `--scrim` and the ink `--on-scrim`, the fixed pair every overlay dims with.
- */
-.ex-ad::before {
-	content: "";
-	position: absolute;
-	inset: -1px;
-	z-index: -1;
-	border-radius: inherit;
-	background: color-mix(in srgb, var(--scrim) 62%, transparent);
-	backdrop-filter: blur(var(--scrim-blur));
-	-webkit-backdrop-filter: blur(var(--scrim-blur));
-}
-
-/*
- * `--on-scrim`, not `--on-surface`: this token sits on its own near-black glass, not on a theme
- * surface, so the theme's ink would invert straight into the fill in light mode.
- */
-.ex-ad__text {
-	font-size: var(--text-2xs);
-	font-weight: var(--fw-bold);
-	letter-spacing: var(--tracking-wide);
-	line-height: 1;
-	color: var(--on-scrim);
-}
-
-/*
- * `.ex-card:has(.ex-ad) .ex-actions` — REMOVED. It shifted the actions cluster sideways to clear the AD
- * token when the two shared the top-right corner. The token now sits bottom-right, so the corner is
- * the actions' alone and there is nothing left to step around.
- */
-
 /* #endregion */
 
 /* #region Profile card (individuals / freelancers / teams / businesses) */
@@ -1093,13 +1023,6 @@
  * where a mask dissolves the image itself into whatever is actually there.
  */
 .ex-pcard__banner {
-	/*
-	* The share of the banner's height the mask dissolves. It is a variable rather than two literals
-	* because the AD token has to know it: pinned to the banner's bottom edge the disclosure landed
-	* INSIDE the fade and rendered at a measured 83% opacity, falling further as the banner shortened.
-	* A paid-placement mark that fades is not a disclosure. One number, read by the mask and by the
-	* token, so the two cannot drift.
-	*/
 	--ex-pcard-fade: 42%;
 
 	position: relative;
@@ -1115,26 +1038,6 @@
 	mask-image: linear-gradient(to bottom,
 		var(--ex-fade-ink) calc(100% - var(--ex-pcard-fade)),
 		transparent 100%);
-}
-
-/* Sit the disclosure on the last fully-opaque row of the banner rather than on its dissolved edge. */
-.ex-pcard__banner .ex-ad {
-	inset-block-end: calc(var(--ex-pcard-fade) + var(--space-2));
-}
-
-/*
- * …and because that offset is 42% of a 112-126px banner, the token lands back up near the card's top
- * edge — measured 40.7px down, overlapping the actions cluster by 32×3.3px at 1440 and 32×11px at
- * 375, with `.ex-actions` (z-index 3) painting over and hit-testing above the disclosure (z-index 2).
- *
- * So on THIS card the sideways shift is still needed. It was deleted for the media cards, where the
- * token genuinely does move to the far bottom corner and there is nothing left to step around; the
- * profile banner is the one place where "bottom-right of the media" and "the actions' corner" are the
- * same corner. A vertical nudge cannot substitute: the opaque band is 58% of the banner (65px at
- * 375px) and the actions already occupy its top ~40px, which does not leave room for a 32px badge.
- */
-.ex-card--profile:has(.ex-ad) .ex-actions {
-	inset-inline-end: calc(var(--space-3) + 2rem + var(--space-2));
 }
 
 .ex-pcard__cover {
@@ -1463,7 +1366,8 @@
 /* Utility actions are revealed only on hover/focus of the card. */
 .ex-card:hover .ex-actions,
 .ex-card:focus-within .ex-actions,
-.ex-actions:focus-within {
+.ex-actions:focus-within,
+.ex-actions:has([aria-expanded="true"]) {
 	opacity: 1;
 }
 
@@ -2240,11 +2144,11 @@
 }
 
 /*
- * Sponsored — a two-cell featured cell inside the rail of the listing it promotes. The whole slot is
- * the route action, so it takes the card family's interactive treatment: transparent at rest, a solid
- * tonal step on hover, a press compression, and the card's inset ring under high contrast. The media
- * tile is the card family's 16:10 `.ex-media` with nothing floating on it; the paid-placement
- * disclosure is the word "Sponsored" in the owner line (`.ex-promo__disclosure`).
+ * Promoted — a two-cell featured cell at the head of the rail of the listing it promotes. The whole
+ * slot is the route action, so it takes the card family's interactive treatment: transparent at rest, a
+ * solid tonal step on hover, a press compression, and the card's inset ring under high contrast. The
+ * media tile is the card family's 16:10 `.ex-media` with nothing floating on it; the disclosure is the
+ * `.ex-promoted` label that opens the body.
  */
 .ex-promo--sponsored {
 	inline-size: 100%;
@@ -2291,11 +2195,21 @@
 	padding: var(--space-3) var(--space-2) var(--space-2);
 }
 
-/* The paid-placement disclosure: inline meta text after the owner's name, never a badge (§B.11). */
-.ex-promo__disclosure {
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
+.ex-promoted {
+	align-self: flex-start;
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-sm);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-normal);
+	line-height: var(--leading-tight);
 	white-space: nowrap;
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+:root[data-contrast="high"] .ex-promoted {
+	box-shadow: inset 0 0 0 1px var(--hairline-strong-color);
 }
 
 .ex-promo--sponsored .ex-promo__text {

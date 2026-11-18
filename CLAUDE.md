@@ -202,6 +202,8 @@ they govern). `brain.md`/`brain2.md` are redirect stubs — never write to them.
 ### §9 PR checklist
 
 - Every change must pass `documentation/reference/pr-checklist.md`.
+- A change that closes, opens or narrows a readiness gap updates its row and the scoreboard in
+  `documentation/readiness/PRODUCTION_READINESS.md` and/or `USER_FLOWS.md` (Decision #444).
 
 ## Reference Index (read on demand)
 
@@ -220,3 +222,5 @@ they govern). `brain.md`/`brain2.md` are redirect stubs — never write to them.
 - Tables, functions, policies per schema → `documentation/database/<schema>/`
 - Seed personas and seed pipeline → `documentation/database/Seed.md`
 - Feature flows (projects, service creation, …) → `documentation/flows/`
+- What is missing for MVP / UAT / production, and every user flow's status →
+  `documentation/readiness/PRODUCTION_READINESS.md`, `documentation/readiness/USER_FLOWS.md`

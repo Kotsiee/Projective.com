@@ -94,7 +94,6 @@ function sectionLane(): ComponentChildren {
 		<nav class="lane-nav" aria-label="Section">
 			<NavItem href="/messages" label="Inbox" icon={<NavIcon name="messages" />} />
 			<NavItem href="/projects" label="All projects" icon={<NavIcon name="projects" />} />
-			<NavItem href="/services" label="Services" icon={<NavIcon name="services" />} />
 		</nav>
 	);
 }

@@ -25,6 +25,7 @@ export * from "./allowance.ts";
 export * from "./wallet.ts";
 export * from "./card-art.ts";
 export * from "./basket.ts";
+export * from "./sittings.ts";
 export * from "./buyer.ts";
 export * from "./countries.ts";
 export * from "./checkout.ts";

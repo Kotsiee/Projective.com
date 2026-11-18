@@ -9,6 +9,7 @@ import type {
 	ProjectItem,
 	PromoSlot,
 	ServiceItem,
+	SponsoredPromo,
 } from "./items.ts";
 
 /**
@@ -20,13 +21,38 @@ import type {
  */
 
 // #region Query state
+/**
+ * The `/explore` orders (`?sort=`). `best_match` ranks a typed search by how well each item matches
+ * the words AND its quality score; `recommended` by the quality score alone; the other three are the
+ * field orders a reader picks.
+ */
+export const ExploreSort = z.enum(["best_match", "recommended", "rating", "price_asc", "newest"]);
+export type ExploreSort = z.infer<typeof ExploreSort>;
+
+/**
+ * The order a search takes when the reader has not picked one: Best match with a query, Recommended
+ * without one (Best match has no words to read there).
+ */
+export function defaultExploreSort(q: string): ExploreSort {
+	return q.trim() ? "best_match" : "recommended";
+}
+
+/**
+ * The order a requested `sort` resolves to for `q`: absent → {@link defaultExploreSort}, and
+ * `best_match` without a query → `recommended`. Any other value passes through.
+ */
+export function resolveExploreSort(sort: string | null | undefined, q: string): string {
+	if (!sort) return defaultExploreSort(q);
+	return sort === "best_match" && !q.trim() ? "recommended" : sort;
+}
+
 /** The parsed, normalised query state behind `/explore`. */
 export const ExploreParamsSchema = z.object({
 	/** Free-text query (`?q=`). */
 	q: z.string(),
 	/** Selected top-level category (`?category=` / legacy `?type=`); `all` when none. */
 	category: ExploreCategory,
-	/** Sort key; defaults to `recommended`. */
+	/** Sort key ({@link ExploreSort}); {@link defaultExploreSort} when the URL names none. */
 	sort: z.string(),
 	/** Adaptive filter selections — one entry per active facet, each a list of values. */
 	filters: z.record(z.string(), z.array(z.string())),
@@ -66,6 +92,12 @@ export interface SearchPayload {
 	related: string[];
 	/** Whether more pages remain in an isolated feed. */
 	hasMore: boolean;
+	/**
+	 * The labelled "Promoted" slots for this search (Decision #454), each a listing that already
+	 * matches it: at most one per services / products rail, on the first page only, and none for a
+	 * 13–17 viewer. Kept apart from `items` and `groups`, which are the organic order untouched.
+	 */
+	promoted: SponsoredPromo[];
 	/**
 	 * Scope-specific facets the discovery service attaches for THIS query — a voice actor's accent, a
 	 * translator's rate per word — merged over the app's static per-category list by `mergeFacets`

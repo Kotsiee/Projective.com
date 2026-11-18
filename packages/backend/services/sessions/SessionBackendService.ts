@@ -9,11 +9,14 @@ import {
 } from "../../core/supabase.ts";
 import {
 	type CohortOffer,
+	DEFAULT_WAITLIST_INVITE_HOLD_HOURS,
 	type PresenceEvent,
 	type PresenceOutcome,
 	type SeatHold,
 	seatCount,
 	type SessionWorkspace,
+	type ViewerWaitlistPlace,
+	ViewerWaitlistPlaceSchema,
 	type WaitlistPlace,
 	WaitlistStatusSchema,
 } from "@projective/types/projects";
@@ -82,6 +85,15 @@ function refusal<T>(error: { code?: string; message?: string; details?: string |
 
 function signedOut<T>(): ServiceResult<T> {
 	return fail(401, { message: "Sign in to continue." });
+}
+
+/** `projects.get_waitlist_place`'s answer, as PostgREST hands it over. */
+interface RawWaitlistPlace {
+	status: string;
+	position: number | null;
+	hold_expires_at: string | null;
+	seats_open: number | null;
+	invite_hold_hours: number | null;
 }
 
 /** What a no-show claim's landing status means to the person who raised it. */
@@ -175,29 +187,61 @@ export class SessionBackendService {
 	}
 
 	/**
-	 * Queue the caller on a group-session listing's waitlist (`projects.waitlists`, Decision #424).
-	 *
-	 * Written under the caller's JWT, so the "Join waitlist" policy (`user_id = auth.uid()`) is the gate.
-	 * Idempotent: the `(blueprint, user)` unique key turns a repeat into a read of the existing place,
-	 * reported as `already` with whatever status it has reached.
+	 * Queue the caller on a group-session listing's waitlist (`projects.join_waitlist`, Decisions #424,
+	 * #455), as the caller: the definer refuses a listing that is not a published group session and the
+	 * seller's own, and a client never writes a place directly (the queue is first in, first out).
+	 * Idempotent: a repeat answers the place as it stands (`already`); an expired place joins again at
+	 * the back of the queue.
 	 */
 	static async joinWaitlist(blueprintId: string, actor: ReadActor): Promise<ServiceResult<WaitlistPlace>> {
 		if (!actor.accessToken || !actor.userId) return signedOut();
 		if (!isProjectsBackendLive()) {
 			return fail(503, { message: "Joining a waitlist needs the live database." });
 		}
-		const waitlists = getUserClient(actor.accessToken).schema("projects").from("waitlists");
-		const { error } = await waitlists.insert({ service_blueprint_id: blueprintId, user_id: actor.userId });
-		if (!error) return ok({ status: "waiting", already: false }, { status: 201 });
-		if (error.code !== "23505") return refusal(error);
-		const { data, error: readError } = await waitlists
-			.select("status")
-			.eq("service_blueprint_id", blueprintId)
-			.eq("user_id", actor.userId)
-			.maybeSingle();
-		if (readError) return refusal(readError);
-		const status = WaitlistStatusSchema.safeParse(data?.status);
-		return ok({ status: status.success ? status.data : "waiting", already: true });
+		const { data, error } = await getUserClient(actor.accessToken).schema("projects").rpc(
+			"join_waitlist",
+			{
+				p_blueprint_id: blueprintId,
+			},
+		);
+		if (error) return refusal(error);
+		const row = data as { status?: unknown; already?: unknown } | null;
+		const status = WaitlistStatusSchema.safeParse(row?.status);
+		if (!status.success) {
+			return fail(502, { message: "That couldn't be done just now. Please try again." });
+		}
+		const already = row?.already === true;
+		return ok({ status: status.data, already }, { status: already ? 200 : 201 });
+	}
+
+	/**
+	 * The caller's own place on a listing's waitlist (`projects.get_waitlist_place`, Decision #455), or
+	 * `null` for a guest, a viewer with no place, the fixture world, or a read that failed — the lane then
+	 * resolves as it would for someone outside the queue, never with an invented place.
+	 */
+	static async waitlistPlace(
+		blueprintId: string,
+		actor: ReadActor,
+	): Promise<ViewerWaitlistPlace | null> {
+		if (!actor.accessToken || !actor.userId || !isProjectsBackendLive()) return null;
+		try {
+			const { data, error } = await getUserClient(actor.accessToken).schema("projects").rpc(
+				"get_waitlist_place",
+				{ p_blueprint_id: blueprintId },
+			);
+			if (error || !data) return null;
+			const raw = data as RawWaitlistPlace;
+			const parsed = ViewerWaitlistPlaceSchema.safeParse({
+				status: raw.status,
+				position: raw.position ?? null,
+				holdExpiresAt: raw.hold_expires_at ? new Date(raw.hold_expires_at).toISOString() : null,
+				seatsOpen: raw.seats_open ?? null,
+				inviteHoldHours: raw.invite_hold_hours ?? DEFAULT_WAITLIST_INVITE_HOLD_HOURS,
+			});
+			return parsed.success ? parsed.data : null;
+		} catch {
+			return null;
+		}
 	}
 
 	/**

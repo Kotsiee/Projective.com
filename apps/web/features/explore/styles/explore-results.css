@@ -656,6 +656,12 @@
 	inline-size: 100%;
 }
 
+.ex-uni__promoted {
+	container: expromo / inline-size;
+	max-inline-size: 48rem;
+	margin-block-end: var(--space-6);
+}
+
 /* Card entities: a native responsive fill grid (library Grid auto-fit, column-capped). Every cell
    stretches so equal-height cards fill the row uniformly — no fixed row height, so nothing overlaps. */
 .ex-feed-grid > [role="listitem"] {

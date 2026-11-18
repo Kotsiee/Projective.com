@@ -8,6 +8,7 @@ import {
 	withoutViewIntent,
 	withViewIntent,
 } from "./view-intent.ts";
+import { messageHrefFor, type MessageOwner, messageRecipient } from "./view-model.ts";
 
 function offer(kind: BookingActionKind, disabled = false): Pick<ServiceBookingOffer, "cta"> {
 	return {
@@ -108,6 +109,46 @@ Deno.test("honouredIntent — contact wherever an offer renders its Contact cont
 Deno.test("honouredIntent — apply only on a project", () => {
 	assertEquals(honouredIntent("apply", facts({ archetype: "project", offer: null })), "apply");
 	assertEquals(honouredIntent("apply", facts({ archetype: "product" })), null);
+});
+
+Deno.test("readViewIntent — Message is a link to a DM, never an intent", () => {
+	assertEquals(readViewIntent("?intent=message"), null);
+	assertEquals(readViewIntent("?type=projects&intent=message"), null);
+});
+
+Deno.test("Message client — a person is messaged directly", () => {
+	const person: MessageOwner = { handle: "@hannahcole", name: "Hannah Cole", kind: "user" };
+	assertEquals(messageRecipient(person), { handle: "@hannahcole", name: "Hannah Cole" });
+	assertEquals(messageHrefFor({ owner: person }), "/messages/dm-hannahcole");
+	assertEquals(
+		messageHrefFor({ owner: { ...person, kind: "freelancer" } }),
+		"/messages/dm-hannahcole",
+	);
+});
+
+Deno.test("Message client — a team's or a business's brief reaches its owner (#422 (b))", () => {
+	for (const kind of ["team", "business"] as const) {
+		const entity: MessageOwner = {
+			handle: "@atlaslabs",
+			name: "Atlas Labs",
+			kind,
+			messageTo: { handle: "@danielokafor", name: "Daniel Okafor" },
+		};
+		assertEquals(
+			messageRecipient(entity),
+			{ handle: "@danielokafor", name: "Daniel Okafor" },
+			kind,
+		);
+		assertEquals(messageHrefFor({ owner: entity }), "/messages/dm-danielokafor", kind);
+	}
+});
+
+Deno.test("Message client — withheld when an entity names nobody, never dm-{slug}", () => {
+	for (const kind of ["team", "business"] as const) {
+		const entity: MessageOwner = { handle: "@atlaslabs", name: "Atlas Labs", kind };
+		assertEquals(messageRecipient(entity), null, kind);
+		assertEquals(messageHrefFor({ owner: entity }), null, kind);
+	}
 });
 
 Deno.test("honouredIntent — nothing for a guest, a restricted lane or an inert rendering", () => {

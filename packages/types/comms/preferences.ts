@@ -217,6 +217,43 @@ export type PersonalChannel = z.infer<typeof PersonalChannel>;
 /** Display order of the routing matrix's columns. */
 export const PERSONAL_CHANNELS: readonly PersonalChannel[] = ["in_app", "push", "email", "sms"];
 
+/** The personal channels that leave Projective, so need a dispatcher and a provider transport. */
+export const OutboundChannel = PersonalChannel.exclude(["in_app"]);
+export type OutboundChannel = z.infer<typeof OutboundChannel>;
+
+/**
+ * Which outbound channels actually deliver in this environment. A channel is live only while the
+ * notification dispatcher runs AND that channel's transport is configured; it is resolved on the
+ * server (`services/comms/channel-liveness.ts`), never from the browser. A preference for a channel
+ * that is not live is still saved, and applies once that channel launches.
+ */
+export const ChannelLivenessSchema = z.object({
+	email: z.boolean(),
+	push: z.boolean(),
+	sms: z.boolean(),
+});
+export type ChannelLiveness = z.infer<typeof ChannelLivenessSchema>;
+
+/** Nothing leaves Projective: the answer wherever liveness could not be resolved. */
+export const NO_LIVE_CHANNELS: ChannelLiveness = { email: false, push: false, sms: false };
+
+/**
+ * The Dev Context Switcher's `notificationDelivery` axis: draw every outbound channel as delivering
+ * (`live`) or none (`off`). Absent = the server's own answer. Honoured in development only.
+ */
+export type ChannelLivenessOverride = "live" | "off";
+
+/** The cookie that carries {@link ChannelLivenessOverride}. */
+export const CHANNEL_LIVENESS_OVERRIDE_COOKIE = "pj.dev.notification-delivery";
+
+/** Read the override from a cookie value; anything unrecognised means "no override". */
+export function parseChannelLivenessOverride(
+	raw: string | null | undefined,
+): ChannelLivenessOverride | null {
+	const value = raw?.trim();
+	return value === "live" || value === "off" ? value : null;
+}
+
 /** The global row, trimmed to what the console edits. Times are `HH:MM` local to `timezone`. */
 export const NotificationCenterPrefsSchema = z.object({
 	inApp: z.boolean(),

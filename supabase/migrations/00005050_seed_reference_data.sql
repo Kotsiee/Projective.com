@@ -4,7 +4,7 @@
 -- #region search.search_weights — default scoring matrix (from 0219)
 INSERT INTO search.search_weights (key, label, description, scope, weight) VALUES
   -- Universal metrics --------------------------------------------------------
-  ('text_relevance',   'Text relevance',      'Full-text rank over title/description/tags',      'universal', 3.00),
+  ('text_relevance',   'Text relevance',      'Best match: how well the typed words match title, tags, summary, owner (0-1)', 'universal', 6.00),
   ('vector_similarity','Semantic similarity', 'pgvector cosine similarity of query vs entity',   'universal', 2.00),
   ('query_interest',   'Stated query interest','Exact tag/skill match with the search term',      'universal', 1.50),
   ('location_match',   'Location match',      'Query/user location alignment',                    'universal', 0.75),
@@ -407,4 +407,17 @@ INSERT INTO org.supported_locales (tag) VALUES
     ('ja-JP'),
     ('ko-KR')
 ON CONFLICT (tag) DO NOTHING;
+-- #endregion
+
+-- #region org.legal_document_versions — the sign-up documents' versions (Decision #446)
+-- Every version of the Terms, the Acceptable Use Policy and the Privacy Policy, newest first per
+-- document. LEGAL_VERSIONS in @projective/types/legal must list exactly these (manifest.contract.test.ts),
+-- and it must match the content modules (features/legal/core/manifest.test.ts).
+INSERT INTO org.legal_document_versions (slug, version, effective_date, material) VALUES
+    ('terms', '2.0', '2026-10-17', false),
+    ('terms', '1.0', '2026-08-01', false),
+    ('acceptable-use', '1.0', '2026-10-17', false),
+    ('privacy', '1.1', '2026-11-18', false),
+    ('privacy', '1.0', '2026-10-17', false)
+ON CONFLICT (slug, version) DO NOTHING;
 -- #endregion

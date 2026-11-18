@@ -1,0 +1,339 @@
+# Production Readiness — what stands between the code and a public launch
+
+> Living tracker (Decision #444). Every gap between the codebase and a production launch, scored for
+> the three readiness tiers. Seeded from the 2026-11-18 static audit at `d63ab286` (+ #443).
+> Companion: [USER_FLOWS.md](USER_FLOWS.md) scores the same tiers flow by flow.
+>
+> **Last verified:** 2026-11-18 · **Basis:** static audit (code, migrations, config, docs); nothing
+> was run against hosted Supabase or Stripe.
+
+## How this file works
+
+**Rows.** Each row is one requirement a launch needs. A row is never deleted: when the work lands
+its status flips to ✅ and the evidence names the commit or decision, so the file is also the record
+of what closed.
+
+| Column | Values                                                                                                                        |
+| :----- | :---------------------------------------------------------------------------------------------------------------------------- |
+| Status | ✅ done · 🟡 partly done or done with a known defect · ❌ missing · ⏸ ruled off or deferred by a decision (not scored)        |
+| Crit   | **Critical** (weight 3): money, safety, account access, the core loop · **High** (2): expected by real users · **Normal** (1) |
+| Gate   | The earliest tier the row blocks: **MVP** (investor demo) · **UAT** (external beta testers) · **PROD** (public launch)        |
+| Track  | The work order, decision or audit that owns the fix (`*_BUILD_PROMPTS.md` IDs), or `—` when none exists yet                   |
+
+**Tiers** (definitions from the 2026-11-18 audit brief):
+
+- **Investor MVP** — core team formation, stage-based hiring and escrow payments demo end to end
+  with no broken step (`business/investor-summary.md` §5 Phase 1).
+- **UAT** — external beta testers on live data: working auth and OAuth, real Stripe test-mode money,
+  stable UI, no placeholder reachable.
+- **Production** — no stubbed critical path, live safety and moderation, running sweeps, outbound
+  email and push, resolved secrets, automated test and reconciliation coverage.
+
+**Score.** `score(tier) = Σ weight × credit / Σ weight` over every row whose Gate is that tier or an
+earlier one (MVP ⊂ UAT ⊂ PROD), with credit ✅ 1 · 🟡 0.5 · ❌ 0 and ⏸ rows left out. An area's
+score is the same sum over that area's rows. The scores are a rubric over these rows, not a
+forecast.
+
+**Updating (same-change rule, `reference/pr-checklist.md`).** A change that closes, opens or narrows
+a gap here updates the row (status + evidence), recomputes the scoreboard below, and adds a line to
+§Score history. A newly found gap gets a new row at the end of its area. Re-verify the whole file
+(and bump **Last verified**) after any milestone.
+
+## Scoreboard
+
+| Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
+| :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
+| **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
+| **UAT**          | **52%** |           61 | 27 |  9 | 25 |          11 |
+| **Production**   | **33%** |          128 | 30 | 19 | 79 |          22 |
+
+Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
+
+| Area                               | Rows | ✅ | 🟡 | ❌ | Score |
+| :--------------------------------- | ---: | -: | -: | -: | ----: |
+| A. Product surfaces & navigation   |    9 |  3 |  0 |  6 |   33% |
+| B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
+| C. Security & access control       |   24 |  5 |  5 | 14 |   41% |
+| D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
+| E. Communications & delivery       |   12 |  2 |  1 |  9 |   17% |
+| F. Money, ledger & reconciliation  |   22 |  4 |  3 | 15 |   28% |
+| G. Scheduled jobs & operations     |    8 |  1 |  0 |  7 |   11% |
+| H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
+| I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
+| J. Routing, URLs & SEO             |    5 |  3 |  1 |  1 |   75% |
+| K. Quality gates & testing         |    6 |  2 |  1 |  3 |   38% |
+| L. Design system & accessibility   |    6 |  1 |  2 |  3 |   33% |
+| M. Legal & compliance              |    6 |  1 |  1 |  4 |   29% |
+
+**Critical path per tier** (the open Critical rows, in suggested order):
+
+- **MVP:** PRD-B1 (fixtures under a live gate) → PRD-E2 + PRD-E3 (chat send door and live refresh) →
+  PRD-A1 (`/home`).
+- **UAT:** PRD-D3 (malware scan) → PRD-E4 + PRD-E5 + PRD-E6 (dispatcher, notification email, auth
+  SMTP: built, a hosted send to prove) → PRD-G2 + PRD-F23 + PRD-F22 + PRD-F24 (claim sweep, ghosting
+  timer, a brief settling before cancel/archive, a service's unclaimed escrow) →
+  PRD-G6 (hosted cron secrets) → PRD-F5 (dispute freeze).
+- **PROD:** PRD-C17 (MFA + step-up) · PRD-C19 (erasure) · PRD-D9 / D10 / D14 (moderation loop,
+  publication gate, CSAM hashing) · PRD-F8 (Stripe ↔ ledger reconciliation) · PRD-F15 (holding
+  period) · PRD-F17 (live Stripe account) · PRD-G8 (deployment) · PRD-K4 (CI) · PRD-M1
+  (counsel-reviewed terms; sign-up acceptance itself landed, PRD-M2).
+
+## A. Product surfaces & navigation
+
+| ID     | Requirement                                                                                      | Status | Crit     | Gate | Evidence / what's missing                                                                                                                                           | Track |
+| :----- | :----------------------------------------------------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :---- |
+| PRD-A1 | The post-login landing `/home` is a real page                                                    | ❌     | Critical | MVP  | `(dashboard)/home.tsx` renders `PagePlaceholder`; it is `DEFAULT_REDIRECT` after login and confirmation (`features/auth/core/redirect.ts:17`) and the bounce target | —     |
+| PRD-A2 | No placeholder route: `/services`                                                                | ✅     | Normal   | MVP  | Removed (Decision #443)                                                                                                                                             | #443  |
+| PRD-A3 | Every workspace console module works (Analytics, Standing, team Verification)                    | ❌     | High     | MVP  | `features/workspaces/components/ModuleScreen.tsx` default branch renders "Not built yet"; build or hide (root `CLAUDE.md` §3.11)                                    | —     |
+| PRD-A4 | The IP workspace (`/legal/workspace`, `audit-packs`, `transfers`) is built or hidden             | ❌     | Normal   | UAT  | `features/legal/workspace/routes/LegalWorkspaceScreens.tsx:10,24,43,62` "Not built yet"                                                                             | —     |
+| PRD-A5 | Retired addresses 308 to their successors                                                        | ✅     | Normal   | UAT  | `/projects/create`, `/edit`, `/settings`, `/:handle/edit*`, `*/schedule` 308; `/basket` 302                                                                         | —     |
+| PRD-A6 | Every dashboard page is behind the auth guard, with the onboarding, restricted and teams bounces | ✅     | Critical | MVP  | `routes/(dashboard)/_middleware.ts`                                                                                                                                 | —     |
+| PRD-A7 | An operator back-office for contact requests and feedback triage                                 | ❌     | High     | PROD | `ops.contact_requests` and feedback ideas are stored; the status doors are API-only with no UI, so ideas stay "Under review"                                        | —     |
+| PRD-A8 | The landing launch gate is cleared                                                               | ❌     | Normal   | PROD | #303 (a) response compression and (b) head placement open (`flows/LANDING.md` §0); no compression found in the serve path                                           | #303  |
+| PRD-A9 | Public metrics count real money only                                                             | ❌     | Normal   | PROD | `/about`'s figures would count seed and test-mode money (#303 (c))                                                                                                  | #303  |
+
+## B. Live data paths & feature flags
+
+| ID     | Requirement                                                           | Status | Crit     | Gate | Evidence / what's missing                                                                                                                                                                                       | Track |
+| :----- | :-------------------------------------------------------------------- | :----- | :------- | :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---- |
+| PRD-B1 | A live-gated read never serves fixtures                               | ❌     | Critical | MVP  | With `PROJECTS_BACKEND_LIVE=true`, a failed live read or a tokenless caller returns the fixture feed as `ok` (`services/projects/ProjectBackendService.ts:517-535, 1089-1092`)                                  | —     |
+| PRD-B2 | Every domain has a live database path                                 | ✅     | Critical | MVP  | Auth, Explore, Projects, Messaging, Catalogue, Finance, Files, Integrations, Workspace, Saved, Scheduling, Editorial, Community, Contact, Newsletter                                                            | —     |
+| PRD-B3 | `FINANCE_BACKEND_LIVE` gates every money write it claims to           | ❌     | High     | UAT  | Internal moves (`transfer_funds`, `distribute_vault`, `fund_stage`, pots, payout schedule, spend decisions) ignore it (`services/finance/wallet-actions.ts:361-465`); `.env.example:403-407` says it gates them | —     |
+| PRD-B4 | Flags are honest: none dead, each scoped as documented                | 🟡     | Normal   | UAT  | `PROFILE_BACKEND_LIVE` has no consumer; EXPLORE, CATALOGUE and FILES gate sub-features only; `USE_MOCKS` skips the live-only services (`core/env.ts:64-83`); `mocks/registry.ts` says 17 of 20 have no DB path  | —     |
+| PRD-B5 | A gated-off surface refuses in production instead of serving fixtures | 🟡     | Normal   | PROD | Contact and Newsletter answer 503; Community serves fixtures and stores nothing (`services/community/community-source.ts`)                                                                                      | —     |
+| PRD-B6 | A worked ticket can be archived                                       | ❌     | Normal   | UAT  | Deleting a non-pristine ticket is refused because the archive is not built (`ProjectBackendService.ts:3229`); #338 ruled archive over delete                                                                    | PM    |
+
+## C. Security & access control
+
+| ID      | Requirement                                                                               | Status | Crit     | Gate | Evidence / what's missing                                                                                                                                             | Track      |
+| :------ | :---------------------------------------------------------------------------------------- | :----- | :------- | :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------- |
+| PRD-C1  | RLS on every table                                                                        | ✅     | Critical | UAT  | 247 of 247; the 36 deny-all tables are definer-only and pinned by `supabase/probes/rls_exposed_tables.sql`                                                            | —          |
+| PRD-C2  | Every `SECURITY DEFINER` pins `search_path`                                               | ✅     | Critical | UAT  | 0 of 749 missing                                                                                                                                                      | —          |
+| PRD-C3  | Islands never reach the database; routes stay thin                                        | ✅     | Critical | UAT  | 0 violations over 2,154 files reachable from islands; `apps/web/utils/thin-routes.test.ts`                                                                            | —          |
+| PRD-C4  | Same-origin check on every `/api` write; cron bearer-guarded; webhooks signature-verified | ✅     | Critical | UAT  | `routes/api/_middleware.ts` → `utils/csrf.ts`; `packages/backend/core/bearer.ts:6` (constant-time, ≥ 32 chars)                                                        | —          |
+| PRD-C5  | The access-token hook runs only as `supabase_auth_admin`                                  | ✅     | High     | UAT  | `00001700`; `00002510:375-379`; enabled `supabase/config.toml:330-332`                                                                                                | —          |
+| PRD-C6  | `search.is_admin(uuid)` is not callable by anon                                           | ❌     | High     | UAT  | The schema-wide grant (`00002510:227`) is never revoked for it, so anyone can test whether a uuid is an admin                                                         | SEC P2d    |
+| PRD-C7  | Deny-by-default `EXECUTE` in every schema                                                 | ❌     | High     | PROD | `search` grants everything to anon (`00002510:227`, default privileges in `00002500`); eight schemas rely on per-name revokes; 49 definers are executable by PUBLIC   | SEC P2d    |
+| PRD-C8  | `search.fn_log_query` logs only as the caller                                             | ❌     | Normal   | PROD | Accepts any `p_user_id` from anon (`00001400:404`)                                                                                                                    | COMMS SR1  |
+| PRD-C9  | Integration capability readers are not PUBLIC                                             | ❌     | Normal   | PROD | `integrations.fn_has_capability`, `fn_conferencing_provider` (`00001500:20,40`) reveal anyone's connected providers                                                   | —          |
+| PRD-C10 | The grant probe covers every schema                                                       | ❌     | Normal   | PROD | `supabase/probes/function_grants.sql` checks `projects` and `public` only                                                                                             | —          |
+| PRD-C11 | No GET with a side effect                                                                 | 🟡     | High     | UAT  | Auth half closed (#445): the email link's token is spent only by a POST from `/verify/confirm`. Open: `/messages/:id` marks read during render                        | #445 (AU4) |
+| PRD-C12 | Origin check on non-API form posts                                                        | ❌     | Normal   | PROD | `/rsvp/:token` POST (`features/calendar/routes/rsvp.tsx:73`); `SameSite=Lax` mitigates                                                                                | —          |
+| PRD-C13 | GoTrue's password policy equals the app's                                                 | 🟡     | High     | UAT  | Local done (#449): one `PasswordSchema`; `config.toml` min 8 + classes, pinned by a contract test. Left: the hosted dashboard                                         | AU2        |
+| PRD-C14 | Google OAuth checks the nonce                                                             | 🟡     | High     | UAT  | Local done (#449): `skip_nonce_check = false`, pinned by a contract test. Left: the hosted toggle; one live Google sign-in                                            | AU2        |
+| PRD-C15 | Bot protection on sign-up and sign-in                                                     | 🟡     | High     | PROD | Built and proven locally (#447): GoTrue Turnstile on sign-in, recovery, resend; `/join` verified by the app. Left: hosted widget, hostnames, keys, dashboard secret   | AU3, #447  |
+| PRD-C16 | `secure_password_change` on; manual identity linking reviewed                             | 🟡     | Normal   | PROD | Local done (#449): on, pinned by a contract test; linking reviewed and kept (SA §Authentication). Left: the hosted setting                                            | AU2        |
+| PRD-C17 | MFA (TOTP), an `aal` claim and step-up before money moves                                 | ❌     | Critical | PROD | `config.toml:348-354` off; no `aal` claim, step-up helper or `PT401`. Six actions since #451 (the sign-in address move re-authenticates by password until MFA2)            | MFA1–MFA3  |
+| PRD-C18 | The SSO entry is hidden until SSO exists                                                  | ❌     | Normal   | UAT  | `SsoPanel` renders (`LoginForm.island.tsx:58`, `SignInPrompt.island.tsx:98`)                                                                                          | SSO1       |
+| PRD-C19 | Account erasure reaches every personal row                                                | ❌     | Critical | PROD | `fn_erase_account` (`00001060:555-582`) reaches eight tables; erasure windows hard-coded (`:434`, `:490`)                                                             | ERA1–ERA4  |
+| PRD-C20 | Minors: the proxy flag, the under-16 marketing rule and adult-only settings withheld      | ❌     | High     | PROD | No minors-proxy flag; `GET /api/settings/[section]` serves adult-only payloads to a restricted account (IW-L5)                                                        | MIN1, MIN2 |
+| PRD-C21 | The `users_public` row policy is narrowed                                                 | ❌     | Normal   | PROD | `00002010:10-13` unchanged                                                                                                                                            | RLS1       |
+| PRD-C22 | Every planned top-level route segment is a reserved handle                                | ❌     | High     | UAT  | `analytics`, `disputes`, `connections` are claimable (`packages/types/profile/reserved.ts`, `org.fn_is_reserved_handle`)                                              | —          |
+| PRD-C23 | Dead `security` tables and the finance cascades cleaned up                                | ❌     | Normal   | PROD | `IDENTITY_AND_WORKSPACES_AUDIT.md` "still open" (2026-11-12)                                                                                                          | HK1        |
+| PRD-C24 | Auth low findings closed                                                                  | ❌     | Normal   | PROD | `safeRedirect` accepts `/api/*` (LOW1-7); OAuth email and name ride the `/join` query string (LOW1-4); `/join` ignores the under-13 lock cookie in a new tab (LOW1-5) | LOW1       |
+
+## D. Trust, safety & moderation
+
+| ID      | Requirement                                                              | Status | Crit     | Gate | Evidence / what's missing                                                                                             | Track    |
+| :------ | :----------------------------------------------------------------------- | :----- | :------- | :--- | :-------------------------------------------------------------------------------------------------------------------- | :------- |
+| PRD-D1  | P0s E1–E8 closed (client bucket writes, comms definers, search definers) | ✅     | Critical | UAT  | `TRUST_SAFETY_BUILD_PROMPTS.md` §0 (E8 `dd4206d3`)                                                                    | E1–E8    |
+| PRD-D2  | Upload admission: magic-byte sniff, full decode, sanitised SVG           | ✅     | High     | UAT  | Wave 0; #396                                                                                                          | —        |
+| PRD-D3  | A malware scan before an upload leaves quarantine                        | ❌     | Critical | UAT  | `services/files/live-uploads.ts:36-49, 349` promotes after sniff and decode only; contact attachments the same        | SN1      |
+| PRD-D4  | The link scan fails closed                                               | ❌     | High     | UAT  | Offline, it returns `safe` for any https URL (`services/files/link-scan.ts:203`) and `attachLink` stores that verdict | —        |
+| PRD-D5  | Link reputation is live                                                  | 🟡     | Normal   | PROD | Web Risk built (W1); without `LINK_SAFETY_API_KEY` no lookup runs                                                     | W1       |
+| PRD-D6  | Tier 2 SQL masking floor (`comms.mask_pii`)                              | ✅     | High     | UAT  | Built; L8's new categories open                                                                                       | —        |
+| PRD-D7  | Tier 1 in-process leakage pre-filter                                     | ❌     | High     | PROD | Not built                                                                                                             | P1d      |
+| PRD-D8  | Public copy masked; protected phase widened                              | ❌     | High     | PROD | Not built                                                                                                             | P2a–P2d  |
+| PRD-D9  | Report → review sink → reviewer → penalties → Standing                   | ❌     | Critical | PROD | No report vocabulary, sink or reviewer                                                                                | R1–R5    |
+| PRD-D10 | Publication gate on public media (NudeNet + OCR)                         | ❌     | Critical | PROD | Not built; the safety node is not in this repo                                                                        | SN2, SN3 |
+| PRD-D11 | Hosted toxicity, violence and hate-symbol check                          | ❌     | High     | PROD | Sightengine (ruling T2) not built                                                                                     | SN4      |
+| PRD-D12 | Video moderation                                                         | ❌     | Normal   | PROD | Not built                                                                                                             | SN5      |
+| PRD-D13 | PII detection (Presidio)                                                 | ❌     | Normal   | PROD | Not built                                                                                                             | SN6      |
+| PRD-D14 | CSAM hash matching                                                       | ❌     | Critical | PROD | Ruled, pending counsel (T5)                                                                                           | H1       |
+
+## E. Communications & delivery
+
+| ID      | Requirement                                                 | Status | Crit     | Gate | Evidence / what's missing                                                                                                                                                   | Track    |
+| :------ | :---------------------------------------------------------- | :----- | :------- | :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------- |
+| PRD-E1  | In-app notification engine                                  | ✅     | High     | MVP  | NT1 (`2f9a9bb6`)                                                                                                                                                            | NT1      |
+| PRD-E2  | Chat has one send door and `cht-` addresses                 | ❌     | Critical | MVP  | Two stores and two send doors; the live resolver takes raw uuids (`services/messaging/live-threads.ts:63`)                                                                  | MS2      |
+| PRD-E3  | Chat updates without a reload                               | ❌     | Critical | MVP  | No subscriber, poll or long-poll in `features/messaging`; the realtime publication (`00002600`) is unused                                                                   | MS3      |
+| PRD-E4  | A notification dispatcher (runtime decided, claim, retries) | ❌     | Critical | UAT  | `comms.fn_dispatch_notification` is gated off (`00001310:1146-1193`); `supabase/functions/` is empty                                                                        | NT2 (🧑) |
+| PRD-E5  | Notification email                                          | ❌     | Critical | UAT  | `services/mail/transport.ts` (Resend) serves only secondary-email verification and guest email; no notification email sends yet; Settings → Notifications now says so (ST2) | NT3      |
+| PRD-E6  | Auth email: production SMTP and a full template set         | 🟡     | Critical | UAT  | #448: Resend `[auth.email.smtp]` (off locally); a template per reachable GoTrue email, all sent to Mailpit. Left: hosted SMTP + Site URL (EPI §8.5), a proven send          | AU5      |
+| PRD-E7  | Web push                                                    | ❌     | High     | PROD | No VAPID keys or push code                                                                                                                                                  | NT4      |
+| PRD-E8  | SMS                                                         | ❌     | Normal   | PROD | No Twilio transport                                                                                                                                                         | NT5      |
+| PRD-E9  | Chat events notify (`message.*`) and chat controls persist  | ❌     | High     | UAT  | Not built                                                                                                                                                                   | MS4, MS5 |
+| PRD-E10 | Bounce and complaint suppression honoured                   | ❌     | High     | PROD | Suppression never consulted (#339); no `RESEND_WEBHOOK_SECRET`                                                                                                              | NT3      |
+| PRD-E11 | Newsletter double opt-in and provider sync                  | ❌     | Normal   | PROD | `services/newsletter/NewsletterBackendService.ts:29`                                                                                                                        | —        |
+| PRD-E12 | A waitlist is told when a seat opens                        | ✅     | Normal   | UAT  | #455: the `cohort-waitlist-invites` job invites the queue in order, one per free seat, each holding its seat 48 hours, with an in-app `waitlist.invited` (probe `waitlist_invite.sql`). Its email rides PRD-E5 | LV4      |
+
+## F. Money, ledger & reconciliation
+
+| ID      | Requirement                                                                   | Status | Crit     | Gate | Evidence / what's missing                                                                                                                                                                                                        | Track            |
+| :------ | :---------------------------------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------- |
+| PRD-F1  | Card escrow round trip with signed, de-duplicated webhooks                    | ✅     | Critical | MVP  | `core/stripe.ts:238-271`; `finance.fn_claim_stripe_event` (`00001230:39`); `deno task smoke:stripe`                                                                                                                              | #125, #126       |
+| PRD-F2  | Money doors lock their rows and gate on state                                 | ✅     | Critical | MVP  | `fund_stage`, `fund_ticket`, `approve_stage`, `begin_payout`, `settle_card_payment` (`00001150`, `00001230`, `00001240`)                                                                                                         | —                |
+| PRD-F3  | An idempotency key on every money-moving Stripe call                          | ✅     | Critical | UAT  | `services/finance/stripe-rails.ts`; absent only on `accountLinks` and `setupIntents`, which move no money                                                                                                                        | —                |
+| PRD-F4  | Seller commission, per-currency thresholds, payout schedules, pots            | ✅     | High     | UAT  | DB11, DB10, DB4, DB5                                                                                                                                                                                                             | FINANCE          |
+| PRD-F5  | Release refuses an open dispute; the dispute freeze                           | 🟡     | Critical | UAT  | DB3 landed (`44382c08`): `fn_assert_no_open_dispute` guards the release doors (`00001200:1358, 1601`); the freeze and payee clawback (DB6, M3) are not built                                                                     | DB6              |
+| PRD-F6  | Ticket-funding and payout-ready gates                                         | 🟡     | High     | UAT  | DB14 step 1 only; DB15 open                                                                                                                                                                                                      | DB14, DB15       |
+| PRD-F7  | Conservation identity → reason CHECKs → the nine settlement currencies        | ❌     | High     | PROD | Not built; stops ruled in #423                                                                                                                                                                                                   | DB16 → DB8 → DB9 |
+| PRD-F8  | Stripe balance ↔ ledger reconciliation                                        | ❌     | Critical | PROD | Nothing calls `balance.retrieve`; FINANCE_AUDIT L5, L6                                                                                                                                                                           | —                |
+| PRD-F9  | Ledger drift surfaced and alerted                                             | ❌     | High     | PROD | `fn_reconcile_wallets` runs daily; nothing reads `v_wallet_reconciliation` or `v_ops_unledgered_payments`                                                                                                                        | —                |
+| PRD-F10 | DB CHECKs on `escrows.status` and `wallets.owner_type`                        | ❌     | High     | PROD | `00000017_tables_finance.sql:16, 206`; the vocabulary lives in Zod only                                                                                                                                                          | —                |
+| PRD-F11 | Failed payouts handled                                                        | ❌     | High     | PROD | Not built                                                                                                                                                                                                                        | SV8              |
+| PRD-F12 | Platform-initiated card refunds and the order lifecycle                       | ❌     | High     | PROD | No `refunds.create`; refunds are recorded only from `charge.refunded`; buyer and provider refunds (DB21) and the order lifecycle (DB19) open                                                                                     | DB19, DB21       |
+| PRD-F13 | Bonus held; team payout splits                                                | ❌     | Normal   | PROD | Not built                                                                                                                                                                                                                        | DB13, DB20       |
+| PRD-F14 | Plan and subscription checkout (Stripe Billing)                               | ❌     | High     | UAT  | Nothing can be bought (`services/finance/PlanBackendService.ts:17`), yet `business_plan_gates_enforced` is on, so a new entity is locked out of Business Pro and Pro Team features (caps, intervaled invoicing, split templates) | SBP S4, #252     |
+| PRD-F15 | The escrow holding period is ruled                                            | ❌     | Critical | PROD | Open, pending counsel (#337)                                                                                                                                                                                                     | 🧑 counsel       |
+| PRD-F16 | System wallets and double-entry ruled and built                               | ❌     | High     | PROD | Single-entry ledger with materialised balances (`00001200:44, 148`); #337 X-flags                                                                                                                                                | 🧑               |
+| PRD-F17 | The production Stripe account: live keys, v1 + v2 + Connect webhook endpoints | ❌     | Critical | PROD | Not evidenced in the repo                                                                                                                                                                                                        | —                |
+| PRD-F18 | Buyers charged in their own currency (FX)                                     | ⏸      | High     | PROD | Built, switched off pending counsel and a live rate feed (#435)                                                                                                                                                                  | DB17             |
+| PRD-F19 | Paid discovery calls and consultations                                        | ⏸      | Normal   | PROD | Ruled off (#343); `PAID_CALLS_LIVE = false` (`packages/types/scheduling/calls.ts:49`)                                                                                                                                            | #343             |
+| PRD-F20 | A multi-currency total never drops a currency                                 | ❌     | High     | UAT  | Totals across currencies silently skip a currency with no rate (FINANCE C13, P0; `wallet-scope.ts:324`)                                                                                                                          | SV5, UI5         |
+| PRD-F21 | A live FX rate feed with a staleness mark                                     | ❌     | High     | PROD | Rates come from the seed only; no staleness mark (C6)                                                                                                                                                                            | DB17             |
+| PRD-F22 | Cancelling or archiving a project settles its escrow first                    | 🟡     | Critical | UAT  | Services ruled and built (#456): `projects.cancel_service` settles first and `set_project_status` refuses a held service's cancel or archive; a client brief still cancels or archives with escrow held                          | #456, 🧑 briefs   |
+| PRD-F23 | Held escrow cannot strand: a silent client's delivery auto-approves           | ❌     | Critical | UAT  | No `submitted_at` or timer (PRODUCT_SPEC §Escrow 5, "No Forever-Escrow"); with the claim TTL paused (PRD-G2), funded work can sit held indefinitely                                                                              | PM-GH1           |
+| PRD-F24 | A bought service's unclaimed escrow is refunded, never paid out               | ❌     | Critical | UAT  | The seller's seat binds the payee at funding (`fn_ticket_payee`), so the prepaid TTL never sweeps an unclaimed ticket and `approve_stage` or a stage Fair Exit would pay it out (#456 (b))                                       | 🧑                |
+
+## G. Scheduled jobs & operations
+
+| ID     | Requirement                                                                           | Status | Crit     | Gate | Evidence / what's missing                                                                                                                         | Track  |
+| :----- | :------------------------------------------------------------------------------------ | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------------ | :----- |
+| PRD-G1 | One job registry; every job registered loudly                                         | ✅     | High     | UAT  | `ops.scheduled_jobs` + `00001650` (Decision #203); 40 of 42 rows register                                                                         | #203   |
+| PRD-G2 | The claim-TTL sweep is hardened and running                                           | ❌     | Critical | UAT  | `projects-release-expired-claims` seeded paused; the sweep has no lock, re-check, history row or notice (`00001140:689-720`)                      | PM-WP1 |
+| PRD-G3 | Workload-report expiry is scheduled                                                   | ❌     | High     | UAT  | `fn_resolve_expired_workload_reports` (`00001140:135`) has no job row                                                                             | PM     |
+| PRD-G4 | Reschedule ballots settle                                                             | ❌     | High     | UAT  | The `scheduling-settle-votes` row exists; `scheduling.fn_settle_votes` does not                                                                   | SCH    |
+| PRD-G5 | Search query-log retention                                                            | ❌     | Normal   | PROD | The `search-query-log-retention` row exists; `search.fn_prune_query_logs` does not                                                                | —      |
+| PRD-G6 | Every HTTP job's bearer and `CRON_APP_URL` are in the hosted Vault                    | ❌     | Critical | UAT  | `cron:vault` provisions `INTEGRATIONS_CRON_SECRET` only (`scripts/cron-vault.ts:16, 36`); the finance, accounts, scheduling and contact jobs skip | —      |
+| PRD-G7 | Alerting on job failures, ledger drift and webhook errors                             | ❌     | High     | PROD | No alert routing in the repo                                                                                                                      | —      |
+| PRD-G8 | Deployment config and runbook (hosting, Supabase project, domains, backups, rollback) | ❌     | Critical | PROD | No deployment config in the repo; `deno task share` (Cloudflare tunnels) is the only hosting path                                                 | —      |
+
+## H. Secrets & configuration
+
+| ID     | Requirement                                                             | Status | Crit     | Gate | Evidence / what's missing                                                                                                                                     | Track |
+| :----- | :---------------------------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ | :---- |
+| PRD-H1 | Integration tokens sealed (AES-256-GCM envelope under `ENCRYPTION_KEY`) | ✅     | Critical | UAT  | `services/integrations/token-vault.ts`; boot refuses without a key (#343 C4(c))                                                                               | #343  |
+| PRD-H2 | Vault key rotation and rewrap                                           | ❌     | High     | PROD | `SYSTEM_ARCHITECTURE.md` §The token vault                                                                                                                     | —     |
+| PRD-H3 | A live Stripe key is refused outside production                         | ✅     | High     | UAT  | `core/stripe.ts:145-154`; `apps/web/main.ts:18`                                                                                                               | —     |
+| PRD-H4 | The env contract is complete and read through `env.ts`                  | 🟡     | Normal   | PROD | SA's contract lacks `RESEND_API_KEY`, `MAIL_FROM`, `USE_MOCKS`; `APP_URL` and `SUPABASE_*` read directly (`routes/api/_middleware.ts:10`, `utils/csp.ts:141`) | —     |
+| PRD-H5 | Keys for the planned providers named in the contract                    | ❌      | Normal   | PROD | VAPID, `SAFETY_NODE_*`, `COMMS_DISPATCH_SECRET`, `RESEND_WEBHOOK_SECRET` absent everywhere (#335); Turnstile is in the contract, test keys only (#447)        | #335  |
+
+## I. Data contract
+
+| ID     | Requirement                                                                   | Status | Crit     | Gate | Evidence / what's missing                                                                                                                                         | Track |
+| :----- | :---------------------------------------------------------------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---- |
+| PRD-I1 | The Additive Rule holds                                                       | ✅     | Critical | UAT  | No `DROP TABLE`, `DROP COLUMN` or `DROP CONSTRAINT` in any migration                                                                                              | —     |
+| PRD-I2 | Contract tests for finance, projects and org                                  | ✅     | High     | UAT  | `finance-tables.contract.test.ts` (39 tables), `projects-tables.contract.test.ts`, `org/identity-tables.contract.test.ts`                                         | —     |
+| PRD-I3 | Zod row schemas for comms messages, `catalogue.listings`, `scheduling.events` | ❌     | High     | PROD | No row schema for `comms.dm_messages`, `comms.project_messages`, `catalogue.listings`; `SchedulingEventRowSchema` covers 30 of 36 columns                         | —     |
+| PRD-I4 | The table contract checks types and nullability                               | ❌     | Normal   | PROD | `packages/types/core/table-contract.ts` checks column names only                                                                                                  | —     |
+| PRD-I5 | `documentation/database/*` matches the tables                                 | 🟡     | Normal   | PROD | Drift: `finance.wallets.created_at`, `org.business_profiles` rating and count columns, `comms.notifications` timestamps, `notification_queue`, `idempotency_keys` | —     |
+
+## J. Routing, URLs & SEO
+
+| ID     | Requirement                                     | Status | Crit   | Gate | Evidence / what's missing                                                                                                                                                                                 | Track |
+| :----- | :---------------------------------------------- | :----- | :----- | :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---- |
+| PRD-J1 | No uuid in a user-facing URL (#88)              | 🟡     | High   | UAT  | uuid thread links (`services/saved/live-saved.ts:593`, `BookingBackendService.ts:1258`); `/api/sessions/*/[id]`; `/calendar?event=`; known exceptions `/inspect/:fileId` (#161 a), private rooms (#162 h) | MS2   |
+| PRD-J2 | Every route type-checks; no dead route          | ✅     | High   | MVP  | `deno task check` exit 0; every route import resolves                                                                                                                                                     | —     |
+| PRD-J3 | robots disallows every app path                 | ✅     | Normal | PROD | `robots.test.ts` pins `APP_PATHS` to the route tree                                                                                                                                                       | —     |
+| PRD-J4 | The sitemap lists listings and profiles         | ✅     | High   | PROD | #452: `/sitemap.xml` is an index; public listings and posts at canonical `/view/:slug`, public profiles at `/@handle`, via `ExploreSitemapService` (anon); `sitemap.test.ts` end to end                  | DS2   |
+| PRD-J5 | Board, inbox and roster filters are addressable | ❌     | Normal | PROD | Signals only (`ProjectBoard.island.tsx:213-217`, `MessagesSidebar.island.tsx:160-164`, `MemberRoster.island.tsx:153`)                                                                                     | —     |
+
+## K. Quality gates & testing
+
+| ID     | Requirement                                                           | Status | Crit     | Gate | Evidence / what's missing                                                                                | Track |
+| :----- | :-------------------------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------- | :---- |
+| PRD-K1 | Type-check and lint clean                                             | ✅     | High     | MVP  | `deno task check` (every route file) and `deno lint` (4,211 files) exit 0                                | —     |
+| PRD-K2 | Unit, contract and probe suites exist                                 | ✅     | High     | UAT  | 786 test files, 28 contract tests, 150 probes                                                            | —     |
+| PRD-K3 | `deno task test:e2e` runs                                             | ❌     | High     | UAT  | It names `landing-hero.spec.ts`, deleted in `21309eeb` (`deno.json:95`); `billing.spec.ts` is in no task | —     |
+| PRD-K4 | CI runs check, lint and unit tests on every change                    | ❌     | Critical | PROD | No CI configuration in the repo                                                                          | —     |
+| PRD-K5 | CI runs the probes on a fresh stack and `smoke:stripe` on stripe-mock | ❌     | High     | PROD | Both manual (`test:probes:fresh`, `smoke:stripe`)                                                        | —     |
+| PRD-K6 | The unit suite is fully green                                         | 🟡     | Normal   | PROD | Known theme-engine failures (Decisions #96 (a), #157 (m)); not re-run in the 2026-11-18 audit            | —     |
+
+## L. Design system & accessibility
+
+| ID     | Requirement                                                | Status | Crit   | Gate | Evidence / what's missing                                                                                                                                                                | Track |
+| :----- | :--------------------------------------------------------- | :----- | :----- | :--- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---- |
+| PRD-L1 | Pure CSS + BEM, token-only, no UI libraries                | ✅     | High   | UAT  | No Tailwind, CSS-in-JS or UI-library dependency; the Material library only in `packages/ui/system/`                                                                                      | —     |
+| PRD-L2 | Every filled pair ≥ 4.5:1 in all four mode/contrast states | ❌     | High   | PROD | Dark `--primary` pair (theme-engine known failures); `success` / `warning` / `info` at 3.17:1 in light (#342 a); the calendar palette at 2.21:1 (`ui/calendar/styles/shell.css:197-263`) | —     |
+| PRD-L3 | A visible focus indicator (WCAG 2.4.7)                     | ❌     | High   | PROD | Focus rings removed product-wide; accepted but deferred to the owner's design (#341)                                                                                                     | 🧑    |
+| PRD-L4 | `backdrop-filter` only where sanctioned, on a `::before`   | ❌     | Normal | PROD | 9 uses off a `::before` (e.g. `marketing/styles/hero-search.css:198`, `overlay/styles/backdrop.css:17, 30`)                                                                              | —     |
+| PRD-L5 | Signal-first state                                         | 🟡     | Normal | PROD | 61 `useEffect` calls keyed on a signal's `.value` in 47 files; `useState` in `Select`, `MultiSelect`, `Image`                                                                            | —     |
+| PRD-L6 | The DESIGN_SYSTEM §C.1 roster is complete                  | 🟡     | Normal | PROD | `LaneFooterActions`, `LaneFilterFacet`, `InputGroupAddon`, `DialogHost` unlisted                                                                                                         | —     |
+
+## M. Legal & compliance
+
+| ID     | Requirement                                                             | Status | Crit     | Gate | Evidence / what's missing                                                                                                                    | Track      |
+| :----- | :---------------------------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------- | :--------- |
+| PRD-M1 | Every legal document reviewed by counsel                                | ❌     | Critical | PROD | Every version carries `reviewedAt: null`, so each reads "Draft — pending legal review" and is noindexed (`features/legal/core/content/*.ts`) | 🧑 counsel |
+| PRD-M2 | Sign-up records acceptance of the current terms and privacy notice      | ✅     | Critical | PROD | Built (#446). Every `/join` final step has an unticked box (Terms · AUP · Privacy linked). `org.legal_acceptances` is written inside the profile's own transaction at versions the database re-checks; a forged version is refused, and under 13 records nothing. A material version re-asks (`termsDue` → `/join?complete=terms`). Proved live through GoTrue and by `legal_acceptance.sql`. The text itself is PRD-M1 | AU1        |
+| PRD-M3 | Self-serve personal data export                                         | 🟡     | Normal   | PROD | Built (#450): Settings → Account → Download your data; `org.request_data_export` (recent sign-in, one open, one a day, none during erasure); the `account-data-exports` job writes a ZIP of 15 schema-validated domains to the service-only `data_exports` bucket, downloadable 7 days through a per-read link; erasure reaches it. Proved live (marisdelacroix, kwamemensah) and by `data_export.sql`. Remaining: the job's hosted dispatch (`ACCOUNT_CRON_SECRET` + `CRON_APP_URL` in the Vault, PRD-G6) | ST6        |
+| PRD-M4 | The legal IP chain of title (deeds of transfer on release, audit packs) | ❌     | High     | PROD | Specified (PRODUCT_SPEC §Identity, Taxes & Compliance 4); no deed table, generator or signing; placeholder pages only (PRD-A4)               | —          |
+| PRD-M5 | Tax documents (invoice tax lines, 1099 / W-9, VAT reverse charge)       | ❌     | High     | PROD | Planned (FINANCE A9); nothing generates them                                                                                                 | A9         |
+| PRD-M6 | AML monitoring (round-tripping, churn, safety hold)                     | ❌     | Normal   | PROD | Signals not built; the programme stays off pending counsel (#336 I1)                                                                         | 🧑 counsel |
+
+## Decisions awaiting a human (not scored)
+
+| Decision                                                                               | Blocks             | Where it stands                                    |
+| :------------------------------------------------------------------------------------- | :----------------- | :------------------------------------------------- |
+| Where the notification dispatcher runs (Edge Function or Fresh route + pg_cron)        | PRD-E4, E5, E7, E8 | Open (`COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md`)     |
+| Escrow holding period                                                                  | PRD-F15            | Pending counsel (#337)                             |
+| CSAM hash matching vendor (PhotoDNA)                                                   | PRD-D14            | Pending counsel (T5)                               |
+| FX spread and live rate feed                                                           | PRD-F18            | Pending counsel (#435)                             |
+| System wallets and double-entry                                                        | PRD-F16            | #337 X-flags                                       |
+| Whether the sitemap lists listings and profiles                                        | PRD-J4             | Decided 2026-11-18 (#452, ruling A); built         |
+| The focus indicator's design                                                           | PRD-L3             | Deferred to the owner (#341)                       |
+| Conversation addresses: PRODUCT_SPEC `cht-…` vs ROUTING thread id / `dm-{handle}`      | PRD-J1, PRD-E2     | New contradiction, #444 flag (a)                   |
+| `/view/[entity]/schedule`: PRODUCT_SPEC live leaf vs #411's 308                        | —                  | New contradiction, #444 flag (b)                   |
+| The PRODUCT_SPEC sitemap's routes with no file, and which segments to reserve          | PRD-C22            | #444 flag (c)                                      |
+| Terms acceptance at sign-up (what is recorded, which versions) — a spec gap            | PRD-M2             | Ruled 2026-11-18 (#446): checkbox; rows, no IP/UA; material versions re-ask |
+| Legal document sign-off                                                                | PRD-M1             | Pending counsel                                    |
+| AML posture; leaving a failed payout in Stripe (M9)                                    | PRD-M6, PRD-F11    | Pending counsel (#336 I1, #337)                    |
+| Cancel or archive with held escrow: settle first, or refuse                            | PRD-F22            | Services ruled (#456): settle first; briefs open   |
+| A bought service's unclaimed escrow is bound to the seller at funding                  | PRD-F24            | New, #456 flag (b)                                 |
+| Manual Assignment: PRODUCT_SPEC §Assignment Modes says it ships; nothing calls it      | USER_FLOWS PJ-13   | Spec ↔ code gap: build, or re-scope the spec       |
+| Project completion: the handover rule assumes a completion step the app cannot perform | USER_FLOWS PJ-40   | Spec ↔ code gap                                    |
+
+## Doc drift to sweep (not scored)
+
+- `supabase/migrations/00005050_seed_reference_data.sql:105` says every provider ships
+  `is_enabled=false`; `google`, `outlook` and `zoom` ship `true` (#386).
+- `SYSTEM_ARCHITECTURE.md` §Scheduled jobs says five rows wait for their function (two do) and its
+  table lacks `finance-expire-spend-approvals` and `finance-sweep-idempotency-keys`.
+- DB3 landed in `44382c08`, yet `FINANCE_BUILD_PROMPTS.md` §0 calls it uncommitted and
+  `PM_BUILD_PROMPTS.md` §0 still reads "no `dispute_open` refusal"; `FINANCE_AUDIT.md` §5 lists A14,
+  A16, K4, L9, V4 and S4 (and H3) as open though they are closed in code.
+- `SCHEDULING_COMPLETENESS_AUDIT.md:366`,
+  `EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md:1190` and `FOUNDER_QUESTIONNAIRE.md:307`
+  still describe KMS; #343 C4(c) ruled `ENCRYPTION_KEY`.
+- `packages/backend/mocks/registry.ts` and `core/data-source.ts:28-31` ("17 of 20 services have no
+  DB path"); the registry maps Scheduling to PROJECTS and Profile to `liveImplemented: false`.
+- `API_BACKLOG.md` (repo root, 2026-10-17) is mostly obsolete and lives outside `documentation/`.
+- ~~`supabase/config.toml:245` says confirmations are disabled; line 247 enables them.~~ Fixed
+  (#449).
+- `SYSTEM_ARCHITECTURE.md` §Function `EXECUTE` grants omits `comms` and the `search` exception.
+- **Decision #442** (calendar files become native entries; the lane's one scroller) is cited in
+  about 30 calendar files, `PRODUCT_SPEC.md:420` and `DESIGN_SYSTEM.md`, but has no row in
+  `decisions-*.md` and no index line.
+- `SYSTEM_ARCHITECTURE.md` §Basket, Checkout & Orders still describes fixtures; checkout and orders
+  read live (`live-basket`, `live-orders`).
+- #422 flag (a) (a dead Reserve seat on `/view`) looks fixed by #424's seat dialog but is not
+  closed.
+
+## Score history
+
+| Date       | Change                                                                 | MVP | UAT | PROD |
+| :--------- | :--------------------------------------------------------------------- | --: | --: | ---: |
+| 2026-11-18 | Seeded from the static audit at `d63ab286`; `/services` removed (#443) | 58% | 48% |  28% |
+| 2026-11-18 | AU4 (#445): PRD-C11 ❌ → 🟡; also counts #449's PRD-C13, C14, C16      | 58% | 50% |  29% |
+| 2026-11-18 | AU2 (#449): PRD-C13, C14, C16 ❌ → 🟡 (counted in the line above)      | 58% | 50% |  29% |
+| 2026-11-18 | AU5 (#448): PRD-E6 ❌ → 🟡 (templates built; hosted send left)         | 58% | 51% |  30% |
+| 2026-11-18 | ST2: PRD-E5 narrowed (untrue email copy removed); still ❌             | 58% | 51% |  30% |
+| 2026-11-18 | AU1 (#446): PRD-M2 ❌ → ✅ (sign-up acceptance, material re-accept)    | 58% | 51% |  31% |
+| 2026-11-18 | AU3 (#447): PRD-C15 ❌ → 🟡 (hosted keys left); PRD-H5 narrowed        | 58% | 51% |  31% |
+| 2026-11-18 | DS2 (#452): PRD-J4 ❌ → ✅ (sitemap index: listings and profiles)      | 58% | 51% |  32% |
+| 2026-11-18 | ST1 (#451): no row flips; PRD-C17 gains a sixth step-up action         | 58% | 51% |  32% |
+| 2026-11-18 | LV4 (#455): PRD-E12 ❌ → ✅ (a waitlist is invited in order, in-app)  | 58% | 52% |  32% |
+| 2026-11-18 | ST6 (#450): PRD-M3 ❌ → 🟡 (self-serve data export; hosted job dispatch left, PRD-G6) | 58% | 52% |  33% |
+| 2026-11-18 | LV1 (#456): PRD-F22 ❌ → 🟡 (services settle first); new PRD-F24 ❌     | 58% | 52% |  33% |

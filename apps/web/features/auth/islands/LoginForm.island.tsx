@@ -11,7 +11,11 @@ import { withRedirect } from "../core/redirect.ts";
  * parts compose the in-page `SignInPrompt` dialog, so signing in from either lands identically.
  */
 export default function LoginForm(
-	{ redirectTo, notice }: { redirectTo: string; notice?: string | null },
+	{ redirectTo, notice, captchaSiteKey = null }: {
+		redirectTo: string;
+		notice?: string | null;
+		captchaSiteKey?: string | null;
+	},
 ) {
 	return (
 		<>
@@ -61,7 +65,7 @@ export default function LoginForm(
 				<span>or</span>
 			</div>
 
-			<CredentialsForm redirectTo={redirectTo} />
+			<CredentialsForm redirectTo={redirectTo} captchaSiteKey={captchaSiteKey} />
 		</>
 	);
 }

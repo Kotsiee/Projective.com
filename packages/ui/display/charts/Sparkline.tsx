@@ -18,8 +18,10 @@ import {
 	type ChartColour,
 	useChartCanvas,
 	useChartTier,
+	useValuesHidden,
 	viewPath,
 } from "./useChart.ts";
+import { SCREEN_SHARE_MASK } from "../../utils/core/screen-share.ts";
 
 /** Props for {@link Sparkline}. */
 export interface SparklineProps {
@@ -36,6 +38,8 @@ export interface SparklineProps {
 	labels?: readonly string[];
 	formatValue?: (value: number) => ComponentChildren;
 	tierPolicy?: ChartTierPolicy;
+	/** Whether screen sharing mode masks its values (default `true`). */
+	sensitive?: boolean;
 	class?: string;
 }
 
@@ -55,6 +59,7 @@ export function Sparkline(props: SparklineProps): JSX.Element | null {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const probeRef = useRef<HTMLSpanElement>(null);
 	const tier = useChartTier(values.length, props.tierPolicy ?? DEFAULT_TIER_POLICY);
+	const hidden = useValuesHidden(props.sensitive);
 	const count = geo.points.length;
 
 	useChartCanvas({
@@ -116,7 +121,9 @@ export function Sparkline(props: SparklineProps): JSX.Element | null {
 	}
 
 	const at = active.value;
-	const format = props.formatValue ?? ((v: number) => v.toLocaleString());
+	const format = hidden
+		? () => SCREEN_SHARE_MASK
+		: props.formatValue ?? ((v: number) => v.toLocaleString());
 	const labelOf = (i: number) => props.labels?.[i] ?? `Point ${i + 1}`;
 	const caption = props.caption ?? "Trend";
 

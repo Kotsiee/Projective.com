@@ -27,7 +27,13 @@ import {
 import { TEAM_PAGE_SIM_COOKIE, type TeamPageSim } from "@features/profile/core/team-page-sim.ts";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
-import { AGE_OVERRIDE_COOKIE, OPERATOR_MODE_OVERRIDE_COOKIE } from "@projective/types/auth";
+import { CHANNEL_LIVENESS_OVERRIDE_COOKIE } from "@projective/types/comms";
+import {
+	AGE_OVERRIDE_COOKIE,
+	CAPTCHA_OVERRIDE_COOKIE,
+	OPERATOR_MODE_OVERRIDE_COOKIE,
+	TERMS_DUE_OVERRIDE_COOKIE,
+} from "@projective/types/auth";
 import {
 	CHECKOUT_PAYMENT_SIM_COOKIE,
 	FX_CHECKOUT_OVERRIDE_COOKIE,
@@ -40,12 +46,15 @@ import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/s
 import {
 	DEV_SEAM_EVENT,
 	type DevAccountLifecycle,
+	type DevDataExport,
 	type DevAgeRestriction,
 	type DevAutoFundMode,
 	type DevAvailabilityConflict,
 	type DevBasketScenario,
+	type DevPromotionState,
 	type DevBusinessKyb,
 	type DevBusinessPlanGates,
+	type DevCaptcha,
 	type DevCatalogueAnalytics,
 	type DevCheckoutGate,
 	type DevCheckoutPayment,
@@ -66,10 +75,12 @@ import {
 	type DevMemberRole,
 	type DevMessagingRole,
 	type DevMicPermission,
+	type DevNotificationDelivery,
 	type DevNotifications,
 	type DevOperatorDesk,
 	type DevOperatorMode,
 	type DevPayoutReadiness,
+	type DevTermsAcceptance,
 	type DevPersona,
 	type DevProfileSetup,
 	type DevProjectOnboarding,
@@ -79,6 +90,7 @@ import {
 	type DevRevisionAllotment,
 	type DevSaved,
 	type DevSeamRole,
+	type DevServiceSide,
 	type DevServiceType,
 	type DevSessionBookingStatus,
 	type DevCalendarConnection,
@@ -93,6 +105,7 @@ import {
 	type DevTeamSettings,
 	type DevTrustAdornments,
 	type DevVerificationStamp,
+	type DevWaitlistPlace,
 	type DevWalletAurora,
 	personaCapabilities,
 } from "@web/utils/dev-seam.ts";
@@ -117,13 +130,16 @@ export type DevTeamPage = "auto" | TeamPageSim;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
 	DevAccountLifecycle,
+	DevDataExport,
 	DevAgeRestriction,
 	DevAutoFundMode,
 	DevAvailabilityConflict,
+	DevPromotionState,
 	DevFileAccess,
 	DevBasketScenario,
 	DevBusinessKyb,
 	DevBusinessPlanGates,
+	DevCaptcha,
 	DevCatalogueAnalytics,
 	DevCheckoutGate,
 	DevCheckoutPayment,
@@ -142,15 +158,18 @@ export type {
 	DevMemberRole,
 	DevMessagingRole,
 	DevMicPermission,
+	DevNotificationDelivery,
 	DevNotifications,
 	DevOperatorDesk,
 	DevOperatorMode,
 	DevPayoutReadiness,
+	DevTermsAcceptance,
 	DevProfileSetup,
 	DevProjectType,
 	DevProposalAllowance,
 	DevRevisionAllotment,
 	DevSaved,
+	DevServiceSide,
 	DevServiceType,
 	DevSessionBookingStatus,
 	DevCalendarConnection,
@@ -165,6 +184,7 @@ export type {
 	DevTeamSettings,
 	DevTrustAdornments,
 	DevVerificationStamp,
+	DevWaitlistPlace,
 	DevWalletAurora,
 };
 
@@ -239,6 +259,13 @@ export interface DevOverrides {
 	 * it rides the same cookie as {@link projectAccess}.
 	 */
 	projectStatus: DevProjectStatus;
+	/**
+	 * Simulated side of a bought service (Decision #456): its `client` (an owner-side view that cannot
+	 * configure it, offered Cancel service) or its `provider` (a participant that configures it). The
+	 * landing reads it server-side through the same cookie as {@link projectAccess}; the lane reads it
+	 * from the seam (`data-dev-service-side`). Only a service changes; `auto` defers to the server.
+	 */
+	serviceSide: DevServiceSide;
 	/**
 	 * Simulated state of a business's `/:handle` (BP1, Decision #244): a member's view of a draft,
 	 * archived or invite-only business (the member notice), or `missing` — the page as an outsider
@@ -320,6 +347,12 @@ export interface DevOverrides {
 	 */
 	accountLifecycle: DevAccountLifecycle;
 	/**
+	 * Settings → Account's "Download your data": the real read, or a request none yet, being prepared,
+	 * ready, expired or failed, a stale sign-in, or an erasure scheduled. Its own axis because the
+	 * export job and the 24-hour limit are server clocks no control can reach (Decision #450).
+	 */
+	dataExport: DevDataExport;
+	/**
 	 * The proposal allowance the popover meter, the lane disclosure and the apply modal render
 	 * (Decision #154): the real read, or a substituted status — plenty, low, paced (enforced or soft),
 	 * the week spent, or a one-member team. Its own axis because tokens, the drip clock and a roster are
@@ -380,6 +413,12 @@ export interface DevOverrides {
 	 * the auto-release sweep to reach, so the listing lane and the session sidebar preview them here.
 	 */
 	sessionState: DevSessionState;
+	/**
+	 * The viewer's place on a group-session listing's waitlist (Decision #455): waiting in the queue,
+	 * a seat held by an invite, or an invite that lapsed. Each takes a real queue, a freed seat and the
+	 * invite job to reach, so the listing lane previews them here.
+	 */
+	waitlistPlace: DevWaitlistPlace;
 	discoveryCall: DevDiscoveryCall;
 	/** How a picked `/calendar` entry opens, whatever the reader's setting says (Decision #388). */
 	calendarInspect: DevCalendarInspect;
@@ -399,6 +438,13 @@ export interface DevOverrides {
 	 * empty inbox, a full one and a run of new events all need someone else's actions to reach.
 	 */
 	notifications: DevNotifications;
+	/**
+	 * Settings → Notifications' channel delivery: the server's liveness map, every outbound channel
+	 * drawn as delivering (`live`), or none (`off`). Its own axis because a live channel needs the
+	 * dispatcher and a provider configured. Server-side, through the `pj.dev.notification-delivery`
+	 * cookie; nothing is sent either way.
+	 */
+	notificationDelivery: DevNotificationDelivery;
 	/**
 	 * The header basket drawer: the real basket, an empty one, a switcher holding personal + team +
 	 * business baskets, or a basket with an unavailable line. Its own axis because a second paying
@@ -498,6 +544,20 @@ export interface DevOverrides {
 	 */
 	operatorMode: DevOperatorMode;
 	/**
+	 * The re-accept gate (Decision #446): follow the token's `termsDue` claim, send the session to
+	 * `/join?complete=terms` as a material new version would (`due`), or keep it out (`current`).
+	 * Server-side, through the `pj.dev.terms` cookie; nothing is written, so accepting under `due`
+	 * returns to the step until the axis is reset.
+	 */
+	termsAcceptance: DevTermsAcceptance;
+	/**
+	 * The auth forms' bot check (Decision #447): the environment's Turnstile keys, or Cloudflare's
+	 * always-pass, always-fail or forced-interactive test pair. `fail` yields no token, so GoTrue
+	 * refuses sign-in, recovery and resend, and `/join` refuses itself. Server-side, through the
+	 * `pj.dev.captcha` cookie.
+	 */
+	captcha: DevCaptcha;
+	/**
 	 * The operator dispute desk (Decision #212): let the database decide who is an operator, or render
 	 * `/admin/disputes` with sample cases (`queue`) or none (`empty`) for anyone. Grants nothing — a
 	 * ruling still goes to the database. Server-side, through the `pj.dev.operator` cookie.
@@ -520,6 +580,12 @@ export interface DevOverrides {
 	 * still meets the real gate.
 	 */
 	availabilityConflict: DevAvailabilityConflict;
+	/**
+	 * The listing workspace's Promote control (Decision #454): the server's answer, or the control as
+	 * a seller without the plan, free to promote, running here, or running on another listing.
+	 * Client-only; a promote or stop still meets the real door.
+	 */
+	promotionState: DevPromotionState;
 	/**
 	 * The inspector's Access tab (Decision #402): the server's standing, or the tab as the owner, an
 	 * editor, a viewer or a signed-out visitor sees it. Client-only; a save still meets the database.
@@ -552,6 +618,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	projectOnboarding: "auto",
 	projectAccess: "auto",
 	projectStatus: "auto",
+	serviceSide: "auto",
 	businessPage: "auto",
 	teamPage: "auto",
 	memberRole: "owner_admin",
@@ -566,6 +633,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	walletAurora: "auto",
 	settingsAttention: "auto",
 	accountLifecycle: "auto",
+	dataExport: "auto",
 	proposalAllowance: "auto",
 	verificationStamp: "auto",
 	trustAdornments: "auto",
@@ -577,12 +645,14 @@ export const DEV_DEFAULTS: DevOverrides = {
 	businessKyb: "auto",
 	teamSettings: "auto",
 	sessionState: "auto",
+	waitlistPlace: "auto",
 	discoveryCall: "auto",
 	calendarInspect: "auto",
 	conferencingConnection: "auto",
 	calendarConnection: "auto",
 	disputeState: "auto",
 	notifications: "auto",
+	notificationDelivery: "auto",
 	basketScenario: "auto",
 	checkoutGate: "auto",
 	checkoutPayment: "ok",
@@ -598,10 +668,13 @@ export const DEV_DEFAULTS: DevOverrides = {
 	payoutReadiness: "auto",
 	businessPlanGates: "auto",
 	operatorMode: "auto",
+	termsAcceptance: "auto",
+	captcha: "auto",
 	operatorDesk: "auto",
 	catalogueAnalytics: "auto",
 	clientPipeline: "auto",
 	availabilityConflict: "auto",
+	promotionState: "auto",
 	fileAccess: "auto",
 };
 
@@ -665,6 +738,13 @@ export const DEV_PROJECT_ACCESSES: ReadonlyArray<DevOption<DevProjectAccess>> = 
 	{ value: "owner", label: "Owner" },
 	{ value: "participant", label: "Participant" },
 	{ value: "prospect", label: "Prospect" },
+];
+
+/** Simulated service-side options in display order (a bought service's client or provider, #456). */
+export const DEV_SERVICE_SIDES: ReadonlyArray<DevOption<DevServiceSide>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "client", label: "Client" },
+	{ value: "provider", label: "Provider" },
 ];
 
 /** Simulated engagement-status options in display order (the same dispatch). */
@@ -796,6 +876,18 @@ export const DEV_ACCOUNT_LIFECYCLES: ReadonlyArray<DevOption<DevAccountLifecycle
 	{ value: "deletion-scheduled", label: "Deletion due" },
 ];
 
+/** Data-export options in display order (Settings → Account, Decision #450). */
+export const DEV_DATA_EXPORTS: ReadonlyArray<DevOption<DevDataExport>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "none", label: "None yet" },
+	{ value: "preparing", label: "Preparing" },
+	{ value: "ready", label: "Ready" },
+	{ value: "expired", label: "Expired" },
+	{ value: "failed", label: "Failed" },
+	{ value: "reauth", label: "Sign in again" },
+	{ value: "closing", label: "Erasure due" },
+];
+
 /**
  * Proposal-allowance options in display order. `Paced` is the value worth having: an enforced empty
  * buffer — the disabled submit and the live countdown, which no seeded persona sits at.
@@ -905,6 +997,13 @@ export const DEV_NOTIFICATIONS: ReadonlyArray<DevOption<DevNotifications>> = [
 	{ value: "burst", label: "Realtime burst" },
 ];
 
+/** Channel-delivery options for Settings → Notifications. `Server` follows the liveness map. */
+export const DEV_NOTIFICATION_DELIVERIES: ReadonlyArray<DevOption<DevNotificationDelivery>> = [
+	{ value: "auto", label: "Server" },
+	{ value: "live", label: "All live" },
+	{ value: "off", label: "None live" },
+];
+
 /** Basket drawer scenarios. */
 export const DEV_BASKET_SCENARIOS: ReadonlyArray<DevOption<DevBasketScenario>> = [
 	{ value: "auto", label: "Auto" },
@@ -1006,6 +1105,14 @@ export const DEV_SESSION_STATES: ReadonlyArray<DevOption<DevSessionState>> = [
 	{ value: "no_room", label: "No room (host)" },
 ];
 
+/** Waitlist place options (Decision #455). */
+export const DEV_WAITLIST_PLACES: ReadonlyArray<DevOption<DevWaitlistPlace>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "waiting", label: "Waiting" },
+	{ value: "invited", label: "Invited" },
+	{ value: "expired", label: "Expired" },
+];
+
 /** No-show dispute options (Decision #212). */
 export const DEV_DISPUTE_STATES: ReadonlyArray<DevOption<DevDisputeState>> = [
 	{ value: "auto", label: "Auto" },
@@ -1084,6 +1191,21 @@ export const DEV_OPERATOR_MODES: ReadonlyArray<DevOption<DevOperatorMode>> = [
 	{ value: "off", label: "Off" },
 ];
 
+/** Re-accept gate positions (Decision #446). `Token` follows the session's `termsDue` claim. */
+export const DEV_TERMS_ACCEPTANCES: ReadonlyArray<DevOption<DevTermsAcceptance>> = [
+	{ value: "auto", label: "Token" },
+	{ value: "due", label: "Re-accept due" },
+	{ value: "current", label: "Accepted" },
+];
+
+/** Bot-check positions (Decision #447). `Env keys` uses the environment's Turnstile pair. */
+export const DEV_CAPTCHAS: ReadonlyArray<DevOption<DevCaptcha>> = [
+	{ value: "auto", label: "Env keys" },
+	{ value: "pass", label: "Always pass" },
+	{ value: "fail", label: "Always fail" },
+	{ value: "interactive", label: "Challenge" },
+];
+
 /** Operator-desk previews (Decision #212). `Database` lets `security.is_admin()` decide. */
 export const DEV_OPERATOR_DESKS: ReadonlyArray<DevOption<DevOperatorDesk>> = [
 	{ value: "auto", label: "Database" },
@@ -1111,6 +1233,15 @@ export const DEV_CLIENT_PIPELINES: ReadonlyArray<DevOption<DevClientPipeline>> =
 export const DEV_AVAILABILITY_CONFLICTS: ReadonlyArray<DevOption<DevAvailabilityConflict>> = [
 	{ value: "auto", label: "Real" },
 	{ value: "empty_horizon", label: "Empty 30 days" },
+];
+
+/** Promote control states (Decision #454). `Real` shows the server's answer. */
+export const DEV_PROMOTION_STATES: ReadonlyArray<DevOption<DevPromotionState>> = [
+	{ value: "auto", label: "Real" },
+	{ value: "not_entitled", label: "No plan" },
+	{ value: "available", label: "Available" },
+	{ value: "live", label: "Running" },
+	{ value: "elsewhere", label: "Elsewhere" },
 ];
 
 /** Access tab standings (Decision #402). `Real` shows the server's answer. */
@@ -1182,6 +1313,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devProjectAccess;
 		if (next.projectStatus !== "auto") root.dataset.devProjectStatus = next.projectStatus;
 		else delete root.dataset.devProjectStatus;
+		if (next.serviceSide !== "auto") root.dataset.devServiceSide = next.serviceSide;
+		else delete root.dataset.devServiceSide;
 		if (next.businessPage !== "auto") root.dataset.devBusinessPage = next.businessPage;
 		else delete root.dataset.devBusinessPage;
 		if (next.teamPage !== "auto") root.dataset.devTeamPage = next.teamPage;
@@ -1207,6 +1340,8 @@ function reflect(next: DevOverrides): void {
 		if (next.accountLifecycle !== "auto") {
 			root.dataset.devAccountLifecycle = next.accountLifecycle;
 		} else delete root.dataset.devAccountLifecycle;
+		if (next.dataExport !== "auto") root.dataset.devDataExport = next.dataExport;
+		else delete root.dataset.devDataExport;
 		if (next.proposalAllowance !== "auto") {
 			root.dataset.devProposalAllowance = next.proposalAllowance;
 		} else delete root.dataset.devProposalAllowance;
@@ -1232,6 +1367,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devTeamSettings;
 		if (next.sessionState !== "auto") root.dataset.devSessionState = next.sessionState;
 		else delete root.dataset.devSessionState;
+		if (next.waitlistPlace !== "auto") root.dataset.devWaitlistPlace = next.waitlistPlace;
+		else delete root.dataset.devWaitlistPlace;
 		if (next.discoveryCall !== "auto") root.dataset.devDiscoveryCall = next.discoveryCall;
 		else delete root.dataset.devDiscoveryCall;
 		if (next.calendarInspect !== "auto") root.dataset.devCalendarInspect = next.calendarInspect;
@@ -1246,6 +1383,9 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devDisputeState;
 		if (next.notifications !== "auto") root.dataset.devNotifications = next.notifications;
 		else delete root.dataset.devNotifications;
+		if (next.notificationDelivery !== "auto") {
+			root.dataset.devNotificationDelivery = next.notificationDelivery;
+		} else delete root.dataset.devNotificationDelivery;
 		if (next.basketScenario !== "auto") root.dataset.devBasketScenario = next.basketScenario;
 		else delete root.dataset.devBasketScenario;
 		if (next.checkoutGate !== "auto") root.dataset.devCheckoutGate = next.checkoutGate;
@@ -1279,6 +1419,10 @@ function reflect(next: DevOverrides): void {
 		} else delete root.dataset.devBusinessPlanGates;
 		if (next.operatorMode !== "auto") root.dataset.devOperator = next.operatorMode;
 		else delete root.dataset.devOperator;
+		if (next.termsAcceptance !== "auto") root.dataset.devTerms = next.termsAcceptance;
+		else delete root.dataset.devTerms;
+		if (next.captcha !== "auto") root.dataset.devCaptcha = next.captcha;
+		else delete root.dataset.devCaptcha;
 		if (next.operatorDesk !== "auto") root.dataset.devOperatorDesk = next.operatorDesk;
 		else delete root.dataset.devOperatorDesk;
 		if (next.catalogueAnalytics !== "auto") {
@@ -1289,6 +1433,8 @@ function reflect(next: DevOverrides): void {
 		if (next.availabilityConflict !== "auto") {
 			root.dataset.devAvailabilityConflict = next.availabilityConflict;
 		} else delete root.dataset.devAvailabilityConflict;
+		if (next.promotionState !== "auto") root.dataset.devPromotionState = next.promotionState;
+		else delete root.dataset.devPromotionState;
 		if (next.fileAccess !== "auto") root.dataset.devFileAccess = next.fileAccess;
 		else delete root.dataset.devFileAccess;
 		root.dataset.devDirection = next.layoutDirection;
@@ -1325,6 +1471,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devWalletAurora;
 		delete root.dataset.devSettingsAttention;
 		delete root.dataset.devAccountLifecycle;
+		delete root.dataset.devDataExport;
 		delete root.dataset.devProposalAllowance;
 		delete root.dataset.devVerificationStamp;
 		delete root.dataset.devTrustAdornments;
@@ -1335,11 +1482,13 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devBusinessKyb;
 		delete root.dataset.devTeamSettings;
 		delete root.dataset.devSessionState;
+		delete root.dataset.devWaitlistPlace;
 		delete root.dataset.devDiscoveryCall;
 		delete root.dataset.devConferencingConnection;
 		delete root.dataset.devCalendarConnection;
 		delete root.dataset.devDisputeState;
 		delete root.dataset.devNotifications;
+		delete root.dataset.devNotificationDelivery;
 		delete root.dataset.devBasketScenario;
 		delete root.dataset.devCheckoutGate;
 		delete root.dataset.devCheckoutPayment;
@@ -1355,10 +1504,13 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devPayoutReadiness;
 		delete root.dataset.devBusinessPlanGates;
 		delete root.dataset.devOperator;
+		delete root.dataset.devTerms;
+		delete root.dataset.devCaptcha;
 		delete root.dataset.devOperatorDesk;
 		delete root.dataset.devCatalogueAnalytics;
 		delete root.dataset.devClientPipeline;
 		delete root.dataset.devAvailabilityConflict;
+		delete root.dataset.devPromotionState;
 		delete root.dataset.devFileAccess;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
@@ -1373,10 +1525,19 @@ function reflect(next: DevOverrides): void {
 	writePayoutCookie(next);
 	writePlanGatesCookie(next);
 	writeOperatorModeCookie(next);
+	writeTermsCookie(next);
+	writeCaptchaCookie(next);
 	writeOperatorDeskCookie(next);
 	writeCheckoutPaymentCookie(next);
 	writeFxCheckoutCookie(next);
+	writeNotificationDeliveryCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
+}
+
+function writeNotificationDeliveryCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.notificationDelivery !== "auto"
+		? `${CHANNEL_LIVENESS_OVERRIDE_COOKIE}=${next.notificationDelivery}; path=/; samesite=lax`
+		: `${CHANNEL_LIVENESS_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Mirror the FX checkout axis into `pj.dev.fx-checkout` — the route resolver forwards it as a header. */
@@ -1427,6 +1588,20 @@ function writeOperatorModeCookie(next: DevOverrides): void {
 		: `${OPERATOR_MODE_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
+/** Mirror the re-accept axis into `pj.dev.terms` — the dashboard guard's and `/join?complete=terms's`. */
+function writeTermsCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.termsAcceptance !== "auto"
+		? `${TERMS_DUE_OVERRIDE_COOKIE}=${next.termsAcceptance}; path=/; samesite=lax`
+		: `${TERMS_DUE_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/** Mirror the bot-check axis into `pj.dev.captcha` — the auth pages' and `/api/auth/*` key resolver's. */
+function writeCaptchaCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.captcha !== "auto"
+		? `${CAPTCHA_OVERRIDE_COOKIE}=${next.captcha}; path=/; samesite=lax`
+		: `${CAPTCHA_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
 /** Mirror the operator-desk axis into `pj.dev.operator` — the only channel `/admin/disputes` reads. */
 function writeOperatorDeskCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.operatorDesk !== "auto"
@@ -1465,6 +1640,7 @@ function writeLandingCookie(next: DevOverrides): void {
 		? encodeLandingSim({
 			access: next.projectAccess === "auto" ? null : next.projectAccess,
 			status: next.projectStatus === "auto" ? null : next.projectStatus,
+			side: next.serviceSide === "auto" ? null : next.serviceSide,
 		})
 		: null;
 	document.cookie = value

@@ -1,5 +1,15 @@
 import { assertEquals } from "@std/assert";
-import { facetValueLabel } from "./filter-config.ts";
+import { ExploreSort } from "@projective/types/explore";
+import { facetValueLabel, SORT_OPTIONS, sortOptionsFor } from "./filter-config.ts";
+
+Deno.test("the sort menu labels every order, and offers Best match only with a query", () => {
+	assertEquals(SORT_OPTIONS.map((o) => o.value), [...ExploreSort.options]);
+	assertEquals(sortOptionsFor("logo")[0], { value: "best_match", label: "Best match" });
+	assertEquals(
+		sortOptionsFor("  ").map((o) => o.value),
+		["recommended", "rating", "price_asc", "newest"],
+	);
+});
 
 Deno.test("facetValueLabel prints the filter chip's own word for a stored value", () => {
 	assertEquals(facetValueLabel("services", "cat", "web"), "Web");

@@ -3,6 +3,8 @@ import type {
 	FairExitPreview,
 	FairExitTier,
 	PaidRevisionRaised,
+	ServiceCancelled,
+	ServiceCancelPreview,
 	StageApproved,
 	StageExited,
 	SubmissionReviewDecision,
@@ -20,12 +22,12 @@ import type {
 export type PaidRevisionFundingRequest = Omit<FundPaidRevision, "projectId" | "stageId" | "submissionId">;
 
 /**
- * SettlementService — the dumb client service for the three client decisions that move deliverables
- * and money: a submission verdict, a stage approval and a Fair Exit cancellation. It builds the
- * `/api/projects/:id/stages/:stageId/…` address and posts through {@link postProjects}, so an expired
- * token is refreshed and retried by `apiFetch`, and every failure — a 403 from the database's
- * review-authority check included — comes back as a soft `{ ok: false, message }` the island renders.
- * It never throws and never decides anything.
+ * SettlementService — the dumb client service for the client decisions that move deliverables and
+ * money: a submission verdict, a stage approval, a Fair Exit cancellation and a bought service's
+ * cancellation. It builds the `/api/projects/:id/…` address and posts through {@link postProjects},
+ * so an expired token is refreshed and retried by `apiFetch`, and every failure — a 403 from the
+ * database's review-authority check included — comes back as a soft `{ ok: false, message }` the
+ * island renders. It never throws and never decides anything.
  */
 
 /** The `/api/projects/:id/stages/:stageId` base, with each segment encoded. */
@@ -123,5 +125,22 @@ export const SettlementService = {
 	/** What ending a stage under Fair Exit would settle at each tier — figures formatted server-side. */
 	previewFairExit(projectId: string, stageId: string): Promise<ProjectsResult<FairExitPreview>> {
 		return getProjects<FairExitPreview>(`${stageBase(projectId, stageId)}/fair-exit`);
+	},
+
+	/** What cancelling a bought service would settle (Decision #456) — every figure the server's. */
+	previewServiceCancel(projectId: string): Promise<ProjectsResult<ServiceCancelPreview>> {
+		return getProjects<ServiceCancelPreview>(
+			`/api/projects/${encodeURIComponent(projectId)}/cancel`,
+		);
+	},
+
+	/** Cancel a bought service, settling each stage's claimed work at the tier chosen for it. */
+	cancelService(
+		projectId: string,
+		tiers: Readonly<Record<string, FairExitTier>>,
+	): Promise<ProjectsResult<ServiceCancelled>> {
+		return postProjects<ServiceCancelled>(`/api/projects/${encodeURIComponent(projectId)}/cancel`, {
+			tiers,
+		});
 	},
 };

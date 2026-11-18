@@ -19,7 +19,6 @@ Deno.test("isRestrictedPath — money, selling and workspace surfaces, at any de
 			"/basket",
 			"/checkout/payment",
 			"/catalogue/svc-1",
-			"/services/new",
 			"/products/new",
 			"/teams/create",
 			"/analytics",

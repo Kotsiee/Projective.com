@@ -101,6 +101,8 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"session.scheduling_reminder",
 	"session.scheduling_lapsed",
 	"availability.booking_request",
+	"waitlist.invited",
+	"waitlist.invite_expired",
 	// discovery
 	"catalogue.listing_published",
 	"catalogue.listing_paused",
@@ -112,12 +114,15 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"search.saved_alert",
 	// account
 	"account.email_verified",
+	"account.sign_in_changed",
 	"account.password_changed",
 	"account.new_device_login",
 	"account.kyc_submitted",
 	"account.kyc_verified",
 	"account.kyc_rejected",
 	"account.role_changed",
+	"account.data_export_ready",
+	"account.data_export_failed",
 	"team.invite",
 	"team.member_joined",
 	"team.join_request",
@@ -190,6 +195,16 @@ export const KNOWN_NOTIFICATION_TYPES = [
 
 	// #region [integrations] A connection lost its grant (Decision #343, ruling C4)
 	"integration.reconnect_required",
+	// #endregion
+
+	// #region [quotes] Quote requests and offers (Decision #458)
+	"quote.requested",
+	"quote.offer_received",
+	"quote.offer_withdrawn",
+	"quote.declined",
+	"quote.offer_accepted",
+	"quote.offer_declined",
+	"quote.withdrawn",
 	// #endregion
 ] as const;
 

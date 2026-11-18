@@ -37,6 +37,7 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `showcase`      | Public      | 50 MiB · img,vid | `{entity_id}`      | A profile's six-slot showcase — stills and full-length videos. **Service-role write.** |
 | `catalogue`     | Public      | 10 MiB · img     | `{seller_id}`      | Marketplace storefront media (products, service showcase). **Service-role write.**    |
 | `contact`       | Private     | 10 MiB · img,pdf,txt | `{user_id}`    | Files attached to a `/contact` request (Decision #276). **Operator read; service-role write.** |
+| `data_exports`  | **Service** | 50 MiB · zip     | `{user_id}`        | A person's copy of their own data (Decision #450). **Service-role only;** downloaded through a link minted per read. |
 
 ---
 
@@ -273,6 +274,22 @@ that is never sent is taken back — by Remove (`ops.discard_contact_attachment`
 contact/
 └── [user_id]/            -- the sender
     └── [asset_id]/original_file.xyz
+```
+
+### `data_exports` (Service-role only — Decision #450)
+
+One ZIP per `org.data_export_requests` row: `manifest.json`, `README.txt` and one JSON file per domain
+(`@projective/types/org` `DATA_EXPORT_DOMAIN_SCHEMAS`). Written and removed only by the
+`account-data-exports` job (`DataExportBackendService.sweep`); there is no storage policy at all. The
+person downloads it through `GET /api/user/data-export/download`, which reads their own request under
+their JWT and 303s to a link minted for that one read (60 seconds), so no signed URL is ever stored.
+The job removes each archive 7 days after it is ready, or on its next run after an erasure, and keeps
+the row.
+
+```text
+data_exports/
+└── [user_id]/
+    └── [request_id].zip
 ```
 
 ### `quarantine` (Restricted)

@@ -32,6 +32,7 @@ export const handler = define.handlers({
 			password: parsed.data.password,
 			remember: parsed.data.remember,
 			redirectTo: safeRedirect(parsed.data.redirectTo),
+			captchaToken: parsed.data.captchaToken,
 		});
 		noteAuthOutcome("login", subject, result);
 		return toAuthResponse(ctx.req, result);

@@ -1,4 +1,8 @@
-import { teamScopedApiPath } from "@projective/types/catalogue";
+import {
+	type ListingPromotion,
+	type PromotionSurface,
+	teamScopedApiPath,
+} from "@projective/types/catalogue";
 import { deleteCatalogue, getCatalogue, postCatalogue } from "./api.ts";
 import type {
 	BatchInput,
@@ -103,5 +107,32 @@ export const CatalogueService = {
 	/** Copy a listing as a new draft. */
 	duplicate(id: string): Promise<CatalogueResult<{ listing: ListingDetail }>> {
 		return postCatalogue<{ listing: ListingDetail }>("/api/catalogue/duplicate", { id });
+	},
+
+	/** What the listing's Promote control shows (Decision #454). */
+	promotion(id: string): Promise<CatalogueResult<{ promotion: ListingPromotion }>> {
+		const qs = new URLSearchParams({ id });
+		return getCatalogue<{ promotion: ListingPromotion }>(
+			`/api/catalogue/promotion?${qs.toString()}`,
+		);
+	},
+
+	/** Start the seller's one 7-day flight for this listing on a surface. */
+	promote(
+		id: string,
+		surface: PromotionSurface,
+	): Promise<CatalogueResult<{ promotion: ListingPromotion }>> {
+		return postCatalogue<{ promotion: ListingPromotion }>("/api/catalogue/promotion", {
+			id,
+			surface,
+		});
+	},
+
+	/** Stop the listing's live flight now. */
+	stopPromotion(id: string): Promise<CatalogueResult<{ promotion: ListingPromotion }>> {
+		const qs = new URLSearchParams({ id });
+		return deleteCatalogue<{ promotion: ListingPromotion }>(
+			`/api/catalogue/promotion?${qs.toString()}`,
+		);
 	},
 };

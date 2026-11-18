@@ -927,15 +927,19 @@ happened, Decision #383, ruling R6).
 
 ### `projects.waitlists`
 
-A buyer queued for a full service listing. Keyed on the blueprint, not a project. One row per
-(blueprint, user) — `waitlists_unique_user`.
+A buyer queued on a group-session listing (Decisions #424, #455). Keyed on the blueprint, not a
+project. One row per (blueprint, user) — `waitlists_unique_user`.
 
-Written by the `/view` waitlist control (Decision #424): `POST /api/services/waitlist` →
-`BookingBackendService.joinWaitlist` → `SessionBackendService.joinWaitlist`, an insert under the
-caller's JWT (the "Join waitlist" policy) when a group-session listing has no cohort enrolling or
-the open one is full; a repeat reads the existing place. Zod: `WaitlistRowSchema` /
-`WaitlistStatusSchema` in `packages/types/projects/sessions.ts`. Nothing reads the queue to
-notify it yet — `invited` / `expired` / `converted` have no writer (Decision #424 flag).
+**Definer-written only.** `projects.join_waitlist` (the `/view` control: `POST /api/services/waitlist`
+→ `BookingBackendService.joinWaitlist` → `SessionBackendService.joinWaitlist`) inserts a place, or
+re-queues an `expired` one at the back; the `cohort-waitlist-invites` job
+(`projects.fn_waitlist_dispatch`) writes `invited` and `expired`; `projects.fn_confirm_seat` writes
+`converted`. No client role holds INSERT or UPDATE (00002520), and no policy grants them, because the
+queue is first in, first out by `queued_at`. Lifecycle: `PRODUCT_MANAGEMENT.md` §3.5 (Cohort waitlist
+place). Zod: `WaitlistRowSchema` / `WaitlistStatusSchema` / `ViewerWaitlistPlaceSchema` /
+`ListingWaitlistSchema` in `packages/types/projects/sessions.ts`. Indexes:
+`idx_waitlists_queue (service_blueprint_id, queued_at, id) WHERE status = 'waiting'`,
+`idx_waitlists_invited (invite_expires_at) WHERE status = 'invited'`.
 
 | Column                 | Type                     | Notes                                                       |
 | :--------------------- | :----------------------- | :---------------------------------------------------------- |
@@ -943,7 +947,17 @@ notify it yet — `invited` / `expired` / `converted` have no writer (Decision #
 | `service_blueprint_id` | uuid                     | NOT NULL. FK → `marketplace.service_blueprints.id`.         |
 | `user_id`              | uuid                     | NOT NULL. FK → `org.users_public.user_id`.                  |
 | `status`               | projects.waitlist_status | NOT NULL `DEFAULT 'waiting'`. `waiting`, `invited`, `expired`, `converted`. |
-| `created_at`           | timestamptz              | NOT NULL `DEFAULT now()`.                                   |
+| `created_at`           | timestamptz              | NOT NULL `DEFAULT now()`. When the place was first made.    |
+| `queued_at`            | timestamptz              | NOT NULL `DEFAULT now()`. The queue order, with `id` as the tie-break; reset by a rejoin, so a rejoin goes last. |
+| `cohort_id`            | uuid                     | FK → `projects.cohorts.id`. The cohort the invite seats into. |
+| `hold_id`              | uuid                     | FK → `projects.cohort_seat_holds.id`. The one-seat hold that keeps the invited seat. |
+| `invited_at`           | timestamptz              | When the invite went out.                                   |
+| `invite_expires_at`    | timestamptz              | `invited_at` + `waitlist_invite_hold_hours` (48); the hold's own end decides the lapse. |
+| `resolved_at`          | timestamptz              | When the place became `converted` or `expired`.             |
+
+`ck_waitlists_invite`: an `invited` place names its cohort, hold, `invited_at` and
+`invite_expires_at` (kept after the invite ends, cleared by a rejoin). `ck_waitlists_resolved`:
+`resolved_at` is set exactly when the status is `converted` or `expired`.
 
 ---
 

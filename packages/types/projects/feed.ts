@@ -111,6 +111,20 @@ export function canArchiveEngagement(kind: EngagementKind, role: ProjectViewerRo
 	return kind !== "service" && isOwnerRole(role);
 }
 
+/**
+ * Whether the lane offers this viewer "Cancel service" (Decision #456): the client of a bought service
+ * that has not ended. Cancelling settles whatever it holds first (`projects.cancel_service`); the
+ * seller never cancels what the client's money is held in.
+ */
+export function canCancelService(
+	kind: EngagementKind,
+	role: ProjectViewerRole,
+	status: ProjectStatus,
+): boolean {
+	return kind === "service" && role === "client" &&
+		status !== "completed" && status !== "cancelled" && status !== "archived";
+}
+
 /** Whether a viewer role satisfies the chosen {@link ProjectInvolvement} axis (`all` always passes). */
 export function matchesInvolvement(
 	role: ProjectViewerRole,

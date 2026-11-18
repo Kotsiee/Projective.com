@@ -1587,12 +1587,22 @@ AS $$
 
         SELECT 'quote', q.id, m.id, q.requester_user_id, u.username, q.status,
                q.created_at, GREATEST(q.updated_at, COALESCE(q.answered_at, q.created_at)),
-               q.budget_cents, q.currency, NULL::timestamptz,
+               -- The live (pending or accepted) offer's price once the host has priced it, else the
+               -- buyer's soft budget (Decision #458).
+               COALESCE(qo.price_cents, q.budget_cents),
+               CASE WHEN qo.price_cents IS NOT NULL THEN qo.currency ELSE q.currency END,
+               NULL::timestamptz,
                CASE WHEN q.status = 'sent' THEN ARRAY['inquiry_unanswered'] ELSE ARRAY[]::text[] END,
                '/messages/dm-' || COALESCE(u.username, '')
           FROM mine m
           JOIN marketplace.quote_requests q ON q.blueprint_id = m.service_blueprint_id
           LEFT JOIN org.users_public u ON u.user_id = q.requester_user_id
+          LEFT JOIN LATERAL (
+              SELECT o.price_cents, o.currency FROM marketplace.quote_offers o
+               WHERE o.quote_request_id = q.id AND o.status IN ('pending', 'accepted')
+               ORDER BY o.created_at DESC
+               LIMIT 1
+          ) qo ON true
 
         UNION ALL
 

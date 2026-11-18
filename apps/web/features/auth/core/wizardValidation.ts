@@ -5,6 +5,7 @@ import {
 	bracketFromDob,
 	browserTimeZone,
 	ENTERPRISE_OWNER_MINOR_REFUSAL,
+	LEGAL_ACCEPTANCE_REQUIRED,
 } from "@projective/types/auth";
 import {
 	confirmError,
@@ -34,7 +35,17 @@ function dobError(store: JoinStore, owner = false): string | null {
 	return owner && bracket === "restricted" ? ENTERPRISE_OWNER_MINOR_REFUSAL : null;
 }
 
+/**
+ * One step's errors, keyed as the payload is. The final step of every path also carries the consent
+ * box (Decision #446), mirroring the `acceptTerms` literal the join schemas require.
+ */
 export function validateStep(store: JoinStore, id: StepId): Record<string, string | null> {
+	const errors = fieldErrors(store, id);
+	if (store.steps.value.at(-1)?.id !== id) return errors;
+	return { ...errors, acceptTerms: store.acceptTerms.value ? null : LEGAL_ACCEPTANCE_REQUIRED };
+}
+
+function fieldErrors(store: JoinStore, id: StepId): Record<string, string | null> {
 	const enterprise = store.isEnterprise.value;
 	switch (id) {
 		case "account":
@@ -78,6 +89,7 @@ export function validateStep(store: JoinStore, id: StepId): Record<string, strin
 					...(store.isOAuth ? { dob: dobError(store) } : {}),
 				};
 		case "credentials":
+			if (store.termsCompletion) return {};
 			// A profile-less owner gives only the owner half; the keys are the completion body's.
 			if (store.ownerCompletion) {
 				return {
@@ -119,6 +131,9 @@ function browserPreferenceHints() {
 
 /** Assemble the API payload from the completed wizard state. */
 export function buildPayload(store: JoinStore): Record<string, unknown> {
+	if (store.termsCompletion) {
+		return { type: "terms", acceptTerms: store.acceptTerms.value, redirectTo: store.redirectTo };
+	}
 	if (store.ownerCompletion) {
 		return {
 			type: "owner",
@@ -127,6 +142,7 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 			dob: store.dob.value,
 			timeZone: browserTimeZone(),
 			...browserPreferenceHints(),
+			acceptTerms: store.acceptTerms.value,
 			redirectTo: store.redirectTo,
 		};
 	}
@@ -160,6 +176,7 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 			dob: store.dob.value,
 			timeZone: browserTimeZone(),
 			password: store.password.value,
+			acceptTerms: store.acceptTerms.value,
 			redirectTo: store.redirectTo,
 		};
 	}
@@ -177,6 +194,7 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 		purpose: store.purpose.value,
 		skills: store.skills.value,
 		...browserPreferenceHints(),
+		acceptTerms: store.acceptTerms.value,
 		redirectTo: store.redirectTo,
 	};
 }

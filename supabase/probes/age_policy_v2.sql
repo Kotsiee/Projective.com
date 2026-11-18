@@ -13,6 +13,14 @@
 
 BEGIN;
 
+-- The legal stamp every sign-up door requires (Decision #446): today's version of each document.
+CREATE FUNCTION pg_temp.legal_stamp() RETURNS jsonb LANGUAGE sql AS $$
+    SELECT jsonb_build_object(
+        'terms', org.fn_current_legal_version('terms'),
+        'acceptable-use', org.fn_current_legal_version('acceptable-use'),
+        'privacy', org.fn_current_legal_version('privacy'));
+$$;
+
 DO $$
 DECLARE
     v_kid uuid := gen_random_uuid();
@@ -31,10 +39,10 @@ BEGIN
       FROM unnest(ARRAY[v_kid, v_teen, v_adult]) AS u;
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_teen, 'role', 'authenticated')::text, true);
     PERFORM public.complete_onboarding(jsonb_build_object(
-        'username', 'v2probe_teen_' || v_tag, 'dob', (CURRENT_DATE - interval '16 years')::date, 'timezone', 'UTC'));
+        'legal_acceptance', pg_temp.legal_stamp(), 'username', 'v2probe_teen_' || v_tag, 'dob', (CURRENT_DATE - interval '16 years')::date, 'timezone', 'UTC'));
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_adult, 'role', 'authenticated')::text, true);
     PERFORM public.complete_onboarding(jsonb_build_object(
-        'username', 'v2probe_adult_' || v_tag, 'dob', (CURRENT_DATE - interval '30 years')::date, 'timezone', 'UTC'));
+        'legal_acceptance', pg_temp.legal_stamp(), 'username', 'v2probe_adult_' || v_tag, 'dob', (CURRENT_DATE - interval '30 years')::date, 'timezone', 'UTC'));
     UPDATE org.users_public SET city = 'Leeds', country = 'GB' WHERE user_id IN (v_teen, v_adult);
     -- #endregion
 

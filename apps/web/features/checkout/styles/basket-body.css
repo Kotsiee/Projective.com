@@ -578,6 +578,33 @@ a.bsk-eng__seller:focus-visible {
     cursor: default;
 }
 
+.bsk-sub__sittings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-xs);
+}
+
+.bsk-sub__sitting {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+    align-items: baseline;
+    min-inline-size: 0;
+}
+
+.bsk-sub__sittingnum {
+    color: var(--text-secondary);
+}
+
+.bsk-sub__sittingwhen {
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+}
+
 .bsk-sub__facts {
     display: flex;
     flex-wrap: wrap;

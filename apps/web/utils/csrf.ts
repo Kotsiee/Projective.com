@@ -9,16 +9,20 @@
  * `application/json` cross-origin without one, and it can never forge the browser's `Origin`. So:
  *
  * - **Origin.** The `Origin` header must be this site's own (the request's origin, or `APP_URL`'s
- *   behind a proxy). When a browser sends no `Origin`, `Sec-Fetch-Site: same-origin` stands in for
- *   it. A request with neither is refused: every browser this site supports sends one of them on a
- *   write, so their absence means a non-browser caller, and those use the exempt doors below.
+ *   behind a proxy). When a browser sends no `Origin`, or the opaque `null` it sends for a form
+ *   posted from a `Referrer-Policy: no-referrer` page, `Sec-Fetch-Site: same-origin` stands in for
+ *   it. A page cannot forge that header, and an opaque initiator (a sandboxed frame, a `data:` page)
+ *   is `cross-site`. A request with neither is refused: every browser this site supports sends one
+ *   of them on a write, so their absence means a non-browser caller, and those use the exempt doors
+ *   below.
  * - **Content type.** A body must be declared `application/json`. A bodiless write (no
  *   `Content-Type`, no length) passes, since it carries nothing to forge.
  *
  * **Exempt doors.** Webhooks (`/api/…/webhooks/…`) and scheduler endpoints (`/api/…/cron/…`) are
  * called server-to-server, never by a browser, and authenticate with a signature or a bearer secret
- * instead. The two progressive-enhancement forms (`/api/contact`, `/api/help/feedback`) also accept
- * a form body, but still only from this site's own pages.
+ * instead. The plain HTML forms (`/api/contact`, `/api/help/feedback`, and `/api/auth/confirm`, the
+ * email-confirmation page's one button) also accept a form body, but still only from this site's own
+ * pages.
  *
  * The `pj_csrf` double-submit cookie (`utils/storage-keys.ts`) was the earlier plan for this; the
  * Origin check makes it unnecessary, and it stays unset.
@@ -31,8 +35,8 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /** Server-to-server doors, authenticated by a signature or a bearer secret. */
 const SERVER_TO_SERVER = /^\/api\/(?:[^/]+\/)*(?:webhooks|cron)(?:\/|$)/;
 
-/** Routes whose no-JavaScript fallback is a plain HTML form post. */
-const FORM_ROUTES = new Set(["/api/contact", "/api/help/feedback"]);
+/** Routes a plain HTML form posts to, with or without JavaScript. */
+const FORM_ROUTES = new Set(["/api/contact", "/api/help/feedback", "/api/auth/confirm"]);
 
 const FORM_TYPES = new Set(["application/x-www-form-urlencoded", "multipart/form-data"]);
 // #endregion
@@ -43,10 +47,13 @@ function mediaType(req: Request): string {
 	return (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
 }
 
-/** Whether the request is from one of `origins`, by its `Origin` or, failing that, `Sec-Fetch-Site`. */
+/**
+ * Whether the request is from one of `origins`, by its `Origin` or, when that is absent or the
+ * opaque `null`, by `Sec-Fetch-Site`.
+ */
 function isSameOrigin(req: Request, origins: ReadonlySet<string>): boolean {
-	const origin = req.headers.get("origin");
-	if (origin !== null) return origins.has(origin.toLowerCase());
+	const origin = req.headers.get("origin")?.trim().toLowerCase();
+	if (origin && origin !== "null") return origins.has(origin);
 	return req.headers.get("sec-fetch-site")?.toLowerCase() === "same-origin";
 }
 

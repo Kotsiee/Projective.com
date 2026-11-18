@@ -16,6 +16,14 @@ import {
 	parseMoneyInput,
 } from "../core/money-input.ts";
 import { BusyMark, FieldMark } from "../components/field-marks.tsx";
+import { Button } from "../components/Button.tsx";
+import { Icon } from "../../icons/mod.ts";
+import {
+	SCREEN_SHARE_AMOUNT_LABEL,
+	SCREEN_SHARE_MASK,
+	useHoldToReveal,
+	useScreenShareActive,
+} from "../../utils/core/screen-share.ts";
 import type { BaseFieldProps, Bindable, FieldVariant, ValueChange } from "../types/mod.ts";
 
 /** Props for {@link MoneyInput}. */
@@ -78,6 +86,28 @@ export function MoneyInput(props: MoneyInputProps): JSX.Element {
 	const mark = currencyAdornment(currency, locale);
 	const minor = ctrl.signal.value;
 	const shown = editing.value ?? (minor === null ? "" : formatMoneyInput(minor, currency, locale));
+	const hold = useHoldToReveal();
+	const obscurable = useScreenShareActive();
+	const hidden = obscurable && !hold.revealing;
+
+	const onBeforeInput = (e: JSX.TargetedInputEvent<HTMLInputElement>) => {
+		if (!hidden) return;
+		e.preventDefault();
+		const el = e.currentTarget;
+		const current = editing.peek() ?? shown;
+		const whole = el.value.length > 0 && el.selectionStart === 0 &&
+			el.selectionEnd === el.value.length;
+		const type = e.inputType;
+		let next = current;
+		if (type.startsWith("insert")) {
+			next = (whole ? "" : current) + (e.data ?? e.dataTransfer?.getData("text/plain") ?? "");
+		} else if (whole || (type.startsWith("delete") && type.endsWith("Backward"))) {
+			next = whole || type !== "deleteContentBackward" ? "" : current.slice(0, -1);
+		}
+		editing.value = next;
+		ctrl.set(parseMoneyInput(next, currency, locale));
+		el.setSelectionRange(el.value.length, el.value.length);
+	};
 
 	const onInput = (e: JSX.TargetedEvent<HTMLInputElement>) => {
 		const text = e.currentTarget.value;
@@ -124,26 +154,47 @@ export function MoneyInput(props: MoneyInputProps): JSX.Element {
 			)}
 		>
 			{mark.position === "start" && adornment}
+			{hidden && name
+				? <input type="hidden" name={name} value={minor === null ? "" : String(minor)} />
+				: null}
 			<input
 				id={inputId}
-				name={name}
+				name={hidden ? undefined : name}
 				type="text"
 				inputMode="decimal"
 				autoComplete="off"
 				class="ui-field__input ui-input__input ui-money-input__input"
-				value={shown}
+				value={hidden && shown !== "" ? SCREEN_SHARE_MASK : shown}
 				placeholder={placeholder}
 				disabled={disabled}
 				readOnly={readOnly}
 				required={required}
 				aria-label={ariaLabel}
 				aria-describedby={cx(currencyId, describedBy)}
+				aria-description={hidden ? SCREEN_SHARE_AMOUNT_LABEL : undefined}
 				aria-invalid={ariaInvalid(status)}
 				aria-required={required || undefined}
 				aria-busy={loading || undefined}
+				onBeforeInput={onBeforeInput}
 				onInput={onInput}
 				onBlur={onBlur}
 			/>
+			{obscurable
+				? (
+					<Button
+						type="button"
+						variant="text"
+						severity="secondary"
+						size="sm"
+						class="ui-money-input__show"
+						icon={<Icon name="eye" size="xs" />}
+						label="Show"
+						aria-controls={inputId}
+						disabled={disabled}
+						{...hold.handlers}
+					/>
+				)
+				: null}
 			{mark.position === "end" && adornment}
 			<span class="ui-field__mark" aria-hidden="true">
 				{loading ? <BusyMark /> : <FieldMark status={status} />}

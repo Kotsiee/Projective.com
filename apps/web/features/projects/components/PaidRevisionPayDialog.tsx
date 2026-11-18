@@ -3,6 +3,7 @@ import { type Signal, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { Button } from "@projective/ui/fields";
 import { Alert, Dialog } from "@projective/ui/feedback";
+import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import {
 	type CardPaymentHandoff,
 	formatMoney,
@@ -47,6 +48,7 @@ function attemptKey(): string {
 
 export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.Element {
 	const { open, round, projectId, stageId, submissionId, onClose, onFunded, onAddToBasket } = props;
+	const mask = useMaskFigures();
 	const step = useSignal<Step>("choose");
 	const method = useSignal<PaidRevisionFundingMethod | null>(null);
 	const handoff = useSignal<CardPaymentHandoff | null>(null);
@@ -81,8 +83,10 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 	}, [open.value, round?.revisionId]);
 
 	const charge = funding.value?.charge ?? null;
-	const price = charge?.display ?? (round ? formatMoney(round.priceMinor, round.currency) : "");
-	const held = funding.value?.listed.display ?? price;
+	const price = mask(
+		charge?.display ?? (round ? formatMoney(round.priceMinor, round.currency) : ""),
+	);
+	const held = mask(funding.value?.listed.display ?? price);
 	const cardQuote = charge?.quote ? funding.value?.cardQuoteId ?? null : null;
 	const cardBlocked = !!charge?.quote && !cardQuote;
 	const busy = step.value === "starting" || step.value === "settling" || reading.value;

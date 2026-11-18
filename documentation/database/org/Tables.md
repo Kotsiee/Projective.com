@@ -218,6 +218,73 @@ ran. Read-own like `org.handle_changes`; written only by the 00001060 definers.
 | `completed_at`  | timestamptz | Set by the sweep once the erasure ran.                                                                                                         |
 | `metadata`      | jsonb       | Object. What scheduling paused (`paused_listings`, `unpublished_services`, `prior_visibility`) so a cancel restores exactly that; a deferred sweep adds `deferred_at` / `deferred_by`. |
 
+### `org.data_export_requests`
+
+A person's request for a copy of their own data (Decision #450). Lifecycle `pending → building →
+ready → expired`, or `→ failed` (`PRODUCT_MANAGEMENT.md` §3.5); **nothing is deleted** — an expired
+row stays after the job removes its archive. Owner read only (not even an admin reads another
+person's request through RLS); written only by the 00001061 definers. In erasure's reach:
+`org.fn_erase_account` fails an open request (`account_erased`) and brings a ready archive's expiry
+forward to now. Zod: `DataExportRequestRowSchema` (`@projective/types/org`, zero drift held by
+`data-export.contract.test.ts`).
+
+| Column             | Type        | Notes                                                                                                                                       |
+| :----------------- | :---------- | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`               | uuid        | PK.                                                                                                                                         |
+| `user_id`          | uuid        | FK → `org.users_public.user_id` `ON DELETE CASCADE`. At most one `pending`/`building` per person (`uq_data_export_requests_one_open`, partial). |
+| `status`           | text        | `pending` (default) · `building` · `ready` · `expired` · `failed`. `data_export_requests_state_check` pins each status to its own columns.  |
+| `requested_at`     | timestamptz | `NOT NULL DEFAULT now()`. The 24-hour limit counts every request that did not fail (`idx_data_export_requests_user_requested`).             |
+| `started_at`       | timestamptz | When the job last claimed it; a `building` row older than 30 minutes is claimed again.                                                      |
+| `attempts`         | integer     | `NOT NULL DEFAULT 0`, `>= 0`. Each claim counts one; the fourth claim fails the request (`build_failed`).                                  |
+| `ready_at`         | timestamptz | Set when the archive is stored.                                                                                                             |
+| `expires_at`       | timestamptz | `ready_at + 7 days` (`>= ready_at`); an erasure brings it forward to now. The job sweeps past ones (`idx_data_export_requests_expiry`).      |
+| `expired_at`       | timestamptz | Set once the job has removed the archive.                                                                                                   |
+| `failed_at`        | timestamptz | Set with `failure_reason`.                                                                                                                  |
+| `failure_reason`   | text        | `CHECK IN ('build_failed','too_large','account_erased')`.                                                                                  |
+| `storage_path`     | text        | `{user_id}/{id}.zip` in the private `data_exports` bucket; the completion door refuses any other path. A download link is never stored.    |
+| `byte_size`        | bigint      | The ZIP's size, `>= 0`.                                                                                                                     |
+| `manifest_version` | integer     | The archive format's version (`DATA_EXPORT_MANIFEST_VERSION`).                                                                              |
+
+### `org.legal_document_versions`
+
+The versions of the three documents sign-up records (Decision #446): reference data seeded in
+`00005050`, the database's copy of `LEGAL_VERSIONS` in `@projective/types/legal` (held equal by
+`packages/types/legal/manifest.contract.test.ts`; the manifest is held equal to the `/legal` content
+modules by `features/legal/core/manifest.test.ts`). Publishing a version adds a row to all three.
+Read by anyone (`anon` + `authenticated` `SELECT`); only the seed writes it. Zod:
+`LegalDocumentVersionRowSchema` (`packages/types/legal/acceptance.ts`).
+
+| Column           | Type    | Notes                                                                                                                                                       |
+| :--------------- | :------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slug`           | text    | PK with `version`. `CHECK IN ('terms','acceptable-use','privacy')`.                                                                                         |
+| `version`        | text    | `MAJOR.MINOR` (`legal_document_versions_version_check`); ordered numerically by `org.fn_legal_version_key`.                                                 |
+| `effective_date` | date    | The day it governs from. `org.fn_current_legal_version` picks the newest one in effect (UTC), else the oldest, as `/legal` does.                            |
+| `material`       | boolean | `NOT NULL DEFAULT false`. A material version in effect makes everyone who accepted only an older one due again (`org.fn_needs_reacceptance`); any other relies on the Terms' continued-use clause. |
+
+### `org.legal_acceptances`
+
+Which version of each sign-up document a person **accepted** (the Terms, the Acceptable Use Policy) or
+was **shown** (the Privacy Policy, whose lawful basis is not consent), where, and for an enterprise
+owner the enterprise they accepted for (Decision #446). Written only inside the door that creates the
+profile (`handle_new_user`, `complete_onboarding`, `create_enterprise`) or by
+`public.accept_current_terms`, through `org.fn_record_legal_acceptance`, at versions the database
+re-checks. **Append-only** (`trg_legal_acceptances_append_only` refuses `UPDATE`/`DELETE` for every
+role, `55000`); read-own (`SELECT` owner or admin, no client write grant). No IP address and no user
+agent (data minimisation). **Retention:** contract evidence — "consent and terms-acceptance records",
+the life of the account plus 6 years (`finance-model.md` §17), so the person FK is `RESTRICT`, never
+`CASCADE`; ERA1 must classify it as retained. Zod: `LegalAcceptanceRowSchema`.
+
+| Column          | Type                           | Notes                                                                                                   |
+| :-------------- | :----------------------------- | :------------------------------------------------------------------------------------------------------ |
+| `id`            | uuid                           | PK.                                                                                                     |
+| `user_id`       | uuid                           | FK → `org.users_public.user_id` `ON DELETE RESTRICT`.                                                    |
+| `document_slug` | text                           | FK (`document_slug`, `version`) → `org.legal_document_versions` `ON DELETE RESTRICT`.                   |
+| `version`       | text                           | The version in effect when it was recorded.                                                             |
+| `kind`          | `org.legal_acceptance_kind`    | `accepted` · `shown`; `legal_acceptances_kind_check`: `shown` exactly for `privacy`.                     |
+| `surface`       | `org.legal_acceptance_surface` | `join` (email) · `join_oauth` · `join_enterprise` (an enterprise sign-up, or a profile-less owner finishing step 1.6) · `reaccept`. |
+| `enterprise_id` | uuid                           | FK → `org.enterprises` `ON DELETE RESTRICT`; set exactly when `surface = 'join_enterprise'`.           |
+| `accepted_at`   | timestamptz                    | `NOT NULL DEFAULT now()`. Indexed with the person (`idx_legal_acceptances_user_document`).              |
+
 ---
 
 ## 🧑‍🤝‍🧑 Teams
@@ -963,6 +1030,7 @@ may only add trailing columns):
 | `discovery_weight_bp`               | _(appended 2026-10-12, Decision #178)_ The seller's rung's discovery multiplier (`org.standing_levels.discovery_weight_bp`, 10000 = 1.0×), which scales their discovery score. NULL for a buyer and a business. |
 | `workload_cap`                      | _(appended 2026-10-12, Decision #178)_ The Global Intensity Cap `workload` is measured against: a person's `max_workload_intensity`, else `security.platform_params.global_workload_cap_default` (read here because a guest cannot read that table); a team's is its active members' own caps combined (each override, else the default — Decision #233), since the W_i cap is per person. NULL for a buyer and a business. The discovery card's meter and the ranking's availability term both read `workload` as a share of it. |
 | `verification_stamp`                | _(appended 2026-10-12, Decision #227)_ The owner's verification crest (Decision #155): a person's `org.entity_standing.verification_stamp` (`none` when no row exists, read whether or not they sell), a business's `corporate_verified` once its KYB is `verified`, and `none` for a team. The same rule `org.get_profile_view` applies, so explore cards, review bylines and listing seller lines draw the crest the profile hero draws (resolves Decision #155(g)). |
+| `contact_handle` / `contact_name`   | _(appended 2026-11-18, Decision #422 (b))_ Who a Message to the entity reaches when that is not the entity itself: a team's or a business's **owner** (`owner_user_id` → `org.users_public.username`, and first + last name, NULL when blank), the `contact` `org.get_profile_view` answers (#244 (C)); NULL for a person, who is their own recipient. Discovery reads it as `ExploreOwner.messageTo`, so a card's Message and a brief's Message client never address `dm-{slug}`. Probe `explore_owner_contact.sql`. |
 
 ---
 

@@ -10,6 +10,7 @@ import type {
 	DiscoveryCallRequest,
 	PipelineDraft,
 	QuoteRequestInput,
+	ScopedLineMeta,
 	ServiceBookingFormat,
 	ServiceBookingOffer,
 	ServiceBriefInput,
@@ -20,6 +21,7 @@ import {
 	type CalendarEvent,
 	type CallActionInput,
 	type ConferencingProvider,
+	dateInZone,
 	PAID_CALLS_LIVE,
 	RESCHEDULE_REFUSAL_COPY,
 	type PublicCallOffer,
@@ -46,12 +48,16 @@ import type { BasketQuery } from "../finance/basket-query.ts";
 import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { SessionBackendService } from "../sessions/SessionBackendService.ts";
-import type {
-	CohortOffer,
-	JoinWaitlistInput,
-	ReserveSeatInput,
-	SeatHold,
-	WaitlistPlace,
+import { QuoteBackendService } from "../quotes/QuoteBackendService.ts";
+import {
+	type CohortOffer,
+	type JoinWaitlistInput,
+	type ReserveSeatInput,
+	type SeatCount,
+	seatCount,
+	type SeatHold,
+	type ViewerWaitlistPlace,
+	type WaitlistPlace,
 } from "@projective/types/projects";
 
 /**
@@ -424,6 +430,21 @@ async function cohortFor(
 	});
 	return cohort ?? null;
 }
+
+/**
+ * The seat position as one viewer stands toward it (Decision #455). The public count nets out the
+ * seats the waitlist has first call on, so a queued buyer's own figure is their place's `seatsOpen`:
+ * an invited buyer's held seat is open to them, and the head of the queue may take a freed seat before
+ * the invite job reaches it. Everyone else reads the public count.
+ */
+function viewerCapacity(
+	seats: SeatCount | null,
+	place: ViewerWaitlistPlace | null,
+): SeatCount | null {
+	if (!seats || place?.seatsOpen == null) return seats;
+	const open = Math.min(place.seatsOpen, seats.total);
+	return seatCount(seats.total, seats.total - open);
+}
 // #endregion
 
 // #region Listing slots
@@ -465,7 +486,10 @@ async function composeOffer(
 	const { item, view, owner } = listing;
 	const format = formatOf(view);
 	const cohort = await cohortFor(view, format, owner);
-	const capacity = cohort?.seats ?? null;
+	const waitlist = format === "cohort" && audience.kind === "buyer" && owner.blueprintId
+		? await SessionBackendService.waitlistPlace(owner.blueprintId, readerOf(audience.actor))
+		: null;
+	const capacity = viewerCapacity(cohort?.seats ?? null, waitlist);
 	const signedIn = audience.kind === "simulated" || audience.actor.userId !== null;
 
 	// A failed read of the call offer leaves the call row out rather than failing the whole page:
@@ -489,12 +513,14 @@ async function composeOffer(
 			sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
 			seatsRemaining: capacity?.remaining ?? null,
 			cohortOpen: format !== "cohort" || cohort !== null,
+			waitlist,
 			draftHref: draft?.boardHref ?? null,
 			bookingsOpen,
 		}),
 		contact: contactOfferFor(item, signedIn, signInHref, callOffer),
 		capacity,
 		cohort,
+		waitlist,
 		draft,
 		sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
 		durationMinutes: view.service?.bookable ? (view.service.sessionMinutes ?? 60) : null,
@@ -644,7 +670,7 @@ export class BookingBackendService {
 		// A cohort has its own sittings, so a seat is reserved on it rather than picked from the grid.
 		if (format === "cohort") {
 			const reserved = await BookingBackendService.reserveSeat(
-				{ subjectId: input.subjectId, seats: input.seats ?? 1 },
+				{ subjectId: input.subjectId, seats: input.seats ?? 1, note: input.note, answers: input.answers },
 				actor,
 			);
 			if (!reserved.ok || !reserved.data) {
@@ -755,6 +781,9 @@ export class BookingBackendService {
 	 * carries it (`metadata.holdId`) so the Buy Now panel or `/checkout` pays exactly that reservation —
 	 * `finance.place_wallet_order` turns it into a membership and the seat's escrow. Reserving again
 	 * renews the hold and replaces the line's seats.
+	 *
+	 * The buyer's answers to the listing's intake are held to it before any seat is held, and ride the
+	 * line as `metadata.answers` — the key a 1-on-1 line uses — onto the order line (Decision #453).
 	 */
 	static async reserveSeat(
 		input: ReserveSeatInput,
@@ -773,6 +802,16 @@ export class BookingBackendService {
 			return fail(422, { message: "Only a group session has seats to reserve.", errors: { subjectId: "not_seated" } });
 		}
 
+		const intake = view.service?.intake ?? [];
+		const answers = normaliseIntakeAnswers(intake, input.answers);
+		const intakeBlock = intakeRefusal(intake, answers);
+		if (intakeBlock) {
+			return fail(422, {
+				message: intakeBlock.message,
+				errors: { [`answers.${intakeBlock.fieldId}`]: intakeBlock.code },
+			});
+		}
+
 		const reserved = await SessionBackendService.reserveSeat(owner.blueprintId, input.seats, readerOf(actor));
 		if (!reserved.ok || !reserved.data) {
 			return fail(reserved.status, { message: reserved.message, details: reserved.details });
@@ -788,7 +827,14 @@ export class BookingBackendService {
 			scheduledAt: firstStartsAt,
 			timezone: null,
 			seats: hold.seats,
-			metadata: { serviceId: item.id, sourceType: item.type, bookingFormat: "cohort", holdId: hold.holdId },
+			metadata: {
+				serviceId: item.id,
+				sourceType: item.type,
+				bookingFormat: "cohort",
+				holdId: hold.holdId,
+				note: input.note ?? null,
+				answers,
+			},
 		}, basketQueryFor(actor, item.id), readerOf(actor));
 		if (!write.ok || !write.data) {
 			return fail(write.status, { message: write.message, errors: write.errors });
@@ -875,36 +921,51 @@ export class BookingBackendService {
 		const itemType = purchaseKindOf(format);
 		if (!itemType) return fail(422, { message: "This listing cannot be bought." });
 
+		// UTC, as the database's `current_date` judges it at checkout.
+		if (input.targetDate && input.targetDate < dateInZone(Date.now(), "UTC")) {
+			return fail(422, {
+				message: "Pick a target date that hasn't passed.",
+				errors: { targetDate: "past" },
+			});
+		}
+
+		// The line's scope (Decision #457): no price and no bonus — checkout prices it from the listing.
+		const meta: ScopedLineMeta = {
+			serviceId: item.id,
+			sourceType: item.type,
+			bookingFormat: format,
+			fundingScope: format === "one_off" ? input.fundingScope : "first_stage",
+			stageIds: funded,
+			requirements: input.requirements,
+			answers,
+			attachments: input.attachments.map((a) => ({
+				name: a.name,
+				sizeBytes: a.sizeBytes,
+				assetId: a.assetId,
+			})),
+			targetDate: input.targetDate,
+		};
 		const add: AddBasketItem = {
 			basketId: null,
 			itemType,
 			itemId: item.id,
-			stageId: funded[0] ?? null,
+			// A listing's stage ids are not `projects.project_stages` rows; the engagement's stages are
+			// created at payment.
+			stageId: null,
 			quantity: 1,
-			metadata: {
-				serviceId: item.id,
-				sourceType: item.type,
-				bookingFormat: format,
-				fundingScope: input.fundingScope,
-				stageIds: funded,
-				requirements: input.requirements,
-				answers,
-				attachments: input.attachments.map((a) => ({
-					name: a.name,
-					sizeBytes: a.sizeBytes,
-					assetId: a.assetId,
-				})),
-			},
+			metadata: meta,
 		};
 
 		const query = basketQueryFor(actor, item.id);
 
 		// Re-configuring REPLACES, it does not stack: a buyer who reopens this modal is re-specifying ONE
-		// engagement. `removeItem` is soft, so the replaced configuration stays in the ledger.
+		// engagement. `removeItem` is soft, so the replaced configuration stays in the ledger. A line an
+		// accepted quote put there is a different offer, never replaced by the listing's own scope.
 		const current = await BasketBackendService.get(query, readerOf(actor));
 		if (current.ok && current.data) {
 			const prior = current.data.basket.items.find((l) =>
-				l.itemId === item.id && l.itemType === itemType && !l.savedForLater
+				l.itemId === item.id && l.itemType === itemType && !l.savedForLater &&
+				typeof l.metadata.quoteOfferId !== "string"
 			);
 			if (prior) {
 				await BasketBackendService.removeItem({ basketItemId: prior.id }, query, readerOf(actor));
@@ -915,7 +976,14 @@ export class BookingBackendService {
 		if (!write.ok || !write.data) {
 			return fail(write.status, { message: write.message, errors: write.errors });
 		}
-		const line = write.data.basket.items.find((l) => l.itemId === item.id) ?? null;
+		// The line just staged: the newest live one of this listing and kind — never a line the buyer
+		// saved for later, nor a quote's.
+		const line = write.data.basket.items
+			.filter((l) =>
+				l.itemId === item.id && l.itemType === itemType && !l.savedForLater &&
+				typeof l.metadata.quoteOfferId !== "string"
+			)
+			.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
 
 		return ok({
 			outcome: {
@@ -1261,11 +1329,12 @@ async function askQuestion(
 }
 
 /**
- * Record a custom-scope proposal against the service blueprint (`marketplace.quote_requests`), as the
- * buyer — the policy pins the host to the blueprint's seller and requires the listing to be published.
+ * Record a custom-scope proposal against the service blueprint, as the buyer, through
+ * `marketplace.request_quote` — which addresses it to the blueprint's seller, requires the listing to
+ * be published, allows one open request per listing and tells the seller (Decision #458).
  *
  * The budget is SOFT and is stored as one: a service's price is provider-set, so this is "here is what
- * I have in mind", not a counter-offer, and it is optional.
+ * I have in mind", not a counter-offer, and it is optional. The seller answers with a priced offer.
  */
 async function requestQuote(
 	input: QuoteRequestInput,
@@ -1287,32 +1356,26 @@ async function requestQuote(
 		return fail(422, { message: "Add a currency for that budget.", errors: { currency: "currency_required" } });
 	}
 
-	const { data, error } = await getUserClient(actor.accessToken!).schema("marketplace")
-		.from("quote_requests")
-		.insert({
-			blueprint_id: owner.blueprintId,
-			host_user_id: owner.accountUserId,
-			requester_user_id: actor.userId,
-			scope: input.scope,
-			budget_cents: input.budgetMinor ?? null,
-			currency: input.budgetMinor !== undefined ? input.currency?.toUpperCase() ?? null : null,
-			timeline: input.timeline ?? null,
-		})
-		.select("id")
-		.single();
-	if (error || !data) {
-		console.error("[booking] quote request failed", error?.message);
-		return fail(error?.code === "42501" ? 403 : 503, {
-			message: "The quote request could not be sent. Please try again.",
+	const sent = await QuoteBackendService.request({
+		blueprintId: owner.blueprintId,
+		scope: input.scope,
+		budgetMinor: input.budgetMinor,
+		currency: input.currency,
+		timeline: input.timeline,
+	}, actor);
+	if (!sent.ok || !sent.data) {
+		return fail(sent.status, {
+			message: sent.message ?? "The quote request could not be sent. Please try again.",
+			errors: sent.errors,
 		});
 	}
 
 	return ok({
 		result: {
 			kind: "custom_quote",
-			referenceId: (data as { id: string }).id,
-			confirmation: `Sent to ${item.owner.name}. They will reply with a scope and a price.`,
-			// Resolves in place: a quote has no thread yet — the provider's reply creates one.
+			referenceId: sent.data.id,
+			confirmation: `Sent to ${item.owner.name}. Their offer will appear beside your chat with them.`,
+			// Resolves in place; the offer arrives as a notification that opens the conversation.
 			navigateTo: null,
 		},
 	}, { status: 201 });

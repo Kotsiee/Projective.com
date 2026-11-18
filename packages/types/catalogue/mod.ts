@@ -19,3 +19,4 @@ export * from "./seo.ts";
 export * from "./analytics.ts";
 export * from "./clients.ts";
 export * from "./batch.ts";
+export * from "./promotion.ts";

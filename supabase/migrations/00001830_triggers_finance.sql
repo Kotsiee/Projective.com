@@ -176,3 +176,19 @@ CREATE TRIGGER trg_transactions_wallet_watch
     FOR EACH ROW
     EXECUTE FUNCTION finance.fn_wallet_watch ();
 -- #endregion
+
+-- #region A bought service's money (00001150, Decision #456)
+-- An ended (cancelled or archived) bought service takes no new escrow.
+CREATE TRIGGER trg_escrows_ended_service_guard
+    BEFORE INSERT ON finance.escrows
+    FOR EACH ROW
+    WHEN (NEW.status IN ('held', 'reserved') AND NEW.project_stage_id IS NOT NULL)
+    EXECUTE FUNCTION projects.fn_guard_escrow_on_ended_service ();
+
+-- A bought Pipeline service's first held escrow moves it draft → active.
+CREATE TRIGGER trg_escrows_activate_funded_service
+    AFTER INSERT OR UPDATE OF status ON finance.escrows
+    FOR EACH ROW
+    WHEN (NEW.status = 'held' AND NEW.project_stage_id IS NOT NULL)
+    EXECUTE FUNCTION projects.fn_activate_funded_service ();
+-- #endregion

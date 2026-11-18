@@ -5,16 +5,19 @@ import type {
 	ExploreParams,
 	NearestEntityRow,
 } from "@projective/types/explore";
+import { exactTitlesFirst } from "./lexical.ts";
 import { categoryEntities, getResults, isExplicitSort } from "./query.ts";
+import { NO_WEIGHTS, type RankingWeights } from "./ranking.ts";
 
 /**
  * semantic — how voyage-4 similarity changes a discovery search (Decision #179). Pure.
  *
  * It never replaces the query: the text match, every facet, the category scope and an explicit sort
- * all hold. On the default "recommended" order the candidates are re-ranked by blending each one's
- * position in that order with its similarity to the query, through {@link SEMANTIC_BLEND_WEIGHT}; and
- * up to {@link SEMANTIC_EXTRA_LIMIT} close neighbours the text match missed — a typo, a synonym — are
- * added if they pass the same facets. Without similarity data nothing moves.
+ * all hold. On a ranked order (Best match or Recommended) the candidates are re-ranked by blending
+ * each one's position in that order with its similarity to the query, through
+ * {@link SEMANTIC_BLEND_WEIGHT}; and up to {@link SEMANTIC_EXTRA_LIMIT} close neighbours the text match
+ * missed — a typo, a synonym — are added if they pass the same facets. Under Best match an exact title
+ * match stays first. Without similarity data nothing moves.
  */
 
 // #region Constants
@@ -113,18 +116,19 @@ export function blendSemantic(
 }
 
 /**
- * The semantic result list for `params`: today's candidates ({@link getResults}) plus the neighbours
- * they missed that clear the similarity floors and pass the same category and facets, ordered by the
- * blend on the default sort, or by the reader's explicit sort.
+ * The semantic result list for `params`: today's candidates ({@link getResults}, ranked with `scores`
+ * and `weights`) plus the neighbours they missed that clear the similarity floors and pass the same
+ * category and facets, ordered by the blend on a ranked sort, or by the reader's explicit sort.
  */
 export function semanticResults(
 	corpus: readonly ExploreItem[],
 	params: ExploreParams,
 	scores: ReadonlyMap<string, number> | undefined,
 	similarity: SemanticSimilarity,
+	weights: RankingWeights = NO_WEIGHTS,
 	weight = SEMANTIC_BLEND_WEIGHT,
 ): ExploreItem[] {
-	const candidates = getResults(corpus, params, scores);
+	const candidates = getResults(corpus, params, scores, weights);
 	const included = new Set(candidates.map((it) => it.id));
 	const best = Math.max(0, ...similarity.values());
 	const floor = Math.max(SEMANTIC_EXTRA_MIN_SIMILARITY, best * SEMANTIC_EXTRA_RELATIVE);
@@ -140,6 +144,7 @@ export function semanticResults(
 	if (isExplicitSort(params.sort)) {
 		return getResults([...candidates, ...extras], unfiltered, scores);
 	}
-	return blendSemantic(candidates, extras, similarity, weight);
+	const blended = blendSemantic(candidates, extras, similarity, weight);
+	return params.sort === "best_match" ? exactTitlesFirst(blended, params.q) : blended;
 }
 // #endregion

@@ -322,7 +322,7 @@ features/catalogue/
     clients/ClientPipelineBoard.tsx (shared)
   islands/ListingHeader.island.tsx                  title · status · centred TabMenu · Card icon toggle
   islands/ListingActionRig.island.tsx               save status · icon-only lifecycle actions · Publish (lock + missing list)
-  islands/ListingInspector.island.tsx               panel body: LiveCardPreview + ReadinessList | ClientDrawer
+  islands/ListingInspector.island.tsx               panel body: LiveCardPreview + ReadinessList + PromotionPanel (#454) | ClientDrawer
 ```
 
 ### 4.3 Archetype → section matrix

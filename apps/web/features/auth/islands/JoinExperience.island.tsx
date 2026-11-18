@@ -22,6 +22,7 @@ export default function JoinExperience(props: JoinFormProps) {
 				intent: props.intent,
 				prefill: props.prefill,
 				complete: props.complete,
+				reaccept: props.reaccept,
 			}),
 		[],
 	);
@@ -44,7 +45,7 @@ export default function JoinExperience(props: JoinFormProps) {
 						<span>{AGE_MESSAGES.blocked}</span>
 					</div>
 				)
-				: <StepForm store={store} />}
+				: <StepForm store={store} captchaSiteKey={props.captchaSiteKey ?? null} />}
 		</AuthShell>
 	);
 }

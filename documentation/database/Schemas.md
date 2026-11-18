@@ -160,7 +160,9 @@ CREATE TYPE finance.entitlement_key     AS ENUM (
     'teams_owned', 'businesses_owned', 'teams_joined', 'businesses_joined',
     'team_seats', 'team_public_projects', 'business_public_projects', 'business_managers',
     'enterprise_seats', 'enterprise_businesses', 'departments',
-    'promoted_placement', 'advanced_analytics', 'discovery_boost', 'instant_payouts_included',
+    'promoted_placement', 'advanced_analytics',
+    'discovery_boost',  -- RETIRED (Decision #454): never read, never granted
+    'instant_payouts_included',
     'pooled_wallet_full',
     'split_template_co_op', 'split_template_finders_fee', 'split_template_benevolent_dictator',
     'intervaled_invoicing',

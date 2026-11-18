@@ -99,6 +99,13 @@ function heroCopy(store: JoinStore): HeroCopy {
 					lede: "Your name and @handle — this is how people find you.",
 				};
 		case "credentials":
+			if (store.termsCompletion) {
+				return {
+					kicker: "Before you carry on",
+					title: title("Our terms", "have changed."),
+					lede: "Read what changed, then agree to keep using Projective.",
+				};
+			}
 			if (store.ownerCompletion) {
 				return {
 					kicker: "One last thing",

@@ -2,6 +2,8 @@ import { define } from "@web/utils/state.ts";
 import { resolveRequestViewer } from "@web/utils/session.ts";
 import { resolveCurrencyContext, runWithCurrency } from "@web/utils/currency-context.ts";
 import { resolveA11yContext } from "@web/utils/a11y-context.ts";
+import { resolveScreenShare } from "@web/utils/screen-share-context.ts";
+import { runWithScreenShare } from "@web/utils/screen-share-scope.ts";
 import { cspHeaderFor, frameOptionsFor } from "@web/utils/csp.ts";
 
 /**
@@ -41,9 +43,16 @@ export default define.middleware(async (ctx) => {
 	// The accessibility overlays, from the `pj.a11y` cookie — a header read, no I/O — so `_app.tsx`
 	// paints high contrast, OpenDyslexic, a CVD shift or reduced motion in the first byte.
 	ctx.state.a11y = resolveA11yContext(ctx.req);
+	// Screen sharing mode, from the `pj.screen_share` cookie (Decision #297) — a header read, no I/O.
+	ctx.state.screenShare = resolveScreenShare(ctx.req);
 	// Opened around the WHOLE chain, not just the render: `AsyncLocalStorage` is what carries the
-	// currency past every island boundary and every await to the deepest server-rendered price.
-	const res = await runWithCurrency(ctx.state.currency, () => ctx.next());
+	// currency and the screen sharing state past every island boundary and every await to the
+	// deepest server-rendered figure.
+	const screenShare = ctx.state.screenShare;
+	const res = await runWithCurrency(
+		ctx.state.currency,
+		() => runWithScreenShare(screenShare, () => ctx.next()),
+	);
 	if (!res.headers.has("content-security-policy")) {
 		res.headers.set("content-security-policy", cspHeaderFor("app"));
 	}

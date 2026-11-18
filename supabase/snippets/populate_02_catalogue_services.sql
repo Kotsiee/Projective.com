@@ -1047,18 +1047,33 @@ ON CONFLICT (id) DO NOTHING;
 -- archived thread is closed.
 INSERT INTO marketplace.quote_requests
     (id, blueprint_id, host_user_id, requester_user_id, scope, budget_cents, currency, timeline, status,
-     answered_at, created_at, updated_at)
+     answered_at, closed_at, created_at, updated_at)
 SELECT pg_temp.sid('quote:' || q.key || ':' || q.who), pg_temp.sid('svc:' || q.key), pg_temp.me(),
        pg_temp.persona(q.who), q.scope, q.budget, 'USD', q.timeline, q.status,
-       now() - make_interval(days => q.answered), now() - make_interval(days => q.days),
-       now() - make_interval(days => COALESCE(q.answered, q.days))
+       now() - make_interval(days => q.answered), now() - make_interval(days => q.closed),
+       now() - make_interval(days => q.days),
+       now() - make_interval(days => COALESCE(q.closed, q.answered, q.days))
   FROM (VALUES
-      ('end-to-end', 'priyaraman', 'We are rebuilding the savings flows in the Helia wallet and need the research and prototype stages first, then a decision on the rest.', 900000::bigint, 'Starting in January', 'sent', 2, NULL::integer),
-      ('ux-audit', 'hannahcole', 'An audit of our business onboarding ahead of an external accessibility review. Can the data stage cover two products?', 240000, 'Within four weeks', 'sent', 1, NULL),
-      ('checkout-redesign', 'miguelsantos', 'Atlas needs its usage-based billing checkout rethought. There is more than one plan change path, so the fixed scope may need adjusting.', 480000, 'Before the end of the quarter', 'answered', 16, 14),
-      ('onboarding-activation', 'kwamemensah', 'A client of ours wants their activation funnel looked at. They decided to run it in-house for now, so this one is on hold.', 300000, 'Next quarter', 'withdrawn', 45, NULL)
-  ) AS q (key, who, scope, budget, timeline, status, days, answered)
+      ('end-to-end', 'priyaraman', 'We are rebuilding the savings flows in the Helia wallet and need the research and prototype stages first, then a decision on the rest.', 900000::bigint, 'Starting in January', 'sent', 2, NULL::integer, NULL::integer),
+      ('ux-audit', 'hannahcole', 'An audit of our business onboarding ahead of an external accessibility review. Can the data stage cover two products?', 240000, 'Within four weeks', 'sent', 1, NULL, NULL),
+      ('checkout-redesign', 'miguelsantos', 'Atlas needs its usage-based billing checkout rethought. There is more than one plan change path, so the fixed scope may need adjusting.', 480000, 'Before the end of the quarter', 'answered', 16, 14, NULL),
+      ('onboarding-activation', 'kwamemensah', 'A client of ours wants their activation funnel looked at. They decided to run it in-house for now, so this one is on hold.', 300000, 'Next quarter', 'withdrawn', 45, NULL, 40)
+  ) AS q (key, who, scope, budget, timeline, status, days, answered, closed)
  WHERE q.who <> current_setting('snippet.username')
+ON CONFLICT (id) DO NOTHING;
+
+-- The answered request's priced offer (Decision #458), sent when it was answered and open for 30 days,
+-- in the listing's currency.
+INSERT INTO marketplace.quote_offers
+    (id, quote_request_id, author_user_id, scope, deliverables, price_cents, currency, turnaround_days,
+     expires_at, created_at, updated_at)
+SELECT pg_temp.sid('quote-offer:' || r.id::text), r.id, r.host_user_id,
+       'Map both plan-change paths, then redesign the checkout around the usage meter and test it with customers.',
+       ARRAY['Plan-change journey map', 'Checkout redesign', 'Prototype tested with five customers'],
+       450000, b.currency, 21, r.answered_at + interval '30 days', r.answered_at, r.answered_at
+  FROM marketplace.quote_requests r
+  JOIN marketplace.service_blueprints b ON b.id = r.blueprint_id
+ WHERE r.id = pg_temp.sid('quote:checkout-redesign:miguelsantos')
 ON CONFLICT (id) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION pg_temp.c2_inquiries()

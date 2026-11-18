@@ -290,9 +290,15 @@ CREATE TABLE marketplace.quote_requests (
     -- contact is a sentence, and pinning it to a date would invent a precision they did not give.
     timeline text,
 
-    -- Nothing is hard-deleted: a withdrawn request is a status, not a missing row.
+    -- Nothing is hard-deleted: a withdrawn request is a status, not a missing row. `sent` waits on the
+    -- host; `answered` once they price it (`marketplace.quote_offers`); `accepted` once the buyer takes
+    -- an offer; `declined` by the host, `withdrawn` by the buyer (Decision #458). Every move is a door
+    -- in 00001177 — there is no client write.
     status text NOT NULL DEFAULT 'sent'::text,
     answered_at timestamp with time zone,
+    -- When it reached `accepted`, `declined` or `withdrawn`, and the host's reason for a decline.
+    closed_at timestamp with time zone,
+    decline_reason text,
 
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -301,14 +307,74 @@ CREATE TABLE marketplace.quote_requests (
     CONSTRAINT quote_requests_blueprint_fkey FOREIGN KEY (blueprint_id) REFERENCES marketplace.service_blueprints(id) ON DELETE CASCADE,
     CONSTRAINT quote_requests_host_fkey FOREIGN KEY (host_user_id) REFERENCES org.users_public(user_id) ON DELETE CASCADE,
     CONSTRAINT quote_requests_requester_fkey FOREIGN KEY (requester_user_id) REFERENCES org.users_public(user_id) ON DELETE CASCADE,
-    CONSTRAINT quote_requests_status_check CHECK (status IN ('sent', 'answered', 'withdrawn')),
+    CONSTRAINT quote_requests_status_check CHECK (status IN ('sent', 'answered', 'accepted', 'declined', 'withdrawn')),
     CONSTRAINT quote_requests_budget_currency_check CHECK (budget_cents IS NULL OR currency IS NOT NULL),
     -- An answered request must carry the instant it was answered, the same pairing
     -- `catalogue.articles` uses for `published_at`: a row that claims to be answered while being
-    -- unable to say when is a response time nobody can measure.
+    -- unable to say when is a response time nobody can measure. An accepted one was answered first.
     CONSTRAINT quote_requests_answered_at_check CHECK (
-        (status = 'answered'::text AND answered_at IS NOT NULL)
-        OR (status <> 'answered'::text)
+        status NOT IN ('answered', 'accepted') OR answered_at IS NOT NULL
+    ),
+    CONSTRAINT quote_requests_closed_at_check CHECK (
+        (status IN ('accepted', 'declined', 'withdrawn')) = (closed_at IS NOT NULL)
+    ),
+    CONSTRAINT quote_requests_decline_reason_check CHECK (
+        decline_reason IS NULL OR (status = 'declined' AND char_length(decline_reason) <= 280)
     )
+);
+-- #endregion
+
+-- #region Quote offers
+-- The host's priced answer to a quote request (Decision #458): a scope, its deliverables as a
+-- checklist, one price, a turnaround and an expiry. Accepting one puts exactly one `one_off_service`
+-- line in the buyer's basket; money moves only at checkout, where the offer — never the line's
+-- snapshot — is the price (`marketplace.fn_quote_offer_terms`). The deliverables are a checklist
+-- inside ONE escrow, never separately funded stages.
+--
+-- One row per offer sent, so a revision is a new row and the history stays: sending a new offer
+-- withdraws the pending one and points it at its successor (`superseded_by`). `expired` is derived,
+-- never stored — a pending offer past `expires_at` — as the FX quote's is (PRODUCT_MANAGEMENT §3.5).
+CREATE TABLE marketplace.quote_offers (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    quote_request_id uuid NOT NULL,
+    -- The request's host at the moment they priced it. An offer is never re-addressed.
+    author_user_id uuid NOT NULL,
+
+    scope text NOT NULL,
+    -- The same checklist shape as `service_blueprints.deliverables`, and the same bounds the stage
+    -- writer copies into a stage (`fn_write_blueprint_stages`: 12 items of 160 characters).
+    deliverables text[] NOT NULL DEFAULT '{}'::text[],
+
+    -- The listing's own currency, set by the door from the blueprint and never by the caller: the
+    -- escrow is held and paid in the seller's currency (Decision #435).
+    price_cents bigint NOT NULL,
+    currency text NOT NULL,
+    turnaround_days smallint NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+
+    status text NOT NULL DEFAULT 'pending'::text,
+    superseded_by uuid,
+    -- When it left `pending`.
+    decided_at timestamp with time zone,
+
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+
+    CONSTRAINT quote_offers_pkey PRIMARY KEY (id),
+    CONSTRAINT quote_offers_request_fkey FOREIGN KEY (quote_request_id) REFERENCES marketplace.quote_requests(id) ON DELETE CASCADE,
+    CONSTRAINT quote_offers_author_fkey FOREIGN KEY (author_user_id) REFERENCES org.users_public(user_id) ON DELETE CASCADE,
+    CONSTRAINT quote_offers_superseded_by_fkey FOREIGN KEY (superseded_by) REFERENCES marketplace.quote_offers(id) ON DELETE SET NULL,
+    CONSTRAINT quote_offers_status_check CHECK (status IN ('pending', 'accepted', 'declined', 'withdrawn')),
+    CONSTRAINT quote_offers_scope_check CHECK (char_length(scope) BETWEEN 1 AND 4000),
+    CONSTRAINT quote_offers_deliverables_check CHECK (cardinality(deliverables) <= 12),
+    CONSTRAINT quote_offers_price_check CHECK (price_cents > 0),
+    CONSTRAINT quote_offers_currency_check CHECK (currency ~ '^[A-Z]{3}$'),
+    CONSTRAINT quote_offers_turnaround_check CHECK (turnaround_days BETWEEN 1 AND 90),
+    -- The host picks 3 to 30 days (owner ruling, Decision #458).
+    CONSTRAINT quote_offers_expiry_window_check CHECK (
+        expires_at >= created_at + interval '3 days' AND expires_at <= created_at + interval '30 days'
+    ),
+    CONSTRAINT quote_offers_decided_at_check CHECK ((status = 'pending') = (decided_at IS NULL)),
+    CONSTRAINT quote_offers_superseded_check CHECK (superseded_by IS NULL OR status = 'withdrawn')
 );
 -- #endregion
