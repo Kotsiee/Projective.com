@@ -58,7 +58,7 @@ left); **MK-12** (reserve a cohort seat) → **SC3**.
 
 | Row   | Now · Crit · Gate  | Work order                                        | The row flips (or its note clears) when                                                |
 | :---- | :----------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------- |
-| MK-35 | ✅ · Crit · MVP    | **SC1**                                           | `catalogue.listings` has a pinned Zod row schema (note clears; PRD-I3 narrows)         |
+| MK-35 | ✅ · Crit · MVP    | **SC1** (landed, #501)                            | `catalogue.listings` has a pinned Zod row schema (note clears; PRD-I3 narrows)         |
 | MK-36 | ✅ · High · MVP    | — (T&S P2a refuses PII in listing copy)           | —                                                                                      |
 | MK-37 | 🟡 · High · UAT    | **CK1**                                           | ✅ once sale originals are private, frozen at publish (A6) and delivered               |
 | MK-38 | ✅ · Crit · MVP    | **SC2**                                           | The CREATE category is copied; a tiered Pipeline is seeded (note clears)               |
@@ -121,8 +121,8 @@ is running. It shares that slot with SBP S1–S4 (MONEY §1) and the SAC prompts
 6. T&S **R1 → R2** (their track) → **SC8** (rulings #496; ⚖️ counsel words the regime); **SC9** once
    per #393 phase.
 
-**App lane** (up to three at once, file-disjoint): **SC1** and **CK6** now; **CK3** ⏳ CK1
-(`live-orders.ts`); **MKZ** last.
+**App lane** (up to three at once, file-disjoint): **SC1** (landed, #501) and **CK6** now; **CK3**
+⏳ CK1 (`live-orders.ts`); **MKZ** last.
 
 **Hot files across this file:**
 

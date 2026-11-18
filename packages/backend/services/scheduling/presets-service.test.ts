@@ -6,6 +6,7 @@ import {
 	type SavePresetInput,
 	SCHEDULE_TEMPLATES,
 } from "@projective/types/scheduling";
+import type { CatalogueListingRow } from "../catalogue/live-catalogue.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { listPresets, savePreset } from "./live-presets.ts";
 import { bindListing } from "./live-preset-binding.ts";
@@ -21,7 +22,7 @@ import { fakePresetDoors, stubSchedulingClient, type StubStore } from "./schedul
 
 // #region Fixtures
 const OWNER: ReadActor & { accessToken: string } = {
-	userId: "u-owner",
+	userId: "5c4d7a10-0000-4000-8000-0000000000a1",
 	contextId: "",
 	contextType: "personal",
 	accessToken: "token",
@@ -274,33 +275,67 @@ Deno.test("listPresets: usage names the timed services on each preset and the ow
 	const result = await listPresets(OWNER, deps);
 	assert(result.ok, result.message);
 	assertEquals(result.data?.usage, {
-		[general]: [{ kind: "profile", name: "" }, { kind: "service", name: "Coaching", listing: "svc-coaching" }],
+		[general]: [{ kind: "profile", name: "" }, {
+			kind: "service",
+			name: "Coaching",
+			listing: "svc-coaching",
+		}],
 		[evenings]: [{ kind: "service", name: "Workshop", listing: "svc-workshop" }],
 	});
 });
 // #endregion
 
 // #region bindListing
+const COACHING_BLUEPRINT = "5c4d7a10-0000-4000-8000-0000000000b1";
+const LOGO_BLUEPRINT = "5c4d7a10-0000-4000-8000-0000000000b2";
+
+/** A whole `catalogue.listings` row of OWNER's service listing, as the console's read boundary parses it. */
+function listingRow(id: string, blueprintId: string): CatalogueListingRow {
+	return {
+		id,
+		owner_user_id: OWNER.userId,
+		owner_team_id: null,
+		kind: "service",
+		status: "published",
+		service_blueprint_id: blueprintId,
+		product_id: null,
+		title: "Listing",
+		description: {},
+		description_text: "",
+		category: "",
+		delivery_label: "",
+		seo_title: null,
+		seo_description: null,
+		create_category: null,
+		amount_cents: 0,
+		ticket_price_cents: null,
+		session_price_cents: null,
+		seats_per_session: null,
+		currency: "GBP",
+		free_revisions: null,
+		extra_revision_price_cents: null,
+		promoted: false,
+		view_count: 0,
+		order_count: 0,
+		rating_average: 0,
+		rating_count: 0,
+		published_at: "2026-03-01T09:00:00Z",
+		created_at: "2026-03-01T09:00:00Z",
+		updated_at: "2026-03-01T09:00:00Z",
+	};
+}
+
 Deno.test("bindListing: override forks once, a second override rewrites that same fork", async () => {
 	const s = store();
 	s.service_blueprints = [{
-		id: "bp-1",
+		id: COACHING_BLUEPRINT,
 		slug: "svc-coaching",
 		freelancer_profile_id: OWNER.userId,
 		owner_team_id: null,
 		delivery_model: "session",
 		availability_preset_id: null,
 	}];
-	s.listings = [{
-		id: "l-1",
-		owner_user_id: OWNER.userId,
-		owner_team_id: null,
-		kind: "service",
-		service_blueprint_id: "bp-1",
-		amount_cents: 0,
-		view_count: 0,
-		currency: "GBP",
-	}];
+	s.listings = [listingRow("5c4d7a10-0000-4000-8000-0000000000c1", COACHING_BLUEPRINT)];
 	const { deps, calls } = stack(s);
 	const library = fakePresetDoors().save_availability_preset({
 		p_schedule: SCHEDULE,
@@ -341,20 +376,14 @@ Deno.test("bindListing: override forks once, a second override rewrites that sam
 Deno.test("bindListing: a stranger's listing is a 404 and a non-session listing a 422", async () => {
 	const s = store();
 	s.service_blueprints = [{
-		id: "bp-2",
+		id: LOGO_BLUEPRINT,
 		slug: "svc-logo",
 		freelancer_profile_id: OWNER.userId,
 		owner_team_id: null,
 		delivery_model: "one_off",
 		availability_preset_id: null,
 	}];
-	s.listings = [{
-		id: "l-2",
-		owner_user_id: OWNER.userId,
-		owner_team_id: null,
-		kind: "service",
-		service_blueprint_id: "bp-2",
-	}];
+	s.listings = [listingRow("5c4d7a10-0000-4000-8000-0000000000c2", LOGO_BLUEPRINT)];
 	const { deps } = stack(s);
 	const notTimed = await bindListing(
 		{ listingId: "svc-logo", mode: "default", presetId: null },
@@ -364,7 +393,7 @@ Deno.test("bindListing: a stranger's listing is a 404 and a non-session listing 
 	assertEquals(notTimed.status, 422);
 	const stranger = await bindListing(
 		{ listingId: "svc-logo", mode: "default", presetId: null },
-		{ ...OWNER, userId: "u-other" },
+		{ ...OWNER, userId: "5c4d7a10-0000-4000-8000-0000000000a2" },
 		deps,
 	);
 	assertEquals(stranger.status, 404);

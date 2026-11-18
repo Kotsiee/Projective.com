@@ -8,7 +8,8 @@
  * The rebuild's contracts (Decision #217): the console + workspace URL contract (`url.ts`), the form
  * archetype matrix (`archetype.ts`), the six-slot media showcase (`media.ts`), the per-archetype offer
  * (`offer.ts`), SEO (`seo.ts`), analytics (`analytics.ts`), the client pipeline (`clients.ts`) and
- * batch actions (`batch.ts`).
+ * batch actions (`batch.ts`). The stored row a listing is mapped from is `rows.ts`
+ * (`CatalogueListingRowSchema`, pinned to its table).
  */
 export * from "./catalogue.ts";
 export * from "./archetype.ts";
@@ -20,3 +21,4 @@ export * from "./analytics.ts";
 export * from "./clients.ts";
 export * from "./batch.ts";
 export * from "./promotion.ts";
+export * from "./rows.ts";
