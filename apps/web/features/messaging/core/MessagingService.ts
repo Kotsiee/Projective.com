@@ -1,4 +1,4 @@
-import { getMessaging, postMessaging } from "./api.ts";
+import { getMessaging, postMessaging, signalMessaging } from "./api.ts";
 import type {
 	ChatMessage,
 	ContactList,
@@ -156,6 +156,15 @@ export const MessagingService = {
 			`/api/messaging/conversations/${encodeURIComponent(id)}/folder`,
 			{ folder },
 		);
+	},
+
+	/**
+	 * Mark a conversation read for the viewer (`POST /api/messaging/conversations/[id]/read`, CAS M10).
+	 * Sent by the chat once the thread has painted in a visible tab, never by the page's GET; a
+	 * background write, so a failure only leaves the thread unread.
+	 */
+	markRead(id: string): Promise<MessagingResult<null>> {
+		return signalMessaging(`/api/messaging/conversations/${encodeURIComponent(id)}/read`);
 	},
 
 	/** Mute or unmute a conversation for the viewer only (Decision #308). */

@@ -4,7 +4,7 @@ import { type Signal, useSignal } from "@preact/signals";
 import { Button, InputText } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import type { EmailDeliveryOutcome, EmailVerifyOutcome, UserEmail } from "@projective/types/org";
-import { MAX_USER_EMAILS } from "@projective/types/org";
+import { EMAIL_TOKEN_PARAM, MAX_USER_EMAILS } from "@projective/types/org";
 import {
 	IDLE,
 	type SaveState,
@@ -42,20 +42,26 @@ const VERIFY_COPY: Readonly<
 	},
 };
 
-/** Read and strip the `?email=` outcome the verify link lands back with. */
-function takeVerifyOutcome(): EmailVerifyOutcome | null {
+/** Read and strip one query parameter, leaving the rest of the address as it was. */
+function takeParam(name: string): string | null {
 	if (typeof location === "undefined") return null;
 	const url = new URL(location.href);
-	const value = url.searchParams.get("email");
-	if (!value || !(value in VERIFY_COPY)) return null;
-	url.searchParams.delete("email");
+	const value = url.searchParams.get(name);
+	if (value === null) return null;
+	url.searchParams.delete(name);
 	const state = history.state && typeof history.state === "object" ? history.state : {};
 	history.replaceState(
 		{ ...state, fClientNav: false },
 		"",
 		`${url.pathname}${url.search}${url.hash}`,
 	);
-	return value as EmailVerifyOutcome;
+	return value;
+}
+
+/** Read and strip the `?email=` outcome a refused link lands with. */
+function takeVerifyOutcome(): EmailVerifyOutcome | null {
+	const value = takeParam("email");
+	return value && value in VERIFY_COPY ? value as EmailVerifyOutcome : null;
 }
 // #endregion
 
@@ -69,6 +75,10 @@ export interface EmailsBlockProps {
  * Email addresses — add, resend, make primary, use to sign in ({@link SignInChangeDialog}) and
  * remove. An address is only ever VERIFIED by the link mailed to it; this block can never mark one
  * verified (`org.user_emails` is definer-written).
+ *
+ * The mailed link spends nothing when it is opened (PRD-C11): it lands here with its token in
+ * `?email-token=`, which is taken off the address at once, and the person presses Confirm to spend it
+ * (`POST /api/user/emails/verify`). Not now drops it; the link still works until it expires.
  */
 export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 	const { emails } = props;
@@ -78,12 +88,30 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 	const confirming = useSignal<string | null>(null);
 	const status = useSignal<SaveState>(IDLE);
 	const verify = useSignal<EmailVerifyOutcome | null>(null);
+	/** A mailed link's token, held for the person's press of Confirm. */
+	const pending = useSignal<string | null>(null);
 	const signInOpen = useSignal(false);
 	const signInTarget = useSignal<UserEmail | null>(null);
 
 	useEffect(() => {
 		verify.value = takeVerifyOutcome();
+		pending.value = takeParam(EMAIL_TOKEN_PARAM);
 	}, []);
+
+	async function confirmLink(token: string): Promise<void> {
+		busy.value = "link";
+		const res = await SettingsService.confirmEmail(token);
+		busy.value = null;
+		if (!res.ok) {
+			status.value = { tone: "error", text: res.message };
+			return;
+		}
+		pending.value = null;
+		verify.value = res.data.outcome;
+		if (res.data.outcome !== "verified") return;
+		const fresh = await SettingsService.listEmails();
+		if (fresh.ok) emails.value = fresh.data.emails;
+	}
 
 	async function run(
 		key: string,
@@ -139,6 +167,33 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 			title="Email addresses"
 			description="Verified addresses can receive project and team invitations. Your primary address is where we write to you."
 		>
+			{pending.value
+				? (
+					<div
+						class="stg-emails__confirm stg-emails__confirm--lead"
+						role="group"
+						aria-label="Confirm your email address"
+					>
+						<span class="stg-emails__ask">Confirm the address this link was sent to?</span>
+						<Button
+							size="sm"
+							label="Confirm"
+							loading={busy.value === "link"}
+							onClick={() => {
+								if (pending.value) void confirmLink(pending.value);
+							}}
+						/>
+						<Button
+							size="sm"
+							variant="text"
+							severity="secondary"
+							label="Not now"
+							disabled={busy.value === "link"}
+							onClick={() => (pending.value = null)}
+						/>
+					</div>
+				)
+				: null}
 			{outcome
 				? <InlineNotice align="start" assertive={outcome.tone === "warning"} text={outcome.text} />
 				: null}

@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import ChatFeed from "@web/features/projects/islands/ChatFeed.island.tsx";
 import { MessagingService } from "../core/MessagingService.ts";
+import { useReadWhenSeen } from "../hooks/useReadWhenSeen.ts";
 import type { MessagePage } from "../types/messaging-types.ts";
 
 /**
@@ -9,10 +10,14 @@ import type { MessagePage } from "../types/messaging-types.ts";
  * virtualized feed), supplying a messaging-scoped older-page loader so scroll-up pagination hits
  * `/api/messaging/messages` instead of the project-channel endpoint. The composer is the middle-nav
  * frame's footer band (`conversationFooterFor`), not part of this body.
+ *
+ * It is also where the thread becomes read: once the latest page has painted in a visible tab, it
+ * posts the read mark ({@link useReadWhenSeen}, CAS M10). The page's GET writes nothing (PRD-C11).
  */
 export default function ConversationChat(
 	{ conversationId, initial }: { conversationId: string; initial: MessagePage | null },
 ): JSX.Element {
+	useReadWhenSeen(conversationId, initial !== null);
 	return (
 		<ChatFeed
 			projectId={conversationId}

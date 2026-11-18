@@ -586,6 +586,11 @@
 	color: var(--on-surface);
 }
 
+/* A mailed link waiting for the person's press leads the block, read from the start. */
+.stg-emails__confirm--lead {
+	justify-content: flex-start;
+}
+
 @container stg (max-width: 30rem) {
 	.stg-emails__item,
 	.stg-cards__item,

@@ -10,7 +10,10 @@ import { deliverMail, type MailerDeps, type MailMessage } from "./transport.ts";
  */
 
 // #region Link + message
-/** The route that redeems a token: `GET /api/user/emails/verify?token=…`. */
+/**
+ * The link the mail carries: `GET /api/user/emails/verify?token=…`. Opening it spends nothing; it
+ * forwards the token to `/settings/account`, where the person's press of Confirm spends it (PRD-C11).
+ */
 export const VERIFY_PATH = "/api/user/emails/verify";
 
 /** Build the absolute verification link for a token on the given app origin. */

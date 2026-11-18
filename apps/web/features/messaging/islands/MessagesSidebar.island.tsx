@@ -36,6 +36,7 @@ import { NewConversationModal } from "../components/NewConversationModal.tsx";
 import { MessagingService } from "../core/MessagingService.ts";
 import { conversationHref } from "../core/conversation-model.ts";
 import { folderOverrides, moveConversation, withFolder } from "../core/folder-moves.ts";
+import { readMarks, withRead } from "../core/read-marks.ts";
 import { openNewConversation } from "../core/messaging-state.ts";
 import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { liveMessagingRole, readDevSeam, subscribeDevSeam } from "../core/messaging-view.ts";
@@ -83,9 +84,11 @@ import { toggleSaved } from "@features/saved/core/saved-state.ts";
  *
  * THIN: first paint from SSR; search + advanced facets refine through the API (`MessagingService`).
  * The folder tabs (Primary · Requests · Archived) partition the loaded set client-side; a folder move
- * is optimistic and confirmed by the server (`folder-moves`). Favourite · Mute · Soft-delete stay a
- * persisted per-conversation preference overlay. The advanced-filter SET is role-specific and
- * live-updates from the Dev Context Switcher's `messagingRole` axis.
+ * is optimistic and confirmed by the server (`folder-moves`). The open thread's read mark is the chat
+ * island's POST, sent after paint, so its dot clears through the same kind of overlay (`read-marks`).
+ * Favourite · Mute · Soft-delete stay a persisted per-conversation preference overlay. The
+ * advanced-filter SET is role-specific and live-updates from the Dev Context Switcher's
+ * `messagingRole` axis.
  */
 
 // #region Props
@@ -315,14 +318,18 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 		const p = prefs.value;
 		const s = stars.value;
 		const moved = folderOverrides.value;
+		const read = readMarks.value;
 		return serverList.value
 			.filter((c) => !p[c.id]?.deleted)
 			.map((c) =>
-				withFolder({
-					...c,
-					starred: s[c.id] ?? c.starred,
-					muted: p[c.id]?.muted ?? c.muted,
-				}, moved)
+				withRead(
+					withFolder({
+						...c,
+						starred: s[c.id] ?? c.starred,
+						muted: p[c.id]?.muted ?? c.muted,
+					}, moved),
+					read,
+				)
 			);
 	});
 	const displayed = useComputed<ConversationSummary[]>(() =>

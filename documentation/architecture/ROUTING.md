@@ -163,7 +163,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | guest invitation        | `(standalone)/rsvp/[token].tsx`                              | `/rsvp/:token` — where a guest's email lands (Decision #391), for somebody with no account. No shell, and no sign-in. A `GET` changes and sends nothing, because mail scanners follow every link: each act is a `POST` from a plain form back to this page (`action` = `answer` · `code` · `join` · `claim` · `stop`), so it needs no JavaScript. A good code ends on a page with the link rather than a `303`, because the CSP's `form-action 'self'` also binds a form's redirect. The token is shape-checked before any read and every dead state is one `404`, which still offers `stop`, so invite-and-withdraw cannot leave somebody with no way out. `scrubPath` keeps the token out of the logs. `noindex` + `no-referrer` + `no-store`, because the path is a capability. Each `POST` must come from this site's own page: the root middleware's page write guard refuses a cross-site one with a `403` before the handler runs (Decision #475); the page's own form, sent `Origin: null` under `no-referrer`, passes on `Sec-Fetch-Site: same-origin`. |
 | notifications           | `(dashboard)/notifications/index.tsx`                        | `/notifications` (`?category=` an inbox category — `money · work · messages · schedule · discovery · account · system`, absent, unknown or `marketing` = All categories; `?view=` `unread · archived`, absent = All; `?q=` a title-or-body search, trimmed, ≤ 100 chars, absent = none) — the full inbox: the rows, keyset Load more and bulk mark-read / archive. All three parameters are written in place (`replaceState`, defaults omitted) as the filter changes, so the address is always a deep link to what is on screen. Lane: `notificationsLaneFor(url)` (`features/notifications/core/notifications-lane.tsx`, pure, `null` off the path) → `NotificationsLane` — LaneSearch, the status views (All notifications · Unread · Archived) and the categories as `NavItem` links to their own addresses, answered in place by the page through the shared `inboxFilter` signal; below 767px, where the shell drops the lane, the page's own filter bar (Status · Category · search) carries the same filter. Re-exports `features/notifications/routes/NotificationsScreen.tsx` (DESIGN_SYSTEM §D.9, Decisions #173 · #429) |
 | messages (root)         | `(dashboard)/messages/index.tsx`                             | `/messages` — the global inbox with no conversation open: the conversation list is the middle-nav lane (`messagesLaneFor` → `MessagesSidebar`, the same lane beside an open conversation), the body an empty state on desktop and the inbox list itself below 767px (#339 (e)) |
-| messages (conversation) | `(dashboard)/messages/[conversationId]/{index,files,members}.tsx` + `_layout.tsx` | `/messages/:conversationId` (Chat, the latest message page read server-side, and the conversation marked read) · `/messages/:conversationId/files` (the shared `FilesView` in `conversation` scope) · `/messages/:conversationId/members` (the shared `MembersView`, Members only). The header band and the composer are the middle-nav frame's (`conversationHeaderFor` / `conversationFooterFor`). `:conversationId` is a thread id or a `dm-{handle}` address; see "Messaging, hiring-handshake & link API" below for a `dm-` address with no thread yet |
+| messages (conversation) | `(dashboard)/messages/[conversationId]/{index,files,members}.tsx` + `_layout.tsx` | `/messages/:conversationId` (Chat, the latest message page read server-side; the GET writes nothing, and the chat island marks the conversation read with `POST /api/messaging/conversations/[id]/read` once it has painted in a visible tab, PRD-C11) · `/messages/:conversationId/files` (the shared `FilesView` in `conversation` scope) · `/messages/:conversationId/members` (the shared `MembersView`, Members only). The header band and the composer are the middle-nav frame's (`conversationHeaderFor` / `conversationFooterFor`). `:conversationId` is a thread id or a `dm-{handle}` address; see "Messaging, hiring-handshake & link API" below for a `dm-` address with no thread yet |
 | become a partner        | `(dashboard)/become-partner.tsx`                             | `/become-partner` — the freelancer conversion page (controller `features/profile/routes/BecomePartnerScreen.tsx`); its unlock is `POST /api/user/freelancer` (see "Profile and media API") |
 | saved                   | `(dashboard)/saved/index.tsx`                                | `/saved` (`?tab=` `listings · people · projects · messages · files`, absent = All; `?collection=` `unfiled` or a collection id, absent = every collection) — everything the viewer saved, starred, favourited or followed, newest save first with "People you follow" last; un-save in place, file a bookmark into a collection, Load more. Re-exports `features/saved/routes/SavedScreen.tsx` (Decision #180). Reached from the account menu's **Saved**.|
 | settings (root)         | `(dashboard)/settings/index.tsx`                             | `/settings` — the Settings hub (Decisions #151, #156): an in-page **search** over every setting, **Needs your attention** (identity check, payout account, business KYB, expired connectors, unconfirmed emails, profile steps, expired cards, a failed plan payment, a lone sign-in method, a scheduled erasure — derived from facts by `attentionItems`), the **profile completeness** tracker with one call to action, and every section as an **interactive card** (a single column on a phone, where the shell has no lane). A `?connect=` landing (the integrations callback's fallback) **303→** `/settings/integrations?connect=…`. Controller `features/settings/routes/SettingsHomeScreen.tsx` (re-exported). |
@@ -934,7 +934,7 @@ when no host claims it the bridge navigates to `/settings/:section` instead).
 | `/api/user/emails/[id]/primary`          | `POST` | `EmailsBackendService.setPrimary` → `org.set_primary_email` (verified addresses only) |
 | `/api/user/emails/[id]/resend`           | `POST` | `EmailsBackendService.resend` — a fresh token (earlier ones expire); 409 when already verified |
 | `/api/user/emails/[id]/sign-in`          | `POST` `{ password, captchaToken?, makePrimary? }` | `EmailsBackendService.makeSignIn` (Decision #451): `org.prepare_sign_in_change` → GoTrue password grant on the current address (`reauth` throttle) → admin `updateUserById` → `org.record_sign_in_change` → other sessions signed out → notice mailed to the old address; re-issues the session. 422 `password_incorrect` · 409 `sign_in_unverified` / `sign_in_already` / `account_closing` / `password_required` / `sign_in_unavailable` · 429 `sign_in_limit` (`retryAt`) |
-| `/api/user/emails/verify`                | `GET` `?token=` | The mailed link: `org.confirm_user_email` for the signed-in account (it renews the session itself), then **303→** `/settings/account?email=<EmailVerifyOutcome>`; signed out **303→** `/login?redirectTo=…`. `no-store`, `no-referrer`. Refusals carry `details.refusal` (an `EmailRefusal` code); a non-uuid `:id` is 404. |
+| `/api/user/emails/verify`                | `GET` `?token=` · `POST` `{ token }` | The mailed link. The `GET` spends nothing (PRD-C11): it shape-checks the token and **303→** `/settings/account?email-token=<token>#emails` (`?email=invalid` when malformed); the dashboard guard signs a visitor in and keeps the query. The Email addresses block takes the token off the address and asks for a press: Confirm sends `POST { token }` (JSON, origin-guarded) → `org.confirm_user_email` for the signed-in account → `{ ok, outcome }` (`EmailVerifyOutcome`), `422` without a token. `no-store`, `no-referrer`. Refusals carry `details.refusal` (an `EmailRefusal` code); a non-uuid `:id` is 404. |
 | `/api/user/notifications`                | `GET` · `PUT` | `NotificationCenterBackendService` over `comms.notification_prefs` / `notification_category_prefs` / `notification_types` in the caller's JWT. `PUT` = `NotificationCenterUpdateSchema` (partial; `resetChannels` sets a channel back to `null` on every category row so a master toggle is not outranked). 401 guest · 422 invalid / quiet hours incomplete · 503 not live. |
 | `/api/settings/attention`               | `GET`  | `attentionFactsFor` — the attention FACTS (`SettingsAttentionFacts`) for the contextual modal's section marks (Decision #156). `401` guest · `no-store`. |
 | `/api/user/handle`                      | `GET` · `POST` `{ handle }` | `AccountLifecycleBackendService.handlePolicy` → `org.get_handle_policy` · `.changeHandle` → `org.change_username` (two changes in three days, then a 90-day lock; a released handle is held 90 days). Answers `{ policy, previous }`; refusals carry `details.refusal` and a namespace refusal `errors.handle`. A change re-issues the session on the same response (the token carries the handle; `claimsStale: true` when it could not; Decision #193). |
@@ -1116,6 +1116,7 @@ then one fat-service method. A guest is a 401 on every write.
 | `/api/messaging/conversations`               | `GET` (`?folder=primary\|requests\|archived`, `view`, `role`, …) | `MessagingBackendService.conversations` — the folder is the VIEWER's (`dm_participants.inbox_folder`) |
 | `/api/messaging/conversations/[id]/folder`   | `POST` `{ folder }` | `MessagingBackendService.setFolder` → `comms.set_dm_inbox_folder` (404 for a conversation with no thread yet) |
 | `/api/messaging/conversations/[id]/mute`     | `POST` `{ muted }`  | `MessagingBackendService.setMuted` → `comms.set_dm_muted` (the caller's own `is_muted`; Decision #308) — live only: 503 on fixtures, 404 for a conversation with no thread |
+| `/api/messaging/conversations/[id]/read`     | `POST` (no body) | `MessagingBackendService.markRead` → `comms.mark_dm_read` (the caller's own `last_read_at`; CAS M10, PRD-C11). The chat island sends it once the thread has painted in a visible tab, never the page's GET. Idempotent `204` (no body, `no-store`); `404` for a conversation the caller is not in or a malformed id; `401` signed out; a cross-site post is refused `403` by the `/api` origin guard. The fixture backend answers `204` and keeps its own unread flags |
 | `/api/messaging/conversations/[id]/context`  | `GET`  | `MessagingBackendService.context` → `projects.get_engagement_context` (the context panel) |
 | `/api/messaging/attachment-source`           | `GET` · `HEAD` (`?assetId=<uuid>&conversationId=`) | `MessagingBackendService.attachmentSource` → `live-attachment-source.ts` — the messages a `files.items` asset was posted in that the caller can read (RLS `view_attachments_if_member`), newest first, each with its `?m=` link; `conversationId` (a thread or room uuid, or `dm-{handle}`) narrows it. `400` with no `assetId`; a guest or a failure gets `[]`; ETag via the read-endpoint factory (Decision #162) |
 | `/api/messaging/conversation`                | `GET` · `HEAD` (`?id=`) | `MessagingBackendService.conversation` — one conversation's metadata (the header and the Members tab); 404 for one the viewer cannot see |
@@ -1230,6 +1231,59 @@ booking and preset write for a 13–17-year-old.
 | `/api/services/waitlist` | `POST` `JoinWaitlistInputSchema` | Age gate. `.joinWaitlist` → `projects.join_waitlist` — queue the caller on a group-session listing's waitlist (Decisions #424, #455); no client writes a place directly. Idempotent: a repeat answers `already: true` with the place's status; an expired place joins again at the back (`already: false`). A guest is refused (401); a listing that is not a group session 422s, and so does the seller's own. The queue is invited first in, first out by the `cohort-waitlist-invites` job: an in-app notice links to the listing, whose offer then carries the viewer's place (`ServiceBookingOffer.waitlist`) and a **Reserve your held seat** primary. |
 | `/api/catalogue/waitlist` | `GET` `?listing=` | Seller actor (`?team=` as elsewhere), the shared read query (`listing` required). `CatalogueClientsBackendService.waitlist` → `projects.get_listing_waitlist` — a group-session listing's queue for the workspace's Clients tab (Decision #455): counts per state and the places in order, dressed from the profile directory. 404 for a listing the caller does not manage, 422 for one that is not a group session. `sim` is the `clientPipeline` dev axis, fixture path only. |
 | `/api/checkout/calendar` | `GET` `?order=&line=` | `OrderBackendService.ics` — the `.ics` FILE for one booked line of one order (not the JSON envelope; reached from a plain anchor). Scoped to the acting account; 400 on a missing id, plain-text 404 otherwise. `nosniff`, filename in `content-disposition`. |
+
+## A GET writes nothing (PRD-C11)
+
+A page or a `GET` endpoint is fetched by more than the person reading it: a prefetch, a link
+unfurler or mail scanner, a retry, and a cross-site top-level navigation, which carries the
+`SameSite=Lax` session cookie. So a `GET` never changes what the person will see. A write the person
+causes is their `POST`, behind the origin guard (`utils/csrf.ts`). Page routes, `features/*/routes`
+screens and the loaders they reach on every render are pinned by `apps/web/utils/get-side-effects.test.ts`.
+
+**Moved behind a POST.**
+
+| Was                                                    | Now                                                                                                                                                  |
+| :----------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/messages/:id` rendering → `comms.mark_dm_read`       | The chat island's `POST /api/messaging/conversations/[id]/read`, once the thread has painted in a visible tab (SAC3)                                   |
+| `GET /api/user/emails/verify` → `org.confirm_user_email` | The `GET` forwards the token to `/settings/account?email-token=…`; the person's Confirm sends `POST /api/user/emails/verify` (SAC3)                   |
+| `GET /api/auth/confirm` → GoTrue `verifyOtp`           | `POST /api/auth/confirm` from `/verify/confirm` (#445)                                                                                               |
+
+**Accepted GET telemetry.** These record that a request happened. Nothing the person acts on reads them back as state:
+
+- **Search query log.** `/explore?q=…` and the first page of `GET /api/explore/search` →
+  `search.fn_log_query` → `search.query_logs`.
+- **Views.** `/[handle]`, `/[handle]/view/[item]` and `/view/[entity]` → `recordViewInBackground`
+  (signed in only, fire-and-forget) → `search.record_view` (`org.recent_views` count,
+  `search.user_affinity`). The affinity also orders the viewer's own "Because you viewed" rail.
+- **Server errors.** A `5xx` rendered by `routes/_error.tsx` → `LogBackendService.recordServerError`
+  → `ops.log_entries`.
+
+**Accepted GET doors.** These are not telemetry, but nothing in the request decides what they write:
+
+- **OAuth callbacks** (`/api/auth/callback`, `/api/integrations/callback`). The provider returns by
+  `GET` and they spend a single-use code or state bound to the browser that started the flow.
+- **Stripe Connect return** (`GET /api/finance/connect/return`, and `GET /api/finance/connect/status`
+  with `?sync=1`). Stripe returns by `GET`. `finance.sync_payout_account` copies Stripe's own account
+  state (`payout_ready`, KYB), never a value from the request.
+- **Connected-drive reads** (`/files/drive/…`, `GET /api/files/{list,tree,drive-thumbnail}`,
+  `GET /api/integrations/browse`). `integrations.fn_claim_connection_token` stamps `last_used_at`
+  and refreshes an expiring provider token. This is operational bookkeeping.
+- **Lazy materialisation.** These insert the row the read would compute anyway, idempotently. The
+  week's proposal-allowance row (`finance.fn_current_allowance`) is written through
+  `org.get_workspace_detail` on every `/teams/*` and `/catalogue*` render, and through
+  `GET /api/user/allowance`. The default notification-preferences row is written by
+  `/settings/notifications`, `GET /api/user/notifications` and `GET /api/settings/notifications`.
+
+**Open exceptions, tracked.**
+
+- **`/meet/[roomSlug]`** records attendance on `GET` (`scheduling.room_join`: a `join_click`
+  presence event and a provider registrant), as Decision #383 rules ("one press from … an email or
+  an external calendar entry"). PRD-C30 awaits a ruling.
+- **FX quotes locked on `GET`.** The checkout pages and `GET /api/checkout/session` reuse a live
+  quote. `GET /api/finance/escrow/quote` and the paid-revision quote lock a fresh `escrow_lock` row
+  on every request (PRD-C31).
+- **`/api/integrations/callback`** spends the consent `state` before it compares the caller, so a
+  cross-site `GET` carrying someone else's state burns it (PRD-C32).
 
 ## Thin controllers / fat services
 

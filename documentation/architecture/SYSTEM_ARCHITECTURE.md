@@ -3090,7 +3090,9 @@ PostgreSQL RLS.
   (service role ONLY — so it never trusts a caller-supplied identity: the function takes an email id
   and mails the row's own address) mints a single-use 24-hour token
   and stores only its SHA-256; `org.confirm_user_email`, called by the signed-in owner holding the
-  token, is the one path that stamps `verified_at`. An INVOKER guard trigger refuses any client-role
+  token, is the one path that stamps `verified_at`; it runs on the owner's press of Confirm
+  (`POST /api/user/emails/verify`), never on the link's GET, which only forwards the token to
+  `/settings/account` (PRD-C11). An INVOKER guard trigger refuses any client-role
   change to `verified_at` · `email` · `is_primary` · `user_id` even if a policy is ever re-added. The
   sign-in address is still confirmed by GoTrue (`public.handle_email_confirmed`). The link leaves
   through `packages/backend/services/mail/verification-mailer.ts` — see the Environment Variable

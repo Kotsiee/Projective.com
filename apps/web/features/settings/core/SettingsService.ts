@@ -3,6 +3,7 @@ import type {
 	AppearancePreferences,
 	DisplayPreferences,
 	EmailDeliveryOutcome,
+	EmailVerifyOutcome,
 	MakeSignIn,
 	ResolvedUiSettings,
 	SignInChanged,
@@ -216,6 +217,25 @@ export const SettingsService = {
 	// #endregion
 
 	// #region Emails
+	/** The person's addresses, primary first — re-read after a confirmation lands. */
+	listEmails(): Promise<SettingsResult<{ emails: UserEmail[] }>> {
+		return call<{ emails: UserEmail[] }>(
+			"/api/user/emails",
+			undefined,
+			"Your email addresses couldn't be loaded.",
+		);
+	},
+	/**
+	 * Spend a mailed confirmation token for the signed-in account: the press of Confirm on
+	 * `/settings/account`, never the link's GET (PRD-C11). Every verdict on the token is an `outcome`.
+	 */
+	confirmEmail(token: string): Promise<SettingsResult<{ outcome: EmailVerifyOutcome }>> {
+		return call<{ outcome: EmailVerifyOutcome }>(
+			"/api/user/emails/verify",
+			json("POST", { token }),
+			"We couldn't check that link just now.",
+		);
+	},
 	addEmail(email: string): Promise<SettingsResult<EmailsSaved>> {
 		return call<EmailsSaved>(
 			"/api/user/emails",

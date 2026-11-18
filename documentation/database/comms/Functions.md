@@ -522,8 +522,9 @@ caller's own undeleted participant row's `last_read_at` to `now()` — the water
 with a message was unread forever. It moves only when there is something to read past it (never
 opened, or a message newer than the mark) and returns whether it moved, so the service drops the
 tenant's inbox cache only then. `42501` with no acting user or for a caller who is not an undeleted
-participant. Called by `MessagingBackendService.markRead`, which the `/messages/[conversationId]`
-page runs once it has served the latest page. The live inbox projection also never counts the
+participant. Called by `MessagingBackendService.markRead` from `POST
+/api/messaging/conversations/[id]/read`, which the chat island sends once the thread has painted in a
+visible tab; the `/messages/[conversationId]` page's GET never calls it (PRD-C11). The live inbox projection also never counts the
 viewer's own latest message as unread.
 
 ### `comms.fn_lock_dm_pair(p_a uuid, p_b uuid) → void`

@@ -109,6 +109,19 @@ export const MAX_USER_EMAILS = 5;
 /** The `?email=` outcome the verify link lands back on `/settings/account` with. */
 export const EmailVerifyOutcome = z.enum(["verified", "expired", "invalid", "used", "wrong-account", "in-use", "unavailable"]);
 export type EmailVerifyOutcome = z.infer<typeof EmailVerifyOutcome>;
+
+/**
+ * The query parameter the mailed link carries its token to `/settings/account` in. The link's GET
+ * (`/api/user/emails/verify`) spends nothing: it forwards the token here, and the person's press of
+ * Confirm spends it with `POST /api/user/emails/verify` (PRD-C11, the #445 rule for mailed links).
+ */
+export const EMAIL_TOKEN_PARAM = "email-token";
+
+/** `POST /api/user/emails/verify` — spend a confirmation token for the signed-in account. */
+export const ConfirmUserEmailSchema = z.object({
+	token: z.string().trim().min(1).max(256),
+});
+export type ConfirmUserEmail = z.infer<typeof ConfirmUserEmailSchema>;
 // #endregion
 
 // #region Sign-in change

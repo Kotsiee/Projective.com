@@ -1,63 +1,63 @@
 import { define } from "@web/utils/state.ts";
-import { ensureSession } from "@web/utils/session.ts";
-import { sessionClearCookies } from "@web/utils/auth-cookies.ts";
-import { resolveTokenContext } from "@web/utils/user-context.ts";
-import { withRedirect } from "@features/auth/core/redirect.ts";
-import { actorFrom } from "@server/services/read-actor.ts";
+import { readActor } from "@web/utils/api-session.ts";
+import { ConfirmUserEmailSchema, EMAIL_TOKEN_PARAM } from "@projective/types/org";
 import { EmailsBackendService } from "@server/services/user/EmailsBackendService.ts";
+import type { ServiceResult } from "@server/services/ServiceResult.ts";
 
 /**
- * `GET /api/user/emails/verify?token=…` — the link in a confirmation email.
+ * `GET | POST /api/user/emails/verify` — the link in a confirmation email, and the press that spends it.
  *
- * Redeems the token for the SIGNED-IN account and lands on `/settings/account?email=<outcome>`, the
- * outcome being one of `EmailVerifyOutcome` (`verified` · `expired` · `invalid` · `used` ·
- * `wrong-account` · `in-use`). A signed-out visitor is sent to `/login?redirectTo=<this url>` and
- * comes back here after signing in — the token only ever redeems for the account it was issued to.
+ * A GET spends nothing (PRD-C11, the #445 rule for mailed links). A link scanner, a prefetch or a
+ * cross-site navigation carrying the `SameSite=Lax` session cookie can open the link as well as the
+ * person can, so the GET only shape-checks the token and forwards it to
+ * `/settings/account?email-token=…#emails`. The dashboard guard signs a visitor in first and brings
+ * them back with the query intact, and the Email addresses block asks them to press Confirm. A
+ * malformed token lands on `?email=invalid` without the page.
  *
- * Unlike the other `/api/user/*` routes this is a browser NAVIGATION, not a `fetch`, so there is no
- * client interceptor to refresh a lapsed session: the route renews it itself ({@link ensureSession},
- * the dashboard guard's refresh-before-redirect) and mints the renewed cookies on the way out. A
- * session the database still refuses is cleared before the bounce, or `/login` (which forwards a
- * signed-in visitor to `redirectTo`) would send it straight back here.
- *
- * ⚠️ When the server cannot be reached the token is left unredeemed and the landing is
- * `?email=unavailable` — a value OUTSIDE `EmailVerifyOutcome`, flagged for the settings console.
+ * The press is `POST { token }` (JSON, so the `/api` origin guard refuses it from another site), which
+ * redeems the token for the SIGNED-IN account through {@link EmailsBackendService.confirm} and answers
+ * `{ ok, message, outcome }`, the outcome being one of `EmailVerifyOutcome` (`verified` · `expired` ·
+ * `invalid` · `used` · `wrong-account` · `in-use`). A token the account cannot redeem is an outcome, not
+ * a failure; a lapsed session is a 401 the client refreshes through, and an outage a 503.
  */
 
-/** Where every outcome lands. */
+/** Where the link lands. */
 const SETTINGS = "/settings/account";
 
-/** A 303 to `location`, carrying any session cookies; never cached (the URL holds a credential). */
-function seeOther(location: string, cookies: string[] = []): Response {
-	const res = new Response(null, {
+/** A 303 to `location`; never cached, and no referrer, because the URL holds a credential. */
+function seeOther(location: string): Response {
+	return new Response(null, {
 		status: 303,
 		headers: { location, "cache-control": "no-store", "referrer-policy": "no-referrer" },
 	});
-	for (const cookie of cookies) res.headers.append("set-cookie", cookie);
-	return res;
+}
+
+/** Map a {@link ServiceResult} to the flat JSON envelope the `/api/user/emails` routes return. */
+function respond<T>(result: ServiceResult<T>): Response {
+	return Response.json(
+		{ ok: result.ok, message: result.message, errors: result.errors, ...(result.data ?? {}) },
+		{ status: result.status, headers: { "cache-control": "no-store" } },
+	);
 }
 
 export const handler = define.handlers({
-	async GET(ctx) {
-		const here = ctx.url.pathname + ctx.url.search;
-		const session = await ensureSession(ctx.req);
-		const actor = actorFrom(resolveTokenContext(session.accessToken), session.accessToken);
-		if (!session.authenticated || !actor.userId) {
-			return seeOther(withRedirect("/login", here), session.clearCookies);
-		}
+	GET(ctx) {
+		const parsed = ConfirmUserEmailSchema.safeParse({
+			token: ctx.url.searchParams.get("token") ?? "",
+		});
+		if (!parsed.success) return seeOther(`${SETTINGS}?email=invalid#emails`);
+		const qs = new URLSearchParams({ [EMAIL_TOKEN_PARAM]: parsed.data.token });
+		return seeOther(`${SETTINGS}?${qs.toString()}#emails`);
+	},
 
-		const token = ctx.url.searchParams.get("token")?.trim() ?? "";
-		if (token.length === 0 || token.length > 256) {
-			return seeOther(`${SETTINGS}?email=invalid`, session.setCookies);
+	async POST(ctx) {
+		const parsed = ConfirmUserEmailSchema.safeParse(await ctx.req.json().catch(() => null));
+		if (!parsed.success) {
+			return Response.json(
+				{ ok: false, message: "That link isn't valid.", errors: { token: "invalid" } },
+				{ status: 422, headers: { "cache-control": "no-store" } },
+			);
 		}
-
-		const result = await EmailsBackendService.confirm(actor, token);
-		if (result.ok && result.data) {
-			return seeOther(`${SETTINGS}?email=${result.data.outcome}`, session.setCookies);
-		}
-		if (result.status === 401) {
-			return seeOther(withRedirect("/login", here), sessionClearCookies(ctx.req));
-		}
-		return seeOther(`${SETTINGS}?email=unavailable`, session.setCookies);
+		return respond(await EmailsBackendService.confirm(readActor(ctx), parsed.data.token));
 	},
 });

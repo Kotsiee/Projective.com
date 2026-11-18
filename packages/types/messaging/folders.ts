@@ -48,6 +48,19 @@ export type SetConversationMuted = z.infer<typeof SetConversationMutedSchema>;
  */
 export const ConversationReadMarkedSchema = z.object({ moved: z.boolean() });
 export type ConversationReadMarked = z.infer<typeof ConversationReadMarkedSchema>;
+
+/**
+ * A conversation id as it arrives in a route segment (`/api/messaging/conversations/[id]/…`): a
+ * unified `dm-{handle}` / `grp-…` id or a `comms.dm_threads` uuid. The bound is the send payload's
+ * own on `conversationId`; the character set is the one those ids are spelled in, so a segment
+ * carrying whitespace, a slash or a control character is refused before a service sees it.
+ */
+export const ConversationIdSchema = z
+	.string()
+	.min(1)
+	.max(120)
+	.regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/, "Expected a conversation id.");
+export type ConversationId = z.infer<typeof ConversationIdSchema>;
 // #endregion
 
 // #region Rules

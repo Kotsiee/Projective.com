@@ -1,7 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import {
-	markConversationRead,
 	resolveConversation,
 	resolveConversationMessages,
 } from "@web/features/messaging/core/conversations-ssr.ts";
@@ -18,7 +17,12 @@ import { ConversationNotFound } from "@web/features/messaging/components/Convers
  * and the message page are awaited TOGETHER rather than in series: the page read does not depend on
  * the existence check's result — a conversation the viewer cannot see returns no messages either — so
  * sequencing them would add a whole round trip to every conversation open for no ordering benefit.
- * Once both are in, the conversation is marked read for the viewer (`comms.mark_dm_read`).
+ *
+ * Rendering writes nothing (PRD-C11). A read is the person having seen the latest page (CAS M10), and
+ * a GET cannot know that: a prefetch, a link unfurler, a retry or a cross-site top-level navigation
+ * (which carries the `SameSite=Lax` session cookie) fetches this page too. The island marks the thread
+ * read instead, with `POST /api/messaging/conversations/[id]/read`, once it has painted in a visible
+ * tab.
  *
  * A one-to-one conversation's context panel is NOT part of this body: the layout registers it as the
  * middle-nav frame's right panel (`conversationPanelFor`), so it spans the full frame height beside the
@@ -32,7 +36,5 @@ export default define.page(async function ConversationChatPage(ctx) {
 		resolveConversationMessages(conversationId, actor),
 	]);
 	if (!detail) return <ConversationNotFound />;
-	// The latest page has been read, so the viewer has now seen it (CAS M10).
-	if (page) await markConversationRead(conversationId, actor);
 	return <ConversationChat conversationId={conversationId} initial={page} />;
 });

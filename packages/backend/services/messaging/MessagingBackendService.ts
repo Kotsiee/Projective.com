@@ -586,10 +586,12 @@ export class MessagingBackendService {
 	}
 
 	/**
-	 * Mark a conversation read for the viewer (CAS M10) — called when `/messages/[conversationId]`
-	 * opens. Live only, through `comms.mark_dm_read`; the fixture backend keeps its corpus's own
-	 * unread flags, so there it is a no-op. The tenant's inbox cache is dropped only when the watermark
-	 * actually moved, so re-opening a read conversation costs the cache nothing.
+	 * Mark a conversation read for the viewer (CAS M10) — `POST /api/messaging/conversations/[id]/read`,
+	 * which the chat island sends once the thread has painted in a visible tab. Never called while a
+	 * page renders (PRD-C11): a GET cannot tell a person who saw the thread from a prefetch. Live only,
+	 * through `comms.mark_dm_read`; the fixture backend keeps its corpus's own unread flags, so there it
+	 * is a no-op. The tenant's inbox cache is dropped only when the watermark actually moved, so
+	 * re-opening a read conversation costs the cache nothing.
 	 */
 	static async markRead(
 		conversationId: string,
