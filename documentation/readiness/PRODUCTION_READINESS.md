@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
 | **UAT**          | **52%** |           62 | 28 |  9 | 25 |          11 |
-| **Production**   | **33%** |          129 | 31 | 19 | 79 |          22 |
+| **Production**   | **34%** |          129 | 32 | 19 | 78 |          22 |
 
 Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 
@@ -53,7 +53,7 @@ Two ⏸ rows (PRD-F18, PRD-F19) are excluded.
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |    9 |  3 |  0 |  6 |   33% |
 | B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
-| C. Security & access control       |   25 |  6 |  5 | 14 |   44% |
+| C. Security & access control       |   25 |  7 |  5 | 13 |   46% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   12 |  2 |  1 |  9 |   17% |
 | F. Money, ledger & reconciliation  |   22 |  4 |  3 | 15 |   28% |
@@ -124,7 +124,7 @@ Work orders for every open row, with the run order:
 | PRD-C9  | Integration capability readers are not PUBLIC                                             | ❌     | Normal   | PROD | `integrations.fn_has_capability`, `fn_conferencing_provider` (`00001500:20,40`) reveal anyone's connected providers                                                   | SAC1       |
 | PRD-C10 | The grant probe covers every schema                                                       | ❌     | Normal   | PROD | `supabase/probes/function_grants.sql` checks `projects` and `public` only                                                                                             | SAC1       |
 | PRD-C11 | No GET with a side effect                                                                 | 🟡     | High     | UAT  | Auth half closed (#445): the email link's token is spent only by a POST from `/verify/confirm`. Open: `/messages/:id` marks read during render                        | SAC3       |
-| PRD-C12 | Origin check on non-API form posts                                                        | ❌     | Normal   | PROD | `/rsvp/:token` POST (`features/calendar/routes/rsvp.tsx:73`); `SameSite=Lax` mitigates                                                                                | SAC4       |
+| PRD-C12 | Origin check on non-API form posts                                                        | ✅     | Normal   | PROD | #475: the root `routes/_middleware.ts` runs `csrf.ts` `refuseCrossSitePageWrite` first on every write outside `/api` (by the matched route); `/rsvp/:token` refuses a cross-site form, live; `page-write-routes.test.ts` lists and pins every page write route | SAC4       |
 | PRD-C13 | GoTrue's password policy equals the app's                                                 | 🟡     | High     | UAT  | Local done (#449), pinned by a contract test. Hosted: `deno task auth:parity` + the SA runbook (#465). Left: run the runbook on a hosted project (PRD-G8)            | AU2, SAC6  |
 | PRD-C14 | Google OAuth checks the nonce                                                             | 🟡     | High     | UAT  | Local done (#449), pinned by a contract test. Hosted: `auth:parity` + the SA runbook (#465). Left: the hosted toggle; one dated live Google sign-in                  | AU2, SAC6  |
 | PRD-C15 | Bot protection on sign-up and sign-in                                                     | 🟡     | High     | PROD | Proven locally (#447). Hosted: `auth:parity` (a test secret counts as drift) + the SA runbook (#465). Left: widget, hostnames, keys, secret; a dated refused token   | AU3, SAC6  |
@@ -346,3 +346,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | LV1 (#456): PRD-F22 ❌ → 🟡 (services settle first); new PRD-F24 ❌     | 58% | 52% |  33% |
 | 2026-11-18 | SAC6 (#465): no row flips; PRD-C13–C16 gain `auth:parity` + the hosted runbook | 58% | 52% |  33% |
 | 2026-11-18 | SAC5 (#444 (c)): PRD-C22 ❌ → ✅ (68 planned segments reserved); new PRD-C25 ❌ | 58% | 52% |  33% |
+| 2026-11-18 | SAC4 (#475): PRD-C12 ❌ → ✅ (every page form post origin-checked by construction) | 58% | 52% |  34% |

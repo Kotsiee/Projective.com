@@ -2795,6 +2795,19 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   bearer secret; `/api/contact`, `/api/help/feedback` and `/api/auth/confirm` additionally accept
   their plain HTML form bodies, still same-origin only. The `pj_csrf` double-submit cookie in
   `utils/storage-keys.ts` is unnecessary under this check and stays unset.
+- **Page form posts are origin-checked too (PRD-C12, Decision #475):** the global
+  `routes/_middleware.ts` runs `csrf.ts` `refuseCrossSitePageWrite` first, before it resolves the
+  viewer, on every POST, PUT, PATCH and DELETE to a route outside `/api`: the same `Origin` /
+  `Sec-Fetch-Site` rule, else a plain-text `403`; a body must be a form
+  (`application/x-www-form-urlencoded`, `multipart/form-data`) or JSON, else `415`. So a page that
+  grows a write handler is covered by construction, with nothing to register — today that is
+  `/rsvp/:token`, a capability URL a form on another site could otherwise press. There is no
+  exemption: the webhook and scheduler doors exist only on `/api`. Which guard a write meets is
+  decided by the route Fresh matched (`ctx.route`), not the path: the page guard stands aside only
+  when the path **and** the matched route are under `/api/`, exactly when the `/api` guard runs, so
+  an `/api/…` URL that falls through to a page pattern (`/:handle/:tab`) is still guarded.
+  `apps/web/utils/page-write-routes.test.ts` lists every page route that answers a write and pins
+  that the guard covers it.
 - **Content Security Policy (CSP):** every response gets one policy, built by the pure
   `apps/web/utils/csp.ts` and set by the global `routes/_middleware.ts` (only when the response has
   none of its own). Third-party origins are exactly the ones a page talks to: **Stripe** —

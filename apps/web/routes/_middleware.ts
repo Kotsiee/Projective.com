@@ -1,4 +1,6 @@
-import { define } from "@web/utils/state.ts";
+import type { Context } from "fresh";
+import { define, type State } from "@web/utils/state.ts";
+import { refuseCrossSitePageWrite } from "@web/utils/csrf.ts";
 import { resolveRequestViewer } from "@web/utils/session.ts";
 import { resolveCurrencyContext, runWithCurrency } from "@web/utils/currency-context.ts";
 import { resolveA11yContext } from "@web/utils/a11y-context.ts";
@@ -30,8 +32,32 @@ import { cspHeaderFor, frameOptionsFor } from "@web/utils/csp.ts";
  * `set` would quietly undo it while the route's own code still read as though it had worked. So the
  * platform value is applied only when the response has not already answered for itself — a floor a
  * route may raise, never one it can lower, since nothing removes the header.
+ *
+ * **A cross-site write never reaches a page route** (IW-M2, PRD-C12). Before it resolves anything,
+ * this middleware runs `utils/csrf.ts` {@link refuseCrossSitePageWrite} on every request, so a POST,
+ * PUT, PATCH or DELETE to any route outside `/api` must come from this site's own pages (by `Origin`,
+ * else `Sec-Fetch-Site`) with a form or JSON body. A page that grows a write handler is covered by
+ * construction. `/api` keeps its own guard (`routes/api/_middleware.ts`), with the webhook and
+ * scheduler exemptions; which one a write meets is decided by the route Fresh matched. The refusal
+ * gets the same headers below as any other answer.
  */
 export default define.middleware(async (ctx) => {
+	const refused = refuseCrossSitePageWrite(ctx.req, ctx.route, Deno.env.get("APP_URL"));
+	const res = refused ?? await resolveAndRender(ctx);
+	if (!res.headers.has("content-security-policy")) {
+		res.headers.set("content-security-policy", cspHeaderFor("app"));
+	}
+	res.headers.set("x-frame-options", frameOptionsFor(res.headers.get("content-security-policy")));
+	res.headers.set("x-content-type-options", "nosniff");
+	if (!res.headers.has("referrer-policy")) {
+		res.headers.set("referrer-policy", "strict-origin-when-cross-origin");
+	}
+	return res;
+});
+
+// #region Request context
+/** Resolve the viewer, currency, overlays and screen sharing, then run the rest of the chain. */
+async function resolveAndRender(ctx: Context<State>): Promise<Response> {
 	const viewer = await resolveRequestViewer(ctx.req);
 	ctx.state.isAuthenticated = viewer.isAuthenticated;
 	ctx.state.userContext = viewer.userContext;
@@ -49,17 +75,9 @@ export default define.middleware(async (ctx) => {
 	// currency and the screen sharing state past every island boundary and every await to the
 	// deepest server-rendered figure.
 	const screenShare = ctx.state.screenShare;
-	const res = await runWithCurrency(
+	return await runWithCurrency(
 		ctx.state.currency,
 		() => runWithScreenShare(screenShare, () => ctx.next()),
 	);
-	if (!res.headers.has("content-security-policy")) {
-		res.headers.set("content-security-policy", cspHeaderFor("app"));
-	}
-	res.headers.set("x-frame-options", frameOptionsFor(res.headers.get("content-security-policy")));
-	res.headers.set("x-content-type-options", "nosniff");
-	if (!res.headers.has("referrer-policy")) {
-		res.headers.set("referrer-policy", "strict-origin-when-cross-origin");
-	}
-	return res;
-});
+}
+// #endregion
