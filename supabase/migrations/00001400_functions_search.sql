@@ -649,7 +649,10 @@ $$;
 -- -----------------------------------------------------------------------------
 -- fn_set_embedding — store one entity's vector, the model that made it and the
 -- hash of the text it was made from (so an unchanged text is never re-embedded).
--- service_role only (00002510). FALSE when the entity has no index row.
+-- service_role only (00002510). FALSE when the entity has no index row. A vector
+-- off unit length (L2 norm outside 1 ± 1e-3) is refused with its own SQLSTATE,
+-- PV422, because inner product ranks as cosine only on unit vectors (CAS S3); the
+-- embedding sync logs that refusal and skips the entity.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION search.fn_set_embedding(
   p_entity_type text,
@@ -662,11 +665,18 @@ RETURNS boolean
 LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
-SET search_path = search, public
+SET search_path = ''
 AS $$
+DECLARE
+  v_norm double precision;
 BEGIN
   IF p_embedding IS NULL OR public.vector_dims(p_embedding) <> 1024 THEN
     RAISE EXCEPTION 'fn_set_embedding: a 1024-dimension vector is required' USING ERRCODE = '22023';
+  END IF;
+  v_norm := public.vector_norm(p_embedding);
+  IF abs(v_norm - 1) > 1e-3 THEN
+    RAISE EXCEPTION 'fn_set_embedding: a unit-length vector is required, not norm %', round(v_norm::numeric, 6)
+      USING ERRCODE = 'PV422';
   END IF;
   IF coalesce(btrim(p_model), '') = '' OR coalesce(btrim(p_hash), '') = '' THEN
     RAISE EXCEPTION 'fn_set_embedding: the model and the text hash are required' USING ERRCODE = '22023';
@@ -703,6 +713,12 @@ $$;
 -- answers nothing anon could not already read, and never a vector. p_types NULL =
 -- every type (the discovery vocabulary: service_blueprint · product · article ·
 -- project · user · freelancer · team · business); p_limit is clamped to 1..100.
+-- HNSW filters AFTER its candidate scan, so a narrow p_types starves at pgvector's
+-- default of 40 candidates. The function sets its own: 200 candidates, and an
+-- iterative scan that keeps walking the graph until each branch has p_limit rows
+-- that pass its filter (Decision #339 ruling N4; CAS S7, S11). relaxed_order may
+-- hand a branch its rows slightly out of distance order; the outer ORDER BY ranks
+-- them exactly.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION search.fn_nearest(
   p_embedding public.vector(1024),
@@ -714,41 +730,43 @@ RETURNS TABLE (entity_type text, entity_id uuid, score double precision)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = search, public
+SET search_path = ''
+SET hnsw.ef_search = 200
+SET hnsw.iterative_scan = relaxed_order
 AS $$
   SELECT n.entity_type, n.entity_id, n.score
     FROM (
       (SELECT 'service_blueprint'::text AS entity_type, si.service_id AS entity_id,
-              -(si.embedding <#> p_embedding) AS score
+              -(si.embedding OPERATOR(public.<#>) p_embedding) AS score
          FROM search.services_index si
         WHERE p_embedding IS NOT NULL AND si.is_public AND si.embedding IS NOT NULL
           AND (p_types IS NULL OR 'service_blueprint' = ANY (p_types))
           AND si.service_id <> ALL (coalesce(p_exclude, '{}'::uuid[]))
-        ORDER BY si.embedding <#> p_embedding
+        ORDER BY si.embedding OPERATOR(public.<#>) p_embedding
         LIMIT least(greatest(coalesce(p_limit, 24), 1), 100))
       UNION ALL
-      (SELECT 'project'::text, pr.project_id, -(pr.embedding <#> p_embedding)
+      (SELECT 'project'::text, pr.project_id, -(pr.embedding OPERATOR(public.<#>) p_embedding)
          FROM search.projects_index pr
         WHERE p_embedding IS NOT NULL AND pr.is_active AND pr.embedding IS NOT NULL
           AND (p_types IS NULL OR 'project' = ANY (p_types))
           AND pr.project_id <> ALL (coalesce(p_exclude, '{}'::uuid[]))
-        ORDER BY pr.embedding <#> p_embedding
+        ORDER BY pr.embedding OPERATOR(public.<#>) p_embedding
         LIMIT least(greatest(coalesce(p_limit, 24), 1), 100))
       UNION ALL
-      (SELECT pi.entity_type::text, pi.entity_id, -(pi.embedding <#> p_embedding)
+      (SELECT pi.entity_type::text, pi.entity_id, -(pi.embedding OPERATOR(public.<#>) p_embedding)
          FROM search.profiles_index pi
         WHERE p_embedding IS NOT NULL AND pi.is_active AND pi.embedding IS NOT NULL
           AND (p_types IS NULL OR pi.entity_type::text = ANY (p_types))
           AND pi.entity_id <> ALL (coalesce(p_exclude, '{}'::uuid[]))
-        ORDER BY pi.embedding <#> p_embedding
+        ORDER BY pi.embedding OPERATOR(public.<#>) p_embedding
         LIMIT least(greatest(coalesce(p_limit, 24), 1), 100))
       UNION ALL
-      (SELECT ci.entity_type, ci.entity_id, -(ci.embedding <#> p_embedding)
+      (SELECT ci.entity_type, ci.entity_id, -(ci.embedding OPERATOR(public.<#>) p_embedding)
          FROM search.catalogue_index ci
         WHERE p_embedding IS NOT NULL AND ci.is_public AND ci.embedding IS NOT NULL
           AND (p_types IS NULL OR ci.entity_type = ANY (p_types))
           AND ci.entity_id <> ALL (coalesce(p_exclude, '{}'::uuid[]))
-        ORDER BY ci.embedding <#> p_embedding
+        ORDER BY ci.embedding OPERATOR(public.<#>) p_embedding
         LIMIT least(greatest(coalesce(p_limit, 24), 1), 100))
     ) n
    ORDER BY n.score DESC, n.entity_type, n.entity_id
@@ -760,7 +778,7 @@ $$;
 -- (a /view page's "Similar" rail). The vector is read here, inside the database, so
 -- it never crosses the wire and the server needs no service-role read on a public
 -- page (Decision #178(b)). The entity itself is always excluded; empty when it is
--- not public or has no vector yet.
+-- not public or has no vector yet. It carries fn_nearest's HNSW settings too.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION search.fn_nearest_to_entity(
   p_entity_type text,
@@ -773,7 +791,9 @@ RETURNS TABLE (entity_type text, entity_id uuid, score double precision)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = search, public
+SET search_path = ''
+SET hnsw.ef_search = 200
+SET hnsw.iterative_scan = relaxed_order
 AS $$
   WITH source AS (
     SELECT CASE

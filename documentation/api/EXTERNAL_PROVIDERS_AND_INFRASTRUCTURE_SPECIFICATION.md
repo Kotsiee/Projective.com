@@ -576,10 +576,14 @@ heuristic ranking (`SEMANTIC_BLEND_WEIGHT`) and serves the `/view` "Similar" rai
 **HNSW tuning.**
 
 - The indexes use pgvector's default build parameters.
-- If filtered searches return too few neighbours, raise `hnsw.ef_search` per transaction inside
-  `search.fn_nearest` before rebuilding anything. HNSW post-filters, so a narrow category starves
-  the candidate list.
-- If the Supabase image ships pgvector 0.8 or later, `hnsw.iterative_scan` is the cleaner fix.
+- `search.fn_nearest` and `search.fn_nearest_to_entity` set `hnsw.ef_search = 200` and
+  `hnsw.iterative_scan = relaxed_order` on themselves (Decision #339 ruling N4). The image ships
+  pgvector 0.8.2. HNSW post-filters, so at the default of 40 candidates a narrow category starved.
+  The iterative scan keeps walking the graph until each branch fills its limit, up to
+  `hnsw.max_scan_tuples` (default 20,000). `supabase/probes/search_recall.sql` proves it at 1,000
+  and 2,000 rows.
+- If a filtered search still returns too few neighbours, raise `hnsw.max_scan_tuples` on those two
+  functions before rebuilding anything.
 - Measure recall with the `/view` "Similar" rail before and after any change.
 
 **Changing the model or the width.** Change `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS`, edit the

@@ -208,15 +208,19 @@ HNSW indexes use `vector_ip_ops` (`00004004`). The columns are in [Tables.md](Ta
 
 ### `search.fn_set_embedding(p_entity_type text, p_entity_id uuid, p_embedding vector(1024), p_model text, p_hash text)`
 
-`RETURNS boolean`: `VOLATILE SECURITY DEFINER`. **Executable by `service_role` only** — revoked from
-`PUBLIC`, `anon` and `authenticated` after the schema-wide grant (`00002510`). The only writer of the
-embedding columns: it sets `embedding`, `embedding_model`, `embedding_hash` and `embedded_at = now()` on
-the entity's index row (`service_blueprint` → `services_index`, `project` → `projects_index`, `user` ·
-`freelancer` · `team` · `business` → `profiles_index`, `product` · `article` → `catalogue_index`) and
-returns whether there was a row to set. Refuses (`22023`) a vector that is not 1024 wide, a blank
-model or hash, and an unknown entity type. Callers: `deno task embeddings:backfill` and the
-post-commit re-embed (`packages/backend/services/search/embedding-sync.ts`), both with the
-service-role key.
+`RETURNS boolean`: `VOLATILE SECURITY DEFINER`, `search_path = ''`. **Executable by `service_role`
+only** — revoked from `PUBLIC`, `anon` and `authenticated` after the schema-wide grant (`00002510`).
+The only writer of the embedding columns: it sets `embedding`, `embedding_model`, `embedding_hash`
+and `embedded_at = now()` on the entity's index row (`service_blueprint` → `services_index`,
+`project` → `projects_index`, `user` · `freelancer` · `team` · `business` → `profiles_index`,
+`product` · `article` → `catalogue_index`) and returns whether there was a row to set. Refuses
+(`22023`) a vector that is not 1024 wide, a blank model or hash, and an unknown entity type. Refuses
+(`PV422`, `EMBEDDING_SQLSTATE.notUnitLength`) a vector whose L2 norm is not 1 ± 1e-3
+(`EMBEDDING_NORM_TOLERANCE`), because inner product ranks as cosine only on unit vectors (CAS S3);
+the row keeps the vector it had. Callers: `deno task embeddings:backfill` and the post-commit
+re-embed (`packages/backend/services/search/embedding-sync.ts`), both with the service-role key. On
+`PV422` the sync logs the entity by kind and id, counts it `rejected` and goes on with the rest; any
+other refusal stops the sync.
 
 ### `search.fn_nearest(p_embedding vector(1024), p_types text[] DEFAULT NULL, p_exclude uuid[] DEFAULT '{}', p_limit integer DEFAULT 24)`
 
@@ -229,13 +233,25 @@ read, and never a vector. `p_types` narrows to entity kinds (NULL = all), `p_exc
 `p_limit` is clamped to 1–100, and a NULL vector returns nothing. Caller: `ExploreBackendService.search`
 with the query vector, as `anon`.
 
+It pins `search_path = ''` and names the pgvector operator as `OPERATOR(public.<#>)` (SEC G18), and
+it sets its own HNSW scan: `hnsw.ef_search = 200` and `hnsw.iterative_scan = relaxed_order`
+(Decision #339 ruling N4; the image ships pgvector 0.8.2). HNSW filters after its candidate scan, so
+at pgvector's default of 40 candidates a narrow ask starved: 20 teams asked of 700 users and 300
+teams came back 13, and of 1,960 users and 40 teams, 2 (CAS S7, S11). The iterative scan keeps
+walking the graph until each branch has `p_limit` rows that pass its filter, up to
+`hnsw.max_scan_tuples` (default 20,000). `relaxed_order` may hand a branch its rows slightly out of
+distance order; the outer `ORDER BY score` ranks them exactly. A caller's own `SET hnsw.*` does not
+reach inside. `supabase/probes/search_recall.sql` proves both scales.
+
 ### `search.fn_nearest_to_entity(p_entity_type text, p_entity_id uuid, p_types text[] DEFAULT NULL, p_exclude uuid[] DEFAULT '{}', p_limit integer DEFAULT 24)`
 
-The same answer, seeded with one entity's STORED vector, read inside the database so it never crosses
-the wire and a public page needs no service-role read (Decision #178(b)). The entity must itself be
-public; it is always excluded from its own answer; the answer is empty while it has no vector.
-Caller: the `/view` "Similar" rail (`semanticSimilarTo`, `packages/backend/services/explore/live-view.ts`),
-which also excludes everything the item's owner published.
+The same answer, seeded with one entity's STORED vector, read inside the database so it never
+crosses the wire and a public page needs no service-role read (Decision #178(b)). The entity must
+itself be public; it is always excluded from its own answer; the answer is empty while it has no
+vector. It carries `fn_nearest`'s settings: `search_path = ''`, `hnsw.ef_search = 200`,
+`hnsw.iterative_scan = relaxed_order`. Caller: the `/view` "Similar" rail (`semanticSimilarTo`,
+`packages/backend/services/explore/live-view.ts`), which also excludes everything the item's owner
+published.
 
 ### Listing fts and tags (Decision #217(f))
 

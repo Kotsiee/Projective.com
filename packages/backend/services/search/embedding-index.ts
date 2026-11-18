@@ -3,6 +3,7 @@ import { getAnonClient, getServiceClient } from "../../core/supabase.ts";
 import {
 	DiscoveryEntityKind,
 	EMBEDDING_MODEL,
+	EMBEDDING_SQLSTATE,
 	EmbeddingStateSchema,
 	type NearestEntityRow,
 	NearestEntityRowSchema,
@@ -136,8 +137,29 @@ export function vectorLiteral(vector: readonly number[]): string {
 }
 
 /**
+ * `search.fn_set_embedding` refused a vector off unit length (`PV422`, CAS S3). One entity to skip,
+ * not a failed sync: the message names the entity by kind and id only, never the vector.
+ */
+export class NonUnitEmbeddingError extends Error {
+	constructor(readonly entity: CatalogEntity) {
+		super(`search.fn_set_embedding refused a vector off unit length — ${entity.kind} ${entity.id}`);
+		this.name = "NonUnitEmbeddingError";
+	}
+}
+
+/** The error a refused `fn_set_embedding` write throws: {@link NonUnitEmbeddingError} for `PV422`. */
+export function setEmbeddingError(
+	entity: CatalogEntity,
+	error: { code?: string; message: string },
+): Error {
+	if (error.code === EMBEDDING_SQLSTATE.notUnitLength) return new NonUnitEmbeddingError(entity);
+	return new Error(`search.fn_set_embedding failed — ${error.message}`);
+}
+
+/**
  * Store one entity's vector through `search.fn_set_embedding` — service role. `false` when the
- * entity has no index row (nothing was written); throws when the database refuses.
+ * entity has no index row (nothing was written); throws when the database refuses, a
+ * {@link NonUnitEmbeddingError} when the refusal is the vector's length.
  */
 export async function writeEmbedding(
 	entity: CatalogEntity,
@@ -152,7 +174,7 @@ export async function writeEmbedding(
 		p_hash: hash,
 	});
 	const { data, error } = await getServiceClient().schema("search").rpc("fn_set_embedding", args);
-	if (error) throw new Error(`search.fn_set_embedding failed — ${error.message}`);
+	if (error) throw setEmbeddingError(entity, error);
 	return data === true;
 }
 // #endregion

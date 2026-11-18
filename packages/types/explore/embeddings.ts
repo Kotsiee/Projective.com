@@ -20,6 +20,18 @@ export const EMBEDDING_DIMENSIONS = 1024;
 export const EmbeddingVectorSchema = z.array(z.number().finite()).length(EMBEDDING_DIMENSIONS);
 export type EmbeddingVector = z.infer<typeof EmbeddingVectorSchema>;
 
+/** How far a stored vector's L2 norm may stray from 1: `search.fn_set_embedding` refuses beyond it (CAS S3). */
+export const EMBEDDING_NORM_TOLERANCE = 1e-3;
+
+/**
+ * The SQLSTATEs `search.fn_set_embedding` raises beyond `22023` (a wrong width, a blank model or
+ * hash, an unknown entity type), so the sync maps a refusal without matching on message text.
+ */
+export const EMBEDDING_SQLSTATE = {
+	/** The vector's L2 norm is outside 1 ± {@link EMBEDDING_NORM_TOLERANCE}: logged and skipped, never stored. */
+	notUnitLength: "PV422",
+} as const;
+
 /** Voyage's `input_type`: listings are embedded as documents, searches as queries. Always sent. */
 export const EmbeddingInputType = z.enum(["document", "query"]);
 export type EmbeddingInputType = z.infer<typeof EmbeddingInputType>;

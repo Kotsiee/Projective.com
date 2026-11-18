@@ -830,7 +830,9 @@ up to 12 high-similarity neighbours that pass the same facets; the
 items excluded) and keeps the heuristic rail when there is no vector. A search's non-empty resolved
 neighbours are kept per isolate for 60 s (an LRU of 256 keyed by normalised query and category,
 `services/explore/similarity-cache.ts`), so a later page of the same search never repeats
-`search.fn_nearest`. Any Voyage or database failure
+`search.fn_nearest`. Both nearest functions run their HNSW scans with `hnsw.ef_search = 200` and
+`hnsw.iterative_scan = relaxed_order` (Decision #339 ruling N4), since HNSW filters after its
+candidate scan and a narrow category would otherwise starve. Any Voyage or database failure
 falls back to the heuristic for that request with one `[embeddings]` server-log line. A query that,
 once normalised, is shorter than 3 characters or has no letter ranks heuristically and never calls
 Voyage. A cache-miss query call is guarded twice per isolate. A query 429 is not retried; it is
@@ -848,7 +850,8 @@ sync once 30 s pass with no further write (`REEMBED_SETTLE_MS`), one run per ite
 autosaving edit session embeds its final text once; a queue lost with its isolate is caught up by the
 hash check and the backfill. Both skip an item whose
 stored text hash and model still match, and both write through the service-role-only
-`search.fn_set_embedding`. Each sync chunk is one Voyage request (planned under `DOCUMENT_BATCH`'s
+`search.fn_set_embedding`, which refuses a vector off unit length (`PV422`); the sync logs that item
+and skips it. Each sync chunk is one Voyage request (planned under `DOCUMENT_BATCH`'s
 input and token ceilings), so a refused request never discards vectors already billed. In development
 `/explore`, the `/view` pages and every `/api/explore/*` response carry
 `x-discovery-ranking: semantic | heuristic`, and the switcher shows the effective state
