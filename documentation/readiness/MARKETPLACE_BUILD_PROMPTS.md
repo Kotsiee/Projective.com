@@ -920,8 +920,8 @@ never written. A review write (RV1's submit, edit, withdraw, hide; RV2's reveal)
 org.fn_recompute_standing for the reviewed subject only (#58 (e) narrowed for reviews). At HEAD:
 the seed reads client_rating_avg from the cached rating_average, not a literal (only peer is,
 seeds/11_standing.sql:116); no standing probe exists yet; fn_recompute_standing (00001030:51)
-does not pin search_path = '', so RV3 pins it. Before step 2, ask #489 flag (a): a subject
-with no client reviews scores 0 or the prior's mean. RV3 waits for RV2, re-verified at HEAD.
+does not pin search_path = '', so RV3 pins it. #489 (a) ruled: the component is 0 until
+the subject's first client review, then the prior applies. RV3 waits for RV2, re-verified at HEAD.
 
 STEPS:
   1. Red first: a new review does not move Standing.
