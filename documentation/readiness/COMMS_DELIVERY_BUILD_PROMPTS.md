@@ -351,9 +351,10 @@ ACCEPTANCE:
 > gains that route (`routes/api/comms/dispatch.ts`, `dispatch-ssr.ts`, a route test, ROUTING). The
 > script presents that bearer from a sixth export, `DELIVERY_SMOKE_DISPATCH_SECRET` (#484 flag (a),
 > ruled 2026-11-18), which you export in your own shell like the other five; it is never read from a
-> file or printed. Also add CD1's Option A checks (the provider list id in
-> `security.platform_params`, the `newsletter.provider_sync` flag) to `--check`, because step 1
-> omits them.
+> file or printed. The read also reports `RESEND_WEBHOOK_SECRET` and the Twilio callback token as
+> present ✓ / ✗ (#484 flag (c), ruled 2026-11-18). Also add CD1's Option A checks (the provider list
+> id in `security.platform_params`, the `newsletter.provider_sync` flag) to `--check`, because step
+> 1 omits them.
 
 ```text
 PROMPT CD2: The hosted delivery proof — every outbound channel sends for real on staging
