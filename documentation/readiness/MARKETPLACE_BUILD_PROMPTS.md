@@ -99,7 +99,7 @@ and this file).
 1. **CK1** — MK-29, and the download record MONEY's DB21 delta asks for. It edits neither `00001240`
    nor `00000017`, so it can be the second SQL session beside MONEY's Wave 2 once `00002510` is
    free.
-2. **CK7 → CK2** — ⏳ CK1 (`00001210`).
+2. **CK7 → CK2** — ⏳ CK1 (`00001210`). CK2's 🧑 is ruled (#485), and CK2 waits here for CK7.
 3. MONEY's **DB19 → DB21 → MR3** — ⏳ CK1 (DB21 step 1), DB6 and DB16. CK2 has taken DB19 step 1.
 4. **CK4** — ⏳ DB21 (a refund reverses the tax), 🧑 + ⚖️.
 5. **SC7** — ⏳ CK1 and DB19. The last change to the money path in this file.
@@ -142,7 +142,7 @@ block, so a question you defer still stops the build at the right step.
 | 1  | #393 A6: sale originals as a third zone, snapshotted at publish                                  | CK1                 | Yes, as the spec recommends                                                                             |
 | 2  | #393 A8 (⚖️): what "downloaded" means for the refund rule                                        | CK1                 | The first completed delivery (or a reader session, once one exists), expressly accepted before Pay      |
 | 3  | #458 (b): an accepted quote offer left unpaid                                                    | CK7                 | The offer's own expiry bounds payment                                                                   |
-| 4  | Who issues a promo code, and who funds it                                                        | CK2                 | The seller, for their own products, seller-funded; platform codes stay operator-only                    |
+| 4  | Who issues a promo code, and who funds it                                                        | CK2                 | **Ruled #485 (2026-11-18): A.** Seller-funded, own products; platform-code funding open (#485 (a))      |
 | 5  | DB19 `cancelled` vs `refunded`; DB21 a dispute after clearing (#344 (l)); MR3 who refunds a card | MONEY §3 #3, #8, #9 | As MONEY §3 recommends                                                                                  |
 | 6  | The tax model (⚖️)                                                                               | CK4                 | Stripe Tax on every order, card and wallet alike, behind a switch that stays off until counsel          |
 | 7  | Is the abandoned-basket nudge marketing (⚖️)                                                     | CK5                 | Yes: sent only with consent, with an opt-out in every message, never to a 13–17 account                 |
@@ -446,6 +446,9 @@ CONTEXT (verified at b7280787; re-check every line):
      already says. Platform-wide codes stay operator-only, unchanged.
   B: as A, and a seller's code may also cover their session lines.
   C: platform codes only; an ops door replaces the seller one.
+  RULED #485 (2026-11-18): A. The team issuer asks catalogue.fn_manages_listing /
+  org.fn_member_can('team', …, 'publish_listings') (#485 (b)). Who funds a platform code is
+  #485 (a), still open: CK2 leaves platform codes as they are.
 
 STEPS:
   1. Red first: extend supabase/probes/promo_redemption_concurrency.sql. Today the same
