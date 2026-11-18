@@ -22,7 +22,6 @@ import {
 	calendarPage,
 	type CalendarSurface,
 	focusedAt,
-	importedEvents,
 	invitationsOnly,
 	leaveInspector,
 	panelReturn,
@@ -102,7 +101,7 @@ export default function CalendarPanel(props: CalendarPanelProps): JSX.Element {
 
 	const page = calendarPage.value ?? props.initial;
 	const tz = page?.timezone ?? "UTC";
-	const all = [...(page?.events ?? []), ...importedEvents.value];
+	const all = page?.events ?? [];
 	const linked = props.linkedEventId ? all.find((e) => e.id === props.linkedEventId) ?? null : null;
 	const routines = routinesOn(page);
 	const linkedRoutine = linked || !props.linkedRoutineSlug

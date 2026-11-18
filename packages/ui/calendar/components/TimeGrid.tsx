@@ -184,7 +184,12 @@ type Gesture =
 		dayStart: number;
 		blockIndex: number;
 		startMin: number;
-		/** Client y at pointer-down — a press that never travels this far stays a click. */
+		/**
+		 * Client point at pointer-down. A press that never travels {@link DRAG_THRESHOLD} from it, on
+		 * either axis, stays a click: until then it is a PRESS, drawn as nothing at all (see
+		 * {@link pressAsDrag}).
+		 */
+		originX: number;
 		originY: number;
 		moved: boolean;
 		/** Whether the host can keep a move of this card; when not, the card never follows the pointer. */
@@ -627,7 +632,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 	 */
 	const highlightId = props.spotlight?.value ?? props.highlight?.value ?? null;
 	const draftRange = props.draft?.value ?? null;
-	const gestureNow = gesture.value;
+	const gestureNow = pressAsDrag(gesture.value);
 	const dragging = gestureNow !== null && gestureNow.kind !== "bar";
 	const activeCardId = gestureNow?.kind === "move" ? gestureNow.card.id : null;
 	/*
@@ -1249,10 +1254,16 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 				}
 			} else if (cur.kind === "move") {
 				if (!cur.movable) return;
+				// Below the threshold the press is still a click: nothing is written, so a hand that
+				// trembles on a card neither re-renders the grid nor starts drawing a drag.
+				if (
+					!cur.moved &&
+					Math.hypot(ev.clientX - cur.originX, ev.clientY - cur.originY) < DRAG_THRESHOLD
+				) return;
 				const slot = slotAt(x, y);
 				gesture.value = {
 					...cur,
-					moved: cur.moved || Math.abs(ev.clientY - cur.originY) >= DRAG_THRESHOLD,
+					moved: true,
 					column: slot.column,
 					blockIndex: slot.blockIndex,
 					dayStart: slot.dayStart,
@@ -1495,6 +1506,7 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 				blockIndex,
 				dayStart: card.dayStart,
 				startMin: cardStart - blockIndex * BLOCK_MIN,
+				originX: ev.clientX,
 				originY: ev.clientY,
 				moved: false,
 				movable: !!props.onMoveEvent && source.fixed !== true,
@@ -1943,6 +1955,19 @@ export function TimeGrid(props: TimeGridProps): JSX.Element {
 }
 
 // #region Scene helpers
+/**
+ * The gesture as the DRAWING sees it: a press on a card that has not yet travelled
+ * {@link DRAG_THRESHOLD} is no gesture at all (Decision #442).
+ *
+ * The press is tracked from pointer-down, because the release is what decides between a click and a
+ * drop, but everything a drag draws — the other cards receding, the card marked active, the ghost at
+ * the landing slot, the grabbing cursor — waits for real travel. Drawn from the press instead, a plain
+ * click flashed the whole drag state for the length of the click before opening the card.
+ */
+function pressAsDrag(g: Gesture | null): Gesture | null {
+	return g?.kind === "move" && !g.moved ? null : g;
+}
+
 /** The drag preview for whichever gesture is live, or null. */
 function previewFor(
 	g: Gesture | null,

@@ -95,6 +95,7 @@ Deno.test("/calendar authors its host's own entries through the event door", () 
 		"create",
 		"delete",
 		"edit",
+		"import",
 		"keyboardCreate",
 		"move",
 	]);
@@ -105,21 +106,21 @@ Deno.test("the project calendars and a public schedule author nothing (C7 (a), S
 	assertEquals([...authoringFor("schedule")], []);
 });
 
-Deno.test("an imported .ics entry authors nothing: it opens read-only and never moves (#440)", () => {
+Deno.test("an imported entry is the host's own, saved through the create door (#442)", () => {
+	// What the door hands back for an imported row: a persisted entry the viewer hosts.
 	const imported: CalendarEvent = {
-		id: "ics-0a1b2c3-0-standup@example.com",
+		id: "0b6f6a1e-6f43-4b8e-9d3a-1c2f5e7a9b10",
 		title: "Stand-up",
-		kind: "general",
+		kind: "sync",
 		status: "confirmed",
 		start: START,
 		end: START + 900_000,
-		sources: ["ics"],
+		viewerIsHost: true,
 	};
-	assert(!entryEditable(imported));
-	assert(!timesMovable(imported));
-	assertEquals(reached({ event: imported, range: null }, authoringFor("personal")), {
-		open: "open",
-	});
+	assert(entryEditable(imported));
+	assert(timesMovable(imported));
+	assertEquals(AUTHORING_DOOR.import, AUTHORING_DOOR.create);
+	assertEquals([...authoringFor("project")].includes("import"), false);
 });
 // #endregion
 

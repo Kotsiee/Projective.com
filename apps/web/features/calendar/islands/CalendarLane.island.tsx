@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-chrome.css";
@@ -26,6 +26,7 @@ import { EntryActionMenu } from "../components/EntryActionMenu.tsx";
 import { RoutineEntriesDialog } from "../components/RoutineEntriesDialog.tsx";
 import {
 	ENTRY_DRAG,
+	EventsSection,
 	LooseEntries,
 	RoutineSection,
 	routineTarget,
@@ -36,8 +37,8 @@ import {
 	calendarFocus,
 	calendarPage,
 	calendarQuery,
+	eventsSectionOpen,
 	hiddenClassesAt,
-	importedEvents,
 	invitationsOnly,
 	laneSpotlight,
 	leavingEvents,
@@ -49,11 +50,13 @@ import {
 	requestOrganise,
 	requestRoutineEntries,
 	routinesOn,
+	routinesSectionOpen,
 	selectedEventId,
 	visibleEvents,
 } from "../core/calendar-state.ts";
 import type { CalendarAddress } from "../core/calendar-address.ts";
 import { useCalendarAddress } from "../hooks/useCalendarAddress.ts";
+import { useLaneEdgeScroll } from "../hooks/useLaneEdgeScroll.ts";
 import { repeatSentence } from "../core/event-recurrence.ts";
 import { listRows } from "../core/event-series.ts";
 import { entryOrganisable } from "../core/routine-actions.ts";
@@ -83,15 +86,19 @@ const AUTHORING = authoringFor("personal");
  * from the header band's Agenda ⇄ Availability switch and the rail's clock, so this lane is the
  * agenda's alone and its list gets the whole height.
  *
- * **The list scrolls on its own.** It is every entry the filters leave, in order and with a series
- * listed once ({@link listRows}), rather than a window
- * that followed the grid's focus — a list that re-anchored whenever the grid scrolled was the grid
- * scrolling it by proxy. The two views meet only on a pick: a row moves the grid onto its entry, and
- * an entry picked on the grid brings its row to the middle of the list ({@link selectEvent}).
+ * **One scroller, two sections** (Decision #442). Routines and Events are both folding
+ * `LaneSection`s inside `.cal-lane__scroll`, the lane's only scroll container, between the pinned
+ * head (search, filter) and the pinned footer: one scrollbar, and the two scroll together. The list
+ * is every entry the filters leave, in order and with a series listed once ({@link listRows}),
+ * rather than a window that followed the grid's focus — a list that re-anchored whenever the grid
+ * scrolled was the grid scrolling it by proxy. The two views meet only on a pick: a row moves the
+ * grid onto its entry, and an entry picked on the grid unfolds the section holding its row and brings
+ * the row to the middle of the scroller ({@link selectEvent}).
  *
  * **A routine lists once** ({@link RoutineSection}, Decision #389). Its entries fold under it rather
  * than scattering through the list, which is the clutter a routine exists to end, and a row drags
- * between the two through `@projective/ui/dnd`, by pointer or by its grip from the keyboard.
+ * between the two through `@projective/ui/dnd`, by pointer or by its grip from the keyboard; a drag
+ * held near the scroller's edge scrolls it, so a routine above the fold is still in reach.
  *
  * **A right-click is the grid's** (Decision #441): a row opens the same {@link EntryActionMenu} an
  * entry has on the grid, colour and routine included, and anywhere else the lane's own rows — New
@@ -122,6 +129,8 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	useCalendarAddress(props.address, props.initial?.timezone ?? null);
 	const collapsed = useSignal(false);
 	const laneRef = useRef<HTMLDivElement>(null);
+	/** The lane's one scroller, holding both sections. */
+	const scrollRef = useRef<HTMLDivElement>(null);
 	/** The row being dragged, for the ghost that follows the pointer. */
 	const dragged = useSignal<CalendarEvent | null>(null);
 	/** Off until the mount below has moved the address's narrowing into the shared signal. */
@@ -150,7 +159,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	// The body's published page wins the moment it exists; the SSR prop covers the first frame.
 	const page = calendarPage.value ?? props.initial;
 	const tz = page?.timezone ?? "UTC";
-	const all: CalendarEvent[] = [...(page?.events ?? []), ...importedEvents.value];
+	const all: readonly CalendarEvent[] = page?.events ?? [];
 	const selected = selectedEventId.value;
 	const routines = routinesOn(page);
 	const now = page?.now ?? Date.now();
@@ -165,13 +174,16 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	const { groups, loose } = groupByRoutine(listed, routines);
 
 	/**
-	 * Bring one row to the middle of whichever list holds it — that list's own scroll, never the page's.
+	 * Bring one row to the middle of the lane's scroller — its own scroll, never the page's. Measured
+	 * from the two boxes rather than `offsetTop`, which counts from whichever ancestor is positioned.
 	 */
 	function centreRow(id: string, behavior: ScrollBehavior): void {
-		const row = laneRef.current?.querySelector<HTMLElement>(`[data-event-id="${CSS.escape(id)}"]`);
-		const list = row?.closest<HTMLElement>(".cal-rtn, .cal-lane__list");
-		if (!list || !row) return;
-		list.scrollTo({ top: row.offsetTop - (list.clientHeight - row.offsetHeight) / 2, behavior });
+		const scroller = scrollRef.current;
+		const row = scroller?.querySelector<HTMLElement>(`[data-event-id="${CSS.escape(id)}"]`);
+		if (!scroller || !row) return;
+		const at = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top +
+			scroller.scrollTop;
+		scroller.scrollTo({ top: at - (scroller.clientHeight - row.offsetHeight) / 2, behavior });
 	}
 
 	/** Land a dragged row: into a routine, which it then shows open, or out of the one it was in. */
@@ -232,10 +244,14 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 		if (next) centreRow(next.id, "auto");
 	}, []);
 
-	// A pick on the grid: bring the row into view and let it glow once.
+	// A pick on the grid: unfold the section that holds its row, bring the row into view and let it
+	// glow once.
 	const flashing = laneSpotlight.value;
 	useEffect(() => {
 		if (!flashing) return;
+		const inRoutine = groups.some((g) => g.members.some((m) => m.id === flashing));
+		if (inRoutine) routinesSectionOpen.value = true;
+		else if (loose.some((e) => e.id === flashing)) eventsSectionOpen.value = true;
 		// A task, so the row the pick just selected has rendered before it is measured.
 		setTimeout(() => centreRow(flashing, scrollBehaviorFor()), 0);
 	}, [flashing]);
@@ -305,27 +321,32 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 					}}
 					onDragEnd={dropEntry}
 				>
-					<RoutineSection
-						groups={groups}
-						selected={selected}
-						narrowed={activeFilterCount(props.address) > 0 ||
-							calendarQuery.value.trim() !== "" || invitesOn}
-						renderRow={rowFor}
-					/>
-					<LooseEntries>
-						<LaneList label="Events" class="cal-lane__list">
-							{listed.length === 0
-								? (
-									<LaneEmpty
-										title={invitesOn ? "No invitations" : "No events"}
-										note={invitesOn
-											? "Anything you are invited to waits here for your answer."
-											: "Nothing matches the search and filters you have set."}
-									/>
-								)
-								: loose.map(rowFor)}
-						</LaneList>
-					</LooseEntries>
+					{/* The lane's ONE scroller: both sections scroll together (Decision #442). */}
+					<LaneScroller scrollRef={scrollRef}>
+						<RoutineSection
+							groups={groups}
+							selected={selected}
+							narrowed={activeFilterCount(props.address) > 0 ||
+								calendarQuery.value.trim() !== "" || invitesOn}
+							renderRow={rowFor}
+						/>
+						<EventsSection>
+							<LooseEntries>
+								<LaneList label="Events" class="cal-lane__list">
+									{listed.length === 0
+										? (
+											<LaneEmpty
+												title={invitesOn ? "No invitations" : "No events"}
+												note={invitesOn
+													? "Anything you are invited to waits here for your answer."
+													: "Nothing matches the search and filters you have set."}
+											/>
+										)
+										: loose.map(rowFor)}
+								</LaneList>
+							</LooseEntries>
+						</EventsSection>
+					</LaneScroller>
 					<DragOverlay class="cal-up-ghost">
 						{dragged.value
 							? <span class="cal-up__title">{agendaRowTitle(dragged.value)}</span>
@@ -364,6 +385,17 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 			</div>
 		</div>
 	);
+}
+
+/**
+ * The lane's one scroll container, between the pinned head and footer. Inside the `DndContext`, so a
+ * row held near its edge scrolls it ({@link useLaneEdgeScroll}).
+ */
+function LaneScroller(
+	{ scrollRef, children }: { scrollRef: RefObject<HTMLDivElement>; children: ComponentChildren },
+): JSX.Element {
+	useLaneEdgeScroll(scrollRef);
+	return <div class="cal-lane__scroll" ref={scrollRef}>{children}</div>;
 }
 
 /**

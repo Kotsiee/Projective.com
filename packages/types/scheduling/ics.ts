@@ -150,10 +150,25 @@ export interface IcsEvent {
 	start: number;
 	/** Epoch ms (UTC) of the end. Always > {@link start}. */
 	end: number;
-	/** `DTSTART;VALUE=DATE` — a whole-day entry with no wall-clock time of its own. */
+	/**
+	 * `DTSTART;VALUE=DATE` — a whole-day entry with no wall-clock time of its own. With
+	 * {@link IcsParseOptions.midnightSpansAllDay}, also a timed entry that runs from one midnight to a
+	 * later one in its own zone.
+	 */
 	allDay: boolean;
 	/** The raw `STATUS` value (`TENTATIVE` · `CONFIRMED` · `CANCELLED`), or `null` when absent. */
 	status: string | null;
+	/**
+	 * The series' `RRULE` (vCalendar rules already rewritten), on every occurrence a repeating entry
+	 * expanded into — what lets an importer lay the series down as one series rather than as unrelated
+	 * copies. Absent on an entry that does not repeat and on a `RECURRENCE-ID` override.
+	 */
+	rrule?: string;
+	/**
+	 * A join link the entry names: its `URL`, else Google's `X-GOOGLE-CONFERENCE`. Absent when it
+	 * names none. Not checked here; an importer decides whether it is a meeting room.
+	 */
+	url?: string;
 }
 
 /** What one file yielded. */
@@ -184,6 +199,13 @@ export interface IcsParseOptions {
 	 * were clipped. Defaults to the first year of each series, which keeps the reader clock-free.
 	 */
 	recurrenceWindow?: { from: number; to: number };
+	/**
+	 * Read a TIMED entry that starts at midnight and ends at a later midnight, in its own zone, as an
+	 * ALL-DAY entry over those dates — what many producers write for a whole-day block instead of
+	 * `VALUE=DATE`. Off by default, so a reader that wants the file's literal times keeps them; the
+	 * dates are then anchored in {@link timezone}, as a `VALUE=DATE` is.
+	 */
+	midnightSpansAllDay?: boolean;
 }
 
 /** How the parsed entries are projected onto the calendar's own event shape. */
@@ -516,6 +538,7 @@ interface IcsReadContext extends IcsTimeContext {
 	vcal: boolean;
 	window: { from: number; to: number } | null;
 	warnings: string[];
+	midnightSpansAllDay: boolean;
 }
 
 function first(props: IcsProps, name: string): IcsLine | undefined {
@@ -613,6 +636,7 @@ export function parseIcsCalendar(text: string, options: IcsParseOptions = {}): I
 		vcal,
 		window: options.recurrenceWindow ?? null,
 		warnings: [],
+		midnightSpansAllDay: options.midnightSpansAllDay === true,
 	};
 	if (ctx.fixedOffset !== null && daylight) {
 		ctx.warnings.push(
@@ -646,8 +670,13 @@ export function parseIcsCalendar(text: string, options: IcsParseOptions = {}): I
 		const entry = readEntry(props, ctx, index);
 		const idLine = first(props, "RECURRENCE-ID");
 		if (!entry || !idLine) continue;
-		const original = parseIcsInstant(idLine.value, idLine.params, ctx)?.ms;
-		const at = events.findIndex((e) => e.uid === entry.base.uid && e.start === original);
+		const id = parseIcsInstant(idLine.value, idLine.params, ctx);
+		const display: IcsZone = { kind: "tz", tz: ctx.fallbackTz };
+		// A whole-day occurrence is found by its date too, for the re-anchoring `exDates` explains.
+		const at = events.findIndex((e) =>
+			e.uid === entry.base.uid && id !== null &&
+			(e.start === id.ms || (e.allDay && dateOfInstant(e.start, display) === id.wall.date))
+		);
 		if (at >= 0) events[at] = entry.base;
 		else if (events.length < ICS_MAX_EVENTS) events.push(entry.base);
 		else truncated = true;
@@ -682,7 +711,7 @@ function readEntry(props: IcsProps, ctx: IcsReadContext, index: number): IcsEntr
 		ctx.warnings.push(`“${named}” was skipped: it has no start time.`);
 		return null;
 	}
-	const start = parseIcsInstant(startLine.value, startLine.params, ctx);
+	let start = parseIcsInstant(startLine.value, startLine.params, ctx);
 	if (!start) {
 		ctx.warnings.push(`“${named}” was skipped: its start time could not be read.`);
 		return null;
@@ -707,21 +736,46 @@ function readEntry(props: IcsProps, ctx: IcsReadContext, index: number): IcsEntr
 		endMs = start.ms + (start.allDay ? DAY_MS : 3_600_000);
 	}
 
+	// A timed block from one midnight to a later one is a whole-day entry written the long way: read
+	// as the dates it covers, anchored where a `VALUE=DATE` is, so it lands in the all-day lane.
+	if (ctx.midnightSpansAllDay && !start.allDay) {
+		const days = midnightSpanDays(start, endMs);
+		if (days > 0) {
+			const zone: IcsZone = { kind: "tz", tz: ctx.fallbackTz };
+			const wall = { date: start.wall.date, h: 0, mi: 0, s: 0 };
+			start = { ms: resolveWall(wall, zone), allDay: true, floating: false, wall, zone };
+			endMs = resolveWall({ ...wall, date: addDays(wall.date, days) }, zone);
+		}
+	}
+
 	const uid = icsUnescape(first(props, "UID")?.value ?? "").trim();
 	const status = first(props, "STATUS")?.value.trim().toUpperCase() ?? null;
-	return {
-		start,
-		base: {
-			uid: uid || `${start.ms}-${index}@imported`,
-			summary: named,
-			description: textOf(first(props, "DESCRIPTION"), ctx.vcal),
-			location: textOf(first(props, "LOCATION"), ctx.vcal),
-			start: start.ms,
-			end: endMs,
-			allDay: start.allDay,
-			status,
-		},
+	const url = (first(props, "URL") ?? first(props, "X-GOOGLE-CONFERENCE"))?.value.trim();
+	const base: IcsEvent = {
+		uid: uid || `${start.ms}-${index}@imported`,
+		summary: named,
+		description: textOf(first(props, "DESCRIPTION"), ctx.vcal),
+		location: textOf(first(props, "LOCATION"), ctx.vcal),
+		start: start.ms,
+		end: endMs,
+		allDay: start.allDay,
+		status,
 	};
+	if (url) base.url = url;
+	return { start, base };
+}
+
+/**
+ * How many whole days a timed entry covers when it runs from midnight to midnight in its OWN zone,
+ * else `0`. A day across a DST change is 23 or 25 hours, so the count is rounded, never divided.
+ */
+function midnightSpanDays(start: IcsInstant, endMs: number): number {
+	const { wall, zone } = start;
+	if (wall.h !== 0 || wall.mi !== 0 || wall.s !== 0) return 0;
+	const endDate = dateOfInstant(endMs, zone);
+	if (resolveWall({ date: endDate, h: 0, mi: 0, s: 0 }, zone) !== endMs) return 0;
+	const days = Math.round((endMs - start.ms) / DAY_MS);
+	return days >= 1 ? days : 0;
 }
 
 function ruleOf(props: IcsProps, ctx: IcsReadContext, named: string): string | null {
@@ -796,20 +850,28 @@ function buildOccurrences(
 		for (const piece of line.value.split(",")) {
 			const at = parseIcsInstant(piece, line.params, ctx);
 			if (!at) continue;
-			if (at.allDay) exDates.add(at.wall.date);
+			// A whole-day series is matched by DATE: one read from a midnight span was re-anchored in
+			// the display zone, so its file-zone exclusions no longer meet it at the same instant.
+			if (at.allDay || base.allDay) exDates.add(at.wall.date);
 			else exMs.add(at.ms);
 		}
 	}
 
 	const duration = base.end - base.start;
 	const days = Math.max(1, Math.round(duration / DAY_MS));
+	// Every occurrence names the rule it came from, so an importer can keep the series one series.
+	const series: IcsEvent = rule ? { ...base, rrule: rule } : base;
 	const occurrences = [...new Set(starts)]
 		.sort((a, b) => a - b)
 		.filter((ms) => !exMs.has(ms) && !exDates.has(dateOfInstant(ms, start.zone)))
 		.map((ms): IcsEvent => {
-			if (!base.allDay) return { ...base, start: ms, end: ms + duration };
+			if (!base.allDay) return { ...series, start: ms, end: ms + duration };
 			const next = addDays(dateOfInstant(ms, start.zone), days);
-			return { ...base, start: ms, end: resolveWall({ date: next, h: 0, mi: 0, s: 0 }, start.zone) };
+			return {
+				...series,
+				start: ms,
+				end: resolveWall({ date: next, h: 0, mi: 0, s: 0 }, start.zone),
+			};
 		})
 		.filter((e) => !windowed || (e.end > window.from && e.start < window.to));
 	return { events: occurrences, clipped };

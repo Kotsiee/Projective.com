@@ -5,7 +5,6 @@ import type { CalendarEvent, SchedulePage } from "@projective/types/scheduling";
 import { AgendaFilters } from "./AgendaFilters.tsx";
 import { AgendaRow } from "./AgendaRow.tsx";
 import {
-	importedEvents,
 	laneSpotlight,
 	leavingEvents,
 	pendingInvitations,
@@ -35,7 +34,7 @@ export function PanelAgenda(props: PanelAgendaProps): JSX.Element {
 	const listRef = useRef<HTMLDivElement>(null);
 	const page = props.page;
 	const tz = page?.timezone ?? "UTC";
-	const all: CalendarEvent[] = [...(page?.events ?? []), ...importedEvents.value];
+	const all: readonly CalendarEvent[] = page?.events ?? [];
 	const now = page?.now ?? Date.now();
 	const selected = selectedEventId.value;
 	const flashing = laneSpotlight.value;

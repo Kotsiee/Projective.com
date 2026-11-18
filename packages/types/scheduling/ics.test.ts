@@ -388,3 +388,68 @@ Deno.test("projection stamps the source and carries cancellation through", () =>
 	assert(projected.every((e) => e.id.length <= 120));
 });
 // #endregion
+
+// #region Importer hints (Decision #442)
+Deno.test("a midnight-to-midnight timed block reads as all-day only when asked", () => {
+	const file = calendar(
+		"UID:launch-1",
+		"DTSTART;TZID=Europe/London:20261120T000000",
+		"DTEND;TZID=Europe/London:20261122T000000",
+		"SUMMARY:Brand launch",
+	);
+	const literal = parseIcsCalendar(file, { timezone: "Europe/London" }).events[0];
+	assertEquals(literal.allDay, false);
+
+	const read = parseIcsCalendar(file, { timezone: "Europe/London", midnightSpansAllDay: true });
+	const [launch] = read.events;
+	assertEquals(launch.allDay, true);
+	assertEquals(new Date(launch.start).toISOString(), "2026-11-20T00:00:00.000Z");
+	assertEquals(new Date(launch.end).toISOString(), "2026-11-22T00:00:00.000Z");
+});
+
+Deno.test("a midnight span is re-anchored in the reading zone, on the dates of its own zone", () => {
+	// Midnight in New York is 05:00 in London: drawn as timed, it would straddle two London days.
+	const file = calendar(
+		"UID:ny-1",
+		"DTSTART;TZID=America/New_York:20261120T000000",
+		"DTEND;TZID=America/New_York:20261121T000000",
+		"SUMMARY:Offsite",
+	);
+	const [day] = parseIcsCalendar(file, { timezone: "Europe/London", midnightSpansAllDay: true })
+		.events;
+	assertEquals(day.allDay, true);
+	assertEquals(new Date(day.start).toISOString(), "2026-11-20T00:00:00.000Z");
+	assertEquals(day.end - day.start, 86_400_000);
+});
+
+Deno.test("a block that starts at midnight but ends mid-day stays timed", () => {
+	const file = calendar(
+		"UID:x",
+		"DTSTART:20261120T000000Z",
+		"DTEND:20261120T090000Z",
+		"SUMMARY:Night shift",
+	);
+	assertEquals(
+		parseIcsCalendar(file, { timezone: "UTC", midnightSpansAllDay: true }).events[0].allDay,
+		false,
+	);
+});
+
+Deno.test("every occurrence of a series names its rule, and an entry names its join link", () => {
+	const file = calendar(
+		"UID:weekly",
+		"DTSTART:20261102T090000Z",
+		"DTEND:20261102T093000Z",
+		"RRULE:FREQ=WEEKLY;COUNT=3",
+		"URL:https://zoom.us/j/123",
+		"SUMMARY:Standup",
+	);
+	const { events } = parseIcsCalendar(file);
+	assertEquals(events.length, 3);
+	assert(events.every((e) => e.rrule === "FREQ=WEEKLY;COUNT=3"));
+	assert(events.every((e) => e.url === "https://zoom.us/j/123"));
+	const single = parseIcsCalendar(calendar("UID:s", "DTSTART:20261102T090000Z", "SUMMARY:One"));
+	assertEquals(single.events[0].rrule, undefined);
+	assertEquals(single.events[0].url, undefined);
+});
+// #endregion

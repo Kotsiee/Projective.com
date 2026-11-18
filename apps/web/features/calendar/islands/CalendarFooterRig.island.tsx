@@ -18,7 +18,6 @@ import {
 	type CalendarSurface,
 	calendarZoom,
 	calendarZoomAt,
-	importedEvents,
 	PRESET_OPTIONS,
 	requestCreate,
 	setCalendarSnapZoom,
@@ -177,7 +176,7 @@ export default function CalendarFooterRig(props: CalendarFooterRigProps): JSX.El
 					)
 					: null}
 				<CalendarExportPopover
-					events={[...(page?.events ?? []), ...importedEvents.value]}
+					events={page?.events ?? []}
 					timezone={tz}
 					calendarName={`Projective ${page?.title ?? "Calendar"}`}
 					triggerClass={GHOST_CIRCLE}

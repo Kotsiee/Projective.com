@@ -1,13 +1,15 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
 import { useDroppable } from "@projective/ui/dnd";
 import { Icon } from "@projective/ui/icons";
-import { LaneIconButton } from "@projective/ui/navigation";
+import { LaneIconButton, LaneSection } from "@projective/ui/navigation";
 import type { CalendarEvent, Routine } from "@projective/types/scheduling";
 import { styleVars } from "@ui/core/style.ts";
 import {
+	eventsSectionOpen,
 	inspectRoutine,
 	openRoutines,
 	requestNewRoutine,
+	routinesSectionOpen,
 	selectedRoutineId,
 	toggleRoutine,
 } from "../core/calendar-state.ts";
@@ -34,10 +36,15 @@ export interface RoutineSectionProps {
 }
 
 /**
- * RoutineSection — the lane's "Routines" (Decisions #389, #441): one collapsible row per routine,
- * so a week of gym sessions reads as one line instead of forty. It has its own scroll above the list,
- * because the list opens centred on what is next, which would otherwise scroll these out of reach of
- * the row being dragged to them.
+ * RoutineSection — the lane's "Routines" (Decisions #389, #441, #442): one collapsible row per
+ * routine, so a week of gym sessions reads as one line instead of forty, under a section header that
+ * folds the whole group away.
+ *
+ * It is the shared {@link LaneSection}, the accordion every lane folds its groups with, and it does NOT
+ * scroll on its own (Decision #442): it and {@link EventsSection} sit in the lane's one scroller, so
+ * the reader has one scrollbar and a routine is never squeezed under the search field. Its body keeps a
+ * floor while open (`.cal-lane__fold`), so an open section with one routine still reads as a group.
+ * A pick on the grid opens the section that holds its row (the lane's spotlight effect).
  *
  * A row is two controls, as a `LaneSection` with a page is: the chevron folds, and the name opens the
  * routine in the inspector. Nothing here is boxed or tagged: the count and the behaviour are one line
@@ -47,30 +54,61 @@ export function RoutineSection(props: RoutineSectionProps): JSX.Element {
 	const { groups, selected, narrowed, renderRow } = props;
 	const shown = narrowed ? groups.filter((g) => g.members.length > 0) : groups;
 	return (
-		<section class="cal-rtn" aria-labelledby="cal-rtn-title">
-			<header class="cal-rtn__head">
-				<h2 class="cal-rtn__title" id="cal-rtn-title">Routines</h2>
-				<LaneIconButton
-					icon={<Icon name="plus" />}
-					label="New routine"
-					tooltipPlacement="top"
-					onClick={() => requestNewRoutine()}
-				/>
-			</header>
-			{shown.length === 0 && !narrowed
-				? <p class="cal-rtn__empty">Group a cadence here, and it lists once.</p>
-				: shown.map(({ routine, members }) => (
-					<RoutineGroup
-						key={routine.id}
-						routine={routine}
-						count={members.length}
-						open={openRoutines.value.includes(routine.id) ||
-							members.some((m) => m.id === selected)}
-					>
-						{members.map(renderRow)}
-					</RoutineGroup>
-				))}
-		</section>
+		<div class="cal-lane__fold cal-lane__fold--routines">
+			<LaneSection
+				id="cal-routines"
+				icon={<Icon name="repeat" size="xs" />}
+				label="Routines"
+				open={routinesSectionOpen.value}
+				onToggle={() => (routinesSectionOpen.value = !routinesSectionOpen.peek())}
+				action={
+					<LaneIconButton
+						icon={<Icon name="plus" />}
+						label="New routine"
+						tooltipPlacement="top"
+						onClick={() => requestNewRoutine()}
+					/>
+				}
+			>
+				<div class="cal-rtn">
+					{shown.length === 0 && !narrowed
+						? <p class="cal-rtn__empty">Group a cadence here, and it lists once.</p>
+						: shown.length === 0
+						? <p class="cal-rtn__empty">No routine matches the search and filters.</p>
+						: shown.map(({ routine, members }) => (
+							<RoutineGroup
+								key={routine.id}
+								routine={routine}
+								count={members.length}
+								open={openRoutines.value.includes(routine.id) ||
+									members.some((m) => m.id === selected)}
+							>
+								{members.map(renderRow)}
+							</RoutineGroup>
+						))}
+				</div>
+			</LaneSection>
+		</div>
+	);
+}
+
+/**
+ * EventsSection — the lane's list of entries in no routine, under a header that folds it like
+ * {@link RoutineSection} (Decision #442). Both sit in the lane's one scroller, so they scroll together.
+ */
+export function EventsSection({ children }: { children: ComponentChildren }): JSX.Element {
+	return (
+		<div class="cal-lane__fold cal-lane__fold--events">
+			<LaneSection
+				id="cal-events"
+				icon={<Icon name="calendar" size="xs" />}
+				label="Events"
+				open={eventsSectionOpen.value}
+				onToggle={() => (eventsSectionOpen.value = !eventsSectionOpen.peek())}
+			>
+				{children}
+			</LaneSection>
+		</div>
 	);
 }
 

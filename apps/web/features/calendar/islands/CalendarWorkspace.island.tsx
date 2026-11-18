@@ -4,7 +4,7 @@ import { useEffect, useRef } from "preact/hooks";
 import "../styles/calendar-page.css";
 import "../styles/calendar-chrome.css";
 import { Calendar, type CalendarContextTarget, EventPopoverLayer } from "@projective/ui/calendar";
-import { ConfirmDialog, Message } from "@projective/ui/feedback";
+import { ConfirmDialog, Message, Toast, useToast } from "@projective/ui/feedback";
 import { useMediaQuery } from "@projective/ui/navigation";
 import { CONTEXT_PANEL_INFLOW_QUERY } from "@web/features/shell/core/context-panel-state.ts";
 import {
@@ -17,6 +17,8 @@ import {
 } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
 import { renderInspectActions } from "../components/EventPopoverActions.tsx";
+import { CalendarDropOverlay } from "../components/CalendarDropOverlay.tsx";
+import { CalendarImportReview } from "../components/CalendarImportReview.tsx";
 import { EntryActionMenu } from "../components/EntryActionMenu.tsx";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
@@ -40,6 +42,8 @@ import type { CalendarAddress } from "../core/calendar-address.ts";
 import { kindOfHidden } from "../core/calendar-address.ts";
 import { authoringFor, timesMovable } from "../core/calendar-authoring.ts";
 import { useCalendarComposer } from "../hooks/useCalendarComposer.ts";
+import { useCalendarDrop } from "../hooks/useCalendarDrop.ts";
+import { useCalendarImport } from "../hooks/useCalendarImport.ts";
 import { useCalendarViewMemory } from "../hooks/useCalendarViewMemory.ts";
 import {
 	useCalendarAddress,
@@ -66,7 +70,7 @@ import {
 	gridSpotlight,
 	hiddenClasses,
 	hiddenClassesAt,
-	importedEvents,
+	importRequest,
 	inspectInPanel,
 	inspectPopover,
 	inspectRoutine,
@@ -225,6 +229,50 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	});
 	const { events } = composer;
 
+	/** A toast host, mounted only when no other region has one (one module signal feeds them all). */
+	const toastHost = useSignal(false);
+	const toast = useToast();
+
+	/** Say something above the grid for a few seconds: a refusal, in its own words. */
+	function say(message: string): void {
+		notice.value = message;
+		if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
+		noticeTimer.current = setTimeout(() => (notice.value = null), NOTICE_MS);
+	}
+
+	/**
+	 * A calendar file, from the header band's popover or dropped on the grid, laid down as the host's
+	 * own entries (Decision #442): planned, reviewed past the threshold, written through the composer.
+	 */
+	const importer = useCalendarImport({
+		composer,
+		timezone: () => page.peek()?.timezone ?? "UTC",
+		existing: () => events.peek(),
+		onRoutines: (made) => {
+			calendarRoutines.value = [...(calendarRoutines.peek() ?? []), ...made];
+		},
+		onNotice: (severity, message) => {
+			if (severity === "warning") return say(message);
+			if (!toastHost.peek() && !document.querySelector(".ui-toast")) toastHost.value = true;
+			toast.show({ severity: "success", summary: message, life: 5000 });
+		},
+	});
+
+	/** A file the header band's Import read, handed over to be saved. */
+	useSignalEffect(() => {
+		const preview = importRequest.value;
+		if (!preview) return;
+		importRequest.value = null;
+		untracked(() => importer.start(preview));
+	});
+
+	/** A calendar file dropped straight onto the grid. */
+	const dropState = useCalendarDrop(surfaceRef, {
+		enabled: AUTHORING.has("import"),
+		onFile: (file) => void importer.readAndStart(file),
+		onWrong: () => say("Drop a single .ics, .ical or .vcs calendar file to import it."),
+	});
+
 	/** Publish for the lane, the panel and the bands. One reader, one refetch, one answer. */
 	function publish(next: SchedulePage): void {
 		clockOrigin.current = { page: next.now, wall: Date.now() };
@@ -307,8 +355,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		const list = events.value;
 		const shown = untracked(() => inspectPopover.value);
 		if (shown?.kind !== "event") return;
-		const fresh = list.find((e) => e.id === shown.event.id) ??
-			untracked(() => importedEvents.value).find((e) => e.id === shown.event.id);
+		const fresh = list.find((e) => e.id === shown.event.id);
 		if (!fresh) inspectPopover.value = null;
 		else if (fresh !== shown.event) inspectPopover.value = { ...shown, event: fresh };
 	});
@@ -449,15 +496,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	/*
 	 * The engine knows nothing of RSVPs, so the answer waiting on the reader becomes its two words; and
 	 * nothing of the door, so an entry whose move the door would refuse is marked `fixed` and its drag
-	 * stays a click. An imported file's entries sit beside the saved ones rather than inside `events`:
-	 * they are this visit's only, and folding them in would let the next read drop them unseen.
+	 * stays a click. An imported file's entries are saved entries like any other (Decision #442).
 	 */
-	const imported = importedEvents.value;
-	const shown = visibleEvents(
-		[...events.value, ...imported],
-		invitationsOnly.value,
-		hiddenClassesAt(props.address),
-	)
+	const shown = visibleEvents(events.value, invitationsOnly.value, hiddenClassesAt(props.address))
 		.map((e) => {
 			const ghost = awaitsAnswer(e);
 			const gone = leaving.includes(e.id);
@@ -466,7 +507,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		});
 
 	const open = eventStack.top.value;
-	const framed = composer.resolve(open, imported);
+	const framed = composer.resolve(open);
 
 	/*
 	 * A withdrawn calendar leaves no trace: an entry another calendar still holds up survives, but it
@@ -589,6 +630,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				onReject={() => (deleteAsk.value = null)}
 			/>
 			<RoutineDialog tz={p.timezone} now={p.now} />
+			<CalendarDropOverlay state={dropState.value} />
+			<CalendarImportReview flow={importer} tz={p.timezone} />
+			{toastHost.value ? <Toast position="bottom-center" /> : null}
 
 			{open && framed
 				? (

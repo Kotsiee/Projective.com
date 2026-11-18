@@ -358,6 +358,26 @@ button.cal-event:focus-visible {
 	flex: none;
 }
 
+/*
+ * THE STICKY ROW STACK (Decision #442), on the Day timeline's cards — the DOM twin of the Week grid's
+ * `stickyLadderTop`. A tall card scrolled past keeps its title, kind mark, time and identity row in
+ * view: the stack rides one card-padding below the scroller's top edge and stops at the card's own
+ * bottom, where it leaves with the card. Sticky never carries an element past its containing block,
+ * so a short card is unchanged and a stack can never overflow the block it describes.
+ *
+ * It needs the card's resting clip to be `clip`, not `hidden`: `hidden` makes the card a scroll
+ * container of its own, and a sticky child sticks to the nearest one — the card, which never
+ * scrolls — so the rows would never move. `clip` cuts the same pixels without being a scroller.
+ */
+.cal-daycol__event .cal-event {
+	overflow: clip;
+}
+
+.cal-daycol__event .cal-event__body {
+	position: sticky;
+	inset-block-start: var(--space-2);
+}
+
 /* The one line allowed to truncate: a card cannot be without it, so half of it beats none of it. */
 .cal-event__title {
 	display: flex;

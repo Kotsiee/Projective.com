@@ -1,20 +1,20 @@
-import type { CalendarEvent } from "@projective/types/scheduling";
 import {
 	ICS_MAX_BYTES,
 	ICS_REFUSAL_COPY,
-	icsEventsToCalendarEvents,
 	IcsParseError,
 	parseIcsCalendar,
 } from "@projective/types/scheduling";
+import { type ImportItem, importItemsOf } from "./import-plan.ts";
 
 /**
- * calendar-import — what `/calendar` does with a calendar file, kept out of the popover so it can be
- * tested: refuse the wrong file before reading a byte of it, read the right one through the SSOT
- * parser, and project what came back onto the grid's own event shape.
+ * calendar-import — what `/calendar` does with a calendar file, kept out of the popover and the drop
+ * zone so it can be tested: refuse the wrong file before reading a byte of it, read the right one
+ * through the SSOT parser, and hand back its occurrences for `import-plan.ts` to lay down as native
+ * entries (Decision #442).
  *
  * The parsing itself is `@projective/types/scheduling` `ics.ts` — the one reader the fat service also
  * calls — so this module decides only what the SURFACE decides: which files it offers to read, how far
- * a repeating entry is expanded around today, and how a second import of the same file lands.
+ * a repeating entry is expanded around today, and that a midnight-to-midnight block is a whole day.
  *
  * DOM-free: `deno test` type-checks without the DOM lib. The `File` it reads is Deno's as well as the
  * browser's.
@@ -73,6 +73,24 @@ export function checkCalendarFile(file: CalendarFileFacts): CalendarFileCheck {
 	if (file.size > ICS_MAX_BYTES) return { ok: false, message: ICS_REFUSAL_COPY.too_large };
 	return { ok: true };
 }
+
+/**
+ * What a drag that is still in the air says about its files, for the drop zone's highlight.
+ *
+ * A browser shows a dragged file's media TYPE before the drop but never its name, so this can only
+ * refuse what positively names something else (an image, a PDF): `ok` for one file whose type is a
+ * calendar's or is blank — {@link checkCalendarFile} decides on the drop — `wrong` for anything else,
+ * and `none` when the drag carries no files at all (text, a link, a lane row), which the zone ignores.
+ */
+export function dragVerdict(
+	items: readonly { kind: string; type: string }[],
+): "ok" | "wrong" | "none" {
+	const files = items.filter((i) => i.kind === "file");
+	if (files.length === 0) return "none";
+	if (files.length > 1) return "wrong";
+	const type = files[0].type.split(";")[0].trim().toLowerCase();
+	return CALENDAR_MEDIA_TYPES.has(type) ? "ok" : "wrong";
+}
 // #endregion
 
 // #region Reading
@@ -87,17 +105,17 @@ export const IMPORT_RECURRENCE_DAYS = 365;
 
 const DAY_MS = 86_400_000;
 
-/** One file, read and projected, waiting for the reader to confirm it. */
+/** One file, read, waiting to be planned and imported. */
 export interface CalendarImportPreview {
 	fileName: string;
 	/** The calendar's own name (`X-WR-CALNAME`), else the file's. */
 	calendarName: string;
 	format: "icalendar" | "vcalendar";
-	/** The entries as the grid draws them, earliest first. */
-	events: CalendarEvent[];
+	/** Every occurrence the file holds, earliest first, cancelled entries left out. */
+	items: ImportItem[];
+	/** Cancelled entries the file held, which are not imported. */
+	cancelled: number;
 	warnings: string[];
-	/** The id prefix every entry from this file carries — what a re-import replaces. */
-	idPrefix: string;
 }
 
 /** The outcome of reading a file: a preview, or the sentence that says why there is none. */
@@ -114,22 +132,9 @@ export interface CalendarImportContext {
 }
 
 /**
- * A short, fixed-length id prefix for one file NAME.
- *
- * Hashed rather than slugged: two slugs can be prefixes of each other (`work` and `work-ics`), so a
- * re-import of one would have replaced the other's entries. FNV-1a is enough — this separates a
- * reader's own files, it is not a security boundary.
+ * Read calendar TEXT into a preview. Pure; {@link readCalendarFile} is the same with the file I/O.
+ * A timed block from midnight to a later midnight is read as the whole days it covers.
  */
-export function importIdPrefix(fileName: string): string {
-	let hash = 0x811c9dc5;
-	for (const ch of fileName.toLowerCase()) {
-		hash ^= ch.codePointAt(0) ?? 0;
-		hash = Math.imul(hash, 0x01000193);
-	}
-	return `ics-${(hash >>> 0).toString(36).padStart(7, "0")}`;
-}
-
-/** Read calendar TEXT into a preview. Pure; {@link readCalendarFile} is the same with the file I/O. */
 export function previewCalendarText(
 	text: string,
 	fileName: string,
@@ -142,19 +147,19 @@ export function previewCalendarText(
 				from: context.now - IMPORT_RECURRENCE_DAYS * DAY_MS,
 				to: context.now + IMPORT_RECURRENCE_DAYS * DAY_MS,
 			},
+			midnightSpansAllDay: true,
 		});
-		const idPrefix = importIdPrefix(fileName);
-		const events = icsEventsToCalendarEvents(result.events, { source: "ics", idPrefix })
-			.sort((a, b) => a.start - b.start);
+		const { items, cancelled } = importItemsOf(result.events);
+		if (items.length === 0) return { ok: false, message: "Every event in that file is cancelled." };
 		return {
 			ok: true,
 			preview: {
 				fileName,
 				calendarName: result.calendarName ?? fileName,
 				format: result.format,
-				events,
+				items,
+				cancelled,
 				warnings: result.warnings,
-				idPrefix,
 			},
 		};
 	} catch (error) {
@@ -183,18 +188,5 @@ export async function readCalendarFile(
 		return { ok: false, message: "That file could not be read from your device." };
 	}
 	return previewCalendarText(text, file.name, context);
-}
-
-/**
- * Add a preview to what is already imported. Importing the same file again REPLACES its earlier
- * entries rather than drawing every meeting twice — the UID promise `IcsEvent` makes, kept at the
- * level of the file because the grid's ids are per occurrence.
- */
-export function mergeImported(
-	existing: readonly CalendarEvent[],
-	preview: CalendarImportPreview,
-): CalendarEvent[] {
-	const prefix = `${preview.idPrefix}-`;
-	return [...existing.filter((e) => !e.id.startsWith(prefix)), ...preview.events];
 }
 // #endregion

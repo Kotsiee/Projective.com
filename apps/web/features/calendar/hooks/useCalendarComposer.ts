@@ -7,8 +7,10 @@ import {
 	type EntryFields,
 	type EntryReminder,
 	type EntryRoom,
+	type Routine,
 	swatchOf,
 } from "@projective/types/scheduling";
+import type { ImportBatch } from "../core/import-plan.ts";
 import { blankEvent, eventStack } from "../core/event-view.ts";
 import { eventsForRange, firstOccurrence, seriesKey, spreadDaily } from "../core/event-series.ts";
 import { seriesOf } from "../core/event-recurrence.ts";
@@ -120,6 +122,27 @@ export interface CalendarComposer {
 	serverRemove(id: string): void;
 	/** Take an entry off the calendar, closing it if it is the one open. */
 	remove(id: string): void;
+	/**
+	 * Lay an import down as the host's own entries (Decision #442): each batch through the event
+	 * door in order, each new routine created before the first batch that joins it, and every saved
+	 * entry drawn as its batch lands. Stops at the first refusal and says how far it got.
+	 */
+	importBatches(
+		batches: readonly ImportBatch[],
+		onProgress?: (done: number, total: number) => void,
+	): Promise<ImportOutcome>;
+}
+
+/** How an import went: what was saved, and the refusal that stopped it, if one did. */
+export interface ImportOutcome {
+	/** Entries saved. */
+	created: number;
+	/** Entries the import set out to save. */
+	total: number;
+	/** The routines it created. */
+	routines: Routine[];
+	/** The server's words when a batch was refused; absent when everything was saved. */
+	message?: string;
 }
 
 /**
@@ -404,6 +427,55 @@ export function useCalendarComposer(opts: CalendarComposerOptions): CalendarComp
 				events.value = [...events.peek(), gone];
 				refuse(res.message);
 			});
+		},
+		async importBatches(batches, onProgress) {
+			const total = batches.reduce((n, b) => n + b.entries.length, 0);
+			const routines: Routine[] = [];
+			if (!optsRef.current.persist) {
+				return {
+					created: 0,
+					total,
+					routines,
+					message: "This calendar can’t keep imported events.",
+				};
+			}
+			const made = new Map<string, Routine>();
+			let created = 0;
+			for (const batch of batches) {
+				let entries = batch.entries;
+				const draft = batch.routine;
+				if (draft) {
+					let routine = made.get(draft.key);
+					if (!routine) {
+						const res = await ScheduleService.createRoutine({
+							name: draft.name,
+							behavior: draft.behavior,
+						});
+						if (!res.ok || !res.data) {
+							return {
+								created,
+								total,
+								routines,
+								message: res.message ?? `The routine “${draft.name}” could not be created.`,
+							};
+						}
+						routine = res.data.routine;
+						made.set(draft.key, routine);
+						routines.push(routine);
+					}
+					const id = routine.id;
+					const behavior = routine.behavior;
+					entries = entries.map((e) => ({ ...e, routineId: id, availabilityBehavior: behavior }));
+				}
+				const res = await ScheduleService.create(entries, batch.room);
+				if (!res.ok || !res.data) {
+					return { created, total, routines, message: res.message ?? "The import stopped." };
+				}
+				events.value = [...events.peek(), ...res.data.events];
+				created += entries.length;
+				onProgress?.(created, total);
+			}
+			return { created, total, routines };
 		},
 	};
 }

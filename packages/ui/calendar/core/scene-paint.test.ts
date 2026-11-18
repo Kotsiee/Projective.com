@@ -13,7 +13,13 @@ import { assert, assertEquals } from "@std/assert";
 import type { GridBox, GridScene, SceneEvent, ScenePalette, TextStyle } from "./grid-paint.ts";
 import type { BuildSceneEventsOptions } from "./scene-build.ts";
 import { badgeRect, buildSceneEvents, draftRect, eventRect, hitTest } from "./scene-build.ts";
-import { hoverExpansionFor, paintScene, sceneCost } from "./scene-paint.ts";
+import {
+	hoverExpansionFor,
+	ladderHeight,
+	paintScene,
+	sceneCost,
+	stickyLadderTop,
+} from "./scene-paint.ts";
 import type { CalendarEvent } from "./types.ts";
 
 // #region A recording 2D context
@@ -715,6 +721,60 @@ Deno.test("paintScene — the ladder is anchored to the TOP, not centred in the 
 	const deep = titleY(paint(scene({ events: four })));
 	assert(shallow !== undefined, "the title must be drawn");
 	assertEquals(shallow, deep);
+});
+// #endregion
+
+// #region The sticky ladder (Decision #442)
+Deno.test("stickyLadderTop — at rest, sliding under the top edge, and stopping at the card's bottom", () => {
+	// A 300px card whose 40px ladder starts at its own top pad (8).
+	assertEquals(stickyLadderTop(108, 392, 40, 8), 108, "a card on screen keeps its natural top");
+	// The card's top has scrolled 100px above the viewport: the ladder rides one pad below the edge.
+	assertEquals(stickyLadderTop(-92, 192, 40, 8), 8);
+	// Nearly gone: the ladder stops where it meets the bottom pad and leaves with the card.
+	assertEquals(stickyLadderTop(-262, 22, 40, 8), -18);
+	// A ladder that already fills the card has nowhere to slide.
+	assertEquals(stickyLadderTop(-20, 15, 40, 8), -20);
+});
+
+Deno.test("ladderHeight — counts only the rungs that fit, never more than the painter can draw", () => {
+	const ev = { time: "09:00 – 17:00", location: "Studio", faces: [], sources: 0 };
+	assertEquals(ladderHeight(ev, 0, 400, 14, 12, 18), 14 + 1 + 12 + 1 + 12);
+	// Room for the title and the time only.
+	assertEquals(ladderHeight(ev, 0, 28, 14, 12, 18), 14 + 1 + 12);
+	assertEquals(ladderHeight({ ...ev, time: "", location: "" }, 0, 400, 14, 12, 18), 14);
+});
+
+Deno.test("paintScene — a tall card scrolled past keeps its title and time on screen", () => {
+	/*
+	 * An eight-hour card at 48px/h is 384px tall. Scrolled so its top is 200px above the viewport, the
+	 * painted title used to sit at a negative y, off the canvas; it now rides just below the top edge,
+	 * inside the card, with the time beneath it.
+	 */
+	const at = MONDAY + HOUR;
+	const tall = laid([{
+		id: "w",
+		title: "Brand launch",
+		kind: "sync",
+		start: at,
+		end: at + 8 * HOUR,
+	}]);
+	const top = tall[0].y;
+	const { ops } = paint(scene({ events: tall, scrollTop: top + 200 }));
+	const title = ops.find((o) => o.op === "text:Brand launch");
+	assert(title, "the title must be drawn while the card is on screen");
+	assert(
+		title.args[1] > 0 && title.args[1] < 40,
+		`the title rides the top edge (y=${title.args[1]})`,
+	);
+	assert(
+		ops.some((o) => o.op.startsWith("text:01:00")),
+		"the time row rides with the title",
+	);
+	// At rest (its top on screen) the same card draws its title at its own top, as before.
+	const rest = paint(scene({ events: tall, scrollTop: 0 })).ops.find((o) =>
+		o.op === "text:Brand launch"
+	);
+	assert(rest && rest.args[1] > top && rest.args[1] < top + 30);
 });
 // #endregion
 

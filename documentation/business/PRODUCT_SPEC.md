@@ -417,6 +417,15 @@ MS Teams or Google Calendar, but with integrated financial protection.
   owner says otherwise (Decision #441). A commitment somebody else relies on (a booked session, a call, an engagement's meeting,
   anything with people on it) always holds its time. A passive routine's details point to matching
   Session Services on the marketplace.
+- **An imported calendar becomes your own entries** (Decision #442). A calendar file (`.ics`,
+  `.ical`, `.vcs`), picked from Import or dropped on the calendar, is saved as the person's own
+  events, which they edit, move, colour, give a room and file under a routine like any other; it does
+  not follow later changes to the original, which is what connecting a calendar is for. A whole-day
+  block is a whole-day entry however the file wrote it. Nothing is written twice: an entry already on
+  the calendar, or repeated inside the file, is left out, and a cancelled one is not imported. A
+  repeating series stays one repeating entry, and so do several identical entries on a regular
+  pattern. A larger file (more than eight entries) is reviewed before anything is saved, where entries
+  can be merged into one repeating entry, gathered into a new routine, split apart or left out.
 - **An entry takes a colour of its host's choosing** (Decision #408). One of twelve: Default, which
   keeps the colour its kind is drawn in, and the eleven hues a folder can take in Files. Everyone
   the entry is shown to sees it in that colour, and the rules of an availability template take the

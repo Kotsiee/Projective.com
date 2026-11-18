@@ -39,6 +39,7 @@ import {
 import { withEventParam, withInvitationsFilter, withRoutineParam } from "./event-deep-link.ts";
 import { eventStack, type EventTab } from "./event-view.ts";
 import type { EntryOrganisation } from "./routine-view.ts";
+import type { CalendarImportPreview } from "./calendar-import.ts";
 
 /**
  * calendar-state — the cross-island bridge for the `/calendar` hub, and for a team's or business's
@@ -810,6 +811,13 @@ export const selectedRoutineId = signal<string | null>(null);
 /** The routines the reader has unfolded in the lane. View state, so it stays out of the address. */
 export const openRoutines = signal<readonly string[]>([]);
 
+/**
+ * Whether the lane's two sections are unfolded (Decision #442). View state like {@link openRoutines}:
+ * not stored, so the server's first frame (both open) is the frame the reader gets.
+ */
+export const routinesSectionOpen = signal(true);
+export const eventsSectionOpen = signal(true);
+
 /** Unfold or fold one routine in the lane. */
 export function toggleRoutine(id: string): void {
 	openRoutines.value = toggle(openRoutines.value, id);
@@ -923,14 +931,20 @@ export function requestCreateEntry(entry: EntryClass): void {
 }
 // #endregion
 
-// #region Imported entries
+// #region Imports
 /**
- * Entries read out of an imported `.ics`, `.ical` or `.vcs`, held CLIENT-SIDE for this visit.
+ * A calendar file read by the header band's Import popover, handed to the body to lay down.
  *
- * Nothing posts them: the event door (`/api/scheduling/events`) keeps an entry the host composes,
- * not a file's worth. `/calendar`'s Import fills this (Decision #440, amending #343 C7 (a)), and the
- * grid, the lane, the panel and the bands draw it read-only beside the fetched page; a reload empties
- * it. A second import of the same file replaces the first (`mergeImported`).
+ * An import becomes the host's OWN entries (Decision #442, REVERSING #440's view-only import): the
+ * body owns the composer and its one write path, so the popover — another hydration root — reads and
+ * previews the file and then raises this, and the body plans it (`import-plan.ts`), opens the review
+ * modal past `IMPORT_REVIEW_THRESHOLD` entries, and writes it through the event door. A file
+ * dropped on the grid takes the same path from the body itself.
  */
-export const importedEvents = signal<readonly CalendarEvent[]>([]);
+export const importRequest = signal<CalendarImportPreview | null>(null);
+
+/** Hand a read file to the body to import. */
+export function requestImport(preview: CalendarImportPreview): void {
+	importRequest.value = preview;
+}
 // #endregion

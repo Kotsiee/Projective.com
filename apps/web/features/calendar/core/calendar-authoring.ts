@@ -19,9 +19,10 @@ import type { MenuItem } from "@ui/types/mod.ts";
  * calendars and a person's public schedule author nothing. RSVP, the reschedule negotiation and the
  * discovery-call moves are answers, not authoring, and stay on every calendar that shows them.
  *
- * An `.ics` import is not authoring either (Decision #440, amending C7 (a)): `/calendar` reads the
- * file into this visit's view, read-only, and says it is not saved. Its entries have no host, so
- * {@link entryEditable} refuses every one of them and their drag stays a click.
+ * An `.ics` import IS authoring again (Decision #442, reversing #440's view-only import): `/calendar`
+ * lays a file down as its host's own entries through the same create door, so every imported entry is
+ * the host's, edits, moves and deletes like any other, and only `/calendar` offers Import or the grid's
+ * file drop.
  *
  * Pure: no DOM, no signals.
  */
@@ -36,7 +37,8 @@ export type AuthoringAction =
 	| "keyboardCreate"
 	| "move"
 	| "edit"
-	| "delete";
+	| "delete"
+	| "import";
 
 /** The door each action writes through. */
 export const AUTHORING_DOOR: Readonly<Record<AuthoringAction, string>> = {
@@ -45,10 +47,11 @@ export const AUTHORING_DOOR: Readonly<Record<AuthoringAction, string>> = {
 	move: "PATCH /api/scheduling/events",
 	edit: "PATCH /api/scheduling/events",
 	delete: "DELETE /api/scheduling/events",
+	import: "POST /api/scheduling/events",
 };
 
 const BY_HOST: Readonly<Record<CalendarHost, readonly AuthoringAction[]>> = {
-	personal: ["create", "keyboardCreate", "move", "edit", "delete"],
+	personal: ["create", "keyboardCreate", "move", "edit", "delete", "import"],
 	project: [],
 	schedule: [],
 };

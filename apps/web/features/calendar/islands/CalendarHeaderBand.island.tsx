@@ -35,7 +35,6 @@ import {
 	type CalendarSurface,
 	filtersEngaged,
 	focusedAt,
-	importedEvents,
 	periodLabelFor,
 	resetFilters,
 	setCalendarMode,
@@ -242,7 +241,7 @@ function AgendaBand(
 	const searchRef = useRef<HTMLLabelElement>(null);
 	useSearchTarget({ role: "page", scopeRef: searchRef });
 	const page = calendarPage.value ?? props.initial;
-	const events = [...(page?.events ?? []), ...importedEvents.value];
+	const events = page?.events ?? [];
 	const tz = page?.timezone ?? "UTC";
 	const view = viewAt(props.address);
 	const timeline = view === "timeline";

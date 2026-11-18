@@ -1,11 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
-import type { CalendarEvent } from "@projective/types/scheduling";
 import { ICS_MAX_BYTES, ICS_REFUSAL_COPY } from "@projective/types/scheduling";
 import {
 	checkCalendarFile,
+	dragVerdict,
 	IMPORT_RECURRENCE_DAYS,
-	importIdPrefix,
-	mergeImported,
 	previewCalendarText,
 	readCalendarFile,
 } from "./calendar-import.ts";
@@ -67,14 +65,13 @@ Deno.test("a wrong extension, a contradicting media type or a bad size is refuse
 // #endregion
 
 // #region Preview
-Deno.test("a preview names the calendar, sorts its entries and stamps the file's prefix", () => {
+Deno.test("a preview names the calendar and sorts its entries", () => {
 	const read = previewCalendarText(WORK, "work.ics", CONTEXT);
 	assert(read.ok);
 	assertEquals(read.preview.calendarName, "Work");
 	assertEquals(read.preview.format, "icalendar");
-	assertEquals(read.preview.events.map((e) => e.title), ["Earlier", "Later"]);
-	assert(read.preview.events.every((e) => e.id.startsWith(`${read.preview.idPrefix}-`)));
-	assert(read.preview.events.every((e) => e.sources?.[0] === "ics"));
+	assertEquals(read.preview.items.map((e) => e.title), ["Earlier", "Later"]);
+	assertEquals(read.preview.cancelled, 0);
 });
 
 Deno.test("a calendar with no name of its own is named after its file", () => {
@@ -108,36 +105,70 @@ Deno.test("a repeating entry is expanded a year either side of the import, and s
 		CONTEXT,
 	);
 	assert(read.ok);
-	const { events, warnings } = read.preview;
-	assert(events.length > 100);
-	assert(events[0].start >= NOW - IMPORT_RECURRENCE_DAYS * DAY);
-	assert(events[events.length - 1].start < NOW + IMPORT_RECURRENCE_DAYS * DAY);
+	const { items, warnings } = read.preview;
+	assert(items.length > 100);
+	assert(items[0].start >= NOW - IMPORT_RECURRENCE_DAYS * DAY);
+	assert(items[items.length - 1].start < NOW + IMPORT_RECURRENCE_DAYS * DAY);
+	assert(items.every((e) => e.rrule === "FREQ=WEEKLY"), "every occurrence names its series' rule");
 	assert(warnings.some((w) => w.startsWith("1 repeating event")));
 });
 
 Deno.test("a picked File is checked, read and previewed", async () => {
 	const ok = await readCalendarFile(new File([WORK], "work.ics", { type: "text/calendar" }), CONTEXT);
-	assert(ok.ok && ok.preview.events.length === 2);
+	assert(ok.ok && ok.preview.items.length === 2);
 	const refused = await readCalendarFile(new File([WORK], "work.pdf", { type: "" }), CONTEXT);
 	assertEquals(refused.ok, false);
 });
 // #endregion
 
-// #region Identity
-Deno.test("a file's id prefix is stable, fixed-length and never a prefix of another's", () => {
-	assertEquals(importIdPrefix("Work.ics"), importIdPrefix("work.ICS"));
-	assertEquals(importIdPrefix("a.ics").length, importIdPrefix("a-much-longer-name.ics").length);
-	assert(!`${importIdPrefix("work-ics.ics")}-`.startsWith(`${importIdPrefix("work.ics")}-`));
+// #region Native import (Decision #442)
+Deno.test("a midnight-to-midnight block is read as a whole day", () => {
+	const read = previewCalendarText(
+		ics(
+			"BEGIN:VCALENDAR",
+			"VERSION:2.0",
+			"BEGIN:VEVENT",
+			"UID:launch@test",
+			"DTSTART;TZID=Europe/London:20261120T000000",
+			"DTEND;TZID=Europe/London:20261121T000000",
+			"SUMMARY:Helios launch",
+			"END:VEVENT",
+			"END:VCALENDAR",
+		),
+		"launch.ics",
+		CONTEXT,
+	);
+	assert(read.ok);
+	assertEquals(read.preview.items[0].allDay, true);
 });
 
-Deno.test("importing the same file again replaces its entries and leaves other files alone", () => {
-	const first = previewCalendarText(WORK, "work.ics", CONTEXT);
-	const other = previewCalendarText(WORK, "home.ics", CONTEXT);
-	assert(first.ok && other.ok);
-	let imported: CalendarEvent[] = mergeImported([], first.preview);
-	imported = mergeImported(imported, other.preview);
-	imported = mergeImported(imported, first.preview);
-	assertEquals(imported.length, 4);
-	assertEquals(new Set(imported.map((e) => e.id)).size, 4);
+Deno.test("cancelled entries are counted and left out, and a file of nothing else is refused", () => {
+	const cancelled = (uid: string) => [
+		"BEGIN:VEVENT",
+		`UID:${uid}`,
+		"DTSTART:20261026T090000Z",
+		"DTEND:20261026T100000Z",
+		"SUMMARY:Off",
+		"STATUS:CANCELLED",
+		"END:VEVENT",
+	];
+	const mixed = WORK.replace("END:VCALENDAR", [...cancelled("c1"), "END:VCALENDAR"].join("\r\n"));
+	const read = previewCalendarText(mixed, "work.ics", CONTEXT);
+	assert(read.ok);
+	assertEquals(read.preview.items.length, 2);
+	assertEquals(read.preview.cancelled, 1);
+	const only = ics("BEGIN:VCALENDAR", "VERSION:2.0", ...cancelled("c2"), "END:VCALENDAR");
+	assertEquals(previewCalendarText(only, "off.ics", CONTEXT).ok, false);
+});
+
+Deno.test("a drag in the air is judged by the media type it shows, never refused for a blank one", () => {
+	assertEquals(dragVerdict([{ kind: "file", type: "text/calendar" }]), "ok");
+	assertEquals(dragVerdict([{ kind: "file", type: "" }]), "ok");
+	assertEquals(dragVerdict([{ kind: "file", type: "image/png" }]), "wrong");
+	assertEquals(
+		dragVerdict([{ kind: "file", type: "text/calendar" }, { kind: "file", type: "" }]),
+		"wrong",
+	);
+	assertEquals(dragVerdict([{ kind: "string", type: "text/plain" }]), "none");
 });
 // #endregion

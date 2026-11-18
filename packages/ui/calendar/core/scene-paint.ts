@@ -664,6 +664,55 @@ function padBlockFor(h: number, titleH: number): number {
 }
 
 /**
+ * How tall a card's text ladder is (px), counting only the rungs that fit VERTICALLY between `top`
+ * and `bottom`, in the order the painter offers them: the title, then the time, the location and the
+ * identity row, each a `rowGap` below the last.
+ *
+ * Widths are not consulted, so this is an UPPER bound on what the painter draws — a rung that later
+ * fails its horizontal fit only makes the drawn ladder shorter. That is the direction
+ * {@link stickyLadderTop} needs: a ladder slid down by this much can never be pushed past the card.
+ */
+export function ladderHeight(
+	ev: Pick<SceneEvent, "time" | "location" | "faces" | "sources">,
+	top: number,
+	bottom: number,
+	titleH: number,
+	metaH: number,
+	avatarH: number,
+): number {
+	let h = titleH;
+	const rows: number[] = [];
+	if (ev.time) rows.push(metaH);
+	if (ev.location) rows.push(metaH);
+	if ((ev.faces.length > 0 || ev.sources > 0) && avatarH > 0) rows.push(avatarH);
+	for (const row of rows) {
+		if (top + h + CARD.rowGap + row <= bottom) h += CARD.rowGap + row;
+	}
+	return h;
+}
+
+/**
+ * Where a card's text ladder starts so it STAYS IN VIEW while the card is scrolled past (Decision
+ * #442) — the canvas's `position: sticky`.
+ *
+ * The Week grid is painted, so a tall card's title, time and badges cannot stick by CSS. Instead the
+ * ladder is drawn at its natural top while the card's top is on screen, and once the card's top has
+ * scrolled above the viewport (canvas y `0`, the line under the sticky day header) it rides `pad`
+ * below that edge — until it meets the card's own bottom pad, where it stops and leaves with the card.
+ * A card whose ladder already fills it has nowhere to slide, and keeps its top.
+ */
+export function stickyLadderTop(
+	naturalTop: number,
+	contentBottom: number,
+	height: number,
+	pad: number,
+): number {
+	const room = contentBottom - height;
+	if (room <= naturalTop) return naturalTop;
+	return Math.min(room, Math.max(naturalTop, pad));
+}
+
+/**
  * The hovered card's LIFT: an ambient drop shadow, and a small scale about the card's own TOP-CENTRE.
  *
  * Top-centre rather than the middle so the growth still reads as the card expanding DOWNWARD into the
@@ -896,8 +945,13 @@ function paintCard(
 	 * ellipsised but the title — see {@link fitsWhole} for why metadata may not be.
 	 */
 	const pad = padBlockFor(rect.h, titleH);
-	const contentTop = rect.y + pad;
 	const contentBottom = rect.y + rect.h - pad;
+	const contentTop = stickyLadderTop(
+		rect.y + pad,
+		contentBottom,
+		ladderHeight(ev, rect.y + pad, contentBottom, titleH, metaH, palette.avatarSize),
+		pad,
+	);
 	const contentX = rect.x + CARD.padInline;
 	const contentW = rect.w - CARD.padInline * 2;
 	if (contentW <= 0) {
