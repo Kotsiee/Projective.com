@@ -640,6 +640,12 @@ price never above the stage's price, a High price never below it. Either way the
 seller's commitment once the service is instantiated: like the revision allotment, they are frozen on
 the engagement, for its seller as much as its client.
 
+**A bought stage keeps the listing's CREATE category (SC2, #417 (c)).** The seller picks one CREATE
+category for the listing (§The CREATE Framework). Every stage the listing becomes in a client's
+engagement carries it, whether the service was added to projects, bought at checkout or bought on a
+quote's terms. An untyped listing gives untyped stages. It labels the work only: it weighs nothing in
+$W_i$ (Decision #338, ruling P4).
+
 **A One-Off or a Task is paid for at checkout, and the payment starts it (Decision #457).** A
 Pipeline is added to the client's projects and funded ticket by ticket. A One-Off or a Task is
 scoped in the configure dialog instead: the brief, the seller's questions, what to fund now and an

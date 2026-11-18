@@ -272,7 +272,10 @@ COMMENT ON FUNCTION marketplace.fn_blueprint_stage_terms (marketplace.service_bl
 --     `start_trigger_type`, the previous stage as `start_dependency_stage_id`,
 --     `start_dependency_lag_days`, `chain_reaction`; Decision #217). The revision allotment arrives
 --     through `trg_stage_revision_terms`, which reads the blueprint, so the project's
---     `source_blueprint_id` must already be set;
+--     `source_blueprint_id` must already be set. Its CREATE category is the listing's
+--     (`catalogue.listings.create_category`; a blueprint has none of its own), whatever priced the
+--     stages, so every caller copies it — a label of the work, never a weight on W_i (#338 P4;
+--     #417 (c));
 --   * the seller's `accepted` seat — a freelancer seat, or the team's for a team listing — so the
 --     seller claims the client's funded tickets with no hire step (Decision #427). Inserted here rather
 --     than through `invite_to_project`: the seller sells one service to many buyers at once, so the hire
@@ -304,6 +307,7 @@ DECLARE
     v_dependency uuid;
     v_lag integer;
     v_chain boolean;
+    v_category org.create_category;
 BEGIN
     IF p_terms IS NULL THEN
         SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(t) ORDER BY t.ord) INTO p_terms
@@ -312,6 +316,14 @@ BEGIN
     IF p_terms IS NULL OR jsonb_typeof(p_terms) <> 'array' OR jsonb_array_length(p_terms) = 0 THEN
         RAISE EXCEPTION 'This service has no stages to add yet.' USING ERRCODE = '22023';
     END IF;
+
+    -- One listing publishes a blueprint; were there ever two, the published one, then the newest.
+    SELECT l.create_category INTO v_category
+      FROM catalogue.listings l
+     WHERE l.service_blueprint_id = p_bp.id
+     ORDER BY (l.status = 'published'::catalogue.listing_status) DESC,
+              l.published_at DESC NULLS LAST, l.created_at DESC
+     LIMIT 1;
 
     FOR v_t IN
         SELECT * FROM jsonb_to_recordset(p_terms) AS x (
@@ -374,7 +386,7 @@ BEGIN
             id, project_id, name, description, description_text, sort_order, status,
             unit_price_cents, milestone, file_upload_required, default_tasks, skills,
             start_trigger_type, start_dependency_stage_id, start_dependency_lag_days, chain_reaction,
-            default_intensity, intensity_locked, low_price_cents, high_price_cents
+            default_intensity, intensity_locked, low_price_cents, high_price_cents, create_category
         ) VALUES (
             v_stage_id, p_project_id, v_name,
             pg_catalog.jsonb_build_object('html', marketplace.fn_plain_text_html(v_text)), v_text,
@@ -401,7 +413,7 @@ BEGIN
                 LIMIT 12
             ),
             v_trigger_type, v_dependency, v_lag, v_chain,
-            v_t.intensity, v_t.intensity_locked, v_t.low_price_cents, v_t.high_price_cents
+            v_t.intensity, v_t.intensity_locked, v_t.low_price_cents, v_t.high_price_cents, v_category
         );
 
         -- `accepted`, the state a team payout split reads (`finance.fn_ticket_payee`), so a team listing
@@ -426,7 +438,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION marketplace.fn_write_blueprint_stages (uuid, marketplace.service_blueprints, jsonb) IS
-'Writes stages into a new engagement — p_terms (rows in fn_blueprint_stage_terms'' shape) or the blueprint''s own: each stage row, the seller''s accepted seat on it and its room. Returns the stage ids in order. Internal: called by instantiate_service_blueprint and fn_buy_scoped_service.';
+'Writes stages into a new engagement — p_terms (rows in fn_blueprint_stage_terms'' shape) or the blueprint''s own: each stage row, labelled with its listing''s CREATE category (#417 (c)), the seller''s accepted seat on it and its room. Returns the stage ids in order. Internal: called by instantiate_service_blueprint and fn_buy_scoped_service.';
 
 -- ---------------------------------------------------------------------------------------------
 -- marketplace.fn_scoped_service_price(p_blueprint_id, p_whole) -> bigint | NULL

@@ -8,7 +8,13 @@
  */
 
 import { plainTextToHtml } from "@projective/types/richtext";
-import { ARTICLES, type CorpusArticleBlock, PRODUCTS, SERVICES } from "./corpus.ts";
+import {
+	ARTICLES,
+	type CorpusArticleBlock,
+	type CorpusService,
+	PRODUCTS,
+	SERVICES,
+} from "./corpus.ts";
 import { LISTING_REVIEWS } from "./reviews.ts";
 import { ago, ahead, arr, HEADER, id, insert, jsonb, num, q, slugFor, uuidFor } from "./sql.ts";
 import type { Asset, Principal, World } from "./resolve.ts";
@@ -61,6 +67,50 @@ const DELIVERY_MODEL_PRICING: Record<string, string> = {
 	group_session: "per_seat",
 };
 
+/**
+ * Refuse, at generate time, the intensity and session terms the catalogue door would refuse on save
+ * (`catalogue.save_listing`): tier prices only on a tiered Pipeline, with Low ≤ Standard ≤ High
+ * (Decision #417), and a session plan only on a fixed-count Session, one entry per sitting at most,
+ * each within the 80 / 600-character limits (Decision #411).
+ */
+function assertServiceTerms(s: CorpusService): void {
+	if (s.tieredIntensity && s.model !== "pipeline") {
+		throw new Error(`catalogue: ${s.key} is tiered but only a Pipeline sells tiered intensity`);
+	}
+	for (const st of s.stages) {
+		const hasTier = st.lowPriceMinor !== undefined || st.highPriceMinor !== undefined;
+		if (hasTier && !s.tieredIntensity) {
+			throw new Error(
+				`catalogue: ${s.key} stage "${st.name}" prices tiers on a fixed-intensity service`,
+			);
+		}
+		if (
+			(st.lowPriceMinor !== undefined && st.lowPriceMinor > st.priceMinor) ||
+			(st.highPriceMinor !== undefined && st.highPriceMinor < st.priceMinor)
+		) {
+			throw new Error(`catalogue: ${s.key} stage "${st.name}" needs Low ≤ Standard ≤ High`);
+		}
+	}
+	if (!s.sessionPlan?.length) return;
+	if (s.model !== "session" && s.model !== "group_session") {
+		throw new Error(`catalogue: ${s.key} has a session plan but is not a session listing`);
+	}
+	if (s.sessionPlan.length > (s.sessionCount ?? 1)) {
+		throw new Error(
+			`catalogue: ${s.key} plans ${s.sessionPlan.length} sessions for a block of ${
+				s.sessionCount ?? 1
+			}`,
+		);
+	}
+	for (const entry of s.sessionPlan) {
+		if (entry.title.length > 80 || entry.description.length > 600) {
+			throw new Error(
+				`catalogue: ${s.key} session "${entry.title}" is over the 80 / 600-character limits`,
+			);
+		}
+	}
+}
+
 /** Where each sponsored listing's seeded flight runs: one Home rail slot and one results slot. */
 const PLACEMENT_SURFACE: Record<string, "explore_home" | "explore_results"> = {
 	"sv-brand-identity-sprint": "explore_home",
@@ -109,8 +159,11 @@ export function emitMarketplace(world: World): string {
 		const isTeam = owner.kind === "team";
 		const isSession = s.model === "session" || s.model === "group_session";
 		for (const slug of s.skills) {
-			if (!SKILL_SLUGS.has(slug)) throw new Error(`catalogue: ${s.key} names unknown skill "${slug}"`);
+			if (!SKILL_SLUGS.has(slug)) {
+				throw new Error(`catalogue: ${s.key} names unknown skill "${slug}"`);
+			}
 		}
+		assertServiceTerms(s);
 		return [
 			id(world.serviceId(s.key)),
 			q(isTeam ? "team" : "freelancer"),
@@ -142,12 +195,17 @@ export function emitMarketplace(world: World): string {
 					turnaround: st.turnaround,
 					priceCents: st.priceMinor,
 					skills: st.skills,
+					intensity: st.intensity,
+					lowPriceCents: st.lowPriceMinor,
+					highPriceCents: st.highPriceMinor,
 				})),
 			),
+			String(s.tieredIntensity ?? false),
 			jsonb(s.teamRoles),
 			arr(s.deliverables),
 			num(isSession ? s.sessionMinutes ?? null : null),
 			num(s.model === "session" ? s.sessionCount ?? 1 : null),
+			jsonb(s.sessionPlan ?? []),
 			"true",
 			ago(90 - i * 3),
 		];
@@ -180,10 +238,12 @@ export function emitMarketplace(world: World): string {
 				"allow_continuous_enrollment",
 				"intake_fields",
 				"stage_template",
+				"allow_tiered_intensity",
 				"team_roles",
 				"deliverables",
 				"session_minutes",
 				"session_count",
+				"session_plan",
 				"is_published",
 				"created_at",
 			],
@@ -330,7 +390,12 @@ export function emitCatalogue(world: World): string {
 	const skillRows: string[][] = [];
 	const tagRows: string[][] = [];
 
-	const addGallery = (listingId: string, handle: string, cover: Asset | undefined, title: string) => {
+	const addGallery = (
+		listingId: string,
+		handle: string,
+		cover: Asset | undefined,
+		title: string,
+	) => {
 		galleryOf(world, handle, cover).forEach((asset, index) => {
 			mediaRows.push([
 				id(uuidFor("listing_media", `${listingId}:${asset.id}`)),
@@ -364,6 +429,7 @@ export function emitCatalogue(world: World): string {
 			q(p.summary),
 			q(p.category),
 			"'Instant download'",
+			"NULL",
 			String(p.priceMinor),
 			q(p.currency),
 			"NULL",
@@ -397,6 +463,7 @@ export function emitCatalogue(world: World): string {
 			q(s.summary),
 			q(s.category),
 			q(s.delivery),
+			q(s.createCategory),
 			String(s.priceMinor),
 			q(s.currency),
 			num(s.ticketPriceMinor ?? null),
@@ -431,6 +498,7 @@ export function emitCatalogue(world: World): string {
 				"description_text",
 				"category",
 				"delivery_label",
+				"create_category",
 				"amount_cents",
 				"currency",
 				"ticket_price_cents",
@@ -459,7 +527,12 @@ export function emitCatalogue(world: World): string {
 		),
 	);
 	out.push(
-		insert("catalogue.listing_skills", ["listing_id", "skill_id"], skillRows, "(listing_id, skill_id)"),
+		insert(
+			"catalogue.listing_skills",
+			["listing_id", "skill_id"],
+			skillRows,
+			"(listing_id, skill_id)",
+		),
 	);
 	out.push(insert("catalogue.listing_tags", ["listing_id", "tag"], tagRows, "(listing_id, tag)"));
 	// #endregion
@@ -539,8 +612,12 @@ export function emitCatalogue(world: World): string {
 			"'GBP'",
 		]);
 	};
-	for (const s of SERVICES) if (s.sponsored) addPlacement(s.key, s.owner, "service", world.serviceId(s.key));
-	for (const p of PRODUCTS) if (p.sponsored) addPlacement(p.key, p.owner, "product", world.productId(p.key));
+	for (const s of SERVICES) {
+		if (s.sponsored) addPlacement(s.key, s.owner, "service", world.serviceId(s.key));
+	}
+	for (const p of PRODUCTS) {
+		if (p.sponsored) addPlacement(p.key, p.owner, "product", world.productId(p.key));
+	}
 
 	out.push(
 		insert(
