@@ -160,7 +160,7 @@ async function readSection(
 				data: {
 					section: "notifications",
 					center: res.ok && res.data ? res.data.center : null,
-					delivery: channelLiveness(input.deliveryOverride ?? null),
+					delivery: await channelLiveness(input.deliveryOverride ?? null),
 				},
 				error: res.ok
 					? res.message && res.data?.center.live === false ? res.message : null

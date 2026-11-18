@@ -46,6 +46,12 @@ own `title`, `body`, `action_url` — forging a platform message inside the trus
 column fails with `42501` _permission denied_. The writer (`comms.fn_notify`, SECURITY DEFINER) is
 unaffected. Proven by `supabase/probes/comms_column_grants.sql`.
 
+**The service role** has `USAGE` on the schema (`00002500`, Decision #344 (a)), which the notification
+dispatcher needs to call `comms.fn_claim_deliveries`, `fn_record_delivery_result` and
+`fn_dispatch_enabled`; `00002510` gives it `EXECUTE` on every comms function. Before the dispatcher no
+service-role caller reached `comms`, and the grant was missing. Proven by
+`supabase/probes/comms_dispatch.sql` §0.
+
 ### Preferences — full self-service, scoped to the owner
 
 | Table                               | Commands                     | Rule                   |

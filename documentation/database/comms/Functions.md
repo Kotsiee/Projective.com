@@ -20,14 +20,17 @@ Event (RPC / trigger / cron)
                        ├─ fn_resolve_channels   (catalog ∩ preferences ∩ quiet hours ∩ digest)
                        ├─ INSERT comms.notifications        ──► Realtime  (in-app, migration 0206)
                        │     └─ AFTER INSERT on_notification_created_dispatch
-                       │           → fn_dispatch_notification ──► Edge Function (push/email/SMS)
+                       │           → fn_dispatch_notification ──pg_net──► POST /api/comms/dispatch
+                       │                 (Bearer COMMS_DISPATCH_SECRET)    └─ fn_claim_deliveries
+                       │                                                      → transport → fn_record_delivery_result
                        ├─ INSERT comms.notification_deliveries (one per channel, per device)
                        └─ security.audit_logs               (catalog rows flagged `audit`)
 ```
 
 The dispatch hook hangs off `comms.notifications`, not `notification_deliveries` (#339 (i)). It is
-off by default (`security.feature_flags` `comms.dispatch_webhook`, a placeholder
-`platform_params.comms_dispatch_url`) and posts with no authentication (#335 (e)).
+off by default (`security.feature_flags` `comms.dispatch_webhook`) and posts with a Vault-held bearer
+(#339 ruling N3 (c) = #335 (e)) to the Fresh dispatcher (Decision #344 (a)); see §The dispatch
+webhook.
 
 Time-based flows go the other way round: a scheduler calls `comms.fn_enqueue`, and
 `comms.fn_process_queue` turns each due promise into a real notification through the same
@@ -182,6 +185,7 @@ could call `fn_notify` could spoof any notification to any user; one that could 
 | `comms-sweep-expired`   | hourly (:35) | `fn_sweep_expired()`           | Archives (never deletes) notifications past `expires_at`.                                          |
 | `comms-reap-devices`    | daily 03:32  | `fn_reap_dead_devices()`       | Soft-revokes tokens with ≥5 gateway failures or unseen for 180 days.                               |
 | `comms-compact-events`  | daily 03:47  | `fn_compact_delivery_events()` | Empties the `raw` body of callbacks older than 30 days; keeps the row (it is the idempotency key). |
+| `comms-dispatch-sweep`  | every minute | http: `POST /api/comms/cron/dispatch?limit=200` (`COMMS_DISPATCH_SECRET`) | The dispatcher's retry sweep: sends what the trigger's post missed and retries failures past their backoff, through `fn_claim_deliveries`. Claims nothing while `comms.dispatch_webhook` is off. |
 
 `fn_escalate_unread` is idempotent by construction: a `NOT EXISTS` guard on an existing `email`
 delivery row is what stops every tick sending another copy. It adds the email only where the
@@ -237,17 +241,79 @@ the same trigger, since `public.create_enterprise` gives them a profile row
 
 ### The dispatch webhook
 
-`fn_dispatch_notification` pokes the push/email/SMS Edge Function for the non-`in_app` channels. It
-is guarded four ways:
+The dispatcher is a Fresh route, `POST /api/comms/dispatch`, thin over
+`@server/services/comms/NotificationDispatchService` (Decision #344 (a); ruling C4 (a) of #343 for
+the runtime), and `supabase/functions/` stays empty. Two doors reach it, and both end in
+`fn_claim_deliveries`, so the one flag governs both:
 
-- `security.feature_flags['comms.dispatch_webhook']` must be enabled (**off by default**);
-- `security.platform_params['comms_dispatch_url']` supplies the URL, seeded as the `XXXX-XXXX`
-  placeholder (root CLAUDE.md §6 — zero-trust placeholders);
-- rows whose only channel is `in_app` short-circuit (Realtime already delivered them);
-- `pg_net` may be absent, so the call goes through dynamic SQL inside an exception block.
+- **The trigger.** `fn_dispatch_notification` (`AFTER INSERT` on `comms.notifications`) posts
+  `{notification_id}` and nothing else to `<CRON_APP_URL>/api/comms/dispatch` with
+  `Authorization: Bearer <COMMS_DISPATCH_SECRET>`, both read from `vault.decrypted_secrets` exactly as
+  `ops.fn_dispatch_http_job` reads them. pg_net sends it when the emitting transaction commits, so the
+  dispatcher finds the delivery rows `fn_notify` wrote. It checks, in order: the flag
+  (`fn_dispatch_enabled()`; **off in every seed**), an outbound channel (`email`, `push` or `sms`;
+  an in-app-only row is already delivered), pg_net, Vault, an http(s) `CRON_APP_URL` and a bearer of
+  32+ characters. Each missing piece logs in the scheduler's style
+  (`ops.fn_log_scheduler_event('comms-dispatch', <reason>, 'warn', …)`: a `WARNING` every time and one
+  `ops.log_entries` row per reason a day, naming the secret, never its value) and posts nothing; the
+  deliveries stay `pending` for the sweep. It never raises, so it can never roll back the transaction
+  that emitted the notification.
+- **The sweep.** The `comms-dispatch-sweep` http job (every minute, same bearer) calls
+  `POST /api/comms/cron/dispatch?limit=200`, one pass over every due delivery.
 
-With the flag off it costs one flag lookup per notification and does nothing else. It can never
-block or roll back the transaction that emitted the notification.
+Both routes compare the bearer in constant time and answer 404 otherwise. `/api/comms/dispatch` is a
+named server-to-server door in `apps/web/utils/csrf.ts`, since the database sends no `Origin`. The
+service claims only the channels its transport registry (`dispatch-transports.ts`) can send. The
+registry ships **empty**: NT3 adds email, NT4 push and NT5 SMS. Until then every outbound delivery
+waits `pending` and nothing is claimed. Each payload carries the title, the absolute deep link
+(`APP_URL` + `action_url`, a same-origin path, else `/notifications`) and the notification id,
+never the body or the payload (EPI §3.5 rules 2 and 4). The runbook for turning the flag on is EPI
+§8.1.
+
+#### `comms.fn_dispatch_enabled() → boolean`
+
+The switch: `security.feature_flags['comms.dispatch_webhook'].enabled`, `false` when the row is
+missing. Read by the trigger, by the claim, and by the app's channel liveness
+(`NotificationDispatchService.isRunning`, which also requires a well-formed `COMMS_DISPATCH_SECRET`
+and caches the read for 30 s). `SECURITY DEFINER`, `search_path = ''`; service role only.
+
+#### `comms.fn_claim_deliveries(p_channels notification_channel[], p_notification uuid DEFAULT NULL, p_limit integer DEFAULT 200) → TABLE (delivery_id, notification_id, user_id, channel, status, attempts, suppressed_reason, destination jsonb, title, action_url, type, category)`
+
+Hands up to `p_limit` due deliveries of `p_channels` (one notification's, or any) to exactly one
+caller (`FOR UPDATE SKIP LOCKED`), and nothing while the flag is off. A row of any other channel stays
+`pending`, untouched, so no attempt is burned on a transport that is not configured yet. A row is
+due when it is younger than 24 hours and one of:
+
+- `pending`;
+- `failed` with `attempts < 5` and `updated_at` older than `2^attempts` minutes (the backoff);
+- `queued` with `attempts < 5` and `queued_at` older than 15 minutes (a lapsed lease: the dispatcher
+  died mid-send).
+
+A `pending` row older than 24 hours is never sent and is closed `skipped` with
+`suppressed_reason = 'expired'`: a notification is not news a day later, and the in-app row is the
+record. Each claimed row is resolved to its destination: for email the primary verified
+`org.user_emails` address; for SMS the confirmed `auth.users.phone` (`phone_confirmed_at`); for push
+the unrevoked `comms.device_tokens` row (endpoint and keys). In the same statement a row with no
+destination becomes `skipped` (`no_target`), one `fn_is_suppressed` refuses becomes `suppressed`
+(`suppressed_destination`; a hard bounce blocks every category, an unsubscribe Marketing only, CAS
+N8), and the rest become `queued` with `attempts + 1` and `queued_at`. Returns every claimed row with
+its status, and the destination on a `queued` row only. The title and action URL come with it; the
+body and payload never do. A destination never leaves the dispatch service and is never logged.
+`SECURITY DEFINER`, `search_path = ''`; service role only.
+
+#### `comms.fn_record_delivery_result(p_delivery uuid, p_status delivery_status, p_provider text DEFAULT NULL, p_provider_ref text DEFAULT NULL, p_error text DEFAULT NULL) → boolean`
+
+Records one send's outcome: `sent` (`sent_at`), `delivered` (`delivered_at`) or `failed`
+(`failed_at`, the error cut to 500 characters), with the provider and its message id. Anything else
+raises `22023`. It only moves a row forward: `sent` needs `queued`, and `delivered` and `failed` need
+`queued` or `sent`. A late or replayed answer returns `false` and changes nothing. For push,
+`p_error = 'gone'` revokes the device (`comms.revoke_device`'s semantics: `revoked_at`,
+`revoked_reason = 'gone'`, keys cleared), and the row's next claim closes it `skipped`. Any other push
+failure counts against the device (`failure_count + 1`, which `fn_reap_dead_devices` reads), and a
+success resets it. `SECURITY DEFINER`, `search_path = ''`; service role only.
+
+Probes: `supabase/probes/comms_dispatch.sql` (rolled back) and `comms_dispatch_race.sql` (two
+sessions claim at once; commits, so it runs only under `--disposable`).
 
 ---
 

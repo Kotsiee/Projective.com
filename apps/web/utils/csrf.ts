@@ -28,9 +28,10 @@
  *   (`application/x-www-form-urlencoded`, `multipart/form-data`) or JSON. A bodiless write (no
  *   `Content-Type`, no length) passes, since it carries nothing to forge.
  *
- * **Exempt doors, on `/api` only.** Webhooks (`/api/…/webhooks/…`) and scheduler endpoints
- * (`/api/…/cron/…`) are called server-to-server, never by a browser, and authenticate with a signature
- * or a bearer secret instead. The plain HTML forms (`/api/contact`, `/api/help/feedback`, and
+ * **Exempt doors, on `/api` only.** Webhooks (`/api/…/webhooks/…`), scheduler endpoints
+ * (`/api/…/cron/…`) and the notification dispatcher (`/api/comms/dispatch`, posted to by the database)
+ * are called server-to-server, never by a browser, and authenticate with a signature or a bearer
+ * secret instead. The plain HTML forms (`/api/contact`, `/api/help/feedback`, and
  * `/api/auth/confirm`, the email-confirmation page's one button) also accept a form body, but still
  * only from this site's own pages. A page route has no exemption.
  *
@@ -49,6 +50,18 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /** Server-to-server doors, authenticated by a signature or a bearer secret. */
 const SERVER_TO_SERVER = /^\/api\/(?:[^/]+\/)*(?:webhooks|cron)(?:\/|$)/;
+
+/**
+ * Server-to-server doors outside those two segments, by exact path. `/api/comms/dispatch` is posted
+ * to by the database itself (pg_net, from the `comms.notifications` trigger) with a Vault bearer, at
+ * the path Decision #344 (a) fixed.
+ */
+const MACHINE_ROUTES = new Set(["/api/comms/dispatch"]);
+
+/** Whether `pathname` is a server-to-server door, which the browser-origin guard stands aside for. */
+function isServerToServer(pathname: string): boolean {
+	return SERVER_TO_SERVER.test(pathname) || MACHINE_ROUTES.has(pathname.replace(/\/+$/, ""));
+}
 
 /** Routes a plain HTML form posts to, with or without JavaScript. */
 const FORM_ROUTES = new Set(["/api/contact", "/api/help/feedback", "/api/auth/confirm"]);
@@ -106,7 +119,7 @@ function ownOrigins(url: URL, appUrl: string | undefined): Set<string> {
 export function refuseCrossSiteWrite(req: Request, appUrl?: string): Response | null {
 	if (!WRITE_METHODS.has(req.method.toUpperCase())) return null;
 	const url = new URL(req.url);
-	if (!url.pathname.startsWith(API_PREFIX) || SERVER_TO_SERVER.test(url.pathname)) return null;
+	if (!url.pathname.startsWith(API_PREFIX) || isServerToServer(url.pathname)) return null;
 
 	if (!isSameOrigin(req, ownOrigins(url, appUrl))) {
 		return Response.json(

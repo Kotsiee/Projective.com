@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **58%** |           13 |  8 |  0 |  5 |           4 |
-| **UAT**          | **57%** |           64 | 32 |  7 | 25 |          10 |
-| **Production**   | **38%** |          137 | 40 | 18 | 79 |          20 |
+| **UAT**          | **58%** |           64 | 32 |  8 | 24 |           9 |
+| **Production**   | **38%** |          137 | 40 | 19 | 78 |          19 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -55,7 +55,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | B. Live data paths & feature flags |    6 |  1 |  2 |  3 |   36% |
 | C. Security & access control       |   31 | 13 |  4 | 14 |   55% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
-| E. Communications & delivery       |   13 |  2 |  1 | 10 |   17% |
+| E. Communications & delivery       |   13 |  2 |  2 |  9 |   22% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  3 | 13 |   40% |
 | G. Scheduled jobs & operations     |    8 |  1 |  0 |  7 |   11% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
@@ -175,13 +175,13 @@ Work orders for every open row, with the run order:
 | PRD-E1  | In-app notification engine                                  | ✅     | High     | MVP  | NT1 (`2f9a9bb6`)                                                                                                                                                            | NT1      |
 | PRD-E2  | Chat has one send door and `cht-` addresses                 | ❌     | Critical | MVP  | Two stores and two send doors; the live resolver takes raw uuids (`services/messaging/live-threads.ts:63`)                                                                  | MS2      |
 | PRD-E3  | Chat updates without a reload                               | ❌     | Critical | MVP  | No subscriber, poll or long-poll in `features/messaging`; the realtime publication (`00002600`) is unused                                                                   | MS3      |
-| PRD-E4  | A notification dispatcher (runtime decided, claim, retries) | ❌     | Critical | UAT  | `comms.fn_dispatch_notification` is gated off (`00001310:1146-1193`); `supabase/functions/` is empty                                                                        | NT2 (🧑) |
+| PRD-E4  | A notification dispatcher (runtime decided, claim, retries) | 🟡     | Critical | UAT  | NT2 (#344 (a)): `POST /api/comms/dispatch` (Fresh), posted to by the trigger with a Vault `COMMS_DISPATCH_SECRET` bearer, plus the `comms-dispatch-sweep` job; `comms.fn_claim_deliveries` (`SKIP LOCKED`, `2^n` backoff, 5 attempts, 15-min lease, 24 h window) and forward-only `fn_record_delivery_result`; probes `comms_dispatch.sql`, `comms_dispatch_race.sql`. The transport registry ships empty (NT3–NT5). Left: the hosted Vault secrets and flag, proved on staging (CD2) | NT2, CD2 |
 | PRD-E5  | Notification email                                          | ❌     | Critical | UAT  | `services/mail/transport.ts` (Resend) serves only secondary-email verification and guest email; no notification email sends yet; Settings → Notifications now says so (ST2) | NT3      |
 | PRD-E6  | Auth email: production SMTP and a full template set         | 🟡     | Critical | UAT  | #448: Resend `[auth.email.smtp]` (off locally); a template per reachable GoTrue email, all sent to Mailpit. Left: hosted SMTP + Site URL (EPI §8.5), a proven send          | AU5      |
 | PRD-E7  | Web push                                                    | ❌     | High     | PROD | No VAPID keys or push code                                                                                                                                                  | NT4      |
 | PRD-E8  | SMS                                                         | ❌     | Normal   | PROD | No Twilio transport                                                                                                                                                         | NT5      |
 | PRD-E9  | Chat events notify (`message.*`) and chat controls persist  | ❌     | High     | UAT  | Not built                                                                                                                                                                   | MS4, MS5 |
-| PRD-E10 | Bounce and complaint suppression honoured                   | ❌     | High     | PROD | Suppression never consulted (#339); no `RESEND_WEBHOOK_SECRET`                                                                                                              | NT3      |
+| PRD-E10 | Bounce and complaint suppression honoured                   | ❌     | High     | PROD | The dispatcher's claim now consults `comms.fn_is_suppressed` (NT2, CAS N8: a suppressed address comes back `suppressed`, probe `comms_dispatch.sql`). Still nothing writes a suppression: no signed provider webhook, no `RESEND_WEBHOOK_SECRET` (#339) | NT3      |
 | PRD-E11 | Newsletter double opt-in and provider sync                  | ❌     | Normal   | PROD | `services/newsletter/NewsletterBackendService.ts:29`                                                                                                                        | —        |
 | PRD-E12 | A waitlist is told when a seat opens                        | ✅     | Normal   | UAT  | #455: the `cohort-waitlist-invites` job invites the queue in order, one per free seat, each holding its seat 48 hours, with an in-app `waitlist.invited` (probe `waitlist_invite.sql`). Its email rides PRD-E5 | LV4      |
 | PRD-E13 | Project rooms carry read marks                              | ❌     | Normal   | PROD | #478 (g), CAS M10's other half: project rooms have no read-mark writer and always report `unread: false` (`live-detail.ts`); only DM threads mark read (#478) | —        |
@@ -369,3 +369,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | MR7 (#473): no row flips; PRD-F15 stays ❌ (counsel brief written; escrow-age reader built) | 58% | 52% |  33% |
 | 2026-11-18 | SAC1 (#477): PRD-C6, C7, C9, C10 ❌ → ✅ (deny-by-default EXECUTE, one probe over every schema); new PRD-C26–C29 ❌ | 58% | 54% |  37% |
 | 2026-11-18 | MR1 (#474): PRD-F24 ❌ → ✅ (an unclaimed escrow binds nobody until a claim: refunded, never paid out) | 58% | 57% |  38% |
+| 2026-11-18 | NT2 (#344 (a)): PRD-E4 ❌ → 🟡 (the Fresh dispatcher, its Vault-signed trigger, claim, retries and sweep; hosted proof left, CD2) | 58% | 58% |  38% |

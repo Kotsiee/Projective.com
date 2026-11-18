@@ -7,13 +7,16 @@ import {
 	resolveChannelLiveness,
 } from "./channel-liveness.ts";
 
-function withEnv(vars: Record<string, string | undefined>, fn: () => void): void {
+async function withEnvAsync(
+	vars: Record<string, string | undefined>,
+	fn: () => Promise<void>,
+): Promise<void> {
 	const apply = (name: string, value: string | undefined) =>
 		value === undefined ? Deno.env.delete(name) : Deno.env.set(name, value);
 	const before = Object.keys(vars).map((name) => [name, Deno.env.get(name)] as const);
 	Object.entries(vars).forEach(([name, value]) => apply(name, value));
 	try {
-		fn();
+		await fn();
 	} finally {
 		before.forEach(([name, value]) => apply(name, value));
 	}
@@ -44,30 +47,43 @@ Deno.test("resolveChannelLiveness — a channel is live once the dispatcher runs
 	assertEquals(resolveChannelLiveness(sources), { email: true, push: false, sms: false });
 });
 
-Deno.test("deliverySources — no dispatcher runs today, so no channel is live even with a real Resend key", () => {
-	withEnv({ RESEND_API_KEY: "re_live_key", MAIL_FROM: "Projective <no-reply@example.com>" }, () => {
-		const sources = deliverySources();
-		assertEquals(sources.dispatcher, false);
-		assertEquals(sources.transports.email, true);
-		assertEquals(channelLiveness(), NO_LIVE_CHANNELS);
+Deno.test("deliverySources — the dispatcher half is the running dispatcher, the transports half its registry", async () => {
+	const sources = await deliverySources(
+		() => Promise.resolve(true),
+		() => ({ email: true, push: false, sms: false }),
+	);
+	assertEquals(sources, { dispatcher: true, transports: { email: true, push: false, sms: false } });
+});
+
+Deno.test("deliverySources — a running dispatcher with the shipped, empty registry makes no channel live, even with a real Resend key", async () => {
+	await withEnvAsync({
+		RESEND_API_KEY: "re_live_key",
+		MAIL_FROM: "Projective <no-reply@example.com>",
+	}, async () => {
+		const sources = await deliverySources(() => Promise.resolve(true));
+		assertEquals(sources.dispatcher, true);
+		assertEquals(sources.transports, NO_TRANSPORT);
+		assertEquals(await channelLiveness(null, sources), NO_LIVE_CHANNELS);
 	});
 });
 
-Deno.test("deliverySources — the placeholder key counts as no email transport", () => {
-	withEnv({ RESEND_API_KEY: "XXXX-XXXX", MAIL_FROM: "Projective <no-reply@example.com>" }, () => {
-		assertEquals(deliverySources().transports.email, false);
-	});
+Deno.test("deliverySources — no dispatcher bearer, no dispatcher: the placeholder and a short secret count as absent", async () => {
+	for (const secret of [undefined, "XXXX-XXXX", "short-secret"]) {
+		await withEnvAsync({ COMMS_DISPATCH_SECRET: secret, AUTH_BACKEND_LIVE: "true" }, async () => {
+			assertEquals((await deliverySources()).dispatcher, false, String(secret));
+		});
+	}
 });
 
-Deno.test("channelLiveness — the development override wins over the sources", () => {
+Deno.test("channelLiveness — the development override wins over the sources", async () => {
 	const live: DeliverySources = { dispatcher: true, transports: EVERY_TRANSPORT };
-	assertEquals(channelLiveness("live", { dispatcher: false, transports: NO_TRANSPORT }), {
+	assertEquals(await channelLiveness("live", { dispatcher: false, transports: NO_TRANSPORT }), {
 		email: true,
 		push: true,
 		sms: true,
 	});
-	assertEquals(channelLiveness("off", live), NO_LIVE_CHANNELS);
-	assertEquals(channelLiveness(null, live), { email: true, push: true, sms: true });
+	assertEquals(await channelLiveness("off", live), NO_LIVE_CHANNELS);
+	assertEquals(await channelLiveness(null, live), { email: true, push: true, sms: true });
 });
 
 Deno.test("parseChannelLivenessOverride — only live and off are overrides", () => {

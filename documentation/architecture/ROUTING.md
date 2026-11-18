@@ -964,6 +964,8 @@ expired live session), and answering the flat `serviceResponse` envelope. Live b
 | `/api/notifications/read-all`     | `POST` `{ category? }` | `MarkAllReadSchema` → `comms.mark_all_notifications_read`; empty body = every category → `{ updated }`. |
 | `/api/notifications/seen`         | `POST`  | `comms.mark_notifications_seen` — clears the badge, reads nothing → `{ updated }`. |
 | `/api/notifications/archive`      | `POST` `{ ids }` | `NotificationIdsSchema` → `comms.archive_notifications` (dismiss; never a hard delete) → `{ updated }`. |
+| `/api/comms/dispatch`             | `POST` `{ notification_id }` | The notification dispatcher's entry point (Decision #344 (a)): the `comms.notifications` trigger posts here through pg_net. `DispatchRequestSchema` (the id alone) → `NotificationDispatchService.dispatch` → `{ claimed, sent, failed, skipped, suppressed }`. Bearer `COMMS_DISPATCH_SECRET` (≥ 32 chars, constant-time), checked before the body is read; anything else **404**; 422 any other body. A named server-to-server door in the `/api` origin guard (`utils/csrf.ts`), since the database sends no `Origin`. |
+| `/api/comms/cron/dispatch`        | `POST` (`?limit=`, 1–500, default 200) | The dispatcher's retry sweep (job `comms-dispatch-sweep`, every minute): one pass over every due delivery. Bearer `COMMS_DISPATCH_SECRET`; anything else **404**. |
 
 ### Help centre API (P2)
 

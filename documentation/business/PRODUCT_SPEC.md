@@ -115,9 +115,12 @@ aligned on time and location.
   the setting, and an operator reading a case sees that and how many people in the room matched no
   seat. **Not yet run on live provider accounts.**
 - **Today only in-app notices are delivered**, apart from the email a guest with no account gets
-  (Decision #391). Email to people on Projective, push and SMS have no dispatcher yet; the SMS
-  setting shows only once the SMS provider (Twilio) is configured. **Not built yet** (Decision #339,
-  rulings P3 and N3).
+  (Decision #391). The dispatcher that will carry email, push and SMS to people on Projective is
+  built and switched off (Decision #344 (a)). It sends a notice's title and a link back into
+  Projective, never its contents, and does not send a notice more than a day old. Until a provider
+  is connected for a channel, that channel's notices wait. The SMS setting shows only once the SMS
+  provider (Twilio) is configured. **Not built yet:** the email, push and SMS providers (Decision
+  #339, rulings P3 and N3).
 - **Counter-proposals are bounded.** An attendee may hold at most three unapproved time proposals at
   once (the host's own are not counted), and a replacement slot keeps the original event's length: a
   move is a move, never an extension. No replacement runs longer than 24 hours, so an event longer

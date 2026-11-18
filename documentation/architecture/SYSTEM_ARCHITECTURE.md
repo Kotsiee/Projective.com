@@ -2511,8 +2511,14 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
   runs locally as it does when hosted. The http jobs skip (and log) until the Vault secrets below
   exist, and a skipped run still reads as succeeded in `cron.job_run_details`. Locally `CRON_APP_URL`
   is `http://host.docker.internal:<PORT>`, because pg_net runs inside the database container, and
-  `deno task db:reset` sets it with `INTEGRATIONS_CRON_SECRET` from `.env.local` (`cron:vault`), because
-  a rebuild empties Vault. The money sweeps stay on `deno task cron:run` locally.
+  `deno task db:reset` sets it with `INTEGRATIONS_CRON_SECRET` and `COMMS_DISPATCH_SECRET` from
+  `.env.local` (`cron:vault`, each only when well formed), because a rebuild empties Vault. The money
+  sweeps stay on `deno task cron:run` locally.
+- **The comms Vault secrets.** The notification dispatcher (§The Notification Engine, Decision #344
+  (a)) reads `CRON_APP_URL` and `COMMS_DISPATCH_SECRET` from Vault twice: the `comms.notifications`
+  trigger posts each new notification to `/api/comms/dispatch` with them, and the
+  `comms-dispatch-sweep` http job uses the same pair. A hosted project needs both, by hand, before the
+  `comms.dispatch_webhook` flag is turned on (EPI §8.1's runbook).
 
 | Job                                 | Cadence (UTC)                     | Runs                                                                     | Owner                                                             | Idempotency                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | :---------------------------------- | :-------------------------------- | :----------------------------------------------------------------------- | :---------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2551,6 +2557,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `integrations-refresh-tokens`       | every 10 min                      | `POST /api/integrations/cron/refresh?limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `IntegrationsBackendService.refreshDue` (#343 C4) | Claims each connection due under a 5-minute lease (`SKIP LOCKED`); a commit lands only over the refresh token its run read, so a repeat cannot double-spend one.
 | `integrations-renew-channels`       | hourly :35                        | `POST /api/integrations/cron/channels?limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `IntegrationsBackendService.renewChannels` (#343 C4) | Claims each channel within 24 h of lapsing once (`expiring`, `SKIP LOCKED`); a third failure degrades its connection.
 | `integrations-calendar-sync`        | every 5 min                       | `POST /api/integrations/cron/sync?limit=50` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.syncDue` (#383 R3) | Claims each calendar a push marked due or an hour unread, under a 10-minute lease (`SKIP LOCKED`); a read lands in one call and only while its claim is held, so a repeat changes nothing.
+| `comms-dispatch-sweep`              | every minute                      | `POST /api/comms/cron/dispatch?limit=200` · `COMMS_DISPATCH_SECRET` | Comms — `NotificationDispatchService.dispatch` (Decision #344 (a)) | Claims through `comms.fn_claim_deliveries` (`SKIP LOCKED`, a 15-minute lease on a queued row, results recorded forward only), so an overlapping run sends nothing twice; claims nothing while `comms.dispatch_webhook` is off.
 | `integrations-outbound-sync`        | every 5 min, from :02             | `POST /api/integrations/cron/sync?task=outbound&limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.pushDue` (#383 R3) | Claims each dirty copy under a 10-minute lease (`SKIP LOCKED`); writes are idempotent at the provider, and a copy changed during a write stays dirty.
 | `integrations-consent-sweep`        | daily 03:25                       | `integrations.fn_sweep_consent_states()`                                 | Integrations — the consent handshake (`00001500`)                 | Deletes consents a day past their window; repeat-safe.
 | `scheduling-reminders`              | every 5 min                       | `scheduling.fn_enqueue_due_reminders()`                                  | Scheduling                                                        | Queues the upcoming sitting, call and calendar-entry reminders (Decision #388); a repeat is a no-op on each reminder's dedupe key. |
@@ -2611,11 +2618,12 @@ Adding an event is a catalog row, not a code change in every emit site.
 ```
 Event (RPC / trigger / cron)
   └─ comms.fn_notify ─┬─ INSERT comms.notifications ──► Supabase Realtime      (in-app)
-                      │     └─ AFTER INSERT trigger ──► dispatch Edge Function (push · email · SMS;
-                      │                                  flag-off, placeholder URL — #339 (i))
+                      │     └─ AFTER INSERT trigger ──pg_net──► POST /api/comms/dispatch (push · email · SMS;
+                      │          Bearer COMMS_DISPATCH_SECRET from Vault;      flag off by default — #344 (a))
                       ├─ INSERT comms.notification_deliveries (per channel/device)
                       └─ security.audit_logs                                    (financial/security events)
 pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps   (registered in 00005060 — §Scheduled jobs)
+        └ comms-dispatch-sweep (http, every minute) ──► POST /api/comms/cron/dispatch   (re-drives and retries)
 ```
 
 **Boundaries that matter:**
@@ -2664,10 +2672,31 @@ are derived (`comms.fn_auto_reply_status`): away = notifications paused, busy = 
 blackout, out of hours = outside published working hours, holiday = the rule's own dates. A failure is a
 `WARNING`, never the loss of the person's message.
 
-**Still to build (not in the database layer):** the `dispatch-push` / `send-email` Edge Functions and
-their provider credentials (VAPID keypair, FCM/APNs, an SMTP or email-provider block in
-`config.toml`). The outbound trigger is feature-flagged **off** with an `XXXX-XXXX` placeholder URL
-until they exist.
+**The dispatcher is a Fresh route, not an Edge Function (Decision #344 (a)).** This follows ruling C4
+(a) of #343: Fresh routes plus pg_cron `http` jobs carry integration work, so `supabase/functions/`
+stays empty. `POST /api/comms/dispatch` is thin over `@server/services/comms/NotificationDispatchService`:
+
+- **Two doors.** The trigger above posts `{notification_id}` to it through pg_net with
+  `Bearer COMMS_DISPATCH_SECRET` (Vault, beside `CRON_APP_URL`, the origin every http job uses; #339
+  ruling N3 (c)). The `comms-dispatch-sweep` job calls `POST /api/comms/cron/dispatch` every minute
+  for what that post missed and for retries. Both check the bearer in constant time and answer 404
+  otherwise.
+- **The claim.** `comms.fn_claim_deliveries` hands each due delivery to one caller
+  (`FOR UPDATE SKIP LOCKED`): pending, failed past a `2^attempts`-minute backoff (5 attempts), or
+  queued past a 15-minute lease. It covers only rows from the last 24 hours, and only of the channels
+  the transport registry (`dispatch-transports.ts`) can send. It resolves each destination
+  (primary verified email, confirmed phone, live device), and marks rows with none `skipped` and
+  suppressed ones `suppressed` (`fn_is_suppressed`, CAS N8).
+- **The payload.** Each one carries the title, the absolute same-origin deep link and the
+  notification id, never the body or payload (EPI §3.5 rule 4).
+- **The result.** `comms.fn_record_delivery_result` records each outcome, forward only.
+- **The switch.** The `comms.dispatch_webhook` flag gates both doors through the claim, and it is
+  off in every seed. Channel liveness reads the flag, a well-formed bearer and the registry, so
+  Settings promises a channel only once it sends.
+
+**Still to build:** the transports. The registry ships empty, so every outbound delivery waits
+`pending` until COMMS NT3 (email through Resend), NT4 (Web Push, VAPID) and NT5 (SMS, Twilio) each
+register one, with their provider credentials.
 
 ---
 
@@ -4302,6 +4331,10 @@ CONTACT_CRON_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/integrations/cron/* (refresh,
 # channels, rooms, sync), which act at third parties with stored credentials; 404 otherwise.
 INTEGRATIONS_CRON_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) of the notification dispatcher (Decision #344 (a)): the comms.notifications
+# trigger posts to POST /api/comms/dispatch with it, and the comms-dispatch-sweep job calls
+# POST /api/comms/cron/dispatch with it; 404 otherwise. Unset, the dispatcher counts as not running.
+COMMS_DISPATCH_SECRET=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
 # pg_net reads them inside the database to call the routes above; set them per environment with
 #   SELECT vault.create_secret('<value>', '<NAME>');   -- vault.update_secret(id, '<value>') to rotate
@@ -4313,6 +4346,7 @@ INTEGRATIONS_CRON_SECRET=XXXX-XXXX
 #   SCHEDULING_CRON_SECRET  the same value as the env key above
 #   CONTACT_CRON_SECRET  the same value as the env key above
 #   INTEGRATIONS_CRON_SECRET  the same value as the env key above
+#   COMMS_DISPATCH_SECRET  the same value as the env key above (read by the dispatch trigger too)
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 

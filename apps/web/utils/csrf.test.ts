@@ -102,9 +102,14 @@ Deno.test("webhooks and scheduler endpoints are exempt; a look-alike path is not
 		"/api/sessions/webhooks/zoom",
 		"/api/finance/cron/payouts",
 		"/api/user/cron/erasures",
+		"/api/comms/cron/dispatch",
+		"/api/comms/dispatch",
 	];
 	for (const path of exempt) assertEquals(refuseCrossSiteWrite(req(path, json())), null, path);
 	assertEquals(refuseCrossSiteWrite(req("/api/cronjobs", json()))?.status, 403);
+	// The dispatcher's door is one exact path, not a prefix.
+	assertEquals(refuseCrossSiteWrite(req("/api/comms/dispatcher", json()))?.status, 403);
+	assertEquals(refuseCrossSiteWrite(req("/api/comms/dispatch/other", json()))?.status, 403);
 });
 
 // #region Page routes

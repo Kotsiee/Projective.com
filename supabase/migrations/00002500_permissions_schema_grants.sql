@@ -63,6 +63,12 @@ service_role;
 
 GRANT USAGE ON SCHEMA comms TO authenticated;
 
+-- The notification dispatcher (Decision #344 (a)) calls comms.fn_claim_deliveries,
+-- fn_record_delivery_result and fn_dispatch_enabled under the service role, which
+-- 00002510's deny-by-default region gives EXECUTE on every comms function to. A
+-- function grant is unusable without the schema, and the service role had none here.
+GRANT USAGE ON SCHEMA comms TO service_role;
+
 GRANT ALL ON ALL TABLES IN SCHEMA comms TO authenticated;
 
 GRANT ALL ON ALL SEQUENCES IN SCHEMA comms TO authenticated;

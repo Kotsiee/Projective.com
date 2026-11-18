@@ -4,16 +4,18 @@ import {
 	NO_LIVE_CHANNELS,
 	type OutboundChannel,
 } from "@projective/types/comms";
-import { configuredTransport } from "../mail/transport.ts";
+import { configuredChannels } from "./dispatch-transports.ts";
+import { NotificationDispatchService } from "./NotificationDispatchService.ts";
 
 /**
  * channel-liveness — whether each outbound notification channel (email, push, SMS) actually delivers
  * in this environment, so no surface promises a channel that sends nothing.
  *
  * A channel is live only while the notification dispatcher runs AND that channel's transport is
- * configured: a configured provider with nothing dispatching to it sends nothing, and neither does a
- * dispatcher with no provider. {@link deliverySources} is the one place both halves are read, so the
- * answer turns true by itself once delivery for a channel lands (COMMS NT2–NT5).
+ * registered with it: a configured provider with nothing dispatching to it sends nothing, and neither
+ * does a dispatcher with no transport. {@link deliverySources} is the one place both halves are read,
+ * so the answer turns true by itself as each transport lands in the dispatcher's registry (COMMS
+ * NT3 email, NT4 push, NT5 SMS).
  */
 
 // #region Sources
@@ -26,14 +28,16 @@ export interface DeliverySources {
 }
 
 /**
- * This environment's delivery sources. No dispatcher exists, so nothing is dispatched. Email's
- * transport is the Resend one ({@link configuredTransport}); push and SMS have no transport.
+ * This environment's delivery sources: whether the dispatcher runs (a well-formed
+ * `COMMS_DISPATCH_SECRET` and the `comms.dispatch_webhook` flag on,
+ * {@link NotificationDispatchService.isRunning}) and which channels its transport registry can carry
+ * ({@link configuredChannels}; empty until NT3–NT5).
  */
-export function deliverySources(): DeliverySources {
-	return {
-		dispatcher: false,
-		transports: { email: configuredTransport() !== null, push: false, sms: false },
-	};
+export async function deliverySources(
+	running: () => Promise<boolean> = () => NotificationDispatchService.isRunning(),
+	transports: () => Readonly<Record<OutboundChannel, boolean>> = () => configuredChannels(),
+): Promise<DeliverySources> {
+	return { dispatcher: await running(), transports: transports() };
 }
 // #endregion
 
@@ -46,14 +50,15 @@ export function resolveChannelLiveness(sources: DeliverySources): ChannelLivenes
 
 /**
  * Which outbound channels deliver here. A development `override` (the Dev Context Switcher's
- * `notificationDelivery` axis) draws every channel as live or none; without one, `sources` decide.
+ * `notificationDelivery` axis) draws every channel as live or none, without reading the sources;
+ * without one, `sources` (this environment's, by default) decide.
  */
-export function channelLiveness(
+export async function channelLiveness(
 	override: ChannelLivenessOverride | null = null,
-	sources: DeliverySources = deliverySources(),
-): ChannelLiveness {
+	sources?: DeliverySources,
+): Promise<ChannelLiveness> {
 	if (override === "live") return { email: true, push: true, sms: true };
 	if (override === "off") return NO_LIVE_CHANNELS;
-	return resolveChannelLiveness(sources);
+	return resolveChannelLiveness(sources ?? await deliverySources());
 }
 // #endregion

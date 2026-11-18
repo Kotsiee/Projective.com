@@ -76,7 +76,7 @@ or Upwork-style platform that pipes every message through a hosted trust-and-saf
 | 11 | Google Drive                                            | Connector              | Growth               | **Wired · gated off**: consent, listing and the tree (#394)  | same                                                              | `services/integrations/adapters/GoogleDriveAdapter.ts`                                       |
 | 12 | Microsoft Graph (Outlook, Teams, OneDrive / SharePoint) | Connector              | MVP / Growth         | **Wired · gated off**: consent and refresh; no room or sync  | same                                                              | `IntegrationsBackendService.ts` · `adapters/OneDriveAdapter.ts`                              |
 | 13 | Zoom (OAuth + presence webhooks)                        | Conferencing           | MVP                  | Presence webhook **Shipped**; OAuth **Wired · gated off**    | `ZOOM_WEBHOOK_SECRET` present                                     | `services/sessions/presence/zoom.ts`                                                         |
-| 14 | Web Push (VAPID)                                        | Outbound               | MVP                  | **Planned (SSOT)**; `comms.device_tokens` shipped            | `security.feature_flags['comms.dispatch_webhook']`                | dispatch Edge Function (not built)                                                           |
+| 14 | Web Push (VAPID)                                        | Outbound               | MVP                  | **Planned (SSOT)**; `comms.device_tokens` shipped            | `security.feature_flags['comms.dispatch_webhook']`                | the dispatcher `POST /api/comms/dispatch` (built, #344 (a)); its push transport is NT4 |
 | 15 | Apple Push Notification service                         | Outbound               | Growth (native app)  | **Planned (SSOT)**                                           | same                                                              | same                                                                                         |
 | 16 | Firebase Cloud Messaging (HTTP v1)                      | Outbound               | Growth (native app)  | **Planned (SSOT)**                                           | same                                                              | same                                                                                         |
 | 17 | Transactional email                                     | Outbound               | **MVP blocker**      | GoTrue → Mailpit locally; the app's transport is built (Resend, Decision #391) and has no key in any environment yet | none                                                              | `services/mail/transport.ts` `configuredTransport()`                               |
@@ -150,7 +150,7 @@ Browser / PWA ──────►│ Fresh app (Deno)  thin routes → fat ser
  Stripe.js ◄────────►│   │                                                                            │
  Turnstile widget    │   ├── Zone C: Supabase ── Postgres (RLS) · GoTrue · Storage · Realtime          │
                      │   │        │  pg_cron + pg_net ──(bearer from Vault)──► /api/*/cron/* (Zone B)    │
-                     │   │        │  comms trigger ──pg_net──► Edge Function comms-dispatch (Zone C)     │
+                     │   │        │  comms trigger ──pg_net──► /api/comms/dispatch (Zone B, #344 (a))    │
                      │   │        └─ Vault (cron + dispatch secrets)                                    │
                      │   │                                                                            │
                      │   ├── Zone D: safety node (private link only) ── Presidio · NudeNet/OCR · ClamAV  │
@@ -184,9 +184,9 @@ Every inbound endpoint follows the webhook standard in §3.3. A new route lands 
 | `GET /api/integrations/callback`                     | OAuth providers, via a browser redirect           | `integrations.consent_states.state` (≥ 22 chars, single use, ~10 min) + PKCE verifier                          | per-provider client secret                                | `consent_states.consumed_at`                                            | **Shipped**; no provider enabled |
 | `POST /api/integrations/webhooks/[provider]`         | Google channels, Graph subscriptions              | `X-Goog-Channel-Token` / Graph `clientState` against `webhook_subscriptions.verification_token`                | per channel                                               | `integrations.webhook_deliveries (provider_slug, external_delivery_id)` | **Shipped**; pushes are acknowledged until calendar sync lands |
 | `POST /api/comms/webhooks/[provider]`                | The email provider (Svix), Twilio                 | Svix `svix-signature` / `X-Twilio-Signature`                                                                   | `RESEND_WEBHOOK_SECRET` · the Twilio auth token           | `comms.delivery_events (provider, provider_event_id)`                   | **Proposed**              |
-| `POST {SUPABASE_URL}/functions/v1/comms-dispatch`    | pg_net, from `comms.notification_deliveries`      | A bearer read from Vault (**Proposed**; today the trigger sends none, flag (e))                                | `COMMS_DISPATCH_SECRET`                                   | The notification id plus per-delivery status                            | **Planned (SSOT)**        |
+| `POST /api/comms/dispatch`    | pg_net, from the `comms.notifications` trigger (`fn_dispatch_notification`)      | A Vault-held bearer of ≥ 32 chars, compared in constant time; anything else gets 404 (#339 N3 (c))                                | `COMMS_DISPATCH_SECRET`                                   | `comms.fn_claim_deliveries` (`SKIP LOCKED`) and forward-only results                            | **Shipped** (NT2, #344 (a)); no transport yet        |
 | `POST {SUPABASE_URL}/functions/v1/scan-file`         | Anyone (`verify_jwt = false`)                     | **None**                                                                                                       | none                                                      | none                                                                    | **Defect** (§9.5)         |
-| `POST /api/{finance,user,scheduling,contact,integrations}/cron/*` | pg_net (`ops.fn_dispatch_http_job`)               | A bearer of ≥ 32 chars; anything else gets 404                                                                 | `*_CRON_SECRET`                                           | Per job (`SYSTEM_ARCHITECTURE.md` §Scheduled jobs)                      | **Shipped**               |
+| `POST /api/{finance,user,scheduling,contact,integrations,comms}/cron/*` | pg_net (`ops.fn_dispatch_http_job`)               | A bearer of ≥ 32 chars; anything else gets 404                                                                 | `*_CRON_SECRET` · `COMMS_DISPATCH_SECRET`                                           | Per job (`SYSTEM_ARCHITECTURE.md` §Scheduled jobs)                      | **Shipped**               |
 
 ### 2.2 Outbound egress
 
@@ -210,8 +210,8 @@ These are the hosts each runtime must reach. The table feeds the production fire
 | Store                                                                   | Holds                                                                                                                                                         | Read by                                       | Provisioned by                                                       | Rotation                               |
 | :---------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------- | :------------------------------------------------------------------- | :------------------------------------- |
 | App env (`.env.local` locally; the host's secret manager when deployed) | Stripe, Voyage, link safety, OAuth clients, cron bearers, the S3 principal, the vault key, Turnstile (#447), (**Proposed**) email and the safety-node bearer  | `packages/backend/core/env.ts` → fat services | Operator, per environment                                            | Redeploy                               |
-| Supabase Vault (`vault.secrets`)                                        | `CRON_APP_URL`, `*_CRON_SECRET`, and (**Proposed**) `COMMS_DISPATCH_SECRET`                                                                                   | pg_net dispatchers inside Postgres            | `SELECT vault.create_secret('<value>', '<NAME>')` per environment    | `vault.update_secret(id, '<value>')`   |
-| Edge Function secrets                                                   | (**Proposed**) VAPID private key, APNs `.p8`, FCM service account, the email API key, `COMMS_DISPATCH_SECRET`                                                 | Edge Functions (`Deno.env.get`)               | `supabase secrets set`                                               | Set again with `supabase secrets set`  |
+| Supabase Vault (`vault.secrets`)                                        | `CRON_APP_URL`, `*_CRON_SECRET`, `COMMS_DISPATCH_SECRET` (#344 (a))                                                                                   | pg_net dispatchers inside Postgres            | `SELECT vault.create_secret('<value>', '<NAME>')` per environment    | `vault.update_secret(id, '<value>')`   |
+| Edge Function secrets                                                   | None planned: the dispatcher and its transports read the app env (#344 (a)); `scan-file` is a defect (§9.5)                                                 | Edge Functions (`Deno.env.get`)               | `supabase secrets set`                                               | Set again with `supabase secrets set`  |
 | Enveloped rows (`integrations.connection_secrets`)                      | Per-user OAuth access and refresh tokens; S3-compatible key pairs                                                                                             | `token-vault.ts`, service role only           | The consent callback                                                 | No rewrap yet: reconnect (§9.4)        |
 | GoTrue configuration                                                    | The Google **sign-in** client, SMTP credentials, the captcha secret, Twilio                                                                                   | GoTrue                                        | `supabase/config.toml` `env(...)` locally; the dashboard when hosted | Dashboard / CLI                        |
 | Browser-visible, served by a route                                      | The Stripe publishable key, the Turnstile site key, the VAPID public key                                                                                      | Islands, through `/api/*` responses           | App env                                                              | With their secret pair                 |
@@ -1453,34 +1453,65 @@ exchange between them is a network call. The claim's lease keeps a second run of
 
 ### 8.1 The dispatch pipeline
 
+**Built (COMMS NT2, Decision #344 (a)).** The dispatcher is a Fresh route, `POST /api/comms/dispatch`,
+thin over `@server/services/comms/NotificationDispatchService`, not an Edge Function. Ruling C4 (a)
+(#343) put integration work on Fresh routes plus pg_cron `http` jobs, and #344 (a) applies it here,
+so `supabase/functions/` gets no dispatcher and the transports run under `deno task test:unit`.
+
 ```text
 comms.fn_notify ─► comms.notifications (in-app; the inbox polls /api/notifications/summary)
-               └─► comms.notification_deliveries (per channel / device)
-                     └─ AFTER INSERT trigger (00001310): runs only when
-                        security.feature_flags['comms.dispatch_webhook'] is on
-                        AND security.platform_params['comms_dispatch_url'] ≠ 'XXXX-XXXX'
-                          └─ pg_net POST {notification_id, user_id, type} ─► Edge Function comms-dispatch
-                                ├─ web  → Web Push (§8.2)
-                                ├─ ios  → APNs (§8.3)
-                                ├─ android → FCM (§8.4)
-                                ├─ email → the email API (§8.5)
-                                └─ sms  → Twilio (§8.6)
-                              outcomes → comms.notification_deliveries · comms.delivery_events
+               └─► comms.notification_deliveries (per channel / device, status pending)
+comms.notifications AFTER INSERT ─ fn_dispatch_notification (00001310), only while
+     comms.fn_dispatch_enabled() (security.feature_flags['comms.dispatch_webhook']) and the row has an
+     email, push or sms channel:
+     pg_net POST {notification_id} ─► <Vault CRON_APP_URL>/api/comms/dispatch
+                                       Authorization: Bearer <Vault COMMS_DISPATCH_SECRET>
+pg_cron comms-dispatch-sweep (http, every minute) ─► POST /api/comms/cron/dispatch?limit=200 (same bearer)
+     both ─► NotificationDispatchService.dispatch
+               ├─ comms.fn_claim_deliveries(channels the registry serves)  FOR UPDATE SKIP LOCKED
+               │     destination resolved here; skipped (no target) · suppressed (fn_is_suppressed)
+               ├─ payload: title · absolute same-origin link · notification id (never body or payload)
+               ├─ transport registry (dispatch-transports.ts), empty until:
+               │     email → the email API (§8.5, NT3) · web → Web Push (§8.2, NT4) · sms → Twilio (§8.6, NT5)
+               │     ios → APNs (§8.3) · android → FCM (§8.4)  (Growth)
+               └─ comms.fn_record_delivery_result → notification_deliveries (forward only; push gone → revoke)
+                  provider callbacks → comms.delivery_events (NT3, NT5)
 ```
 
-**The authentication gap (flag (e)).** The trigger posts with only `Content-Type`. An Edge Function
-that trusts that request can be driven by anyone who learns its URL. It would read notifications
-with the service role and send push and email as Projective. **Proposed:**
+**The authentication gap (flag (e)) is closed.** The trigger reads `CRON_APP_URL` and
+`COMMS_DISPATCH_SECRET` from `vault.decrypted_secrets` exactly as `ops.fn_dispatch_http_job` does, and
+sends `Authorization: Bearer …` (#339 ruling N3 (c) = #335 (e)). Both routes compare the bearer in
+constant time and answer 404 otherwise, like the cron routes. `/api/comms/dispatch` is a named
+server-to-server door in the `/api` origin guard (`utils/csrf.ts`), since the database sends no
+`Origin`. The body is the id alone, so no title or recipient sits in pg_net's request log. A missing
+pg_net, Vault, origin or bearer logs a scheduler warning (`ops.fn_log_scheduler_event`, once a day
+per reason) and posts nothing, and the sweep sends those deliveries.
 
-1. Store `COMMS_DISPATCH_SECRET` (≥ 32 chars) in Vault.
-2. Edit `00001310` in place so the trigger reads the secret from Vault exactly as
-   `ops.fn_dispatch_http_job` does, and sends `Authorization: Bearer …`.
-3. Deploy the function with `--no-verify-jwt` and its own constant-time bearer check. It answers 404
-   otherwise, like the cron routes.
+**Retries and the window.** A failed delivery is retried after `2^attempts` minutes, at most 5
+attempts. A queued one whose dispatcher died is offered again after a 15-minute lease. A delivery
+older than 24 hours is never sent: a pending one is closed `skipped` (`expired`), and the in-app row
+is the record. A channel with no registered transport is not claimed at all, so its deliveries wait
+(deferred, §3.2) and a provider turned on later still sends what is inside the window.
 
-**One function, not two.** The SSOT names `dispatch-push` and `send-email`. `comms_dispatch_url` is
-a single URL, so one `comms-dispatch` entry point fans out to shared modules
-(`_shared/{webpush,apns,fcm,mail,sms}.ts`). The two SSOT names become modules of it. This is an
+**Runbook: turning outbound delivery on, per environment (staging, then production).**
+
+1. Generate `COMMS_DISPATCH_SECRET` (≥ 32 characters, e.g. `openssl rand -hex 32`) once per
+   environment. Set it in the app's secret store **and** in Vault under the same name
+   (`SELECT vault.create_secret('<value>', 'COMMS_DISPATCH_SECRET')`), beside `CRON_APP_URL` (the
+   public origin when hosted; §9.3). Locally, `deno task db:reset` copies a well-formed one from
+   `.env.local` (`cron:vault`).
+2. Configure at least one transport: NT3's email (§8.5), NT4's push (§8.2) or NT5's SMS (§8.6).
+   Until one is registered, the dispatcher claims nothing and the flag changes nothing.
+3. Turn the flag on:
+   `UPDATE security.feature_flags SET enabled = true WHERE key = 'comms.dispatch_webhook'`. It is off
+   in every seed. The trigger and the sweep both obey it through the claim, so turning it off stops
+   all outbound delivery at once.
+4. Prove it: a POST to `/api/comms/dispatch` without the bearer answers 404; with it,
+   `POST /api/comms/cron/dispatch` answers 200 with its counts; a mandatory notice's email delivery
+   moves `pending → queued → sent` within a minute (COMMS_DELIVERY CD2's `smoke:delivery`).
+
+**One entry point.** The SSOT named `dispatch-push` and `send-email`. One dispatcher fans out to one
+transport per channel instead, and those two names are now its transports. This is an
 implementation choice, not a contract change.
 
 **Retries and housekeeping.** These depend on the comms sweeps that no migration has scheduled yet:
@@ -1592,7 +1623,7 @@ app server.
   templates are in `supabase/templates/`; the set, and what reaches each, is SYSTEM_ARCHITECTURE
   §Authentication & Identity (Decision #448).
 - The app sends secondary-email verification (`verification-mailer.ts`) and notification email
-  (`comms-dispatch`).
+  (the dispatcher's email transport, `POST /api/comms/dispatch`, NT3).
 
 Both must use **one provider** and **one sending subdomain**.
 
@@ -1688,7 +1719,7 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
 - **Phone OTP through GoTrue.** `[auth.sms.twilio]` (`account_sid`, `message_service_sid`,
   `auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"`) is already scaffolded. Level 1 phone
   verification (`PRODUCT_SPEC.md` §Identity) uses it.
-- **The notification SMS channel** goes through `comms-dispatch` → the Messaging Service. Status
+- **The notification SMS channel** goes through the dispatcher (`POST /api/comms/dispatch`, NT5) → the Messaging Service. Status
   callbacks are verified with `X-Twilio-Signature` and written to `comms.delivery_events`.
 - **Fraud.** Restrict SMS geo-permissions to launch markets, and consider Twilio Verify's
   SMS-pumping protection for OTP.
@@ -1809,7 +1840,7 @@ tokens (those go in `connection_secrets`, §9.4) or for the app's env.
 | `ACCOUNT_CRON_SECRET`      | same                                                                                          | `account-erasures`                | same                                            |
 | `SCHEDULING_CRON_SECRET`   | same                                                                                          | `scheduling-availability-horizon` | same                                            |
 | `CONTACT_CRON_SECRET`      | same                                                                                          | `contact-attachment-sweep`        | same                                            |
-| `COMMS_DISPATCH_SECRET`    | ≥ 32 chars; also an Edge secret                                                               | the comms dispatch trigger        | **Proposed** (flag (e))                         |
+| `COMMS_DISPATCH_SECRET`    | ≥ 32 chars; also app env                                                                      | the comms dispatch trigger and `comms-dispatch-sweep` | **Shipped** (NT2, #344 (a)); local via `cron:vault` |
 | `INTEGRATIONS_CRON_SECRET` | ≥ 32 chars; also app env                                                                      | the §7.6 jobs                     | **Shipped**; provisioned nowhere yet            |
 | `MODERATION_CRON_SECRET`   | ≥ 32 chars; also app env                                                                      | `moderation-drain`                | **Proposed**                                    |
 
@@ -1879,7 +1910,7 @@ the rows when a rewrap is built, which it must be before the first rotation.
 | Function                                                | Status                               | `verify_jwt`             | Secrets                                                                                      | Invoked by                    |
 | :------------------------------------------------------ | :----------------------------------- | :----------------------- | :------------------------------------------------------------------------------------------- | :---------------------------- |
 | `scan-file`                                             | **Legacy mock; a defect (flag (d))** | `false`                  | `VIRUSTOTAL_API_KEY` (read, unused)                                                          | Nothing in the codebase       |
-| `comms-dispatch` (SSOT: `dispatch-push` + `send-email`) | **Planned (SSOT)**                   | `false` + its own bearer | `COMMS_DISPATCH_SECRET`, `VAPID_*`, `APNS_*`, `FCM_*`, `RESEND_API_KEY`, `MAIL_FROM`, Twilio | pg_net from the comms trigger |
+| ~~`comms-dispatch`~~ (SSOT: `dispatch-push` + `send-email`) | **Not an Edge Function** (Decision #344 (a)): the Fresh route `POST /api/comms/dispatch` (§8.1) | n/a | app env | pg_net from the comms trigger |
 
 **The `scan-file` defect.** `supabase/functions/scan-file/index.ts`:
 
@@ -1904,7 +1935,6 @@ pipeline. That pipeline is the promoter now.
 ```bash
 supabase link --project-ref XXXX-XXXX
 supabase secrets set --env-file supabase/functions/.env.production
-supabase functions deploy comms-dispatch --no-verify-jwt
 supabase functions delete scan-file
 supabase functions serve --env-file supabase/functions/.env.local
 ```
@@ -1960,6 +1990,7 @@ removed.
 | `S3_ACCESS_KEY_ID` · `S3_SECRET_ACCESS_KEY`                                                                    | In contract                       | `adapters/aws.ts`                                             | secret                 |
 | `ENCRYPTION_KEY`                                                                                               | In contract                       | `token-vault.ts`                                              | secret                 |
 | `*_CRON_SECRET` (finance, account, scheduling, contact, integrations)                                          | In contract                       | cron routes                                                   | secret                 |
+| `COMMS_DISPATCH_SECRET`                                                                                        | In contract (NT2, #344 (a))       | `NotificationDispatchService` (both dispatch routes) + Vault  | secret                 |
 | `INTEGRATIONS_BACKEND_LIVE` · `FILES_BACKEND_LIVE` · `FINANCE_BACKEND_LIVE` · …                                | In contract                       | `core/supabase.ts`                                            | gate                   |
 | `MODERATION_BACKEND_LIVE` · `MALWARE_SCAN_LIVE`                                                                | **Proposed**                      | the moderation and upload services                            | gate                   |
 | `SAFETY_NODE_URL` · `SAFETY_NODE_TOKEN`                                                                        | **Proposed**                      | `services/moderation/`, upload scan                           | config · secret        |
@@ -1967,11 +1998,11 @@ removed.
 | `TURNSTILE_SITE_KEY` · `TURNSTILE_SECRET_KEY`                                                                  | **In contract** (#447)            | `core/turnstile.ts`; site key served by a route               | public · secret        |
 | `SUPABASE_AUTH_CAPTCHA_SECRET`                                                                                 | **In contract** (#447)            | `supabase/config.toml` `env(...)`                             | secret                 |
 | `SUPABASE_AUTH_SMTP_PASS` · `SUPABASE_AUTH_SMTP_ADMIN_EMAIL`                                                   | **Built** (#448), off locally     | `supabase/config.toml` `env(...)`                             | secret · config        |
-| `RESEND_API_KEY` · `MAIL_FROM` (built) · `RESEND_WEBHOOK_SECRET` (proposed)                                    | **Built, no key yet**             | `services/mail/transport.ts`, `comms-dispatch`, the webhook route | secret · config        |
+| `RESEND_API_KEY` · `MAIL_FROM` (built) · `RESEND_WEBHOOK_SECRET` (proposed)                                    | **Built, no key yet**             | `services/mail/transport.ts`, the dispatcher's email transport (NT3), the webhook route | secret · config        |
 | `VAPID_PUBLIC_KEY`                                                                                             | **Proposed**                      | app (served)                                                  | public                 |
-| `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`                                                                          | **Proposed**                      | Edge secret                                                   | secret · config        |
-| `APNS_KEY_ID` · `APNS_TEAM_ID` · `APNS_BUNDLE_ID` · `APNS_PRIVATE_KEY` · `APNS_ENVIRONMENT`                    | **Proposed** (Growth)             | Edge secret                                                   | secret · config        |
-| `FCM_PROJECT_ID` · `FCM_SERVICE_ACCOUNT_JSON`                                                                  | **Proposed** (Growth)             | Edge secret                                                   | config · secret        |
+| `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`                                                                          | **Proposed**                      | app env (the dispatcher's push transport, NT4)                | secret · config        |
+| `APNS_KEY_ID` · `APNS_TEAM_ID` · `APNS_BUNDLE_ID` · `APNS_PRIVATE_KEY` · `APNS_ENVIRONMENT`                    | **Proposed** (Growth)             | app env (the dispatcher)                                      | secret · config        |
+| `FCM_PROJECT_ID` · `FCM_SERVICE_ACCOUNT_JSON`                                                                  | **Proposed** (Growth)             | app env (the dispatcher)                                      | config · secret        |
 | `MICROSOFT_INTEGRATION_TENANT`                                                                                 | In contract                       | the Microsoft identity URLs (`common` by default)             | config                 |
 
 ```env
@@ -2009,7 +2040,7 @@ Switcher control together.
 |                     | 5. Web Risk in `link-reputation.ts` (§6.5): built (ruling T5)                | A GCP project, a restricted key      | `link-scan.test.ts` against a stubbed Web Risk; the Safe Browsing test host still `blocked` offline    |
 |                     | 6. Safety node: ClamAV + the publication gate (§6.1, §6.3, §6.4)             | Flag (g) sizing, a VM                | EICAR → `quarantined`; a flagged fixture image → 422; node down → 503                                  |
 | **MVP-1: trust**    | 7. Presidio Tier 3: queue, worker, review sink (§6.2)                        | Flag (g) schema ruling               | A seeded obfuscated message produces one automated review row; latency on send unchanged               |
-|                     | 8. Web Push + the dispatch bearer + the comms sweeps registered (§8.1, §8.2) | Flag (e)                             | An unauthenticated POST to `comms-dispatch` → 404; a 410 revokes the device                            |
+|                     | 8. Web Push on the built dispatcher (§8.1, §8.2; the bearer and the sweep are built, NT2) | VAPID keys                             | An unauthenticated POST to `/api/comms/dispatch` → 404; a 410 revokes the device                            |
 |                     | 9. Voyage on (§5)                                                            | DPA + written no-training terms (T5) | `x-discovery-ranking: semantic`; breaker test; backfill idempotent                                     |
 | **Growth**          | 10. The `ENCRYPTION_KEY` envelope + the schema fix (§9.4): built             | Decision #343, ruling C4 (c)         | `token-vault.test.ts`; `integrations_runtime.sql`; the boot refuses a missing or short key             |
 |                     | 11. Connectors: Google, then Microsoft, then Zoom OAuth (§7)                 | Step 10, flag (a), flag (i)          | Consent → callback → `v_my_connections` active; refresh job; channel renewal; erasure revokes          |
@@ -2033,7 +2064,7 @@ These are logged in [`decisions-122-126.md`](../reference/decisions/decisions-12
 | (b)  | `connection_secrets` cannot store an envelope: no wrapped-DEK column, one nonce for two ciphertexts, no S3 key-pair column                                                                                | **Built:** the columns + CHECK in §9.4. **Ruled** against a dev-only `ENCRYPTION_KEY`: it is the vault's key everywhere (Decision #343, ruling C4 (c))           |
 | (c)  | Decision #128 names the Safe Browsing Lookup API v4, which Google licenses for non-commercial use                                                                                                         | Move `link-reputation.ts` to Web Risk `uris:search`; keep the env name (§6.5)                                                                                   |
 | (d)  | `scan-file` is public (`verify_jwt = false`), service-role, writes non-existent statuses and a column, and bypasses the in-process pipeline                                                               | Disable and delete it now; ClamAV goes into `completeUpload` (§6.4, §9.5)                                                                                       |
-| (e)  | The comms dispatch trigger calls its Edge Function with no authentication                                                                                                                                 | A Vault-held `COMMS_DISPATCH_SECRET` bearer, read like `ops.fn_dispatch_http_job` (§8.1)                                                                        |
+| (e)  | The comms dispatch trigger calls its Edge Function with no authentication                                                                                                                                 | **Built** (NT2, Decision #344 (a)): a Vault-held `COMMS_DISPATCH_SECRET` bearer, read like `ops.fn_dispatch_http_job`, on a Fresh route (§8.1)                                                                        |
 | (f)  | No email provider is chosen; `config.toml` sketches SendGrid while the documented `comms` gateway vocabulary names Resend                                                                                 | Resend for the MVP; SES as the cost path behind the same transport (§8.5)                                                                                       |
 | (g)  | Safety-node sizing (SSOT: one 2 GB box for Presidio) and the automated-finding sink (`ops.reports.reporter_user_id` is a person)                                                                          | One 4 vCPU / 8 GB node (or two nodes); a `source` column with a nullable reporter for `automated` rows, or a separate findings table (§6.1, §6.2)               |
 | (h)  | Turnstile on `/contact` vs PUBLIC_ROUTES P3 "No CAPTCHA dependency"; `security.turnstile_verifications.ip` has no retention                                                                               | Keep `/contact` CAPTCHA-free; protect GoTrue, the newsletter and community writes; a 30-day purge (§9.1)                                                        |

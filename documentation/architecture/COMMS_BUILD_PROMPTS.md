@@ -868,6 +868,30 @@ ACCEPTANCE (notify_engine.sql):
 
 ### NT2 — 🧑 DECISION · The dispatcher: a signed webhook, claimed deliveries, retries
 
+> **Status 2026-11-18: ✅ built (PRD-E4 🟡; ✅ on COMMS_DELIVERY CD2).** The 🧑 DECISION was ruled
+> before the run: **Option A**, a Fresh route (Decision #344 flag (a), owner ruling 2026-11-18),
+> so there was no stop and no new decision row. What landed:
+>
+> - `POST /api/comms/dispatch` and `POST /api/comms/cron/dispatch`, through
+>   `features/notifications/core/dispatch-ssr.ts`.
+> - `NotificationDispatchService`, with `dispatch-transports.ts` shipping an empty registry, and
+>   `dispatch-payload.ts`.
+> - `comms.fn_dispatch_enabled`, `fn_claim_deliveries` and `fn_record_delivery_result`.
+> - The `comms-dispatch-sweep` job, with `comms_dispatch_url` retired.
+> - `COMMS_DISPATCH_SECRET` in env, Vault and `cron:vault`.
+> - Probes `comms_dispatch.sql` and `comms_dispatch_race.sql`; SA, EPI §8.1 and ROUTING amended.
+>
+> Found while building it:
+> 1. The service role had no `USAGE` on `comms`; it is granted in `00002500`.
+> 2. The `/api` origin guard refused pg_net's POST, which carries no `Origin`. `/api/comms/dispatch`
+>    is now a named server-to-server door in `utils/csrf.ts`.
+> 3. A queued row has a 15-minute lease, and a pending row past 24 hours is closed `skipped`
+>    (`expired`).
+> 4. Channel liveness reads the transport registry as well as the running dispatcher (the flag plus
+>    a well-formed bearer), which already does NT3's delta (1): NT3 only registers email.
+>
+> The digest email of step 5 waits for NT3's mail transport.
+
 ```text
 PROMPT NT2: The dispatcher — a Vault-signed webhook, claimed deliveries and retries
 
@@ -990,6 +1014,14 @@ ACCEPTANCE:
 > local mail stays in Mailpit, with the hosted runbook in EPI §8.5; step 4's local half is done,
 > and its hosted half is that runbook. The Idempotency-Key, List-Unsubscribe, the email registration
 > in `dispatch-transports.ts` and steps 2–5 remain. ⏳ NT2.
+>
+> **Status 2026-11-18, after NT2:** NT2 has merged. `channel-liveness.ts` already reads
+> `transports` from `configuredChannels()` in `dispatch-transports.ts`, so FILES' liveness item is
+> done: register an email `DispatchTransport` (a `TransportFactory` returning `null` without a
+> well-formed key) and liveness follows. The dispatcher hands each transport a `ClaimedDelivery`
+> (destination `{ address }`) and a `DispatchPayload` (title, absolute link, notification id); use
+> the delivery id as the Idempotency-Key. Step 5 of NT2 (the sweep sends due
+> `comms.notification_digests` as one email) is NT3's once the transport exists.
 
 ```text
 PROMPT NT3: Transactional email — one provider, signed bounces; a hard bounce blocks the address
