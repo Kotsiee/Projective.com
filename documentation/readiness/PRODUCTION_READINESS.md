@@ -307,7 +307,7 @@ Work orders for every open row, with the run order:
 | :------------------------------------------------------------------------------------- | :----------------- | :------------------------------------------------- |
 | Where the notification dispatcher runs (Edge Function or Fresh route + pg_cron)        | PRD-E4, E5, E7, E8 | Open (`COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md`)     |
 | Escrow holding period                                                                  | PRD-F15            | Pending counsel (#337); brief: `FOUNDER_QUESTIONNAIRE.md` Part D Q1 (#473) |
-| Is PRD-F9 done once the alert is built, or only after a hosted send? (MR4 says ✅; the readiness addendum says 🟡 while a hosted step is left) | PRD-F9 | Open (#507 (E)(3)): 🟡 for now |
+| Is PRD-F9 done once the alert is built, or only after a hosted send? (MR4 says ✅; the readiness addendum says 🟡 while a hosted step is left) | PRD-F9 | Ruled 2026-11-19 (owner, #507 (E)(3)): 🟡 until a hosted send on both channels |
 | CSAM hash matching vendor (PhotoDNA)                                                   | PRD-D14            | Pending counsel (T5)                               |
 | Does the money kill switch also stop money a project's lifecycle moves (accept, approve, cancel)? | PRD-B7             | Open (#497 (a)): today those follow `PROJECTS_BACKEND_LIVE` |
 | FX spread and live rate feed                                                           | PRD-F18            | Pending counsel (#435 (a)); brief: `FOUNDER_QUESTIONNAIRE.md` Part D Q3 (#473). Feed provider ruled (#471) |
