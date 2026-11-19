@@ -1338,6 +1338,10 @@ CREATE TABLE finance.order_lines (
     -- escrow refund back to its line. NULL on every other line. SET NULL: the receipt outlives both.
     project_id uuid REFERENCES projects.projects (id) ON DELETE SET NULL,
     escrow_id uuid REFERENCES finance.escrows (id) ON DELETE SET NULL,
+    -- The accepted custom quote this line paid for (Decision #522), so the engagement it created links
+    -- to the exact offer and terms hash both parties agreed. At most one paid line per offer
+    -- (uq_order_lines_quote_offer). NULL on every other line.
+    quote_offer_id uuid REFERENCES marketplace.quote_offers (id) ON DELETE SET NULL,
     -- Session fulfilment.
     scheduled_at timestamptz,
     timezone text,

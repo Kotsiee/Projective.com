@@ -1,19 +1,37 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import { Dialog } from "@projective/ui/feedback";
-import { Button, FormControl, MoneyInput, NumberStepper, Textarea } from "@projective/ui/fields";
+import { Button, FormControl, MoneyInput, NumberStepper, Select, Textarea } from "@projective/ui/fields";
 import { MoneyView } from "@projective/ui/display/money";
-import { QUOTE_LIMITS, type QuoteView, type SendQuoteOfferInput } from "@projective/types/services";
+import {
+	QUOTE_LIMITS,
+	type QuotableListing,
+	type QuoteView,
+	type SendQuoteOfferInput,
+} from "@projective/types/services";
+
+/** A seller's own quote (Decision #522): who it is for, and the services it may be priced on. */
+export interface QuoteIssueTarget {
+	buyerName: string;
+	/** `null` while they load. */
+	listings: readonly QuotableListing[] | null;
+}
 
 /** Props for {@link QuoteOfferDialog}. */
 export interface QuoteOfferDialogProps {
 	visible: Signal<boolean>;
-	quote: QuoteView;
+	/** The request being priced; absent for a seller's own quote ({@link issue}). */
+	quote?: QuoteView;
+	/** A seller's own quote from a conversation: the composer adds a service picker. */
+	issue?: QuoteIssueTarget;
 	busy: boolean;
 	/** Field-keyed refusals from the last send. */
 	errors: Record<string, string>;
-	onSend: (offer: SendQuoteOfferInput) => void;
+	/** `listing` is the chosen service's slug for a seller's own quote, else `null`. */
+	onSend: (offer: SendQuoteOfferInput, listing: string | null) => void;
 }
+
+const DELIVERABLES_PLACEHOLDER = "Wireframes for 5 screens\nClickable prototype\nHandover call";
 
 function deliverablesOf(text: string): string[] {
 	return text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
@@ -22,11 +40,14 @@ function deliverablesOf(text: string): string[] {
 /**
  * QuoteOfferDialog — the host prices a quote request, or revises the offer they sent: the scope, the
  * deliverables as a checklist, one price in the listing's currency, a turnaround and how long the
- * buyer has to accept. A revision replaces the open offer; the buyer only ever holds one.
+ * buyer has to accept. A revision replaces the open offer; the buyer only ever holds one. With
+ * `issue` it is the seller's own quote from a conversation (Decision #522), priced on the service
+ * they pick. Once sent, the terms are frozen and hashed; a change is a new offer.
  */
 export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
-	const { quote } = props;
-	const current = quote.offer?.state === "pending" ? quote.offer : null;
+	const { quote, issue } = props;
+	const current = quote?.offer?.state === "pending" ? quote.offer : null;
+	const listing = useSignal<string>("");
 	const scope = useSignal("");
 	const deliverables = useSignal("");
 	const price = useSignal<number | null>(null);
@@ -42,11 +63,17 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 		turnaround.value = current?.turnaroundDays ?? 14;
 		openFor.value = QUOTE_LIMITS.expiresInDays.default;
 		local.value = {};
+		if (issue && !listing.peek()) listing.value = issue.listings?.[0]?.slug ?? "";
 	});
+
+	const picked = issue?.listings?.find((l) => l.slug === listing.value) ?? null;
+	const currency = quote?.listing.currency ?? picked?.currency ?? "USD";
+	const title = quote?.listing.title ?? picked?.title ?? "your service";
 
 	function submit(): void {
 		const items = deliverablesOf(deliverables.value);
 		const found: Record<string, string> = {};
+		if (issue && !picked) found.listing = "Pick the service this quote is for.";
 		if (!scope.value.trim()) found.scope = "Describe the scope.";
 		if (items.length > QUOTE_LIMITS.deliverablesMax) {
 			found.deliverables = "List at most 12 deliverables.";
@@ -64,17 +91,17 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 			priceMinor: price.value!,
 			turnaroundDays: turnaround.value!,
 			expiresInDays: openFor.value ?? QUOTE_LIMITS.expiresInDays.default,
-		});
+		}, issue ? picked!.slug : null);
 	}
 
 	const error = (field: string) => local.value[field] ?? props.errors[field];
 	const status = (field: string) => (error(field) ? "invalid" : "default") as "invalid" | "default";
-	const verb = current ? "Revise offer" : "Send offer";
+	const verb = issue ? "Send quote" : current ? "Revise offer" : "Send offer";
 
 	return (
 		<Dialog
 			visible={props.visible}
-			header={`${verb} · ${quote.listing.title}`}
+			header={issue ? `Send ${issue.buyerName} a quote` : `${verb} · ${title}`}
 			width="min(36rem, 94vw)"
 			class="qte-offer"
 			footer={
@@ -86,7 +113,7 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 									Paid into escrow at checkout:{" "}
 									<MoneyView
 										minor={price.value}
-										currency={quote.listing.currency}
+										currency={currency}
 										size="body"
 										exact
 									/>
@@ -112,6 +139,30 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 			}
 		>
 			<div class="qte-offer__body">
+				{issue && (
+					<FormControl
+						label="Service"
+						required
+						hint="One of your published services. The quote is priced in its currency and runs as its engagement. Group sessions take no quotes."
+						error={error("listing")}
+						status={status("listing")}
+					>
+						{({ id, describedBy }) => (
+							<Select
+								id={id}
+								aria-describedby={describedBy}
+								value={listing}
+								options={(issue.listings ?? []).map((l) => ({ label: l.title, value: l.slug }))}
+								loading={issue.listings === null}
+								placeholder={issue.listings?.length === 0 ? "No published services to quote" : "Choose a service"}
+								status={status("listing")}
+								onValueChange={(v) => (listing.value = v ?? "")}
+								fluid
+							/>
+						)}
+					</FormControl>
+				)}
+
 				<FormControl
 					label="Scope"
 					required
@@ -127,6 +178,7 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 							rows={5}
 							maxLength={QUOTE_LIMITS.scopeMax}
 							status={status("scope")}
+							placeholder="What you'll deliver, what's out of scope, and how many rounds of feedback are included."
 							fluid
 						/>
 					)}
@@ -145,6 +197,7 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 							value={deliverables}
 							rows={4}
 							status={status("deliverables")}
+							placeholder={DELIVERABLES_PLACEHOLDER}
 							fluid
 						/>
 					)}
@@ -154,7 +207,7 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 					<FormControl
 						label="Price"
 						required
-						hint={`In ${quote.listing.currency}, the listing's currency. The buyer pays it into escrow at checkout.`}
+						hint={`In ${currency}, the listing's currency. The buyer pays it into escrow at checkout.`}
 						error={error("priceMinor")}
 						status={status("priceMinor")}
 					>
@@ -163,7 +216,7 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 								id={id}
 								aria-describedby={describedBy}
 								value={price}
-								currency={quote.listing.currency}
+								currency={currency}
 								min={1}
 								status={status("priceMinor")}
 								fluid

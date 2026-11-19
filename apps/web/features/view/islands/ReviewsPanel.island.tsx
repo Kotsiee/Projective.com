@@ -139,20 +139,6 @@ export default function ReviewsPanel(
 				{/* Filterable list. */}
 				<div class="vw-revlist">
 					<div class="vw-revlist__toolbar">
-						<div class="vw-revlist__count">
-							{starFilter.value
-								? (
-									<button
-										type="button"
-										class="vw-revlist__clear"
-										onClick={() => (starFilter.value = null)}
-									>
-										{shown.length} · {starFilter.value}
-										<Icon name="star" filled /> — clear filter
-									</button>
-								)
-								: <span>{shown.length} reviews</span>}
-						</div>
 						<div class="vw-sort" role="group" aria-label="Sort reviews">
 							{(["recent", "highest", "lowest"] as SortKey[]).map((k) => (
 								<button

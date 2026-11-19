@@ -21,6 +21,12 @@ import { IntakeAnswersSchema } from "./intake.ts";
 
 // #region Session booking
 /**
+ * The most seats one booking may take: the cohort's own bound (`ck_cohorts_max_seats`, and
+ * `projects.reserve_seat`'s 1–500). The dialog's real cap is the cohort's remaining seats.
+ */
+export const SESSION_SEATS_MAX = 500;
+
+/**
  * Book one or more slots against a session listing.
  *
  * `slotIds` is an array even for a single session, because a set-session block MAY schedule several
@@ -49,7 +55,7 @@ export const SessionBookingInputSchema = z.object({
 	 * and a bulk enrolment is a different conversation (and a different escrow), so the ceiling is a
 	 * guard rather than a limit anyone should hit.
 	 */
-	seats: z.number().int().min(1).max(20).default(1),
+	seats: z.number().int().min(1).max(SESSION_SEATS_MAX).default(1),
 	/**
 	 * The buyer's answers to the listing's own intake fields (`ServiceView.intake`), keyed by field
 	 * id. Validated server-side against the listing through the same `intakeRefusal` the modal ran,

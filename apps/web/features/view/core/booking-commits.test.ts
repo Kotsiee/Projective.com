@@ -92,6 +92,7 @@ async function pressEveryCta(): Promise<unknown[]> {
 			handle: "ivy",
 			subjectId: ITEM.id,
 			scope: "A bigger scope",
+			answers: {},
 		}),
 		await commitContact({
 			kind: "discovery_call",

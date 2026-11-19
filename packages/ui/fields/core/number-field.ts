@@ -1,6 +1,6 @@
 /**
  * Numeric field arithmetic — the ONE implementation of "what does this number become" shared by
- * every numeric control in the taxonomy (`InputNumber`, `NumberInput`).
+ * every numeric control in the taxonomy (`NumberInput`, and `MoneyInput` on top of it).
  *
  * Deliberately pure: no signals, no hooks, no DOM. Two controls that each round, clamp and snap
  * their own way are two controls that will eventually disagree about the same figure, and on a

@@ -203,14 +203,6 @@ body {
 .dev-log__payload,
 .cko-rail,
 .tkv__side,
-/*
- * The entity-view conversion rail. Decision #79 moved this lane OUT of the shell and into the page
- * as its end column, so it hangs off neither `.ui-app-shell__content` nor `.ui-guest-aside` and was
- * inheriting the page ground: a `--bg` gutter down the scroll edge of a panel painted `--surface-1`.
- * Found by measuring the painted ground behind every scroller against its resolved track, not by
- * reading the stylesheet — the rail's `overflow` is declared in `profile.css` (it reuses the
- * `.pf-lane` skeleton) while its background is declared here, so no single-file audit sees both.
- */ .evp-lane__full,
 .evp-canvas__stage,
 .evp-canvas__code,
 .vw-lightbox__stage {

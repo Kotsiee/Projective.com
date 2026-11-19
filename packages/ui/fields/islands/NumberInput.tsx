@@ -162,13 +162,9 @@ export interface NumberInputProps extends BaseFieldProps {
  * orders of magnitude), or spin the wheel over it.
  *
  * Everything that decides what a number BECOMES — clamping, snapping, rounding, the scrub curve —
- * lives in `core/number-field.ts` and is shared with {@link InputNumber}; this component owns only
- * the events. Two numeric controls that each rounded their own way would eventually disagree about
- * the same figure, and these fields carry prices.
- *
- * Sibling to `InputNumber`, not a replacement: that one is the quiet locale-formatted field for a
- * form you fill in once, this one is for a surface where a value is tuned repeatedly against a
- * number the reader is watching elsewhere on the page.
+ * lives in `core/number-field.ts`; this component owns only the events. It is the product's one
+ * numeric control (Decision #522): a field filled in once hides its steppers (`hideSteppers`), one
+ * tuned repeatedly keeps them.
  *
  * ### Fine adjustment
  * Holding Ctrl (or Cmd) swaps the unit from `step` to `precisionStep` for EVERY gesture at once —

@@ -6,8 +6,8 @@ import "@ui/feedback/styles/commit-review.css";
 import {
 	Button,
 	FormControl,
-	InputNumber,
 	InputText,
+	NumberInput,
 	Select,
 	SelectButton,
 } from "@projective/ui/fields";
@@ -639,7 +639,7 @@ function MoveDialog(
 								status={errorFor("amount") ? "invalid" : "default"}
 							>
 								{({ id, describedBy, status }) => (
-									<InputNumber
+									<NumberInput
 										id={id}
 										aria-describedby={describedBy}
 										status={status}
@@ -647,6 +647,7 @@ function MoveDialog(
 										min={0}
 										mode="currency"
 										currency={currency}
+										hideSteppers
 										fluid
 										onValueChange={(v) => {
 											amount.value = v;
@@ -967,7 +968,7 @@ function ConfigDialog(
 								status={errorFor("amount") ? "invalid" : "default"}
 							>
 								{({ id, describedBy, status }) => (
-									<InputNumber
+									<NumberInput
 										id={id}
 										aria-describedby={describedBy}
 										status={status}
@@ -975,6 +976,7 @@ function ConfigDialog(
 										min={0}
 										mode="currency"
 										currency={currency}
+										hideSteppers
 										fluid
 										onValueChange={(v) => {
 											amount.value = v;

@@ -767,9 +767,19 @@ summary and the commit pinned.
 
 **A cohort is never a dead end.** When a group session has no cohort enrolling, or the open one is
 full, the buyer can **join its waitlist** in one press — recorded against the listing so the seller
-can see the demand — or ask for **a private cohort for their team**, which opens a scoped request to
-the seller. A disabled "No cohort open" button tells a motivated buyer nothing; a waitlist keeps
-them.
+can see the demand. A disabled "No cohort open" button tells a motivated buyer nothing; a waitlist
+keeps them. A group session takes **no custom quote**, a private cohort included: it is booked by the
+seat at the seller's price, and every buyer in a cohort buys the same thing (Decision #521).
+
+**A buyer can book seats for other people and hand them out (Decision #522).** The seats a buyer may
+pick stop at the cohort's real remaining seats, and checkout refuses more. A buyer who paid for
+several seats keeps one and can share the rest through **one link**: anyone signed in who opens it
+claims one seat, first come first served, until the buyer is down to their own or the cohort's first
+session starts. A claimed seat is already paid for, so the claimer pays nothing and joins the cohort
+in their own name. The buyer sees who claimed each seat and can turn the link off, which stops new
+claims and leaves claimed seats seated. The seats a buyer gave away end with the buyer's own: if
+they cancel, or their seat completes, so do the seats they shared; a claimer who gives a seat up
+returns it to the buyer, who may share it again.
 
 **A waitlist is served in order, and an invite holds a seat (Decision #455).** When a cohort opens or
 a seat frees, the people waiting are invited first in, first out — one invite per free seat — and
@@ -849,9 +859,24 @@ Two rules follow, and both exist because the near-miss is easy:
 
 **A custom quote is answered with a priced offer the buyer can accept (Decision #458).** When a
 listing's fixed scope does not fit, the buyer requests a custom quote: their scope in their own
-words, an optional soft budget and a timeline in a sentence. Requesting it commissions nothing, and
-a buyer holds one open request per listing, so one ask cannot flood a seller's pipeline. A request
-for **a private cohort for their team** (above) is the same request on a group-session listing.
+words, the seller's own questions for the listing (Decision #522), an optional soft budget and a
+timeline in a sentence. Requesting it commissions nothing, and a buyer holds one open request per
+listing, so one ask cannot flood a seller's pipeline. A group session is never quoted (above,
+Decision #521).
+
+- **A seller can send a quote first (Decision #522).** From a conversation the buyer started (or the
+  buyer's row in the seller's client pipeline), the seller picks one of their published services and
+  sends an offer on it. A seller can never quote someone who has not written to them, so a quote is
+  an answer, never a cold pitch. If the buyer already has an open request on that service, the quote
+  answers it.
+- **Both parties hold the same record (Decision #522).** Every move (asked, quoted, revised,
+  withdrawn, declined, accepted, paid) is recorded once, permanently, with who made it and the terms
+  as they stood, and appears in the conversation as a quote card the buyer can accept, decline or pay
+  from. An offer's terms never change once sent: a revision is a new offer. Each set of terms carries
+  a short **terms reference** (from a fingerprint of the terms) that both parties see on the card and
+  in the request's history; checkout re-checks it before charging, the receipt links the engagement
+  to the exact offer, and a dispute on that engagement shows the agreed terms and whether they are
+  still the ones agreed.
 
 - **The seller answers with an offer, or declines.** An offer states the scope, its deliverables as
   a checklist, **one price** in the listing's own currency, a turnaround in days and how long it
@@ -875,7 +900,7 @@ for **a private cohort for their team** (above) is the same request on a group-s
   reads expired, checkout refuses its line and the basket says why. The buyer withdraws the request,
   which takes the line out of their basket, and may ask again; the seller prices it afresh. There is
   no separate platform payment window, so a buyer never holds a seller to a price longer than the
-  seller offered it. Any listing the seller sells may be quoted — a Pipeline's or a private cohort's
+  seller offered it. Any service the seller sells but a group session may be quoted — a Pipeline's
   custom scope included — and a paid offer is always bought as that one-milestone One-Off.
 - **Each move tells the other party.** The seller is told of a request, an accepted or declined offer
   and a withdrawn request, from their client pipeline; the buyer of an offer, a revision, a withdrawn
@@ -990,7 +1015,11 @@ the word Free; it renders only when there is something to list. Picking a listin
 **service modal**: a two-column dialog whose left column holds the buyer's inputs (an optional
 message; the seller's own intake questions — text,
 numbers with an optional slider, yes/no, single and multiple choice as dropdowns, radios, pills or
-checkboxes, each required or not as the seller marked it) and whose right column is the listing in
+checkboxes, each required or not as the seller marked it; a question may be a **follow-up**, shown
+(or hidden) only when an earlier yes/no or choice is answered a given way, and a hidden follow-up is
+never required (Decision #522); a number may start at the seller's chosen value, its field and
+slider moving together, and may move the seller's **guide price** linearly per unit past an included
+amount, a guide the quote dialog states and never a price checkout charges) and whose right column is the listing in
 the entity view's own vocabulary (cover · title · meta line · summary · seller line · the stage run
 or session facts · what is included); the footer states the starting price, the rating and the
 turnaround, and its one primary does what the listing's own page would — a scoped engagement stages

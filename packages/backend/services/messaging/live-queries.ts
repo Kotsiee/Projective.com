@@ -182,10 +182,12 @@ export interface DmMessageRow extends DmTailRow {
 	/** Raw `jsonb`; it reaches a bubble only through `messageDeltaFor`, which parses it. */
 	body_delta: unknown;
 	reply_to_id: string | null;
+	/** The quote move a quote door posted this message for (Decision #522); absent on older reads. */
+	quote_event_id?: string | null;
 }
 
 /** The columns of {@link DmMessageRow} — every read and write-back that builds a bubble selects these. */
-export const DM_MESSAGE_COLUMNS = `${DM_TAIL_COLUMNS}, body_delta, reply_to_id`;
+export const DM_MESSAGE_COLUMNS = `${DM_TAIL_COLUMNS}, body_delta, reply_to_id, quote_event_id`;
 
 /**
  * The originals a set of replies quotes, by id. A miss — withheld, gone, or never read — renders the
@@ -817,6 +819,7 @@ export function toChatMessage(
 		reactions: interactions.reactions.get(row.id) ?? [],
 		pinned: interactions.pinned.has(row.id),
 		favorited: interactions.favorited.has(row.id),
+		quoteEventId: row.quote_event_id ?? null,
 	};
 }
 

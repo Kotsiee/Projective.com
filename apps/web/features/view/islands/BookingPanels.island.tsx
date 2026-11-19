@@ -4,6 +4,7 @@ import { useEffect } from "preact/hooks";
 import SessionBookingModal from "./SessionBookingModal.island.tsx";
 import ScopeBriefModal from "./ScopeBriefModal.island.tsx";
 import QuoteRequestModal from "./QuoteRequestModal.island.tsx";
+import PipelineBriefModal from "./PipelineBriefModal.island.tsx";
 import {
 	type BookingHost,
 	bookingHost,
@@ -79,7 +80,16 @@ export default function BookingPanels(
 				intake={intake}
 				summary={summary}
 			/>
-			<QuoteRequestModal offer={offer} currency={currency} />
+			<QuoteRequestModal offer={offer} currency={currency} summary={summary} intake={intake} />
+			{offer.format === "pipeline" && (
+				<PipelineBriefModal
+					offer={offer}
+					stages={stages}
+					currency={currency}
+					intake={intake}
+					summary={summary}
+				/>
+			)}
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{bookingStatus.value}</p>
 		</>
 	);

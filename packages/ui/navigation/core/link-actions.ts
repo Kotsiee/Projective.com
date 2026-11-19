@@ -14,8 +14,11 @@ export interface LinkActionsInput {
 	include?: readonly LinkAction[];
 	/** The app's share flow. Omitted: the device share sheet where one exists, else no Share row. */
 	onShare?: () => void;
-	/** Save state and its toggle. Omitted: no Save row. */
-	save?: { saved: boolean; onToggle: () => void };
+	/**
+	 * Save state and its toggle. Omitted: no Save row. `lists` makes it a split row: a press toggles,
+	 * hover / ArrowRight unfolds the rows that save into a named list.
+	 */
+	save?: { saved: boolean; onToggle: () => void; lists?: MenuItem[] };
 	/** Told whether Copy link reached the clipboard, so the host can confirm or explain. */
 	onCopied?: (ok: boolean) => void;
 }
@@ -100,6 +103,7 @@ export function linkActionItems(input: LinkActionsInput): MenuItem[] {
 				label: input.save.saved ? "Remove from saved" : "Save",
 				icon: "bookmark",
 				command: input.save.onToggle,
+				...(input.save.lists ? { items: input.save.lists, emptyLabel: "Loading your lists…" } : {}),
 			}
 			: null,
 	};

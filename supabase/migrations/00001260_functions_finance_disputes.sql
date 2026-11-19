@@ -692,6 +692,28 @@ BEGIN
             ) ORDER BY m.created_at, m.id)
               FROM finance.dispute_messages m WHERE m.dispute_id = v_d.id
         ), '[]'::jsonb),
+        -- The custom quote the disputed engagement was bought on (Decision #522): its terms and hash
+        -- as both parties agreed them, whether they still hash to that, and when they were accepted and
+        -- paid for. NULL when the engagement was not bought on a quote.
+        'agreed_terms', (
+            SELECT pg_catalog.jsonb_build_object(
+                'offer_id', o.id,
+                'terms', marketplace.fn_quote_terms(o),
+                'terms_hash', o.terms_hash,
+                'terms_intact', marketplace.fn_quote_hash(marketplace.fn_quote_terms(o)) = o.terms_hash,
+                'accepted_at', (SELECT e.created_at FROM marketplace.quote_events e
+                                 WHERE e.quote_offer_id = o.id AND e.kind = 'offer_accepted'
+                                 ORDER BY e.created_at LIMIT 1),
+                'paid_at', (SELECT e.created_at FROM marketplace.quote_events e
+                             WHERE e.quote_offer_id = o.id AND e.kind = 'paid'
+                             ORDER BY e.created_at LIMIT 1)
+            )
+              FROM finance.order_lines ol
+              JOIN marketplace.quote_offers o ON o.id = ol.quote_offer_id
+             WHERE ol.escrow_id = v_e.id OR (v_ctx.project_id IS NOT NULL AND ol.project_id = v_ctx.project_id)
+             ORDER BY ol.created_at
+             LIMIT 1
+        ),
         'can_respond', v_live AND v_role IN ('claimant', 'respondent'),
         'can_escalate', v_d.status = 'awaiting_response' AND v_role IN ('claimant', 'respondent'),
         'can_resolve', v_live AND v_role = 'operator'

@@ -1,6 +1,8 @@
 import { assertEquals } from "@std/assert";
 import type { SavedItem } from "@projective/types/org";
 import {
+	itemCount,
+	listName,
 	metaLine,
 	parseCollection,
 	parseTab,
@@ -45,4 +47,14 @@ Deno.test("the meta line says saved or followed, and skips a store with no insta
 	assertEquals(metaLine(base, now), "Freelancer · saved 2 days ago");
 	assertEquals(metaLine({ ...base, following: true }, now), "Freelancer · followed 2 days ago");
 	assertEquals(metaLine({ ...base, savedAt: null }, now), "Freelancer");
+});
+
+Deno.test("the active list is named, the unfiled filter included, and counts read in words", () => {
+	const lists = [{ id: "1e62d824-5686-4899-a443-8ef26ad85777", name: "Inspiration" }];
+	assertEquals(listName(undefined, lists), null);
+	assertEquals(listName("unfiled", lists), "Not in a list");
+	assertEquals(listName(lists[0].id, lists), "Inspiration");
+	assertEquals(listName("00000000-0000-4000-8000-000000000000", lists), null);
+	assertEquals(itemCount(1), "1 item");
+	assertEquals(itemCount(4), "4 items");
 });

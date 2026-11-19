@@ -13,12 +13,14 @@ import ProjectLane from "../islands/ProjectLane.island.tsx";
 import ProjectApplyBar from "../islands/ProjectApplyBar.island.tsx";
 import ProjectApplyModal from "../islands/ProjectApplyModal.island.tsx";
 import EntityHeroProbe from "../islands/EntityHeroProbe.island.tsx";
+import EntityFrameProbe from "../islands/EntityFrameProbe.island.tsx";
 import ReviewsPanel from "../islands/ReviewsPanel.island.tsx";
 import ViewStyleAnchor from "../islands/ViewStyleAnchor.island.tsx";
 import ViewIntentHost from "../islands/ViewIntentHost.island.tsx";
 import ListingViewBeacon from "../islands/ListingViewBeacon.island.tsx";
 import { honouredIntent, type ViewIntent } from "../core/view-intent.ts";
 import { RelatedSection } from "./RelatedRail.tsx";
+import { offerSummaryFor } from "../core/offer-summary.ts";
 import { ArticleViewScreen } from "./ArticleViewScreen.tsx";
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
 import { SessionPlanTrack } from "./SessionPlanTrack.tsx";
@@ -197,6 +199,7 @@ export function EntityViewPage(
 		<div
 			class="evp"
 			data-archetype={archetype}
+			data-mode={preview ? "preview" : undefined}
 			data-simulation={simulation ? "true" : undefined}
 		>
 			<ViewStyleAnchor />
@@ -364,7 +367,13 @@ export function EntityViewPage(
 					*/
 					}
 					{project && authed && !preview && !blocked && (
-						<ProjectApplyModal projectSlug={item.id} title={item.title} stages={project.stages} />
+						<ProjectApplyModal
+							projectSlug={item.id}
+							title={item.title}
+							stages={project.stages}
+							summary={offerSummaryFor(view)}
+							currency={project.finance.currency ?? "USD"}
+						/>
 					)}
 					{offer && !blocked && (
 						<EntityBuyBar
@@ -387,45 +396,35 @@ export function EntityViewPage(
 							offer={offer}
 						/>
 					)}
-
-					{
-						/*
-						  ---- Recommendation rails ----
-
-						  A project's rails are the client's OTHER briefs and briefs that hire for the same
-						  skills — composed as projects in `live-view.ts`, never a seller's catalogue. "More
-						  by" leads at the project grid's two-up base so the client's own work outranks
-						  the generic suggestions, which drop to three-up beneath it.
-						*/
-					}
-					{rails && (
-						<div class="evp-body">
-							<RelatedSection
-								id="more-by"
-								title={`More by ${item.owner.name}`}
-								subtitle={isProject
-									? `Other projects ${ownerName} is staffing, and the stage each is on`
-									: `More work from ${ownerName}, grouped by type`}
-								items={moreByOwner}
-								ctx={ctx}
-								authed={authed}
-								seeAllHref={`/${item.owner.handle}`}
-							/>
-							<RelatedSection
-								id="similar"
-								title="Similar & recommended"
-								subtitle={isProject
-									? "Briefs hiring for the same skills"
-									: "Comparable options other clients considered"}
-								items={similar}
-								ctx={ctx}
-								authed={authed}
-								columns={isProject ? 3 : undefined}
-							/>
-						</div>
-					)}
 				</div>
+				{!preview && !simulation && <EntityFrameProbe />}
 			</div>
+
+			{rails && (
+				<div class="evp-body evp-railsrow">
+					<RelatedSection
+						id="more-by"
+						title={`More by ${item.owner.name}`}
+						subtitle={isProject
+							? `Other projects ${ownerName} is staffing, and the stage each is on`
+							: `More work from ${ownerName}, grouped by type`}
+						items={moreByOwner}
+						ctx={ctx}
+						authed={authed}
+						seeAllHref={`/${item.owner.handle}`}
+					/>
+					<RelatedSection
+						id="similar"
+						title="Similar & recommended"
+						subtitle={isProject
+							? "Briefs hiring for the same skills"
+							: "Comparable options other clients considered"}
+						items={similar}
+						ctx={ctx}
+						authed={authed}
+					/>
+				</div>
+			)}
 
 			{
 				/*
@@ -530,7 +529,7 @@ function ArchetypeBody(
 	// ---- Session / Cohort: the same timeline track, one node per sitting (§D.8.3 / §D.8.4) ----
 	if (showsScheduler(archetype)) {
 		const service = view.service;
-		const capacity = seatCapacityFor(view, archetype);
+		const capacity = seatCapacityFor(view, archetype, offer);
 		const rows = [];
 		if (service?.bookingSummary) rows.push({ label: "Format", value: service.bookingSummary });
 		if (view.item.type === "services" && view.item.delivery !== service?.bookingSummary) {

@@ -121,6 +121,11 @@ export const InstantiateServiceInputSchema = z.object({
 	 */
 	answers: IntakeAnswersSchema.default({}),
 	/**
+	 * The buyer's own description of what they need, kept on the instantiation record beside the
+	 * answers (`service_instantiations.brief`). Optional: blank is stored as none.
+	 */
+	brief: z.string().trim().max(8000).optional(),
+	/**
 	 * The currency the buyer expects the engagement in. Optional: absent means the listing's own.
 	 * A different code is REFUSED rather than converted — the seller's prices are a commitment in
 	 * their currency (`PC409`, Decision #209).
@@ -144,6 +149,7 @@ export const ServiceInstantiationRowSchema = z.object({
 	owner_user_id: z.string().uuid(),
 	idempotency_key: z.string().min(8).max(120),
 	intake_answers: IntakeAnswersSchema,
+	brief: z.string().min(1).max(8000).nullable(),
 	currency: z.string().regex(/^[A-Z]{3}$/),
 	created_at: z.string(),
 });

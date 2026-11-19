@@ -142,6 +142,9 @@ ALTER TABLE projects.cohorts ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE projects.cohort_seat_holds ENABLE ROW LEVEL SECURITY;
 
+-- A seat link's code is a capability (Decision #522): no client policy, the doors in 00001155 only.
+ALTER TABLE projects.cohort_seat_invites ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE projects.curriculum_modules ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE projects.curriculum_lessons ENABLE ROW LEVEL SECURITY;
@@ -675,6 +678,9 @@ ALTER TABLE marketplace.promoted_placements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace.quote_requests ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE marketplace.quote_offers ENABLE ROW LEVEL SECURITY;
+
+-- The quote record's append-only history (Decision #522). Policies: 00002018.
+ALTER TABLE marketplace.quote_events ENABLE ROW LEVEL SECURITY;
 
 
 -- --- catalogue: the seller publication layer ---

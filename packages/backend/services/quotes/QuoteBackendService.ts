@@ -1,11 +1,17 @@
 import {
+	type IntakeAnswers,
+	type IssueQuoteInput,
 	type QuoteActInput,
 	type QuoteActResult,
+	type QuoteCardList,
+	quoteCardOf,
+	QuoteCardRowSchema,
 	type QuoteList,
 	type QuoteView,
 	quoteViewOf,
 	type QuoteWithRow,
 	QuoteWithRowSchema,
+	type QuotableListingList,
 } from "@projective/types/services";
 import { z } from "zod";
 import type { SupabaseClient } from "supabaseClient";
@@ -89,6 +95,31 @@ const REFUSALS: Record<string, Refusal> = {
 	},
 	already_ordered: { status: 409, message: "This offer has already been paid for." },
 	offer_not_accepted: { status: 409, message: "Accept the offer before paying for it." },
+	group_session: {
+		status: 422,
+		field: "subjectId",
+		message: "Group sessions are booked by the seat, so they take no custom quotes.",
+	},
+	answers_invalid: { status: 422, field: "answers", message: "Those answers could not be read." },
+	buyer_unavailable: { status: 404, field: "buyer", message: "That person could not be found." },
+	buyer_restricted: {
+		status: 422,
+		field: "buyer",
+		message: "That person can't buy until their 18th birthday.",
+	},
+	not_your_listing: { status: 403, field: "listing", message: "Quote one of your own published services." },
+	no_conversation: {
+		status: 422,
+		field: "buyer",
+		message: "You can send a quote once they have written to you.",
+	},
+	terms_mismatch: {
+		status: 409,
+		message: "These terms no longer match what was agreed. Contact support before paying.",
+	},
+	terms_frozen: { status: 409, message: "A sent offer can't be changed. Send a revised offer instead." },
+	record_kept: { status: 409, message: "The quote record can't be changed." },
+	too_many_cards: { status: 422, message: "Ask for at most 100 quote cards at once." },
 };
 
 const RESTRICTED: Refusal = {
@@ -267,7 +298,8 @@ export const QuoteBackendService = {
 
 	/**
 	 * Raise a request against a published service (`marketplace.request_quote`), which addresses it to
-	 * the listing's seller and tells them. Answers the new request's id.
+	 * the listing's seller and tells them. The answers are already held to the listing's questions by
+	 * the caller. Answers the new request's id.
 	 */
 	async request(
 		input: {
@@ -276,6 +308,7 @@ export const QuoteBackendService = {
 			budgetMinor?: number;
 			currency?: string;
 			timeline?: string;
+			answers?: IntakeAnswers;
 		},
 		actor: QuoteActor,
 	): Promise<ServiceResult<{ id: string }>> {
@@ -287,8 +320,104 @@ export const QuoteBackendService = {
 			p_budget_cents: input.budgetMinor ?? null,
 			p_currency: input.budgetMinor !== undefined ? input.currency ?? null : null,
 			p_timeline: input.timeline ?? null,
+			p_answers: input.answers ?? {},
 		});
 		if (error) return failure(error, "request_quote");
 		return ok({ id: (data as { id: string }).id }, { status: 201 });
 	},
+
+	/**
+	 * A seller's own quote from a conversation (`marketplace.issue_quote`, Decision #522): one of their
+	 * published services, priced for a buyer who has written to them. Answers the request it now
+	 * stands on, as the seller sees it.
+	 */
+	async issue(input: IssueQuoteInput, actor: QuoteActor): Promise<ServiceResult<QuoteActResult>> {
+		if (!actor.userId || !actor.accessToken) return refuse(REFUSALS.not_signed_in);
+		if (useMocks()) return fail(503, { message: OFFLINE });
+		const token = actor.accessToken;
+		const buyer = await userIdOf(token, input.buyer);
+		if (buyer === undefined) return fail(503, { message: "That didn't go through. Please try again." });
+		if (!buyer) return refuse(REFUSALS.buyer_unavailable);
+		const blueprintId = await blueprintOf(token, input.listing);
+		if (blueprintId === undefined) return fail(503, { message: "That didn't go through. Please try again." });
+		if (!blueprintId) return refuse(REFUSALS.not_your_listing);
+
+		const { data, error } = await marketplace(token).rpc("issue_quote", {
+			p_counterpart: buyer,
+			p_blueprint: blueprintId,
+			p_scope: input.scope,
+			p_deliverables: input.deliverables,
+			p_price_cents: input.priceMinor,
+			p_turnaround_days: input.turnaroundDays,
+			p_expires_in_days: input.expiresInDays,
+		});
+		if (error) return failure(error, "issue_quote");
+		const requestId = (data as { quote_request_id: string }).quote_request_id;
+		const quote = (await quotesWith(token, buyer))?.find((q) => q.id === requestId);
+		if (!quote) {
+			return fail(503, { message: "Sent, but the quote could not be re-read. Refresh to see it." });
+		}
+		return ok({
+			quote,
+			confirmation: "Quote sent. It appears in your conversation, and they have until it expires to accept it.",
+			basketId: null,
+		}, { status: 201 });
+	},
+
+	/**
+	 * The services the caller may quote from a conversation (Decision #522): their own published
+	 * listings, never a group session — the set `marketplace.issue_quote` accepts. Newest first.
+	 */
+	async quotableListings(actor: QuoteActor): Promise<ServiceResult<QuotableListingList>> {
+		if (!actor.userId || !actor.accessToken) return refuse(REFUSALS.not_signed_in);
+		if (useMocks()) return ok({ listings: [] });
+		const { data, error } = await marketplace(actor.accessToken).from("service_blueprints")
+			.select("slug, title, currency")
+			.eq("freelancer_profile_id", actor.userId)
+			.eq("is_published", true)
+			.neq("delivery_model", "group_session")
+			.order("created_at", { ascending: false })
+			.limit(60);
+		if (error) {
+			console.error("[quotes] quotable listings failed", error.code, error.message);
+			return fail(503, { message: "Your services could not be loaded just now." });
+		}
+		const rows = (data ?? []) as { slug: string; title: string; currency: string }[];
+		return ok({
+			listings: rows.map((r) => ({ slug: r.slug, title: r.title, currency: r.currency.toUpperCase() })),
+		});
+	},
+
+	/**
+	 * The quote cards a conversation renders (`marketplace.get_quote_cards`, Decision #522), for the
+	 * event ids its messages carry. Ids the caller is not a party to are left out.
+	 */
+	async cards(eventIds: readonly string[], actor: QuoteActor): Promise<ServiceResult<QuoteCardList>> {
+		if (!actor.userId || !actor.accessToken) return refuse(REFUSALS.not_signed_in);
+		if (useMocks()) return ok({ cards: [] });
+		if (eventIds.length === 0) return ok({ cards: [] });
+		const { data, error } = await marketplace(actor.accessToken).rpc("get_quote_cards", {
+			p_events: [...new Set(eventIds)],
+		});
+		if (error) return failure(error, "get_quote_cards");
+		const rows = z.array(QuoteCardRowSchema).safeParse(data ?? []);
+		if (!rows.success) {
+			console.error("[quotes] get_quote_cards answered an unexpected shape", rows.error.message);
+			return fail(503, { message: "Quote cards could not be loaded just now." });
+		}
+		return ok({ cards: rows.data.map(quoteCardOf) });
+	},
 };
+
+/** The blueprint behind a service listing's `svc-` slug, or `null` when there is none. */
+async function blueprintOf(token: string, listing: string): Promise<string | null | undefined> {
+	const { data, error } = await marketplace(token).from("service_blueprints")
+		.select("id")
+		.eq("slug", listing)
+		.maybeSingle();
+	if (error) {
+		console.error("[quotes] listing lookup failed", error.message);
+		return undefined;
+	}
+	return (data as { id: string } | null)?.id ?? null;
+}

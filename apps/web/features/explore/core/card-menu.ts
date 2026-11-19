@@ -45,8 +45,8 @@ export interface CardMenuFacts {
 export interface CardMenuHandlers {
 	authed: boolean;
 	onShare: () => void;
-	/** Save state and its toggle; omitted (no Save row) for a guest. */
-	save?: { saved: boolean; onToggle: () => void };
+	/** Save state, its toggle and the save-to-list rows; omitted (no Save row) for a guest. */
+	save?: { saved: boolean; onToggle: () => void; lists?: MenuItem[] };
 	onCopied: (ok: boolean) => void;
 }
 // #endregion

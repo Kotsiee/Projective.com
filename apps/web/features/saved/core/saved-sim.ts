@@ -4,6 +4,7 @@ import {
 	type SavedEntityType,
 	type SavedItem,
 	savedKey,
+	type SavedListToBasketResult,
 	type SavedPage,
 	type SavedState,
 	type SavedTab,
@@ -167,7 +168,42 @@ export function simList(
 	return {
 		items: rows.slice(offset, offset + PAGE),
 		nextCursor: offset + PAGE < rows.length ? String(offset + PAGE) : null,
-		collections: s.collections,
+		collections: s.collections.map((c) => {
+			const inside = s.items.filter((i) => !i.following && i.collectionId === c.id);
+			return {
+				...c,
+				count: inside.length,
+				covers: inside.flatMap((i) => (i.thumbnail ? [i.thumbnail] : [])).slice(0, 4),
+			};
+		}),
+	};
+}
+
+/** Rename a simulated list. */
+export function simRenameCollection(
+	id: string,
+	name: string,
+): { ok: true; data: SavedCollection; message: string } {
+	const found = state?.collections.find((c) => c.id === id);
+	if (found) found.name = name;
+	return { ok: true, data: { id, name }, message: "List renamed." };
+}
+
+/** What putting a simulated list into a basket would do: its products land, its services wait. */
+export function simListToBasket(
+	id: string,
+): { ok: true; data: SavedListToBasketResult; message: string } {
+	const inside = (state?.items ?? []).filter((i) => !i.following && i.collectionId === id);
+	const added = inside.filter((i) => i.type === "product").map((i) => i.title);
+	const skipped = inside.filter((i) => i.type === "service").map((i) => ({
+		title: i.title,
+		href: i.href,
+		reason: "Needs a step on its own page first.",
+	}));
+	return {
+		ok: true,
+		data: { basketId: null, added, skipped },
+		message: `Added ${added.length} ${added.length === 1 ? "item" : "items"} to your basket.`,
 	};
 }
 

@@ -218,6 +218,10 @@ export function ClientDrawerBody(props: ClientDrawerBodyProps): JSX.Element {
 				sectionClass="cat-cdrawer__sec"
 				headingClass="cat-cdrawer__sec-head"
 				onChanged={() => pipelineRevision.value++}
+				issuer={{
+					buyerName: handle,
+					preferListing: "listing" in props.scope ? props.scope.listing : undefined,
+				}}
 			/>
 
 			<section class="cat-cdrawer__sec" aria-labelledby={id("chat")}>

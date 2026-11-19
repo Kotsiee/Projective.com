@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PublicCallOfferSchema } from "../scheduling/calls.ts";
 import { ConferencingProviderSchema } from "../scheduling/meeting.ts";
+import { IntakeAnswersSchema } from "./intake.ts";
 
 /**
  * services.contact — the **Contact Me** popover: what it may offer, and what each of its three
@@ -158,6 +159,8 @@ export const QuoteRequestInputSchema = z.object({
 	currency: z.string().min(3).max(3).optional(),
 	/** A free-text deadline ("mid-March", "before our launch"), never parsed into a date. */
 	timeline: z.string().max(200).optional(),
+	/** The buyer's answers to the listing's own questions (Decision #522), keyed by question id. */
+	answers: IntakeAnswersSchema.default({}),
 });
 export type QuoteRequestInput = z.infer<typeof QuoteRequestInputSchema>;
 

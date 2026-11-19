@@ -1352,6 +1352,9 @@
 
 /* #region Card actions (Share · Save) */
 .ex-actions {
+	--ex-actions-step: calc(2rem + var(--space-1));
+	--ex-saved-ink: color-mix(in srgb, var(--warning) 72%, var(--on-surface));
+
 	position: absolute;
 	inset-block-start: var(--space-3);
 	inset-inline-end: var(--space-3);
@@ -1359,22 +1362,54 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-1);
-	opacity: 0;
-	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
-/* Utility actions are revealed only on hover/focus of the card. */
-.ex-card:hover .ex-actions,
-.ex-card:focus-within .ex-actions,
-.ex-actions:focus-within,
-.ex-actions:has([aria-expanded="true"]) {
+.ex-actions__btn {
+	opacity: 0;
+}
+
+.ex-card:hover .ex-actions__btn,
+.ex-card:focus-within .ex-actions__btn,
+.ex-actions:focus-within .ex-actions__btn,
+.ex-actions:has([aria-expanded="true"]) .ex-actions__btn {
 	opacity: 1;
 }
 
+.ex-actions[data-saved="true"] .ex-actions__btn--save {
+	opacity: 1;
+	transform: translateX(var(--ex-actions-step));
+}
+
+.ex-actions[data-saved="true"]:dir(rtl) .ex-actions__btn--save {
+	transform: translateX(calc(var(--ex-actions-step) * -1));
+}
+
+.ex-card:hover .ex-actions[data-saved="true"] .ex-actions__btn--save,
+.ex-card:focus-within .ex-actions[data-saved="true"] .ex-actions__btn--save,
+.ex-actions[data-saved="true"]:focus-within .ex-actions__btn--save,
+.ex-actions[data-saved="true"]:has([aria-expanded="true"]) .ex-actions__btn--save {
+	transform: none;
+}
+
 @media (hover: none) {
-	.ex-actions {
+	.ex-actions__btn {
 		opacity: 1;
 	}
+
+	.ex-actions[data-saved="true"] .ex-actions__btn--save,
+	.ex-actions[data-saved="true"]:dir(rtl) .ex-actions__btn--save {
+		transform: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ex-actions__btn {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .ex-actions__btn {
+	transition: none;
 }
 
 /*
@@ -1397,13 +1432,16 @@
 	inline-size: 2rem;
 	block-size: 2rem;
 	padding: 0;
-	border: 1px solid var(--ex-hair-strong);
+	border: 1px solid transparent;
 	border-radius: 50%;
 	background: none;
 	color: var(--on-surface);
 	cursor: pointer;
 	text-decoration: none;
-	transition: color var(--dur-fast) var(--ease-standard);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard),
+		color var(--dur-fast) var(--ease-standard);
 }
 
 .ex-actions__btn::before {
@@ -1424,7 +1462,7 @@
 }
 
 .ex-actions__btn:hover {
-	--ex-actions-fill: color-mix(in srgb, var(--primary) 18%, var(--ex-glass));
+	--ex-actions-fill: color-mix(in srgb, var(--on-surface) 10%, var(--ex-glass));
 }
 
 .ex-actions__btn[aria-pressed="true"] svg {
@@ -1450,22 +1488,14 @@
 	animation: none;
 }
 
-/*
- * Saved. The star goes solid AND takes the accent — two channels, because a filled-vs-outline
- * silhouette at 16px is a thin thing to hang a state on by itself.
- *
- * The button also drops its glass for the SOLID label surface in this state, and that is the part
- * that makes the accent legible at all. `--primary` on `--ex-glass` sits over the card's thumbnail,
- * whose colour is arbitrary: alpha-composited against a blown-out white image it measured **1.45:1**
- * in dark and 2.01:1 in light — under the 3:1 WCAG 1.4.11 floor for a graphical object, and the
- * control became hard to even find once saved. On `--chip-on-media` the ground is known and the same
- * pair measures ~5.2:1 in both themes. The resting button keeps its glass: `--on-surface` over the
- * same worst cases measures 4.21 and 6.41, so only the accent state needed the solid ground.
- */
 .ex-actions__btn[aria-pressed="true"] {
-	background: var(--ex-chip-on-media);
-	border-color: color-mix(in srgb, var(--primary) 45%, transparent);
-	color: var(--primary-ink);
+	--ex-actions-fill: var(--ex-chip-on-media);
+
+	color: var(--ex-saved-ink);
+}
+
+.ex-actions__btn[aria-pressed="true"]:hover {
+	--ex-actions-fill: color-mix(in srgb, var(--on-surface) 6%, var(--ex-chip-on-media));
 }
 
 .ex-actions__btn:focus-visible {

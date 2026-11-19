@@ -387,6 +387,7 @@ The individual message entries for DMs.
 | `pii_masked`      | boolean | Set by `comms.tg_mask_dm_message_pii` when the body was masked. Semantics as on [`comms.project_messages`](#commsproject_messages). |
 | `pii_categories`  | text[]  | Which contact categories were masked (`email` · `phone` · `payment_link` · `handle`). |
 | `auto_response_id` | uuid  | **Decision #156.** Set only on a message `comms.tg_dm_auto_reply` sent for its author: the rule that fired it. Stops an auto-reply answering an auto-reply, dedupes a rule per thread per day and keeps an automatic message from accepting a request. No FK (a deleted rule leaves its past messages marked). A client write may not set it (`trg_dm_messages_derived` → `security.fn_guard_derived_columns`). |
+| `quote_event_id` | uuid  | **Decision #522.** Set only by the quote doors (`marketplace.fn_quote_event`): the `marketplace.quote_events` move this message records, which the thread renders as a quote card over its plain `body`. FK `ON DELETE SET NULL`; partial index `idx_dm_messages_quote_event`. A client write may not set it (`trg_dm_messages_derived`), and an auto-reply never answers it. |
 
 Indexes (`00004006`): `idx_dm_messages_thread_recent (thread_id, created_at DESC)` — the latest page
 of a thread, its preview row and `comms.inbox_tails`' k > 1 walk; `idx_dm_messages_reply_to

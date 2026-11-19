@@ -121,6 +121,8 @@ change once written (`trg_quote_requests_parties`, `security.fn_guard_immutable_
 | `answered_at`    | `timestamptz` | Set by the first offer. Required while `answered` or `accepted`.                              |
 | `closed_at`      | `timestamptz` | Set exactly when `accepted`, `declined` or `withdrawn` (`quote_requests_closed_at_check`).      |
 | `decline_reason` | `text`        | The host's reason, at most 280 characters, only on a `declined` row.                           |
+| `answers`        | `jsonb`       | The buyer's answers to the listing's own questions, keyed by question id (an object, `quote_requests_answers_check`); `{}` when none. Decision #522. |
+| `origin`         | `text`        | `buyer` (`request_quote`) or `host` (a seller's own quote from a conversation, `issue_quote`, born `answered`). Decision #522. |
 
 One open (`sent` / `answered`) request per buyer per blueprint: `uq_quote_requests_open` (00004012),
 which `marketplace.request_quote` refuses ahead of as `already_open`. Indexed by blueprint for the
@@ -141,11 +143,39 @@ One row per offer sent on a request; a revision is a new row, so history stays.
 | `currency`         | `text`        | The blueprint's own currency, set by the door, never by the caller.                     |
 | `turnaround_days`  | `smallint`    | 1–90, the blueprint's own range; the paid engagement's due date is payment + this.       |
 | `expires_at`       | `timestamptz` | 3–30 days after `created_at` (`quote_offers_expiry_window_check`).                       |
+| `terms_hash`       | `text`        | Hex SHA-256 of the offer's canonical terms (`fn_quote_terms`), stamped from the row on insert (`trg_quote_offers_stamp`); never written by a caller. Decision #522. |
 | `status`           | `text`        | `pending` · `accepted` · `declined` · `withdrawn`. `expired` is derived: `pending` past `expires_at`. |
 | `superseded_by`    | `uuid` FK     | Self-reference to the offer that replaced it; only on a `withdrawn` row; `ON DELETE SET NULL`. |
 | `decided_at`       | `timestamptz` | Set exactly when it leaves `pending`.                                                    |
 
 At most one `pending` and one `accepted` offer per request (`uq_quote_offers_one_pending`,
 `uq_quote_offers_one_accepted`, 00004012). An accepted offer's basket line carries its id in
-`finance.basket_items.metadata ->> 'quoteOfferId'`, and `uq_basket_items_live_quote_offer` (00004005)
-allows one live line per offer across every basket.
+`finance.basket_items.metadata ->> 'quoteOfferId'` (and its `quoteTermsHash`), and
+`uq_basket_items_live_quote_offer` (00004005) allows one live line per offer across every basket. The
+paid line is `finance.order_lines.quote_offer_id` (one per offer, `uq_order_lines_quote_offer`).
+
+**Frozen (Decision #522).** `trg_quote_offers_kept` (`fn_quote_record_kept`) refuses any UPDATE that
+changes a column other than `status`, `superseded_by`, `decided_at` and `updated_at` (`terms_frozen`),
+for every role including the owner: a revision is a new row with its own hash. A direct DELETE of an
+offer or a request is refused (`record_kept`); the cascade of an erased account still passes.
+
+## `marketplace.quote_events` — the quote record (Decision #522)
+
+Append-only: one row per move on a request, written only by the doors in 00001177 and by
+`finance.place_wallet_order` (the `paid` move). Never updated, never deleted directly
+(`trg_quote_events_kept`). Each row also has a quote card in the pair's conversation
+(`comms.dm_messages.quote_event_id`).
+
+| Column             | Type          | Notes                                                                                     |
+| :----------------- | :------------ | :---------------------------------------------------------------------------------------- |
+| `id`               | `uuid` PK     |                                                                                           |
+| `quote_request_id` | `uuid` FK     | `marketplace.quote_requests(id)`, `ON DELETE CASCADE`.                                    |
+| `quote_offer_id`   | `uuid` FK     | The offer the move concerned; `NULL` for a request-only move (asked, declined, withdrawn). |
+| `actor_user_id`    | `uuid` FK     | Who moved (the door's `auth.uid()`).                                                       |
+| `kind`             | `text`        | `requested` · `issued` · `offer_sent` · `offer_revised` · `offer_withdrawn` · `request_declined` · `offer_accepted` · `offer_declined` · `request_withdrawn` · `paid`. |
+| `terms`            | `jsonb`       | The offer's canonical terms as they stood at the move (`fn_quote_terms`); with `terms_hash`, both or neither. |
+| `terms_hash`       | `text`        | Hex SHA-256 of `terms`; on `offer_accepted` it is the hash the buyer accepted.            |
+| `detail`           | `jsonb`       | `{reason}` on a decline; `{order_line_id, project_id, escrow_id}` on `paid`.               |
+| `created_at`       | `timestamptz` |                                                                                           |
+
+Indexed by request (newest first) and by offer (00004012).

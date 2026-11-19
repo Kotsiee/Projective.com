@@ -107,6 +107,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"waitlist.invited",
 	"waitlist.invite_expired",
 	"waitlist.cohort_cancelled",
+	"session.seat_claimed",
 	// discovery
 	"catalogue.listing_published",
 	"catalogue.listing_paused",

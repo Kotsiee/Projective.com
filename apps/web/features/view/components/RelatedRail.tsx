@@ -1,7 +1,6 @@
 import type { ComponentChildren, JSX } from "preact";
 import { Icon } from "@projective/ui/icons";
 import { EntityCard } from "@features/explore/components/cards/EntityCard.tsx";
-import { HomeGrid, type HomeGridColumns } from "@features/explore/components/HomeGrid.tsx";
 import { RailCell } from "@features/explore/components/RailCell.tsx";
 import { RailHeading, type RailHeadingLevel } from "@features/explore/components/RailHeading.tsx";
 import HomeRail from "@features/explore/islands/HomeRail.island.tsx";
@@ -21,8 +20,6 @@ import { type EntityGroup, groupItemsByType } from "../core/view-model.ts";
  */
 const MAX_GROUPS = 2;
 
-const GRID_ROWS = 2;
-
 /** Props for {@link RelatedSection}. */
 export interface RelatedSectionProps {
 	/** Stable section id — the rail anchors and heading ids derive from it (`ex-{id}`). */
@@ -33,20 +30,18 @@ export interface RelatedSectionProps {
 	ctx: HrefContext;
 	authed: boolean;
 	seeAllHref?: string;
-	/** Cards per row for a PROJECT block — a project page's "Similar" runs three-up. */
-	columns?: HomeGridColumns;
 }
 
 /**
  * RelatedSection — a titled recommendation section ("More by this creator" / "Similar & recommended")
- * built from Explore's own section module: every non-project block is a {@link HomeRail} in its
- * `contained` variant holding server-rendered {@link RailCell}s, and a project block is a
- * {@link HomeGrid}, exactly as on `/explore`. A section with one format IS that rail; a section with
- * two is a titled set whose blocks take level-3 headings. "See all" rides the module's action slot.
- * Renders nothing when there are no items.
+ * built from Explore's own section module: every block is a {@link HomeRail} in its `contained`
+ * variant holding server-rendered {@link RailCell}s. A project block's cells are sized to the rail
+ * (`ex-rail--projects`: one card on a phone, two on a laptop, three or four on an ultrawide). A
+ * section with one format IS that rail; a section with two is a titled set whose blocks take level-3
+ * headings. "See all" rides the module's action slot. Renders nothing when there are no items.
  */
 export function RelatedSection(
-	{ id, title, subtitle, items, ctx, authed, seeAllHref, columns }: RelatedSectionProps,
+	{ id, title, subtitle, items, ctx, authed, seeAllHref }: RelatedSectionProps,
 ): JSX.Element | null {
 	if (items.length === 0) return null;
 	const groups = groupItemsByType(items).slice(0, MAX_GROUPS);
@@ -65,7 +60,6 @@ export function RelatedSection(
 					level={2}
 					ctx={ctx}
 					authed={authed}
-					columns={columns}
 				/>
 			</div>
 		);
@@ -88,7 +82,6 @@ export function RelatedSection(
 						level={3}
 						ctx={ctx}
 						authed={authed}
-						columns={columns}
 					/>
 				))}
 			</section>
@@ -106,7 +99,7 @@ function SeeAll({ href }: { href: string }): JSX.Element {
 }
 
 function RelatedGroup(
-	{ group, id, lead, subtitle, href, action, level, ctx, authed, columns = 2 }: {
+	{ group, id, lead, subtitle, href, action, level, ctx, authed }: {
 		group: EntityGroup;
 		id: string;
 		lead: string;
@@ -116,29 +109,8 @@ function RelatedGroup(
 		level: RailHeadingLevel;
 		ctx: HrefContext;
 		authed: boolean;
-		columns?: HomeGridColumns;
 	},
 ): JSX.Element {
-	if (group.type === "projects") {
-		return (
-			<HomeGrid
-				id={id}
-				lead={lead}
-				href={href}
-				subtitle={subtitle}
-				level={level}
-				columns={columns}
-				action={action}
-			>
-				{group.items.slice(0, columns * GRID_ROWS).map((item) => (
-					<div class="ex-rail__gridcell" role="listitem" key={item.id}>
-						<EntityCard item={item} ctx={ctx} authed={authed} />
-					</div>
-				))}
-			</HomeGrid>
-		);
-	}
-
 	return (
 		<HomeRail
 			id={id}
@@ -149,6 +121,7 @@ function RelatedGroup(
 			variant="contained"
 			action={action}
 			label={group.label}
+			modifier={group.type === "projects" ? "ex-rail--projects" : undefined}
 		>
 			{group.items.map((item) => (
 				<RailCell key={item.id}>

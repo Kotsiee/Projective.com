@@ -20,11 +20,12 @@ CREATE TRIGGER trg_dm_messages_promote_on_reply
     FOR EACH ROW
     EXECUTE FUNCTION comms.fn_promote_thread_on_reply();
 
--- Only comms.tg_dm_auto_reply marks a message automatic; a client write may not.
+-- Only comms.tg_dm_auto_reply marks a message automatic, and only the quote doors (00001177,
+-- Decision #522) make one a quote card; a client write may do neither.
 CREATE TRIGGER trg_dm_messages_derived
     BEFORE INSERT OR UPDATE ON comms.dm_messages
     FOR EACH ROW
-    EXECUTE FUNCTION security.fn_guard_derived_columns('auto_response_id');
+    EXECUTE FUNCTION security.fn_guard_derived_columns('auto_response_id', 'quote_event_id');
 
 -- Settings → Messaging away replies (00001300 §Auto-replies).
 CREATE TRIGGER trg_dm_messages_auto_reply

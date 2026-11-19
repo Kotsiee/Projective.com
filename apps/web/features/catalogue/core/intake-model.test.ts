@@ -123,11 +123,11 @@ Deno.test("the publish lock allows wording and option edits only", () => {
 	);
 	assertEquals(
 		intakeLockRefusal(before, [withKind(before[0], "textarea"), before[1]]),
-		"Only a question's wording and options can change once the listing has been published.",
+		"Only a question's wording, options, starting value and pricing can change once the listing has been published.",
 	);
 	assertEquals(
 		intakeLockRefusal(before, [{ ...before[0], required: true }, before[1]]),
-		"Only a question's wording and options can change once the listing has been published.",
+		"Only a question's wording, options, starting value and pricing can change once the listing has been published.",
 	);
 });
 

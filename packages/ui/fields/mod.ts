@@ -78,17 +78,10 @@ export { InputText, type InputTextProps } from "./islands/InputText.tsx";
 export { Textarea, type TextareaProps } from "./islands/Textarea.tsx";
 export { ResizeFrame, type ResizeFrameProps } from "./islands/ResizeFrame.tsx";
 export { InlineEdit, type InlineEditField, type InlineEditProps } from "./islands/InlineEdit.tsx";
-export {
-	type ButtonLayout,
-	InputNumber,
-	type InputNumberProps,
-	type NumberMode,
-} from "./islands/InputNumber.tsx";
 /**
- * The direct-manipulation numeric control — scrub, hold-to-ramp, wheel — beside the quieter
- * {@link InputNumber}. The two share `core/number-field.ts`, which is the only place either of them
- * decides what a number becomes, so a figure cannot come out differently depending on which control
- * a surface happened to reach for.
+ * The numeric control — type, hold-to-ramp steppers, wheel, scrub (Decision #522 retired the quieter
+ * `InputNumber`; every numeric field is this one). `core/number-field.ts` is the only place it
+ * decides what a number becomes.
  */
 export {
 	NumberInput,

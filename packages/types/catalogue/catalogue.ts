@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ExploreOwnerSchema, ServiceType, SkillRefSchema } from "../explore/items.ts";
 import { EntityPricingSchema } from "../explore/view.ts";
-import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
+import { INTAKE_FIELDS_MAX, IntakeFieldSchema, intakeListRefusal } from "../services/intake.ts";
 import { CreateCategory } from "../org/standing.ts";
 import { INTENSITY_PRICE_MULTIPLIER } from "../projects/board.ts";
 import { formArchetypeOf } from "./archetype.ts";
@@ -413,6 +413,9 @@ export const UpdateListingInputSchema = z.object({
 }).refine((p) => p.currency === undefined || p.pricing !== undefined, {
 	message: "A currency change carries the prices it re-states.",
 	path: ["pricing"],
+}).refine((p) => p.intake === undefined || intakeListRefusal(p.intake) === null, {
+	message: "A follow-up question must follow a yes/no or choice question above it.",
+	path: ["intake"],
 });
 export type UpdateListingInput = z.infer<typeof UpdateListingInputSchema>;
 

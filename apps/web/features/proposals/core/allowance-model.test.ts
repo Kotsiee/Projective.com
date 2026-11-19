@@ -3,13 +3,19 @@ import { assertStrictEquals } from "@std/assert";
 import type { ProposalAllowanceStatus } from "@projective/types/finance";
 import {
 	type AllowanceSnapshot,
+	bufferLine,
+	bufferShare,
 	disclosureLine,
 	meterLine,
 	meterTooltip,
 	msUntil,
 	refillLine,
+	resetLine,
+	showsPacing,
 	showsUpgrade,
 	simulateAllowance,
+	weeklyLine,
+	weeklyShare,
 } from "./allowance-model.ts";
 
 /**
@@ -115,4 +121,22 @@ Deno.test("simulated positions keep the viewer's plan and move only the metered 
 	assertStrictEquals(draft.teamStatus, "draft");
 	assertStrictEquals(draft.blockReason, "team_not_active");
 	assertStrictEquals(draft.canApply, false);
+});
+
+Deno.test("the compact meter reads the week as a share, a figure and its reset", () => {
+	assertStrictEquals(weeklyShare(STATUS), 54);
+	assertStrictEquals(weeklyLine(STATUS), "38 of 70 left");
+	assertStrictEquals(weeklyLine({ ...STATUS, weeklyRemaining: 0 }), "Weekly allowance used");
+	assertStrictEquals(weeklyShare({ ...STATUS, weeklyGranted: 0 }), 0);
+	assertStrictEquals(resetLine(STATUS, "UTC").startsWith("Resets "), true);
+	assertStrictEquals(resetLine({ ...STATUS, weeklyResetsAt: "not a date" }), "");
+});
+
+Deno.test("the pacing bar shows only while tokens, not the week, block a spend", () => {
+	assertStrictEquals(showsPacing(STATUS), false);
+	assertStrictEquals(showsPacing({ ...STATUS, bufferUnits: 0 }), true);
+	assertStrictEquals(showsPacing({ ...STATUS, bufferUnits: 0, weeklyRemaining: 0 }), false);
+	assertStrictEquals(showsPacing({ ...STATUS, bufferUnits: 4, weeklyRemaining: 0 }), false);
+	assertStrictEquals(bufferShare({ ...STATUS, bufferUnits: 3 }), 25);
+	assertStrictEquals(bufferLine({ ...STATUS, bufferUnits: 0 }), "0 of 12 ready");
 });

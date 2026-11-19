@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useSignal, useSignalEffect } from "@preact/signals";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/saved.css";
 import {
@@ -8,47 +8,52 @@ import {
 	type SavedItem,
 	type SavedTab,
 } from "@projective/types/org";
-import { Button, Select } from "@projective/ui/fields";
+import { Button } from "@projective/ui/fields";
 import { InlineNotice, Skeleton } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { TabMenu } from "@projective/ui/navigation";
 import { EmptyState } from "@projective/ui/utils";
 import { subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { ProfileService } from "@features/profile/core/ProfileService.ts";
 import { SavedService } from "../core/SavedService.ts";
+import { emptyCopy, listName, savedHref, TAB_LABEL, tabHasCollections } from "../core/saved-model.ts";
 import {
-	emptyCopy,
-	SAVED_TABS,
-	savedHref,
-	TAB_LABEL,
-	tabHasCollections,
-} from "../core/saved-model.ts";
+	listDialog,
+	patchSavedFilter,
+	type SavedFilter,
+	savedBoards,
+	savedFilter,
+} from "../core/saved-filter-state.ts";
 import { SavedRow } from "../components/SavedRow.tsx";
 import { CollectionPicker, type PickerTarget } from "../components/CollectionPicker.tsx";
+import { ListBoards } from "../components/ListBoards.tsx";
+import { ListNameDialog } from "../components/ListNameDialog.tsx";
+import { BuyListDialog } from "../components/BuyListDialog.tsx";
+import { SavedPageHeader } from "../components/SavedPageHeader.tsx";
+import { SavedFilterBar } from "../components/SavedFilterBar.tsx";
 
 /** Props for {@link SavedPage}. */
 export interface SavedPageProps {
-	/** The tab and collection decoded from `?tab=&collection=`. */
+	/** The category and list decoded from `?tab=&collection=`. */
 	initialTab: SavedTab;
 	initialCollection?: string;
+	/** Whose baskets a list is bought into: `personal` or `{entity}:{id}`. */
+	basketOwner: string;
 }
 
-const PANEL_ID = "svd-panel";
-/** The collection filter's "everything" value. */
-const ALL = "";
-
 /**
- * SavedPage — `/saved` (Decision #180): everything the viewer has saved, starred, favourited or
- * followed, by tab (All · Services & products · People · Projects · Messages · Files), newest save
- * first, with "People you follow" after the saves. Bookmark kinds can be narrowed to one named
- * collection and filed into one from the row; any row can be removed in place (optimistic, rolled back
- * and explained on refusal). The tab and collection live in the URL. Dumb island: `SavedService` only.
+ * SavedPage — the `/saved` body (Decision #180, laid out as `/notifications` is, Decision #520).
+ * The filter lives in the middle-nav lane (and, below `--bp-md`, the phone filter bar), shared through
+ * `savedFilter`: a category (All · Services & products · People · Projects · Messages · Files) that
+ * only filters, and optionally one of the viewer's lists. With no list open the page leads with the
+ * lists as boards; an open list can be renamed, deleted, or bought — its products put into a basket.
+ * Rows are newest save first, with "People you follow" after them, removable in place (optimistic,
+ * rolled back and explained on refusal). The filter lives in the URL. Dumb island: `SavedService` only.
  */
 export default function SavedPage(props: SavedPageProps): JSX.Element {
-	const tab = useSignal<SavedTab>(props.initialTab);
-	const collection = useSignal<string | undefined>(props.initialCollection);
+	const filter = useComputed<SavedFilter>(() =>
+		savedFilter.value ?? { tab: props.initialTab, collection: props.initialCollection }
+	);
 	const items = useSignal<SavedItem[]>([]);
-	const collections = useSignal<SavedCollection[]>([]);
 	const cursor = useSignal<string | null>(null);
 	const phase = useSignal<"loading" | "ready" | "error">("loading");
 	const failure = useSignal<string | null>(null);
@@ -56,34 +61,39 @@ export default function SavedPage(props: SavedPageProps): JSX.Element {
 	const said = useSignal("");
 	const picking = useSignal(false);
 	const target = useSignal<PickerTarget | null>(null);
+	const buying = useSignal(false);
 	const epoch = useSignal(0);
 
-	async function load(more: boolean): Promise<void> {
-		const asked = { tab: tab.peek(), collection: collection.peek() };
+	useEffect(() => {
+		savedFilter.value = { tab: props.initialTab, collection: props.initialCollection };
+		return () => {
+			savedFilter.value = null;
+		};
+	}, []);
+
+	async function load(more: boolean, quiet = false): Promise<void> {
+		const asked = filter.peek();
 		if (more) loadingMore.value = true;
-		else phase.value = "loading";
+		else if (!quiet) phase.value = "loading";
 		const res = await SavedService.list({ ...asked, cursor: more ? cursor.peek() : null });
-		// A tab switched while this was in flight: its answer is not for what is on screen.
-		if (asked.tab !== tab.peek() || asked.collection !== collection.peek()) return;
+		const now = filter.peek();
+		if (asked.tab !== now.tab || asked.collection !== now.collection) return;
 		loadingMore.value = false;
 		if (!res.ok) {
-			if (more) failure.value = res.message;
-			else {
-				failure.value = res.message;
-				phase.value = "error";
-			}
+			failure.value = res.message;
+			if (!more) phase.value = "error";
 			return;
 		}
 		items.value = more ? [...items.peek(), ...res.data.items] : res.data.items;
-		collections.value = res.data.collections;
+		savedBoards.value = res.data.collections;
 		cursor.value = res.data.nextCursor;
 		failure.value = null;
 		phase.value = "ready";
 	}
 
-	// Keep the address on what is shown, and read it.
 	useSignalEffect(() => {
-		const href = savedHref(tab.value, collection.value);
+		const { tab, collection } = filter.value;
+		const href = savedHref(tab, collection);
 		void epoch.value;
 		if (globalThis.location && location.pathname + location.search !== href) {
 			history.replaceState(history.state, "", href);
@@ -91,7 +101,6 @@ export default function SavedPage(props: SavedPageProps): JSX.Element {
 		void load(false);
 	});
 
-	// The dev axis swaps the whole saved set — read it again.
 	useEffect(() => subscribeDevSeam(() => epoch.value++), []);
 
 	/** Remove a row in place; a refusal puts it back where it was and says why. */
@@ -105,6 +114,11 @@ export default function SavedPage(props: SavedPageProps): JSX.Element {
 			said.value = item.following
 				? `Unfollowed ${item.title}.`
 				: `${item.title} removed from saved.`;
+			if (item.collectionId) {
+				savedBoards.value = (savedBoards.peek() ?? []).map((b) =>
+					b.id === item.collectionId ? { ...b, count: Math.max(0, (b.count ?? 1) - 1) } : b
+				);
+			}
 			return;
 		}
 		const back = [...items.value];
@@ -123,41 +137,35 @@ export default function SavedPage(props: SavedPageProps): JSX.Element {
 		picking.value = true;
 	}
 
-	/** Reflect a filing: the row's collection changes, and it leaves a list narrowed to another one. */
-	function filed(collectionId: string | null, message: string): void {
-		const ref = target.value?.ref;
-		const narrowed = collection.value;
-		items.value = items.value
-			.map((i) => (i.ref === ref && !i.following ? { ...i, collectionId } : i))
-			.filter((i) =>
-				i.ref !== ref || i.following || !narrowed ||
-				(narrowed === "unfiled" ? collectionId === null : collectionId === narrowed)
-			);
+	/** Reflect a filing, then read again so the row leaves a list it no longer belongs to. */
+	function filed(_collectionId: string | null, message: string): void {
 		said.value = message;
-		// A collection created in the picker belongs in the filter now.
-		void SavedService.collections().then((res) => {
-			if (res.ok) collections.value = res.data;
-		});
+		void load(false, true);
 	}
 
-	async function deleteCollection(id: string): Promise<void> {
-		const name = collections.value.find((c) => c.id === id)?.name ?? "The collection";
-		const res = await SavedService.deleteCollection(id);
+	async function deleteList(list: SavedCollection): Promise<void> {
+		const res = await SavedService.deleteCollection(list.id);
 		if (!res.ok) {
 			failure.value = res.message;
 			return;
 		}
-		said.value = `${name} deleted. Its items are still saved.`;
-		collection.value = undefined;
+		said.value = `${list.name} deleted. Its items are still saved.`;
+		if (!patchSavedFilter({ collection: undefined })) void load(false, true);
 	}
 
+	const current = filter.value;
+	const boards = savedBoards.value ?? [];
+	const open = current.collection && current.collection !== "unfiled"
+		? boards.find((b) => b.id === current.collection) ?? null
+		: null;
+	const label = listName(current.collection, boards);
 	const now = Date.now();
 	const list = items.value;
 	const saves = list.filter((i) => !i.following);
 	const follows = list.filter((i) => i.following);
-	const empty = emptyCopy(tab.value, collection.value);
-	const showFilter = tabHasCollections(tab.value) && collections.value.length > 0;
-	const named = collection.value && collection.value !== "unfiled" ? collection.value : null;
+	const empty = emptyCopy(current.tab, current.collection);
+	const showBoards = !current.collection && tabHasCollections(current.tab) &&
+		phase.value !== "error";
 	const row = (item: SavedItem) => (
 		<SavedRow
 			key={`${item.type}:${item.ref}:${item.following}`}
@@ -192,7 +200,7 @@ export default function SavedPage(props: SavedPageProps): JSX.Element {
 		body = (
 			<EmptyState
 				size="sm"
-				icon={<Icon name="star" />}
+				icon={<Icon name="bookmark" />}
 				title={empty.title}
 				description={empty.description}
 			/>
@@ -224,62 +232,52 @@ export default function SavedPage(props: SavedPageProps): JSX.Element {
 
 	return (
 		<div class="svd-page">
-			<header class="svd-page__head">
-				<h1 class="svd-page__title">Saved</h1>
-			</header>
-
-			<TabMenu
-				class="svd-tabs"
-				aria-label="Saved kinds"
-				panelId={PANEL_ID}
-				activeIndex={SAVED_TABS.indexOf(tab.value)}
-				onActiveIndexChange={(i) => {
-					tab.value = SAVED_TABS[i];
-					if (!tabHasCollections(SAVED_TABS[i])) collection.value = undefined;
-				}}
-				model={SAVED_TABS.map((t) => ({ key: t, label: TAB_LABEL[t] }))}
+			<SavedPageHeader
+				tab={current.tab}
+				listLabel={label}
+				list={open}
+				onNewList={() => (listDialog.value = { mode: "new" })}
+				onBuyList={() => (buying.value = true)}
+				onRenameList={() => open && (listDialog.value = { mode: "rename", list: open })}
+				onDeleteList={() => open && void deleteList(open)}
 			/>
 
-			{showFilter && (
-				<div class="svd-page__bar">
-					<Select
-						// A raw value seeds the field once; the key remounts it when code resets the filter.
-						key={collection.value ?? ALL}
-						aria-label="Collection"
-						size="sm"
-						options={[
-							{ label: "All saved", value: ALL },
-							{ label: "Not in a collection", value: "unfiled" },
-							...collections.value.map((c) => ({ label: c.name, value: c.id })),
-						]}
-						value={collection.value ?? ALL}
-						onValueChange={(v) => (collection.value = v === ALL ? undefined : v)}
-					/>
-					{named && (
-						<Button
-							variant="text"
-							severity="secondary"
-							size="sm"
-							label="Delete collection"
-							onClick={() => void deleteCollection(named)}
-						/>
-					)}
-				</div>
+			<SavedFilterBar filter={current} lists={boards} />
+
+			{showBoards && savedBoards.value !== null && (
+				<ListBoards
+					lists={boards}
+					tab={current.tab}
+					onOpen={(l) => patchSavedFilter({ collection: l.id })}
+					onNew={() => (listDialog.value = { mode: "new" })}
+				/>
 			)}
 
-			<div
+			<section
 				class="svd-panel"
-				role="tabpanel"
-				id={PANEL_ID}
-				aria-label={`Saved: ${TAB_LABEL[tab.value]}`}
+				aria-label={label ? `Saved in ${label}` : `Saved: ${TAB_LABEL[current.tab]}`}
 			>
+				{showBoards && <h2 class="svd-section__title">Recently saved</h2>}
 				{phase.value === "ready" && failure.value
 					? <InlineNotice text={failure.value} assertive />
 					: null}
 				{body}
-			</div>
+			</section>
 
 			<CollectionPicker open={picking} target={target.value} onDone={filed} />
+			<ListNameDialog
+				onDone={(made, created, message) => {
+					said.value = message;
+					if (!created) void load(false, true);
+					else patchSavedFilter({ collection: made.id });
+				}}
+			/>
+			<BuyListDialog
+				open={buying}
+				list={open}
+				owner={props.basketOwner}
+				onDone={(message) => (said.value = message)}
+			/>
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{said.value}</p>
 		</div>
 	);

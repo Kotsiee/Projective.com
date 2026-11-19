@@ -60,6 +60,10 @@ CREATE INDEX IF NOT EXISTS idx_dm_messages_reply_to
     ON comms.dm_messages (reply_to_id)
     WHERE reply_to_id IS NOT NULL;
 
+CREATE INDEX IF NOT EXISTS idx_dm_messages_quote_event
+    ON comms.dm_messages (quote_event_id)
+    WHERE quote_event_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_notification_types_aliases ON comms.notification_types USING gin (aliases);
 CREATE INDEX IF NOT EXISTS idx_notification_types_category ON comms.notification_types (category) WHERE enabled;
 CREATE INDEX IF NOT EXISTS idx_notifications_user_feed

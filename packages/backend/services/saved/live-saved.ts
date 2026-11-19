@@ -706,6 +706,102 @@ export async function readCollections(actor: Actor): Promise<SavedCollection[]> 
 	return (data ?? []) as SavedCollection[];
 }
 
+const BOARD_COVERS = 4;
+
+/**
+ * The caller's collections as list boards: each with how many saves it holds and up to four cover
+ * thumbnails from its newest saves that have one.
+ */
+export async function readCollectionBoards(actor: Actor): Promise<SavedCollection[]> {
+	const [collections, rows] = await Promise.all([
+		readCollections(actor),
+		readSavedRows(actor, COLLECTABLE_TYPES, undefined),
+	]);
+	const filed = sortSaved(rows.filter((r) => r.collectionId !== null));
+	const byList = new Map<string, SavedRow[]>();
+	for (const row of filed) {
+		const list = byList.get(row.collectionId!) ?? [];
+		list.push(row);
+		byList.set(row.collectionId!, list);
+	}
+	const sample = [...byList.values()].flatMap((list) => list.slice(0, BOARD_COVERS * 2));
+	const shown = await displaySaved(actor, sample);
+	const thumbs = new Map<string, string[]>();
+	for (const item of shown) {
+		if (!item.thumbnail || !item.collectionId) continue;
+		const list = thumbs.get(item.collectionId) ?? [];
+		if (list.length < BOARD_COVERS) list.push(item.thumbnail);
+		thumbs.set(item.collectionId, list);
+	}
+	return collections.map((c) => ({
+		...c,
+		count: byList.get(c.id)?.length ?? 0,
+		covers: thumbs.get(c.id) ?? [],
+	}));
+}
+
+/** Rename a collection. A name the caller already uses is a 409; someone else's is a 404. */
+export async function renameCollection(
+	actor: Actor,
+	id: string,
+	name: string,
+): Promise<ServiceResult<SavedCollection>> {
+	if (!UUID_RE.test(id)) return fail(404, { message: "No such list." });
+	const { data, error } = await db(actor, "org").from("user_bookmark_collections")
+		.update({ name }).eq("id", id).eq("user_id", actor.userId).select("id, name");
+	if (error) {
+		if (error.code === "23505") {
+			return fail(409, {
+				message: `You already have a list called "${name}".`,
+				errors: { name: "taken" },
+			});
+		}
+		throw new Error(`org.user_bookmark_collections update failed: ${error.message}`);
+	}
+	const row = (data ?? [])[0] as SavedCollection | undefined;
+	if (!row) return fail(404, { message: "No such list." });
+	return ok(row, { message: "List renamed." });
+}
+
+/** A saved listing in one collection, resolved for a basket: its slug, title, page and kind. */
+export interface CollectionListing {
+	slug: string;
+	title: string;
+	href: string | null;
+	type: "service" | "product";
+	/** The listing's delivery model as Explore reads it; `null` for a product or a gone listing. */
+	serviceType: string | null;
+	/** Whether the listing still resolves in the catalogue. */
+	live: boolean;
+}
+
+/** The services and products saved into one collection, newest first. */
+export async function readCollectionListings(
+	actor: Actor,
+	collectionId: string,
+): Promise<CollectionListing[]> {
+	const rows = sortSaved(await readSavedRows(actor, ["service", "product"], collectionId));
+	const shown = await displaySaved(actor, rows);
+	const slugs = shown.map((i) => i.ref);
+	const catalog = slugs.length > 0 ? await ExploreBackendService.items(slugs) : null;
+	const items = new Map((catalog?.ok ? catalog.data ?? [] : []).map((i) => [i.id, i]));
+	return shown
+		.filter((i): i is typeof i & { type: "service" | "product" } =>
+			i.type === "service" || i.type === "product"
+		)
+		.map((i) => {
+			const item = items.get(i.ref);
+			return {
+				slug: i.ref,
+				title: i.title,
+				href: i.href,
+				type: i.type,
+				serviceType: item && item.type === "services" ? item.serviceType ?? null : null,
+				live: !!item && i.href !== null,
+			};
+		});
+}
+
 /** Create a collection. A name the caller already uses is a 409. */
 export async function insertCollection(
 	actor: Actor,

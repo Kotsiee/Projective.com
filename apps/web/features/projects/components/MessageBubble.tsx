@@ -17,6 +17,7 @@ import { ReplyIcon, WonkyStarIcon } from "./chat-glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import { MessageLinkPreviews } from "@web/features/links/components/MessageLinks.tsx";
+import { QuoteThreadCard } from "@web/features/quotes/components/QuoteThreadCard.tsx";
 
 /**
  * MessageBubble — one authored message in the feed (task §2/§3). Composes:
@@ -78,7 +79,8 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 	const bubbleRef = useRef<HTMLDivElement>(null);
 
 	const hasText = m.text.trim().length > 0;
-	const standalone = !m.replyTo && m.attachments.length === 0 && !m.audio;
+	const quoteEvent = m.quoteEventId ?? null;
+	const standalone = !m.replyTo && m.attachments.length === 0 && !m.audio && !quoteEvent;
 	const emoji = hasText && standalone ? emojiOnly(m.text) : null;
 	const who = own ? "You" : sender?.name ?? "Unknown";
 
@@ -127,12 +129,14 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 						data-own={own ? "true" : undefined}
 						data-pos={row.groupPos}
 						data-emoji-only={emoji ? String(emoji.tier) : undefined}
+						data-quote={quoteEvent ? "true" : undefined}
 					>
 						{m.replyTo && <MessageReplyQuote reply={m.replyTo} onJump={props.onJump} />}
-						{hasText && (
+						{quoteEvent && <QuoteThreadCard eventId={quoteEvent} text={m.text} />}
+						{hasText && !quoteEvent && (
 							<MessageBody text={m.text} delta={m.delta} author={who} own={own} timeLabel={m.timeLabel} />
 						)}
-						{hasText && <MessageLinkPreviews text={m.text} />}
+						{hasText && !quoteEvent && <MessageLinkPreviews text={m.text} />}
 						{m.attachments.length > 0 && (
 							<MessageMedia
 								attachments={m.attachments}

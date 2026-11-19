@@ -1,11 +1,11 @@
 import type { JSX } from "preact";
 import { type LaneToggleOption, LaneToggleRow } from "@projective/ui/navigation";
-import { HourglassIcon, MailIcon, RevisionIcon, StarIcon, TicketIcon } from "./glyphs.tsx";
+import { BookmarkIcon, HourglassIcon, MailIcon, RevisionIcon, TicketIcon } from "./glyphs.tsx";
 import type { ProjectQuickFilter } from "../types/projects-types.ts";
 
 /**
  * UtilityShortcuts — the permanent quick-filter row that sits right above the content list. The
- * high-frequency involvement modifiers (Starred · Unread · New tickets · Revision requested · Pending
+ * high-frequency involvement modifiers (Saved · Unread · New tickets · Revision requested · Pending
  * review) are icon-only toggles for instantaneous feedback.
  *
  * A thin domain adapter over the shared `@projective/ui/navigation` {@link LaneToggleRow}: the quiet
@@ -15,7 +15,7 @@ import type { ProjectQuickFilter } from "../types/projects-types.ts";
 
 /** The permanent quick-filter toggles, in display order. */
 const QUICK_TOGGLES: readonly LaneToggleOption<ProjectQuickFilter>[] = [
-	{ key: "starred", label: "Starred", icon: StarIcon },
+	{ key: "starred", label: "Saved", icon: BookmarkIcon },
 	{ key: "unread", label: "Unread", icon: MailIcon },
 	{ key: "new_ticket", label: "New tickets", icon: TicketIcon },
 	{ key: "revision_requested", label: "Revision requested", icon: RevisionIcon },

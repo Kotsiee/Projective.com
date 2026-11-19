@@ -285,7 +285,12 @@ CREATE TABLE comms.dm_messages (
         -- day, and keeps an automatic message from promoting a request thread. No foreign key: a rule
         -- the person deletes leaves its past messages marked, which is all the column is for.
         auto_response_id uuid NULL,
+        -- Set only by the quote doors (00001177, Decision #522): the quote move this message records,
+        -- which the thread renders as a quote card over its plain `body`. A client write may not set
+        -- it (trg_dm_messages_derived).
+        quote_event_id uuid NULL,
         CONSTRAINT dm_messages_pkey PRIMARY KEY (id),
+        CONSTRAINT dm_messages_quote_event_fkey FOREIGN KEY (quote_event_id) REFERENCES marketplace.quote_events (id) ON DELETE SET NULL,
         CONSTRAINT dm_messages_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES org.users_public (user_id),
         CONSTRAINT dm_messages_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES comms.dm_threads (id),
         CONSTRAINT dm_messages_body_delta_object

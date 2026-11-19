@@ -46,6 +46,53 @@ export function meterLabel(status: ProposalAllowanceStatus): string {
 		`${status.bufferUnits} of ${status.bufferCap} tokens ready`;
 }
 
+/** The share of the week's allowance still to spend, 0–100 — the meter's primary bar. */
+export function weeklyShare(status: ProposalAllowanceStatus): number {
+	if (status.weeklyGranted <= 0) return 0;
+	return Math.round((Math.max(0, status.weeklyRemaining) / status.weeklyGranted) * 100);
+}
+
+/** `38 of 50 left`, or `Weekly allowance used` once the week is spent. */
+export function weeklyLine(status: ProposalAllowanceStatus): string {
+	return status.weeklyRemaining > 0
+		? `${status.weeklyRemaining} of ${status.weeklyGranted} left`
+		: "Weekly allowance used";
+}
+
+/** `Resets Mon 09:00` — when the week's allowance starts again, in the reader's own zone. */
+export function resetLine(status: ProposalAllowanceStatus, timeZone?: string): string {
+	const at = Date.parse(status.weeklyResetsAt);
+	if (!Number.isFinite(at)) return "";
+	const when = new Intl.DateTimeFormat(undefined, {
+		weekday: "short",
+		hour: "2-digit",
+		minute: "2-digit",
+		timeZone,
+	}).format(at);
+	return `Resets ${when}`;
+}
+
+/**
+ * Whether the pacing bar shows: only when the buffer is what blocks a spend — no tokens ready while the
+ * week still has room. A spend needs BOTH a weekly unit and a token (`finance-model.md` §16.2), so once
+ * the week is spent the buffer offers nothing until the reset, and a bar for it would promise proposals
+ * the server refuses (Decision #520).
+ */
+export function showsPacing(status: ProposalAllowanceStatus): boolean {
+	return status.bufferUnits <= 0 && status.weeklyRemaining > 0;
+}
+
+/** The share of the buffer that is ready, 0–100 — the pacing bar. */
+export function bufferShare(status: ProposalAllowanceStatus): number {
+	if (status.bufferCap <= 0) return 0;
+	return Math.round((Math.max(0, status.bufferUnits) / status.bufferCap) * 100);
+}
+
+/** `0 of 12 ready` — the pacing bar's figure. */
+export function bufferLine(status: ProposalAllowanceStatus): string {
+	return `${status.bufferUnits} of ${status.bufferCap} ready`;
+}
+
 /** `Next token in 2h 45m`, or `null` while the buffer is full (nothing is dripping). */
 export function refillLine(snapshot: AllowanceSnapshot, nowMs: number): string | null {
 	const at = snapshot.status.nextBufferRefillAt;

@@ -201,6 +201,10 @@ CREATE INDEX IF NOT EXISTS idx_order_lines_project
     ON finance.order_lines (project_id) WHERE project_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_order_lines_escrow
     ON finance.order_lines (escrow_id) WHERE escrow_id IS NOT NULL;
+-- An accepted custom quote is paid for at most once (Decision #522): the backstop under checkout's own
+-- already-paid refusal, and the engagement-to-offer read.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_order_lines_quote_offer
+    ON finance.order_lines (quote_offer_id) WHERE quote_offer_id IS NOT NULL;
 -- The ticket line a refunded ticket escrow maps back to (finance.fn_order_line_of_escrow, FBP DB19).
 CREATE INDEX IF NOT EXISTS idx_order_lines_ticket
     ON finance.order_lines (ticket_id) WHERE ticket_id IS NOT NULL;

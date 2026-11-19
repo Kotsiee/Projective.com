@@ -46,7 +46,7 @@ export function DetailTools(
 							variant="text"
 							severity="secondary"
 							class="ui-hit"
-							icon={<Icon name="star" size="sm" filled={saved} />}
+							icon={<Icon name="bookmark" size="sm" filled={saved} />}
 							aria-label="Save"
 							aria-pressed={saved}
 							aria-busy={flag.value === null}
@@ -62,7 +62,7 @@ export function DetailTools(
 							aria-label="Sign in to save"
 						>
 							<span class="ui-button__icon">
-								<Icon name="star" size="sm" />
+								<Icon name="bookmark" size="sm" />
 							</span>
 						</a>
 					</Tooltip>

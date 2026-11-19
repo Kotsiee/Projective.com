@@ -290,6 +290,16 @@ CREATE TABLE marketplace.quote_requests (
     -- contact is a sentence, and pinning it to a date would invent a precision they did not give.
     timeline text,
 
+    -- The seller's own questions as the buyer answered them on the request (services/intake.ts,
+    -- Decision #522), keyed by question id like a basket line's `answers`. Validated against the
+    -- listing's questions by QuoteBackendService; `{}` when the listing asks none.
+    answers jsonb NOT NULL DEFAULT '{}'::jsonb,
+
+    -- Who opened it: the buyer asking (`buyer`, marketplace.request_quote), or the seller issuing a
+    -- quote from a conversation the buyer started (`host`, marketplace.issue_quote, Decision #522).
+    -- A host-issued request is born answered: its scope is the first offer's.
+    origin text NOT NULL DEFAULT 'buyer'::text,
+
     -- Nothing is hard-deleted: a withdrawn request is a status, not a missing row. `sent` waits on the
     -- host; `answered` once they price it (`marketplace.quote_offers`); `accepted` once the buyer takes
     -- an offer; `declined` by the host, `withdrawn` by the buyer (Decision #458). Every move is a door
@@ -309,6 +319,8 @@ CREATE TABLE marketplace.quote_requests (
     CONSTRAINT quote_requests_requester_fkey FOREIGN KEY (requester_user_id) REFERENCES org.users_public(user_id) ON DELETE CASCADE,
     CONSTRAINT quote_requests_status_check CHECK (status IN ('sent', 'answered', 'accepted', 'declined', 'withdrawn')),
     CONSTRAINT quote_requests_budget_currency_check CHECK (budget_cents IS NULL OR currency IS NOT NULL),
+    CONSTRAINT quote_requests_answers_check CHECK (jsonb_typeof(answers) = 'object'),
+    CONSTRAINT quote_requests_origin_check CHECK (origin IN ('buyer', 'host')),
     -- An answered request must carry the instant it was answered, the same pairing
     -- `catalogue.articles` uses for `published_at`: a row that claims to be answered while being
     -- unable to say when is a response time nobody can measure. An accepted one was answered first.
@@ -352,6 +364,12 @@ CREATE TABLE marketplace.quote_offers (
     turnaround_days smallint NOT NULL,
     expires_at timestamp with time zone NOT NULL,
 
+    -- The SHA-256 of the terms above in canonical form (marketplace.fn_quote_terms, Decision #522),
+    -- stamped by the door that sends the offer. The terms never change once written
+    -- (trg_quote_offers_terms_frozen): a revision is a new row with its own hash, and the hash the
+    -- buyer accepted is the one `marketplace.quote_events` records beside what checkout charged.
+    terms_hash text NOT NULL,
+
     status text NOT NULL DEFAULT 'pending'::text,
     superseded_by uuid,
     -- When it left `pending`.
@@ -369,6 +387,7 @@ CREATE TABLE marketplace.quote_offers (
     CONSTRAINT quote_offers_deliverables_check CHECK (cardinality(deliverables) <= 12),
     CONSTRAINT quote_offers_price_check CHECK (price_cents > 0),
     CONSTRAINT quote_offers_currency_check CHECK (currency ~ '^[A-Z]{3}$'),
+    CONSTRAINT quote_offers_terms_hash_check CHECK (terms_hash ~ '^[0-9a-f]{64}$'),
     CONSTRAINT quote_offers_turnaround_check CHECK (turnaround_days BETWEEN 1 AND 90),
     -- The host picks 3 to 30 days (owner ruling, Decision #458).
     CONSTRAINT quote_offers_expiry_window_check CHECK (
@@ -376,5 +395,41 @@ CREATE TABLE marketplace.quote_offers (
     ),
     CONSTRAINT quote_offers_decided_at_check CHECK ((status = 'pending') = (decided_at IS NULL)),
     CONSTRAINT quote_offers_superseded_check CHECK (superseded_by IS NULL OR status = 'withdrawn')
+);
+-- #endregion
+
+-- #region Quote events
+-- The append-only history of every quote request (Decision #522): one row per move, with who made it,
+-- the offer it concerned, and that offer's canonical terms and hash as they stood. `issued` is a
+-- seller's quote from a conversation, `offer_sent` / `offer_revised` an answer to a request, and
+-- `paid` the checkout that funded the engagement (its order line, project and escrow in `detail`).
+-- Written only by the doors in 00001177 and by finance.place_wallet_order; never updated, and never
+-- deleted except by the cascade of an erased account (trg_quote_events_append_only). Each move also
+-- posts a quote card into the pair's conversation (comms.dm_messages.quote_event_id). Read by its two
+-- parties (00002018): the record either can point to in a dispute.
+CREATE TABLE marketplace.quote_events (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    quote_request_id uuid NOT NULL,
+    quote_offer_id uuid,
+    actor_user_id uuid NOT NULL,
+    kind text NOT NULL,
+    terms jsonb,
+    terms_hash text,
+    detail jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+
+    CONSTRAINT quote_events_pkey PRIMARY KEY (id),
+    CONSTRAINT quote_events_request_fkey FOREIGN KEY (quote_request_id) REFERENCES marketplace.quote_requests(id) ON DELETE CASCADE,
+    CONSTRAINT quote_events_offer_fkey FOREIGN KEY (quote_offer_id) REFERENCES marketplace.quote_offers(id) ON DELETE CASCADE,
+    CONSTRAINT quote_events_actor_fkey FOREIGN KEY (actor_user_id) REFERENCES org.users_public(user_id) ON DELETE CASCADE,
+    CONSTRAINT quote_events_kind_check CHECK (kind IN (
+        'requested', 'issued', 'offer_sent', 'offer_revised', 'offer_withdrawn', 'request_declined',
+        'offer_accepted', 'offer_declined', 'request_withdrawn', 'paid'
+    )),
+    CONSTRAINT quote_events_terms_pair_check CHECK ((terms IS NULL) = (terms_hash IS NULL)),
+    CONSTRAINT quote_events_terms_hash_check CHECK (terms_hash IS NULL OR terms_hash ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT quote_events_terms_offer_check CHECK (terms IS NULL OR quote_offer_id IS NOT NULL),
+    CONSTRAINT quote_events_terms_shape_check CHECK (terms IS NULL OR jsonb_typeof(terms) = 'object'),
+    CONSTRAINT quote_events_detail_check CHECK (jsonb_typeof(detail) = 'object')
 );
 -- #endregion

@@ -1,7 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 import { type ReadonlySignal, useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Button, FormControl, InputNumber, Textarea } from "@projective/ui/fields";
+import { Button, FormControl, NumberInput, Textarea } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { MoneyView } from "@projective/ui/display/money";
@@ -33,7 +33,12 @@ import { useIntakeAnswers } from "../hooks/useIntakeAnswers.ts";
 import type { BookableSlot, SlotGrid, SlotPurpose } from "@projective/types/scheduling";
 import { addDaysInZone, firstOpenDay } from "@projective/types/scheduling";
 import type { SessionPlanItem } from "@projective/types/explore";
-import { type IntakeField, plural, type ServiceBookingOffer } from "@projective/types/services";
+import {
+	type IntakeField,
+	plural,
+	type ServiceBookingOffer,
+	SESSION_SEATS_MAX,
+} from "@projective/types/services";
 import { IntakeFields } from "@web/features/profile/components/hire/IntakeFields.tsx";
 import { SplitModal } from "@web/features/profile/components/hire/SplitModal.tsx";
 
@@ -69,8 +74,8 @@ import { SplitModal } from "@web/features/profile/components/hire/SplitModal.tsx
 
 /** How many days one window of the rail holds. Paging is by window, not by day. */
 const WINDOW_DAYS = 14;
-/** The most seats one booking may take (`SessionBookingInputSchema.seats`). */
-const SEATS_MAX = 20;
+/** The most seats one booking may take (`SessionBookingInputSchema.seats`); the real cap is what remains. */
+const SEATS_MAX = SESSION_SEATS_MAX;
 const NO_INTAKE: readonly IntakeField[] = [];
 const NO_PLAN: readonly SessionPlanItem[] = [];
 
@@ -118,6 +123,8 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 	const selectedSlots = useComputed(() => picks.value.map((slot) => slot.id));
 	const note = useSignal("");
 	const noteRefused = useSignal(false);
+	/** A seat count past the cohort's remaining seats, refused at submit rather than trimmed quietly. */
+	const seatsRefused = useSignal<string | null>(null);
 	const seats = useSignal<number | null>(1);
 	const callType = useSignal<"courtesy" | "paid">("courtesy");
 	const loading = useSignal(false);
@@ -315,6 +322,16 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 			return true;
 		}
 
+		if (isCohort.value) {
+			const wanted = seats.value ?? 1;
+			if (!Number.isInteger(wanted) || wanted < 1 || wanted > seatCap.value) {
+				seatsRefused.value = seatCap.value === 1
+					? "Only 1 seat is left in this cohort."
+					: `Choose between 1 and ${seatCap.value} seats: that's how many are left.`;
+				return false;
+			}
+			seatsRefused.value = null;
+		}
 		if (!intakeState.check()) return false;
 
 		const out = await commitSession({
@@ -323,7 +340,7 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 			slotIds: isCohort.value ? [sittings.value[0].id] : [...selectedSlots.value],
 			timezone: viewerZone(),
 			note: note.value.trim() || undefined,
-			seats: isCohort.value ? Math.min(seatCap.value, Math.max(1, seats.value ?? 1)) : 1,
+			seats: isCohort.value ? seats.value ?? 1 : 1,
 			answers: intakeState.answers.value,
 		});
 		if (out.simulated) return true;
@@ -540,17 +557,22 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 							label="Seats"
 							hint={o.capacity?.sentence}
 							note={`Up to ${seatCap.value}`}
+							error={seatsRefused.value ?? undefined}
+							status={seatsRefused.value ? "invalid" : "default"}
 						>
 							{(a) => (
-								<InputNumber
+								<NumberInput
 									id="sbk-seats"
 									aria-describedby={a.describedBy}
+									status={a.status}
 									value={seats}
 									min={1}
 									max={seatCap.value}
 									step={1}
-									showButtons
-									buttonLayout="horizontal"
+									maxFractionDigits={0}
+									placeholder={seatCap.value > 1 ? `1–${seatCap.value}` : "1"}
+									buttonLayout="split"
+									onValueChange={() => (seatsRefused.value = null)}
 									class="sbk__seatsfield"
 								/>
 							)}

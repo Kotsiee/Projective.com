@@ -351,7 +351,7 @@ Link table from a project to the canonical `org.skills` vocabulary. Composite PK
 ### `projects.service_instantiations`
 
 The REQUEST behind a draft that "Add to Projects" minted (Decision #209): who asked, under which
-client key, with which intake answers, in which currency. One row per instantiated project, written
+client key, with which intake answers and brief, in which currency. One row per instantiated project, written
 only by `marketplace.instantiate_service_blueprint`; never edited or deleted — an archived draft keeps
 its row, so a replay of its key still resolves. A separate table rather than two more columns on
 `projects.projects` because the key and the answers describe the request, not the engagement. Zod:
@@ -365,6 +365,7 @@ its row, so a replay of its key still resolves. A separate table rather than two
 | `owner_user_id`   | uuid        | NOT NULL. FK → `org.users_public.user_id`. Always `auth.uid()` of the caller — the BUYER who made the request, not the project's owner (its seller, Decision #427). |
 | `idempotency_key` | text        | NOT NULL, 8–120 chars. UNIQUE per owner (`service_instantiations_owner_key`): the client's own retry key. |
 | `intake_answers`  | jsonb       | NOT NULL `DEFAULT '{}'`, an object (`IntakeAnswersSchema`), reduced to the listing's own field ids.      |
+| `brief`           | text        | The buyer's own description of what they need (`p_brief`, trimmed, 1–8000 chars, `ck_service_instantiations_brief`); NULL when none. A bought One-Off or Task records its required brief here too (Decision #520). |
 | `currency`        | text        | NOT NULL, `^[A-Z]{3}$` — always the listing's (a different code is refused, `PC409`).                     |
 | `created_at`      | timestamptz | NOT NULL `DEFAULT now()`.                                                                                |
 
@@ -884,13 +885,23 @@ A group of attendees on a `session` engagement. A 1-1 booking is a cohort of one
 
 Who is enrolled in a cohort. One row per (cohort, user) — `cohort_memberships_unique_user`.
 
-| Column      | Type        | Notes                                              |
-| :---------- | :---------- | :------------------------------------------------- |
-| `id`        | uuid        | PK, `DEFAULT gen_random_uuid()`.                   |
-| `cohort_id` | uuid        | NOT NULL. FK → `projects.cohorts.id`.              |
-| `user_id`   | uuid        | NOT NULL. FK → `org.users_public.user_id`.         |
-| `status`    | text        | NOT NULL `DEFAULT 'active'`, no CHECK.             |
-| `joined_at` | timestamptz | NOT NULL `DEFAULT now()`.                          |
+| Column                  | Type        | Notes                                              |
+| :---------------------- | :---------- | :------------------------------------------------- |
+| `id`                    | uuid        | PK, `DEFAULT gen_random_uuid()`.                   |
+| `cohort_id`             | uuid        | NOT NULL. FK → `projects.cohorts.id`.              |
+| `user_id`               | uuid        | NOT NULL. FK → `org.users_public.user_id`.         |
+| `seats`                 | integer     | 1–500; occupancy sums it.                          |
+| `status`                | text        | `active` · `cancelled` · `completed`.              |
+| `order_line_id`         | uuid        | The line that paid for the seats (FK in 00000032). |
+| `sponsor_membership_id` | uuid        | **Decision #522.** A seat claimed through a buyer's seat link: the membership whose paid seats it draws on (self-FK). Exactly one seat, no escrow of its own (`ck_cohort_memberships_sponsored`); it ends with the sponsor's membership and returns to it when given up (`trg_cohort_sponsored_seats`). |
+| `joined_at`             | timestamptz | NOT NULL `DEFAULT now()`.                          |
+
+### `projects.cohort_seat_invites`
+
+**Decision #522.** A buyer's seat link: how a booking of several seats hands its spare ones out. One
+open link per membership (`uq_cohort_seat_invites_open`); `code` is `s-` + 24 base64url characters
+(unique) and lands on `/invite/:token`. `status` `open` · `revoked` (`revoked_at` with it). RLS on and no
+client policy: the code is a capability, written and read only through the doors in `00001155` §16.
 
 ### `projects.session_events`
 

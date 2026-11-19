@@ -506,33 +506,6 @@
 	gap: var(--space-2);
 	min-inline-size: 0;
 }
-/*
- * The composer reads the `--fld-*` contract rather than inventing a field. Its focus state was
- * `outline: none` plus a border-colour change — a 1px hue shift as the SOLE focus indicator, which is
- * exactly the failure `--focus-ring-shadow` exists to prevent (no single colour clears 3:1 against
- * both the control fill and the page). The border still moves; the ring is what you can actually see.
- */
-.art-composer__input {
-	inline-size: 100%;
-	resize: vertical;
-	min-block-size: 3rem;
-	padding: var(--space-3);
-	font-family: inherit;
-	font-size: var(--text-md);
-	line-height: var(--leading-normal);
-	color: var(--on-surface);
-	background: var(--fld-surface, var(--surface-1));
-	border: 1px solid var(--fld-border, color-mix(in srgb, var(--on-surface) 15%, transparent));
-	border-radius: var(--radius-lg);
-	transition:
-		border-color var(--dur-fast) var(--ease-standard),
-		box-shadow var(--dur-fast) var(--ease-standard);
-}
-.art-composer__input:focus-visible {
-	outline: none;
-	border-color: var(--primary);
-	box-shadow: none;
-}
 .art-composer__foot {
 	display: flex;
 	justify-content: flex-end;

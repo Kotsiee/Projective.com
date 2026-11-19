@@ -24,6 +24,24 @@ export const TAB_LABEL: Readonly<Record<SavedTab, string>> = {
 	files: "Files",
 };
 
+/** The list filter's label for saves filed in no list. */
+export const UNFILED_LABEL = "Not in a list";
+
+/** The name the header and the lane give the active list filter, or `null` for no list filter. */
+export function listName(
+	collection: string | undefined,
+	lists: readonly { id: string; name: string }[],
+): string | null {
+	if (!collection) return null;
+	if (collection === "unfiled") return UNFILED_LABEL;
+	return lists.find((l) => l.id === collection)?.name ?? null;
+}
+
+/** `12 items` — a list board's count. */
+export function itemCount(count: number): string {
+	return count === 1 ? "1 item" : `${count} items`;
+}
+
 /** The tab a raw `?tab=` names, or All. */
 export function parseTab(raw: string | null | undefined): SavedTab {
 	return SAVED_TABS.includes(raw as SavedTab) ? raw as SavedTab : "all";
@@ -65,14 +83,15 @@ export function emptyCopy(
 ): { title: string; description: string } {
 	if (collection) {
 		return {
-			title: collection === "unfiled" ? "Nothing outside a collection" : "This collection is empty",
-			description: "Add a saved listing, person or channel to it with Add to collection.",
+			title: collection === "unfiled" ? "Nothing outside a list" : "This list is empty",
+			description:
+				"Save a listing, person or channel into it from its menu: Save, then choose the list.",
 		};
 	}
 	const copy: Record<SavedTab, { title: string; description: string }> = {
 		all: {
 			title: "Nothing saved yet",
-			description: "Star a service, a person, a project, a message or a file and it lands here.",
+			description: "Save a service, a person, a project, a message or a file and it lands here.",
 		},
 		listings: {
 			title: "No saved services or products",
@@ -83,8 +102,8 @@ export function emptyCopy(
 			description: "Save or follow someone from their profile or an Explore card.",
 		},
 		projects: {
-			title: "No starred projects",
-			description: "Star a project from your Projects list or its page.",
+			title: "No saved projects",
+			description: "Save a project from your Projects list or its page.",
 		},
 		messages: {
 			title: "No saved messages",

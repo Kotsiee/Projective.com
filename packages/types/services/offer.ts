@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ServiceBookingFormat, ServiceCtaRigSchema } from "./common.ts";
 import { ContactOfferSchema } from "./contact.ts";
 import { PipelineDraftSchema } from "./pipeline.ts";
-import { CohortOfferSchema, ViewerWaitlistPlaceSchema } from "../projects/sessions.ts";
+import { CohortOfferSchema, ViewerSeatSchema, ViewerWaitlistPlaceSchema } from "../projects/sessions.ts";
 
 /**
  * services.offer — the **resolved commercial offer** for one listing and one viewer: what the primary
@@ -67,6 +67,12 @@ export const ServiceBookingOfferSchema = z.object({
 	 * every other format. With a place, `capacity` is this viewer's (an invited seat is theirs).
 	 */
 	waitlist: ViewerWaitlistPlaceSchema.nullable().default(null),
+	/**
+	 * The viewer's own seats on the cohort (Decision #522): how many they hold and their seat link, so a
+	 * buyer of several seats can share the spare ones. `null` for a guest, a viewer with no seat and
+	 * every other format.
+	 */
+	seat: ViewerSeatSchema.nullable().default(null),
 	/**
 	 * The pipeline draft this buyer already has for this service, or `null`.
 	 *

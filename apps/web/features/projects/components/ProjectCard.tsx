@@ -11,7 +11,7 @@ import {
 	type MenuItem,
 } from "@projective/ui/navigation";
 import { StatusIcon } from "./StatusIcon.tsx";
-import { KebabIcon, OwnerRoleIcon, StarIcon, WorkerRoleIcon } from "./glyphs.tsx";
+import { BookmarkIcon, KebabIcon, OwnerRoleIcon, WorkerRoleIcon } from "./glyphs.tsx";
 import { canArchiveEngagement, canCancelEngagement, isOwnerRole } from "../types/projects-types.ts";
 import type { ProjectStatus, ProjectSummary } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
@@ -20,7 +20,7 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * ProjectCard — one streamlined engagement card in the `/projects` lane, laid out in three strict
  * rows:
  *   Row 1 (header): the counterparty avatar (left), the title + a status dot when live/unread with the
- *     project owner's name beneath (centre), and the hover-only Star + kebab menu (right).
+ *     project owner's name beneath (centre), and the hover-only Save + kebab menu (right; a saved card keeps its bookmark at rest).
  *   Row 2 (metadata, conditional): a one-off deliverable shows a run-to-completion progress bar; a
  *     session-based engagement shows its next scheduled session; pipelines show nothing.
  *   Row 3 (footer): the owning team/business mark (left, shared workspaces only — hidden for
@@ -202,16 +202,16 @@ export function ProjectCard(
 					</span>
 				</div>
 
-				<div class="proj-card__actions">
+				<div class="proj-card__actions" data-saved={item.starred ? "true" : undefined}>
 					<button
 						type="button"
 						class="proj-card__star"
 						data-on={item.starred ? "true" : undefined}
 						aria-pressed={item.starred}
-						aria-label={item.starred ? "Unstar" : "Star"}
+						aria-label={item.starred ? "Remove from saved" : "Save"}
 						onClick={() => onToggleStar(item.id)}
 					>
-						{StarIcon}
+						{BookmarkIcon}
 					</button>
 
 					<ActionMenu

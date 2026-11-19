@@ -506,7 +506,7 @@ COMMENT ON FUNCTION marketplace.fn_intake_answers (jsonb, jsonb) IS
 
 -- ---------------------------------------------------------------------------------------------
 -- marketplace.instantiate_service_blueprint(p_blueprint_id, p_intake, p_currency,
---                                           p_idempotency_key, p_title) -> jsonb
+--                                           p_idempotency_key, p_title, p_brief) -> jsonb
 --
 -- WHAT IT WRITES, in one transaction:
 --   1. `projects.projects` — owner the listing's seller (`freelancer_profile_id`, filed under its
@@ -517,7 +517,8 @@ COMMENT ON FUNCTION marketplace.fn_intake_answers (jsonb, jsonb) IS
 --      stage's room on each (`fn_write_blueprint_stages`, whose terms are `fn_blueprint_stage_terms`);
 --   3. the project-wide Discussion room (`comms.get_or_create_project_channel`, as
 --      `projects.create_project` opens it);
---   4. `projects.service_instantiations` — the request: key, answers (`fn_intake_answers`), currency.
+--   4. `projects.service_instantiations` — the request: key, answers (`fn_intake_answers`), the
+--      buyer's brief (`p_brief`, trimmed, at most 8000 characters, NULL when blank), currency.
 --   No `projects.tickets` row: the client creates every ticket. A ticket created on a stage defaults
 --   to that stage's price (`finance.fn_hold_ticket_escrow` holds `COALESCE(ticket, stage)` at claim).
 --
@@ -555,7 +556,8 @@ CREATE OR REPLACE FUNCTION marketplace.instantiate_service_blueprint (
     p_intake jsonb DEFAULT '{}'::jsonb,
     p_currency text DEFAULT NULL,
     p_idempotency_key text DEFAULT NULL,
-    p_title text DEFAULT NULL
+    p_title text DEFAULT NULL,
+    p_brief text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -569,6 +571,7 @@ DECLARE
     v_seller uuid;
     v_seller_team uuid;
     v_key text := NULLIF(pg_catalog.btrim(COALESCE(p_idempotency_key, '')), '');
+    v_brief text := NULLIF(pg_catalog.left(pg_catalog.btrim(COALESCE(p_brief, '')), 8000), '');
     v_bp marketplace.service_blueprints%ROWTYPE;
     v_existing record;
     v_currency text;
@@ -704,15 +707,15 @@ BEGIN
     -- #endregion
 
     INSERT INTO projects.service_instantiations (
-        project_id, blueprint_id, owner_user_id, idempotency_key, intake_answers, currency
-    ) VALUES (v_project_id, v_bp.id, v_owner, v_key, v_answers, v_currency);
+        project_id, blueprint_id, owner_user_id, idempotency_key, intake_answers, brief, currency
+    ) VALUES (v_project_id, v_bp.id, v_owner, v_key, v_answers, v_brief, v_currency);
 
     RETURN marketplace.fn_service_draft_json(v_project_id) || pg_catalog.jsonb_build_object('created', true);
 END;
 $$;
 
-COMMENT ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text) IS
-'Add-to-Projects: copies a published Pipeline blueprint into a draft engagement owned by its seller with the caller as its client (client_user_id, Decision #427) — project, stages, the seller''s accepted seat on each, every room and the instantiation record — in one transaction. No tickets: the client creates them. Idempotent on (caller, key), then on the caller''s live draft of the listing. No escrow. Returns the draft projection plus created.';
+COMMENT ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text, text) IS
+'Add-to-Projects: copies a published Pipeline blueprint into a draft engagement owned by its seller with the caller as its client (client_user_id, Decision #427) — project, stages, the seller''s accepted seat on each, every room and the instantiation record (key, intake answers, the buyer''s brief, currency) — in one transaction. No tickets: the client creates them. Idempotent on (caller, key), then on the caller''s live draft of the listing. No escrow. Returns the draft projection plus created.';
 
 -- ---------------------------------------------------------------------------------------------
 -- marketplace.fn_buy_scoped_service(p_blueprint_id, p_brief, p_answers, p_target_date, p_whole,
@@ -903,8 +906,8 @@ BEGIN
     -- #endregion
 
     INSERT INTO projects.service_instantiations (
-        project_id, blueprint_id, owner_user_id, idempotency_key, intake_answers, currency
-    ) VALUES (v_project_id, v_bp.id, v_client, v_key, v_answers, v_currency);
+        project_id, blueprint_id, owner_user_id, idempotency_key, intake_answers, brief, currency
+    ) VALUES (v_project_id, v_bp.id, v_client, v_key, v_answers, v_brief, v_currency);
 
     -- #region Funding and activation
     v_funded := projects.fund_ticket(

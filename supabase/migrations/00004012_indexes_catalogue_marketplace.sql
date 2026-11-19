@@ -48,6 +48,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_quote_offers_one_accepted
     WHERE status = 'accepted';
 -- #endregion
 
+-- #region marketplace.quote_events — a request's history, read newest first (Decision #522)
+CREATE INDEX IF NOT EXISTS idx_quote_events_request
+    ON marketplace.quote_events (quote_request_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quote_events_offer
+    ON marketplace.quote_events (quote_offer_id)
+    WHERE quote_offer_id IS NOT NULL;
+-- #endregion
+
 -- #region marketplace.promoted_placements — a listing's paid history (catalogue.fn_listing_engagements)
 CREATE INDEX IF NOT EXISTS idx_promoted_placements_entity
     ON marketplace.promoted_placements (entity_type, entity_id);

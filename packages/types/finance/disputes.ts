@@ -115,6 +115,24 @@ export const DisputeMessageSchema = z.object({
 });
 export type DisputeMessage = z.infer<typeof DisputeMessageSchema>;
 
+/**
+ * The custom quote a disputed engagement was bought on (Decision #522): the terms both parties agreed,
+ * the SHA-256 reference they agreed under, whether the stored terms still hash to it, and when the
+ * offer was accepted and paid for.
+ */
+export const DisputeAgreedTermsSchema = z.object({
+	offerId: uuid,
+	scope: z.string().max(4000),
+	deliverables: z.array(z.string().max(160)).max(12),
+	priceLabel: z.string().max(40),
+	turnaroundDays: z.number().int().min(1).max(90),
+	termsHash: z.string().regex(/^[0-9a-f]{64}$/),
+	intact: z.boolean(),
+	acceptedAt: timestamp.nullable(),
+	paidAt: timestamp.nullable(),
+});
+export type DisputeAgreedTerms = z.infer<typeof DisputeAgreedTermsSchema>;
+
 /** A dispute as its reader may see it — `finance.get_dispute`, mapped. */
 export const DisputeCaseSchema = z.object({
 	id: uuid,
@@ -161,6 +179,8 @@ export const DisputeCaseSchema = z.object({
 		endsAt: timestamp,
 	}).nullable(),
 	messages: z.array(DisputeMessageSchema).max(500),
+	/** The custom quote the engagement was bought on, or `null` (Decision #522). */
+	agreedTerms: DisputeAgreedTermsSchema.nullable().optional(),
 	canRespond: z.boolean(),
 	canEscalate: z.boolean(),
 	canResolve: z.boolean(),

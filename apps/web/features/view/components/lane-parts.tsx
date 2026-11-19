@@ -1,28 +1,23 @@
 import type { JSX, RefObject } from "preact";
-import { Popover } from "@projective/ui/feedback";
-import { Avatar, VerificationStampBadge } from "@projective/ui/display";
+import { ActionMenu, composeMenu } from "@projective/ui/navigation";
+import type { MenuItem } from "@ui/types/mod.ts";
+import { ctaMirror, mirrorMenuRows } from "../core/cta-mirror.ts";
 import { MoneyView } from "@projective/ui/display/money";
-import { ownerVerificationStamp } from "@projective/types/org";
 import { Icon, type IconName } from "@projective/ui/icons";
-import { StatusChip } from "@features/explore/components/StatusChip.tsx";
-import type { CardSignal } from "@features/explore/core/card-signals.ts";
 import type { PriceAmount } from "@features/explore/core/pricing.ts";
 import { type ProjectStage, revisionAllowanceKind } from "@projective/types/explore";
-import type { ExploreItem } from "@projective/types/explore";
 import { toMinorUnits } from "@projective/types/finance";
 import { PriceOrigin } from "./entity-view-parts.tsx";
 import { jumpToStage } from "../core/view-state.ts";
 import type { SeatCapacity } from "../core/entity-archetype.ts";
-import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * Entity View — the conversion lane's shared parts (`DESIGN_SYSTEM.md` §D.7.2).
  *
- * TWO lanes render these parts: the project `ProjectLane` (identity band · price · stage list · summary
- * ledger · pinned action footer) and the listing purchase card `EntityLane` (price + kebab · stage list ·
- * summary ledger · action stack — no identity band, Decision #424). They share these components rather
- * than each carrying a copy, because two kebab menus drift apart, and two price blocks are two ways of
- * raising the pence.
+ * TWO lanes render these parts in ONE `.evp-card` anatomy: the listing's `EntityLane` and the project's
+ * `ProjectLane` (price + kebab · stage list · summary ledger · action stack — no identity band,
+ * Decisions #424 and #523). They share these components rather than each carrying a copy, because two
+ * kebab menus drift apart, and two price blocks are two ways of raising the pence.
  *
  * Every part here reads the SAME `.evp-lane*` / `.evp-price*` / `.evp-stages*` classes in
  * `entity-view.css`, which is what makes a project's lane and a service's lane one control set rather
@@ -30,7 +25,7 @@ import { personFallbackImage } from "@web/components/UserAvatar.tsx";
  * lane islands, so the `Popover` and the signal reads stay reactive.
  */
 
-// #region Identity band
+// #region Menu
 /** One action in the lane's overflow kebab. */
 export interface LaneMenuItem {
 	key: string;
@@ -39,79 +34,50 @@ export interface LaneMenuItem {
 	/** Moderation / destructive intent — tinted via `[data-danger]`. */
 	danger?: boolean;
 	onSelect: () => void;
+	/**
+	 * A submenu beside the row (Decision #522): the row still runs `onSelect` when pressed, and its
+	 * chevron opens these rows. Save uses it: press to save, or pick a list.
+	 */
+	items?: MenuItem[];
+	/** Said inside an empty submenu (the lists before they are read). */
+	emptyLabel?: string;
+}
+
+/** The lane's rows as the menu primitive reads them: one model for the kebab and the right-click menu. */
+function laneMenuModel(menu: readonly LaneMenuItem[]): MenuItem[] {
+	return menu.map((action) => ({
+		key: action.key,
+		label: action.label,
+		icon: action.icon,
+		danger: action.danger,
+		command: () => action.onSelect(),
+		...(action.items ? { items: action.items, emptyLabel: action.emptyLabel } : {}),
+	}));
 }
 
 /**
- * The identity band: the uploader's face and DISPLAY NAME — not their handle — with their earned
- * badges beside it, and the overflow kebab at the end. A buyer decides whether to trust a person,
- * and "@fernanda-ruiz" is an address where "Fernanda Ruiz" is a name; the handle survives as the
- * link target and in the hero.
- *
- * The badges are `.ex-status` chips, the same component and the same derivation rule the Explore
- * card that linked here uses, so a seller cannot be "Top rated" on the card and unmarked on the
- * page. They are the sanctioned container case (§B.11.3): a required disclosure of an earned,
- * changeable state.
- *
- * Every SECONDARY action lives behind the kebab. No `label` on the `Popover`: a labelled panel is
- * promoted to `role="dialog"` while the trigger advertises `aria-haspopup="menu"`, and a screen
- * reader then announces a menu and lands the user in a dialog. The panel's own `role="menu"` and
- * its `menuitem` children already name and describe it.
- */
-export function LaneIdentity(
-	{ item, badges, menu, menuLabel }: {
-		item: ExploreItem;
-		badges: readonly CardSignal[];
-		menu: readonly LaneMenuItem[];
-		/** The kebab's accessible name — names the noun ("More listing actions"). */
-		menuLabel: string;
-	},
-): JSX.Element {
-	return (
-		<header class="evp-lane__id">
-			<a class="evp-lane__owner" href={`/${item.owner.handle}`}>
-				<Avatar
-					image={item.owner.avatar}
-					fallbackImage={personFallbackImage(item.owner.kind)}
-					label={item.owner.name}
-					size="md"
-					shape={item.owner.kind === "business" ? "square" : "circle"}
-					class="evp-lane__avatar"
-				/>
-				<span class="evp-lane__identity">
-					<span class="evp-lane__name">
-						{item.owner.name}
-						<VerificationStampBadge
-							stamp={ownerVerificationStamp(item.owner)}
-							size="sm"
-							class="evp-lane__crest"
-						/>
-					</span>
-					{badges.length > 0 && (
-						<span class="evp-lane__badges">
-							{badges.map((signal) => <StatusChip key={signal.id} signal={signal} />)}
-						</span>
-					)}
-				</span>
-			</a>
-
-			<LaneMenu menu={menu} menuLabel={menuLabel} />
-		</header>
-	);
-}
-
-/**
- * The overflow kebab on its own — the identity band's, and the listing purchase card's, which carries
+ * The card's overflow kebab, beside the price: every SECONDARY action lives behind it. The card carries
  * no identity (Decision #424: the creator is named once, in the page's byline). No actions, no kebab:
- * a trigger that opens an empty menu is a control that does nothing.
+ * a trigger that opens an empty menu is a control that does nothing. An `ActionMenu`, so a row may
+ * carry a submenu (Save into a list, Decision #522); `onOpen` lets the lane read what a submenu lists.
  */
 export function LaneMenu(
-	{ menu, menuLabel }: { menu: readonly LaneMenuItem[]; menuLabel: string },
+	{ menu, menuLabel, onOpen }: {
+		menu: readonly LaneMenuItem[];
+		menuLabel: string;
+		onOpen?: () => void;
+	},
 ): JSX.Element | null {
 	if (menu.length === 0) return null;
 	return (
-		<Popover
+		<ActionMenu
+			model={laneMenuModel(menu)}
+			aria-label={menuLabel}
 			placement="bottom-end"
 			class="evp-menu"
+			onOpenChange={(open) => {
+				if (open) onOpen?.();
+			}}
 			trigger={(api) => (
 				<button
 					type="button"
@@ -119,30 +85,42 @@ export function LaneMenu(
 					class="evp-lane__kebab"
 					aria-label={menuLabel}
 					aria-expanded={api.expanded ? "true" : "false"}
-					aria-controls={api.panelId}
+					aria-controls={api.expanded ? api.panelId : undefined}
 					aria-haspopup="menu"
 					onClick={api.toggle}
 				>
 					<Icon name="kebab" size="sm" />
 				</button>
 			)}
-		>
-			<div class="evp-menu__list" role="menu">
-				{menu.map((action) => (
-					<button
-						key={action.key}
-						type="button"
-						class="ui-menu-item evp-menu__item"
-						role="menuitem"
-						data-danger={action.danger ? "true" : undefined}
-						onClick={action.onSelect}
-					>
-						<Icon name={action.icon} size="sm" class="ui-menu-item__icon" aria-hidden />
-						<span>{action.label}</span>
-					</button>
-				))}
-			</div>
-		</Popover>
+		/>
+	);
+}
+
+/**
+ * The lane card's right-click menu: the transaction rig's own controls (read from the CTA mirror, so
+ * each row runs the rig's handler), then the same rows the kebab offers. Opens on a right-click, the
+ * ContextMenu key or Shift+F10 anywhere on `surface`; any live text selection keeps the browser's own
+ * menu, so copy and search still work.
+ */
+export function LaneContextMenu(
+	{ menu, surface, label, onOpen }: {
+		menu: readonly LaneMenuItem[];
+		surface: () => HTMLElement | null;
+		/** The menu's accessible name. */
+		label: string;
+		onOpen?: () => void;
+	},
+): JSX.Element {
+	const model = composeMenu(mirrorMenuRows(ctaMirror.value), laneMenuModel(menu));
+	return (
+		<ActionMenu
+			model={model}
+			surface={surface}
+			aria-label={label}
+			onOpenChange={(open) => {
+				if (open) onOpen?.();
+			}}
+		/>
 	);
 }
 // #endregion
@@ -196,6 +174,9 @@ export function PriceBlock(
 // #endregion
 
 // #region Stage list
+/** The most stage rows a purchase card lists before folding the rest into one jump into the body. */
+export const CARD_STAGE_LIMIT = 4;
+
 /**
  * The lane's stage quick-jumps: ordinal · (name over its price) · chevron.
  *

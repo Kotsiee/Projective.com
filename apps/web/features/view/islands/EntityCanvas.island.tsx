@@ -2,11 +2,11 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { AudioVisualizer, ProgressiveImage, VideoPlayer } from "@projective/ui/display";
-import { Icon } from "@projective/ui/icons";
 import "../styles/entity-view.css";
 import type { EntityMedia, ProductPreview } from "@projective/types/explore";
 import { MediaLightbox } from "../components/MediaLightbox.tsx";
 import { railSlots, visibleRail } from "../core/media-rail.ts";
+import { attachDragScroll } from "@features/marketing/core/drag-scroll.ts";
 
 /**
  * EntityCanvas — the media column of the Entity View frame (`DESIGN_SYSTEM.md` §D.8.0).
@@ -42,6 +42,13 @@ import { railSlots, visibleRail } from "../core/media-rail.ts";
  * A preview whose source is the stub `#` renders its poster and NO controls: the player refuses to
  * draw a control that could reach nothing.
  *
+ * # The stage is a track
+ *
+ * Every gallery item sits side by side in the stage, one per snap point, so a mouse drag (or a
+ * trackpad / touch swipe) scrubs through them and the thumbnails follow (`attachDragScroll`: past 5px
+ * a press is a drag and the click after it is swallowed, so letting go never opens the lightbox).
+ * A click on a still slide still opens it; a live preview slide keeps its own pointer gestures.
+ *
  * # The rail is a `group`, not a `tablist`
  *
  * It was written as one, which was wrong three ways: `role="tab"` carries an implicit
@@ -54,6 +61,13 @@ import { railSlots, visibleRail } from "../core/media-rail.ts";
 
 /** The rail's slot count before the first measurement — SSR and the first client paint. */
 const SSR_SLOTS = 4;
+/** How long the track must be still before the slide it rests on becomes the shown one (ms). */
+const SCROLL_SETTLE_MS = 120;
+
+function prefersReducedMotion(): boolean {
+	if (document.documentElement.dataset.motion === "reduced") return true;
+	return globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
 
 export interface EntityCanvasProps {
 	gallery: EntityMedia[];
@@ -74,6 +88,9 @@ export default function EntityCanvas(
 	/** The measured slot count. `null` until the rail has been measured at least once. */
 	const slots = useSignal<number | null>(null);
 	const railRef = useRef<HTMLDivElement>(null);
+	const trackRef = useRef<HTMLDivElement>(null);
+	const fromScroll = useRef(false);
+	const settleTimer = useRef<number | null>(null);
 
 	const hasGallery = gallery.length > 0;
 
@@ -100,13 +117,36 @@ export default function EntityCanvas(
 		return () => ro?.disconnect();
 	}, [gallery.length]);
 
+	const slideCount = hasGallery ? gallery.length : preview ? 1 : 0;
+	const draggable = slideCount > 1;
+
+	useEffect(() => {
+		const el = trackRef.current;
+		if (!el || !draggable) return;
+		const detach = attachDragScroll(el);
+		return () => {
+			detach();
+			if (settleTimer.current !== null) clearTimeout(settleTimer.current);
+		};
+	}, [draggable]);
+
+	useEffect(() => {
+		const el = trackRef.current;
+		if (!el || slideCount < 2) return;
+		if (fromScroll.current) {
+			fromScroll.current = false;
+			return;
+		}
+		const rtl = getComputedStyle(el).direction === "rtl";
+		const left = (rtl ? -1 : 1) * Math.min(active.value, slideCount - 1) * el.clientWidth;
+		if (Math.abs(el.scrollLeft - left) < 2) return;
+		el.scrollTo({ left, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+	}, [active.value, slideCount]);
+
 	if (!hasGallery && !preview) return null;
 
-	// The live artefact wins the display only while the reader is on the first slot; picking a
-	// thumbnail is an explicit request to see that image instead.
-	const showPreview = !!preview && preview.kind !== "image" && active.value === 0;
+	const previewFirst = !!preview && preview.kind !== "image";
 	const idx = hasGallery ? Math.min(active.value, gallery.length - 1) : 0;
-	const current = hasGallery ? gallery[idx] : null;
 	const rail = visibleRail(gallery.length, slots.value ?? SSR_SLOTS);
 
 	function openLightbox(at: number): void {
@@ -115,42 +155,81 @@ export default function EntityCanvas(
 		open.value = true;
 	}
 
-	const display = showPreview ? renderPreview(preview!, title) : current
-		? (
-			<ProgressiveImage
-				imgClass="evp-canvas__img"
-				src={current.src}
-				placeholder={current.placeholder}
-				alt={current.alt || title}
-				fit="contain"
-				loading="eager"
-			/>
+	/** Settle the shown slide from where the track came to rest, once the scroll stops. */
+	function onTrackScroll(e: JSX.TargetedEvent<HTMLDivElement>): void {
+		settleSoon(e.currentTarget);
+	}
+
+	function settleSoon(el: HTMLDivElement): void {
+		if (settleTimer.current !== null) clearTimeout(settleTimer.current);
+		settleTimer.current = setTimeout(() => {
+			settleTimer.current = null;
+			if (el.classList.contains("is-dragging") || el.classList.contains("is-gliding")) {
+				settleSoon(el);
+				return;
+			}
+			const at = Math.round(Math.abs(el.scrollLeft) / Math.max(1, el.clientWidth));
+			const next = Math.min(Math.max(0, at), slideCount - 1);
+			if (next !== active.value) {
+				fromScroll.current = true;
+				active.value = next;
+			}
+		}, SCROLL_SETTLE_MS) as unknown as number;
+	}
+
+	const slides = hasGallery
+		? gallery.map((media, i) =>
+			i === 0 && previewFirst
+				? (
+					<div
+						key="preview"
+						class="evp-canvas__slide"
+						onPointerDown={(e) => e.stopPropagation()}
+					>
+						{renderPreview(preview!, title)}
+					</div>
+				)
+				: (
+					<button
+						key={media.src}
+						type="button"
+						class="evp-canvas__slide evp-canvas__slide--open"
+						aria-label={gallery.length > 1
+							? `Open image ${i + 1} of ${gallery.length} at full size`
+							: `Open ${title} at full size`}
+						tabIndex={i === idx ? 0 : -1}
+						onClick={() => openLightbox(i)}
+					>
+						<ProgressiveImage
+							imgClass="evp-canvas__img"
+							src={media.src}
+							placeholder={media.placeholder}
+							alt={media.alt || title}
+							fit="contain"
+							loading={i === 0 ? "eager" : "lazy"}
+						/>
+					</button>
+				)
 		)
-		: null;
+		: [
+			<div key="preview" class="evp-canvas__slide">
+				{renderPreview(preview!, title)}
+			</div>,
+		];
 
 	return (
 		<div class="evp-canvas">
-			{
-				/*
-			  A still image is a BUTTON, because clicking it opens the modal. A live artefact is not:
-			  a `<video>` or an audio player nested inside a `<button>` is two interactive elements in
-			  one, where the outer control takes the accessible role and the inner one takes the
-			  interaction.
-			*/
-			}
-			{showPreview || !current ? <div class="evp-canvas__stage">{display}</div> : (
-				<button
-					type="button"
-					class="evp-canvas__stage evp-canvas__stage--open"
-					aria-label={`Open ${title} at full size`}
-					onClick={() => openLightbox(idx)}
-				>
-					{display}
-					<span class="evp-canvas__zoom" aria-hidden="true">
-						<Icon name="expand" size="sm" />
-					</span>
-				</button>
-			)}
+			<div
+				class="evp-canvas__stage evp-canvas__track"
+				ref={trackRef}
+				role="group"
+				aria-roledescription={draggable ? "carousel" : undefined}
+				aria-label={`${title} gallery`}
+				data-draggable={draggable ? "true" : undefined}
+				onScroll={draggable ? onTrackScroll : undefined}
+			>
+				{slides}
+			</div>
 
 			{gallery.length > 1 && (
 				<div

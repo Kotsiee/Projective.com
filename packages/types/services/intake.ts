@@ -81,12 +81,41 @@ export const IntakeOptionSchema = z.object({
 export type IntakeOption = z.infer<typeof IntakeOptionSchema>;
 
 /**
+ * A follow-up rule (Decision #522): this question shows (or hides) according to the answer an EARLIER
+ * question was given. `anyOf` lists the answers that trigger it — `true` / `false` for a yes/no,
+ * option values for a choice. A multi-choice answer triggers it when it includes any of them. Two
+ * follow-ups on one question with different `anyOf` are how a seller switches between branches.
+ */
+export const IntakeConditionSchema = z.object({
+	/** The earlier question this one follows. */
+	fieldId: z.string().min(1).max(60),
+	anyOf: z.array(z.union([z.string().min(1).max(80), z.boolean()])).min(1).max(24),
+	/** `show`: shown only on a match (the default). `hide`: hidden on a match. */
+	effect: z.enum(["show", "hide"]).default("show"),
+});
+export type IntakeCondition = z.infer<typeof IntakeConditionSchema>;
+
+/**
+ * How a number question moves the seller's guide price (Decision #522). Only `linear` for now: each
+ * unit past `includedUnits` adds `perUnitMinor` (in the listing's currency). It prices a GUIDE the
+ * buyer reads before asking for a quote and the seller reads beside the request; a quote's price is
+ * still the one the seller sends, and a fixed-price listing's checkout is unaffected.
+ */
+export const IntakePricingSchema = z.object({
+	model: z.literal("linear"),
+	perUnitMinor: z.number().int().min(-1_000_000_000).max(1_000_000_000),
+	includedUnits: z.number().min(0).default(0),
+});
+export type IntakePricing = z.infer<typeof IntakePricingSchema>;
+
+/**
  * One question the seller asks.
  *
- * `min` / `max` / `step` / `unit` / `slider` apply to a `number`; `options` and `multiple` to the
- * choice kinds; `maxLength` and `placeholder` to the text kinds. A field may carry facets its kind
- * ignores — the renderer reads only what its control understands — so a seller switching a field's
- * kind does not have to scrub the others first.
+ * `min` / `max` / `step` / `unit` / `slider` / `defaultValue` / `pricing` apply to a `number`;
+ * `options` and `multiple` to the choice kinds; `maxLength` and `placeholder` to the text kinds (and
+ * to a number's empty field). A field may carry facets its kind ignores — the renderer reads only what
+ * its control understands — so a seller switching a field's kind does not have to scrub the others
+ * first. `condition` makes it a follow-up to an earlier question.
  */
 export const IntakeFieldSchema = z.object({
 	/** Stable within the seller's field list — the key an answer is stored under. */
@@ -113,11 +142,146 @@ export const IntakeFieldSchema = z.object({
 	slider: z.boolean().default(false),
 	/** A text ceiling below {@link INTAKE_TEXT_MAX}. */
 	maxLength: z.number().int().min(1).max(INTAKE_TEXT_MAX).optional(),
+	/**
+	 * A number's starting value, chosen by the seller (Decision #522): the form opens on it and the slider
+	 * rests on it, so a buyer who agrees with it moves nothing. Absent, a number starts empty.
+	 */
+	defaultValue: z.number().optional(),
+	/** A number's effect on the seller's guide price. */
+	pricing: IntakePricingSchema.optional(),
+	/** Show (or hide) this question on an earlier question's answer. */
+	condition: IntakeConditionSchema.optional(),
 });
 export type IntakeField = z.infer<typeof IntakeFieldSchema>;
 
 /** The seller's whole list. */
 export const IntakeFieldsSchema = z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX);
+
+/** The kinds a follow-up may follow: a yes/no, or a choice with options to match on. */
+export const CONDITION_SOURCE_KINDS: readonly IntakeFieldKind[] = [
+	"boolean",
+	"select",
+	"radio",
+	"pills",
+	"multiselect",
+	"checkboxes",
+];
+
+/**
+ * Why a seller's question list cannot be saved as it stands, or `null` (Decision #522): ids are unique,
+ * and every follow-up names an EARLIER question of a kind it can follow, with answers that question can
+ * give. Checked by the Buyer questions builder before a save and by the catalogue service on the way
+ * in, so a list that saved is a list every buyer can answer.
+ */
+export function intakeListRefusal(fields: readonly IntakeField[]): string | null {
+	const seen = new Set<string>();
+	for (let i = 0; i < fields.length; i++) {
+		const field = fields[i];
+		if (seen.has(field.id)) return `Two questions share the id "${field.id}".`;
+		const refusal = intakeConditionRefusal(field, fields.slice(0, i));
+		if (refusal) return refusal;
+		seen.add(field.id);
+	}
+	return null;
+}
+
+/** The questions above that `field` could follow: a yes/no or a choice question. */
+export function conditionSources(earlier: readonly IntakeField[]): IntakeField[] {
+	return earlier.filter((f) => CONDITION_SOURCE_KINDS.includes(f.kind));
+}
+
+/** The answers a follow-up may match on its source: yes and no, or the source's options. */
+export function conditionAnswers(source: IntakeField): { value: string | boolean; label: string }[] {
+	return source.kind === "boolean"
+		? [{ value: true, label: "Yes" }, { value: false, label: "No" }]
+		: source.options.map((o) => ({ value: o.value, label: o.label }));
+}
+
+/** Why one question's follow-up rule is wrong against the questions above it, or `null`. */
+export function intakeConditionRefusal(
+	field: IntakeField,
+	earlier: readonly IntakeField[],
+): string | null {
+	const c = field.condition;
+	if (!c) return null;
+	const name = field.label.trim() ? `"${field.label.trim()}"` : "This question";
+	const source = earlier.find((f) => f.id === c.fieldId);
+	if (!source) return `${name} can only follow a question above it.`;
+	if (!CONDITION_SOURCE_KINDS.includes(source.kind)) {
+		return `${name} can follow a yes/no or a choice question.`;
+	}
+	const allowed = conditionAnswers(source).map((a) => a.value);
+	if (c.anyOf.some((v) => !allowed.includes(v))) {
+		return `${name} follows an answer the question above no longer offers.`;
+	}
+	return null;
+}
+// #endregion
+
+// #region Follow-ups
+/** Whether one answer meets a follow-up's `anyOf`. */
+function conditionMet(condition: IntakeCondition, answer: IntakeAnswer | undefined): boolean {
+	if (answer === undefined || answer === null) return false;
+	if (Array.isArray(answer)) return answer.some((v) => condition.anyOf.includes(v));
+	if (typeof answer === "boolean" || typeof answer === "string") return condition.anyOf.includes(answer);
+	return false;
+}
+
+/**
+ * The ids of the questions a buyer is asked now, in order (Decision #522): a question with no
+ * condition always; a follow-up only while the question it follows is itself shown and its answer
+ * meets the condition (or, for `hide`, does not). A follow-up of a hidden question is hidden, so a
+ * branch closes as a whole.
+ */
+export function visibleIntakeIds(fields: readonly IntakeField[], answers: IntakeAnswers): Set<string> {
+	const shown = new Set<string>();
+	for (const field of fields) {
+		const c = field.condition;
+		if (!c) {
+			shown.add(field.id);
+			continue;
+		}
+		if (!shown.has(c.fieldId)) continue;
+		const met = conditionMet(c, answers[c.fieldId]);
+		if (c.effect === "hide" ? !met : met) shown.add(field.id);
+	}
+	return shown;
+}
+
+/** The questions a buyer is asked now, in order. */
+export function visibleIntakeFields(
+	fields: readonly IntakeField[],
+	answers: IntakeAnswers,
+): IntakeField[] {
+	const shown = visibleIntakeIds(fields, answers);
+	return fields.filter((f) => shown.has(f.id));
+}
+// #endregion
+
+// #region The guide price
+/**
+ * What the buyer's answers add to (or take off) the seller's guide price, in minor units (Decision
+ * #522): for each shown, priced number question, every unit past its `includedUnits` at
+ * `perUnitMinor`. Linear only. `null` when no shown question is priced, so a surface states no guide
+ * the seller never set.
+ */
+export function intakePriceAdjustment(
+	fields: readonly IntakeField[],
+	answers: IntakeAnswers,
+): number | null {
+	let priced = false;
+	let total = 0;
+	for (const field of visibleIntakeFields(fields, answers)) {
+		if (field.kind !== "number" || !field.pricing) continue;
+		priced = true;
+		const raw = answers[field.id];
+		const value = typeof raw === "number" && Number.isFinite(raw) ? raw : field.defaultValue;
+		if (value === undefined) continue;
+		const units = Math.max(0, value - field.pricing.includedUnits);
+		total += Math.round(units * field.pricing.perUnitMinor);
+	}
+	return priced ? total : null;
+}
 // #endregion
 
 // #region Answers
@@ -144,14 +308,17 @@ export type IntakeAnswers = z.infer<typeof IntakeAnswersSchema>;
  * A toggle starts `false` (an unanswered yes/no is a no), a multi-choice starts empty, and everything
  * else starts `null`. A `number` deliberately does NOT start at its minimum: a bound is a constraint
  * on an answer, not an answer, and seeding it would satisfy a required field with a figure nobody
- * typed.
+ * typed. It starts at the seller's `defaultValue` when they chose one: that is an answer the seller
+ * proposed on purpose, and the buyer sees it in the field.
  */
 export function emptyIntakeAnswers(fields: readonly IntakeField[]): IntakeAnswers {
 	const answers: IntakeAnswers = {};
 	for (const field of fields) {
 		if (field.kind === "boolean") answers[field.id] = false;
 		else if (isMultiChoice(field)) answers[field.id] = [];
-		else answers[field.id] = null;
+		else if (field.kind === "number" && field.defaultValue !== undefined) {
+			answers[field.id] = field.defaultValue;
+		} else answers[field.id] = null;
 	}
 	return answers;
 }
@@ -171,13 +338,14 @@ export function isSingleChoice(field: Pick<IntakeField, "kind" | "multiple">): b
  *
  * Called on the way IN by the fat service: a buyer whose page is one edit behind the seller's field
  * list is not attempting anything, and a purchase refused for "unknown field" would be a refusal the
- * buyer cannot act on. Unknown keys are the only thing removed — nothing is coerced.
+ * buyer cannot act on. An answer to a follow-up the buyer's other answers hide is dropped too
+ * (Decision #522): it was given to a question they are no longer asked. Nothing is coerced.
  */
 export function normaliseIntakeAnswers(
 	fields: readonly IntakeField[],
 	answers: IntakeAnswers,
 ): IntakeAnswers {
-	const known = new Set(fields.map((f) => f.id));
+	const known = visibleIntakeIds(fields, answers);
 	const kept: IntakeAnswers = {};
 	for (const [id, answer] of Object.entries(answers)) {
 		if (known.has(id)) kept[id] = answer;
@@ -192,7 +360,8 @@ export function normaliseIntakeAnswers(
  *
  * Field-keyed so a form can pin the sentence to the control that refused it. The FIRST refusal is
  * returned rather than every one: a buyer fixes them one at a time in document order, and a modal
- * that lit up seven controls at once has told them nothing about where to start.
+ * that lit up seven controls at once has told them nothing about where to start. Only the questions
+ * the buyer is asked count: a hidden follow-up is never required (Decision #522).
  */
 export const IntakeRefusalCode = z.enum([
 	"required",
@@ -237,7 +406,7 @@ export function intakeRefusal(
 	fields: readonly IntakeField[],
 	answers: IntakeAnswers,
 ): IntakeRefusal | null {
-	for (const field of fields) {
+	for (const field of visibleIntakeFields(fields, answers)) {
 		const answer = answers[field.id];
 		const given = intakeAnswered(field, answer);
 
@@ -350,7 +519,7 @@ export function intakeAnswerLines(
 	answers: IntakeAnswers,
 ): string[] {
 	const lines: string[] = [];
-	for (const field of fields) {
+	for (const field of visibleIntakeFields(fields, answers)) {
 		const answer = answers[field.id];
 		if (!intakeAnswered(field, answer)) continue;
 		lines.push(`${field.label}: ${intakeAnswerText(field, answer as IntakeAnswer)}`);
@@ -371,11 +540,23 @@ export function intakeAnswerText(field: IntakeField, answer: IntakeAnswer): stri
 // #endregion
 
 // #region The publish lock
-/** What a published listing's question may still change: its wording and its options. */
-type LockedEditable = "label" | "hint" | "placeholder" | "options";
+/**
+ * What a published listing's question may still change: its wording, its options, and two settings
+ * that never change the shape of a stored answer, its starting value and its guide pricing
+ * (Decision #522). A follow-up rule is locked with everything else: it decides which answers exist.
+ */
+type LockedEditable = "label" | "hint" | "placeholder" | "options" | "defaultValue" | "pricing";
 
 function lockedShape(field: IntakeField): Omit<IntakeField, LockedEditable> {
-	const { label: _l, hint: _h, placeholder: _p, options: _o, ...rest } = field;
+	const {
+		label: _l,
+		hint: _h,
+		placeholder: _p,
+		options: _o,
+		defaultValue: _d,
+		pricing: _r,
+		...rest
+	} = field;
 	return rest;
 }
 
@@ -402,7 +583,7 @@ export function intakeLockRefusal(
 	}
 	for (let i = 0; i < before.length; i++) {
 		if (!sameShape(lockedShape(before[i]), lockedShape(after[i]))) {
-			return "Only a question's wording and options can change once the listing has been published.";
+			return "Only a question's wording, options, starting value and pricing can change once the listing has been published.";
 		}
 	}
 	return null;

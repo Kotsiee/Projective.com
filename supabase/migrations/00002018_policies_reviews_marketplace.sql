@@ -113,3 +113,17 @@ SELECT TO authenticated USING (
                 AND (q.requester_user_id = auth.uid () OR q.host_user_id = auth.uid ())
         )
     );
+
+-- --- marketplace.quote_events: the record either party can point to (Decision #522) ---
+-- Readable by the request's two parties. No client writes: the doors in 00001177 and checkout append
+-- it, and trg_quote_events_kept refuses every change.
+CREATE POLICY "Parties see their quote events" ON marketplace.quote_events FOR
+SELECT TO authenticated USING (
+        EXISTS (
+            SELECT 1
+            FROM marketplace.quote_requests q
+            WHERE
+                q.id = quote_events.quote_request_id
+                AND (q.requester_user_id = auth.uid () OR q.host_user_id = auth.uid ())
+        )
+    );

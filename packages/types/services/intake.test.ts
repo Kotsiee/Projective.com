@@ -3,8 +3,13 @@ import {
 	emptyIntakeAnswers,
 	intakeAnswerLines,
 	IntakeFieldSchema,
+	IntakeFieldsSchema,
+	intakeListRefusal,
+	intakeLockRefusal,
+	intakePriceAdjustment,
 	intakeRefusal,
 	normaliseIntakeAnswers,
+	visibleIntakeIds,
 } from "./intake.ts";
 
 /**
@@ -119,4 +124,108 @@ Deno.test("intakeAnswerLines: answered fields only, choices by their label, numb
 			"Channels: Web, Social",
 		],
 	);
+});
+
+Deno.test("follow-ups — a question shows only while the answer it follows matches", () => {
+	const fields = IntakeFieldsSchema.parse([
+		{ id: "brand", kind: "boolean", label: "Do you have brand guidelines?" },
+		{
+			id: "files",
+			kind: "text",
+			label: "Link to them",
+			required: true,
+			condition: { fieldId: "brand", anyOf: [true] },
+		},
+		{
+			id: "style",
+			kind: "radio",
+			label: "Preferred style",
+			options: [{ value: "bold", label: "Bold" }, { value: "calm", label: "Calm" }],
+			condition: { fieldId: "brand", anyOf: [true], effect: "hide" },
+		},
+		{
+			id: "why",
+			kind: "text",
+			label: "Why bold?",
+			required: true,
+			condition: { fieldId: "style", anyOf: ["bold"] },
+		},
+	]);
+	const no = { brand: false, files: null, style: "bold", why: null };
+	assertEquals([...visibleIntakeIds(fields, no)], ["brand", "style", "why"]);
+	assertEquals(intakeRefusal(fields, no)?.fieldId, "why");
+	const yes = { brand: true, files: null, style: "bold", why: null };
+	assertEquals([...visibleIntakeIds(fields, yes)], ["brand", "files"]);
+	assertEquals(intakeRefusal(fields, yes)?.fieldId, "files");
+	assertEquals(normaliseIntakeAnswers(fields, { ...yes, files: "https://x.test" }), {
+		brand: true,
+		files: "https://x.test",
+	});
+	assertEquals(intakeAnswerLines(fields, { ...yes, files: "https://x.test" }), [
+		"Do you have brand guidelines?: Yes",
+		"Link to them: https://x.test",
+	]);
+});
+
+Deno.test("intakeListRefusal — a follow-up names an earlier yes/no or choice, and answers it offers", () => {
+	const base = { id: "a", kind: "boolean", label: "A" } as const;
+	assertEquals(intakeListRefusal(IntakeFieldsSchema.parse([base])), null);
+	assertEquals(
+		typeof intakeListRefusal(IntakeFieldsSchema.parse([
+			{ id: "b", kind: "text", label: "B", condition: { fieldId: "a", anyOf: [true] } },
+			base,
+		])),
+		"string",
+	);
+	assertEquals(
+		typeof intakeListRefusal(IntakeFieldsSchema.parse([
+			{ id: "t", kind: "text", label: "T" },
+			{ id: "b", kind: "text", label: "B", condition: { fieldId: "t", anyOf: ["x"] } },
+		])),
+		"string",
+	);
+	assertEquals(
+		typeof intakeListRefusal(IntakeFieldsSchema.parse([
+			{ id: "c", kind: "select", label: "C", options: [{ value: "x", label: "X" }] },
+			{ id: "b", kind: "text", label: "B", condition: { fieldId: "c", anyOf: ["gone"] } },
+		])),
+		"string",
+	);
+});
+
+Deno.test("the guide price — linear per unit past the included amount, from the starting value when unanswered", () => {
+	const fields = IntakeFieldsSchema.parse([
+		{
+			id: "pages",
+			kind: "number",
+			label: "Screens or pages",
+			min: 1,
+			max: 20,
+			defaultValue: 5,
+			pricing: { model: "linear", perUnitMinor: 4000, includedUnits: 3 },
+		},
+		{ id: "note", kind: "text", label: "Anything else" },
+	]);
+	assertEquals(emptyIntakeAnswers(fields).pages, 5);
+	assertEquals(intakePriceAdjustment(fields, { pages: 8 }), 20000);
+	assertEquals(intakePriceAdjustment(fields, { pages: 2 }), 0);
+	assertEquals(intakePriceAdjustment(fields, {}), 8000);
+	assertEquals(intakePriceAdjustment(IntakeFieldsSchema.parse([{ id: "n", kind: "number", label: "N" }]), { n: 3 }), null);
+});
+
+Deno.test("the publish lock — a starting value and pricing may change, a follow-up rule may not", () => {
+	const before = IntakeFieldsSchema.parse([
+		{ id: "a", kind: "boolean", label: "A" },
+		{ id: "n", kind: "number", label: "N", defaultValue: 2 },
+	]);
+	const repriced = IntakeFieldsSchema.parse([
+		{ id: "a", kind: "boolean", label: "A" },
+		{ id: "n", kind: "number", label: "N", defaultValue: 4, pricing: { model: "linear", perUnitMinor: 100 } },
+	]);
+	assertEquals(intakeLockRefusal(before, repriced), null);
+	const followed = IntakeFieldsSchema.parse([
+		{ id: "a", kind: "boolean", label: "A" },
+		{ id: "n", kind: "number", label: "N", defaultValue: 2, condition: { fieldId: "a", anyOf: [true] } },
+	]);
+	assertEquals(typeof intakeLockRefusal(before, followed), "string");
 });

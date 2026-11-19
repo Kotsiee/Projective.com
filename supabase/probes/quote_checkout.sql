@@ -354,10 +354,14 @@ BEGIN
         'marketplace.request_quote(%L::uuid, %L)', pg_temp.s('oneoff'), 'A second round of checkout work'));
     v_o3 := pg_temp.door(pg_temp.s('seller'), pg_temp.offer((v_req ->> 'id')::uuid, 70000));
     v_acc := pg_temp.door(pg_temp.s('buyer'), format('marketplace.accept_quote_offer(%L::uuid)', v_o3 ->> 'id'));
-    -- The offer was sent 20 days ago and lapsed an hour ago (inside the 3–30 day window check).
+    -- The offer was sent 20 days ago and lapsed an hour ago (inside the 3–30 day window check). Its
+    -- terms are frozen (trg_quote_offers_kept, Decision #522), so the probe lifts the guard for this one
+    -- rewrite, inside its rolled-back transaction.
+    ALTER TABLE marketplace.quote_offers DISABLE TRIGGER trg_quote_offers_kept;
     UPDATE marketplace.quote_offers
        SET created_at = now() - interval '20 days', expires_at = now() - interval '1 hour'
      WHERE id = (v_o3 ->> 'id')::uuid;
+    ALTER TABLE marketplace.quote_offers ENABLE TRIGGER trg_quote_offers_kept;
     PERFORM set_config('probe.request3', v_req ->> 'id', true);
     PERFORM set_config('probe.o3', v_o3 ->> 'id', true);
     PERFORM set_config('probe.line3', v_acc ->> 'basket_item_id', true);

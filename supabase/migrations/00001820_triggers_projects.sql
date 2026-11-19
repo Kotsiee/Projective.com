@@ -85,6 +85,11 @@ CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.project_app
     FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
 CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.project_invitations
     FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+-- A buyer's seats that were given away follow the buyer's own seat (Decision #522).
+CREATE TRIGGER trg_cohort_sponsored_seats
+    AFTER UPDATE OF status ON projects.cohort_memberships
+    FOR EACH ROW EXECUTE FUNCTION projects.tg_cohort_sponsored_seats();
+
 CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.cohorts
     FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
 

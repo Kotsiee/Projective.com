@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { useSignal } from "@preact/signals";
 import { Button } from "@projective/ui/fields";
 import { ProgressSpinner } from "@projective/ui/feedback";
 import { Ripple } from "@projective/ui/utils";
@@ -17,8 +18,9 @@ export type CtaTone = "inverted" | "brand" | "accent" | "neutral";
  *
  * `idle → pending → settled → idle`, driven by {@link useCtaFeedback}. The press gets a Material
  * ripple; the write shows a `ProgressSpinner` in the icon slot; the resolve shows a check for a beat
- * and then returns. Nothing bursts, nothing bounces, nothing celebrates — §B.5, and because an arcade
- * flourish on a control that has just moved somebody's money reads as a slot machine.
+ * and then returns. A money verb never bursts or bounces — an arcade flourish on a control that has
+ * just moved somebody's money reads as a slot machine. The opt-in `spark` adornment is for the
+ * commitment verbs that move none (Apply to project, Add to projects; Decision #520).
  *
  * # Three implementation notes worth keeping
  *
@@ -54,7 +56,15 @@ export interface CtaButtonProps {
 	variant?: "filled" | "outlined";
 	fluid?: boolean;
 	class?: string;
+	/**
+	 * Plays a one-shot adornment on press: a few sparks off the control and a nudge of its icon. For
+	 * commitment verbs that move no money (Apply to project, Add to projects). Decorative only — the
+	 * outcome is still the phase cycle — and removed under both reduced-motion channels.
+	 */
+	spark?: boolean;
 }
+
+const SPARK_COUNT = 6;
 
 export function CtaButton(props: CtaButtonProps): JSX.Element {
 	const {
@@ -69,7 +79,9 @@ export function CtaButton(props: CtaButtonProps): JSX.Element {
 		variant = "filled",
 		fluid = true,
 		class: className,
+		spark = false,
 	} = props;
+	const burst = useSignal(0);
 
 	const pending = phase === "pending";
 	const settled = phase === "settled";
@@ -98,12 +110,17 @@ export function CtaButton(props: CtaButtonProps): JSX.Element {
 		// that window is a buyer who did not see the first one land.
 		disabled: disabled || pending || settled,
 		"aria-busy": pending ? "true" : undefined,
-		onClick,
+		onClick: spark
+			? () => {
+				burst.value++;
+				onClick();
+			}
+			: onClick,
 		"data-phase": phase,
 		class: cls("evp-cta__btn", `evp-cta__btn--${tone}`, className),
 	} as const;
 
-	return (
+	const control = (
 		<Ripple disabled={disabled || pending} class="evp-cta__ripple">
 			{tone === "accent"
 				? <Button {...shared} severity="accent" variant="filled" />
@@ -111,6 +128,21 @@ export function CtaButton(props: CtaButtonProps): JSX.Element {
 				? <Button {...shared} severity="neutral" variant="outlined" />
 				: <Button {...shared} variant={variant} />}
 		</Ripple>
+	);
+	if (!spark) return control;
+
+	return (
+		<span
+			class={cls("evp-cta__sparkhost", fluid && "evp-cta__sparkhost--fluid")}
+			data-burst={burst.value === 0 ? undefined : burst.value % 2 === 0 ? "even" : "odd"}
+		>
+			{control}
+			{burst.value > 0 && (
+				<span class="evp-cta__sparks" key={burst.value} aria-hidden="true">
+					{Array.from({ length: SPARK_COUNT }, (_, i) => <span class="evp-cta__spark" key={i} />)}
+				</span>
+			)}
+		</span>
 	);
 }
 

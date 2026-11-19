@@ -13,8 +13,13 @@ import {
 	type PresenceEvent,
 	type PresenceOutcome,
 	type SeatHold,
+	type SeatInviteView,
+	SeatInviteViewSchema,
+	type SeatLinkResult,
 	seatCount,
 	type SessionWorkspace,
+	type ViewerSeat,
+	ViewerSeatSchema,
 	type ViewerWaitlistPlace,
 	ViewerWaitlistPlaceSchema,
 	type WaitlistPlace,
@@ -85,6 +90,47 @@ function refusal<T>(error: { code?: string; message?: string; details?: string |
 
 function signedOut<T>(): ServiceResult<T> {
 	return fail(401, { message: "Sign in to continue." });
+}
+
+/** A seat-link door's `Seat refused: <code>` (Decision #522) as the sentence its reader acts on. */
+const SEAT_REFUSALS: Record<string, { status: number; message: string }> = {
+	not_signed_in: { status: 401, message: "Sign in to continue." },
+	not_found: { status: 404, message: "That seat link doesn't exist." },
+	nothing_to_share: { status: 422, message: "You have no spare seat to share." },
+	started: { status: 409, message: "This cohort has started, so its seats can no longer be handed on." },
+	revoked: { status: 409, message: "This seat link was turned off by the person who shared it." },
+	ended: { status: 409, message: "The booking behind this link has ended." },
+	own: { status: 422, message: "This is your own booking." },
+	seated: { status: 409, message: "You already have a seat in this cohort." },
+	full: { status: 409, message: "Every shared seat on this link has been claimed." },
+};
+
+function seatRefusal<T>(error: { code?: string; message?: string; details?: string | null }): ServiceResult<T> {
+	const match = /Seat refused: ([a-z_]+)/.exec(error.message ?? "");
+	const known = match ? SEAT_REFUSALS[match[1]] : undefined;
+	return known ? fail(known.status, { message: known.message }) : refusal(error);
+}
+
+/** `projects.get_my_cohort_seats`' answer. */
+interface RawViewerSeat {
+	membership_id: string;
+	seats: number;
+	sponsored: boolean;
+	can_share: boolean;
+	claimed: { name: string; handle: string; joined_at: string }[] | null;
+	code: string | null;
+}
+
+/** `projects.get_cohort_seat_invite`'s answer. */
+interface RawSeatInvite {
+	state: string;
+	seats_left: number;
+	cohort_name: string;
+	first_start: string | null;
+	sponsor_name: string | null;
+	listing_title: string | null;
+	listing_slug: string | null;
+	project_slug: string | null;
 }
 
 /** `projects.get_waitlist_place`'s answer, as PostgREST hands it over. */
@@ -242,6 +288,111 @@ export class SessionBackendService {
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * The viewer's own seats on a cohort and their seat link (Decision #522), or `null` when they hold
+	 * none (or the read failed: the lane then offers no share control rather than a broken one).
+	 */
+	static async mySeats(cohortId: string, actor: ReadActor): Promise<ViewerSeat | null> {
+		if (!actor.accessToken || !actor.userId || !isProjectsBackendLive()) return null;
+		try {
+			const { data, error } = await getUserClient(actor.accessToken).schema("projects").rpc(
+				"get_my_cohort_seats",
+				{ p_cohort_id: cohortId },
+			);
+			if (error || !data) return null;
+			const raw = data as RawViewerSeat;
+			const parsed = ViewerSeatSchema.safeParse({
+				membershipId: raw.membership_id,
+				seats: raw.seats,
+				sponsored: raw.sponsored,
+				canShare: raw.can_share,
+				claimed: (raw.claimed ?? []).map((c) => ({
+					name: c.name || `@${c.handle}`,
+					handle: c.handle,
+					joinedAt: new Date(c.joined_at).toISOString(),
+				})),
+				code: raw.code,
+			});
+			return parsed.success ? parsed.data : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Open (or return) the seat link of the caller's own membership of more than one seat
+	 * (`projects.share_cohort_seats`), or close it (`projects.revoke_cohort_seat_link`).
+	 */
+	static async seatLink(
+		action: "share" | "revoke",
+		membershipId: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<SeatLinkResult>> {
+		if (!actor.accessToken || !actor.userId) return signedOut();
+		if (!isProjectsBackendLive()) return fail(503, { message: "Seat links need the live database." });
+		const client = getUserClient(actor.accessToken).schema("projects");
+		if (action === "revoke") {
+			const { error } = await client.rpc("revoke_cohort_seat_link", { p_membership_id: membershipId });
+			if (error) return seatRefusal(error);
+			return ok({ code: null, seatsLeft: 0, projectSlug: null, confirmation: "Link turned off. Seats already claimed stay claimed." });
+		}
+		const { data, error } = await client.rpc("share_cohort_seats", { p_membership_id: membershipId });
+		if (error) return seatRefusal(error);
+		const row = data as { code: string; seats_left: number };
+		return ok({
+			code: row.code,
+			seatsLeft: Math.max(0, row.seats_left),
+			projectSlug: null,
+			confirmation: row.seats_left === 1
+				? "Link ready. The first person to open it claims your spare seat."
+				: `Link ready. The first ${row.seats_left} people to open it each claim a seat.`,
+		});
+	}
+
+	/** What a seat link offers the signed-in person holding it, or `null` for a code that names none. */
+	static async seatInvite(code: string, actor: ReadActor): Promise<SeatInviteView | null> {
+		if (!actor.accessToken || !actor.userId || !isProjectsBackendLive()) return null;
+		try {
+			const { data, error } = await getUserClient(actor.accessToken).schema("projects").rpc(
+				"get_cohort_seat_invite",
+				{ p_code: code },
+			);
+			if (error || !data) return null;
+			const raw = data as RawSeatInvite;
+			const parsed = SeatInviteViewSchema.safeParse({
+				state: raw.state,
+				seatsLeft: Math.max(0, raw.seats_left),
+				cohortName: raw.cohort_name,
+				firstStartsAt: raw.first_start ? new Date(raw.first_start).toISOString() : null,
+				sponsorName: raw.sponsor_name ?? "Someone",
+				listingTitle: raw.listing_title,
+				listingSlug: raw.listing_slug,
+				projectSlug: raw.project_slug,
+			});
+			return parsed.success ? parsed.data : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/** Claim one seat through a link (`projects.claim_cohort_seat`): first come, first served. */
+	static async claimSeat(code: string, actor: ReadActor): Promise<ServiceResult<SeatLinkResult>> {
+		if (!actor.accessToken || !actor.userId) return signedOut();
+		if (!isProjectsBackendLive()) return fail(503, { message: "Seat links need the live database." });
+		const { data, error } = await getUserClient(actor.accessToken).schema("projects").rpc(
+			"claim_cohort_seat",
+			{ p_code: code },
+		);
+		if (error) return seatRefusal(error);
+		const row = data as { project_slug: string | null; seats_left: number };
+		return ok({
+			code: null,
+			seatsLeft: Math.max(0, row.seats_left),
+			projectSlug: row.project_slug,
+			confirmation: "Your seat is confirmed. The sessions are in Projects.",
+		}, { status: 201 });
 	}
 
 	/**

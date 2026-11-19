@@ -241,6 +241,11 @@ export const ChatMessageSchema = z.object({
 	pinned: z.boolean(),
 	/** Whether the viewer favourited (starred) this message — drives the wonky-star border mark. */
 	favorited: z.boolean(),
+	/**
+	 * The quote move this message records (`comms.dm_messages.quote_event_id`, Decision #522): the
+	 * thread renders it as a quote card over the plain `text`. Absent on every other message.
+	 */
+	quoteEventId: z.string().uuid().nullable().optional(),
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 // #endregion

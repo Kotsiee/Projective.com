@@ -13,6 +13,7 @@ import {
 import { Tag } from "@projective/ui/display";
 import type { DisputeCase, DisputeParty, DisputeSummary } from "@projective/types/finance";
 import { fileObjectHref } from "@projective/types/files";
+import { termsReference } from "@projective/types/services";
 import type { SessionWorkspace } from "@projective/types/projects";
 import { DisputeService } from "../core/DisputeService.ts";
 import { uploadForProject } from "../core/upload.ts";
@@ -275,6 +276,34 @@ export function DisputeCaseDialog(props: DisputeCaseDialogProps): JSX.Element {
 							</dl>
 
 							{audit ? <DisputeRoomLog audit={audit} /> : null}
+
+							{d.agreedTerms
+								? (
+									<section class="dispute-dlg__section" aria-label="Agreed terms">
+										<h3 class="dispute-dlg__heading">Agreed terms</h3>
+										<p class="dispute-dlg__meta">
+											{d.agreedTerms.priceLabel} · delivered in {d.agreedTerms.turnaroundDays}{" "}
+											{d.agreedTerms.turnaroundDays === 1 ? "day" : "days"}
+											{d.agreedTerms.acceptedAt
+												? ` · accepted ${disputeTimeLabel(d.agreedTerms.acceptedAt)}`
+												: ""}
+										</p>
+										<p class="dispute-dlg__text">{d.agreedTerms.scope}</p>
+										{d.agreedTerms.deliverables.length > 0
+											? (
+												<ul class="dispute-dlg__terms">
+													{d.agreedTerms.deliverables.map((item, i) => <li key={i}>{item}</li>)}
+												</ul>
+											)
+											: null}
+										<p class="dispute-dlg__meta" title={d.agreedTerms.termsHash}>
+											{d.agreedTerms.intact
+												? `Terms ref ${termsReference(d.agreedTerms.termsHash)}, unchanged since they were agreed.`
+												: "The stored terms no longer match the reference both parties agreed. An auditor will review the record."}
+										</p>
+									</section>
+								)
+								: null}
 
 							{d.resolutionNotes
 								? (

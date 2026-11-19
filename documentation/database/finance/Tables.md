@@ -739,6 +739,11 @@ receipt links the engagement by `project_id` (`OrderLine.engagementHref`, `/proj
 an escrow refund maps back to its line by `escrow_id`. Partial indexes
 `idx_order_lines_project` and `idx_order_lines_escrow` (`00004005`).
 
+**The custom quote a line paid for (Decision #522).** `finance.order_lines.quote_offer_id` (FK
+`marketplace.quote_offers`, `ON DELETE SET NULL`), written by `place_wallet_order` on a line that buys an
+accepted offer, NULL on every other line. The engagement it created links to the exact offer and terms
+hash both parties agreed; `uq_order_lines_quote_offer` (`00004005`) allows one paid line per offer.
+
 **Where a line stands as its money goes back (FBP DB19; Decision #337, ruling M8; Decision #469).**
 `finance.order_lines.status` (`finance.order_status`, NOT NULL `DEFAULT 'confirmed'`, CHECK one of
 `confirmed` · `refunded` · `cancelled`), `refunded_minor` (`bigint`, NOT NULL `DEFAULT 0`, `≥ 0`) and

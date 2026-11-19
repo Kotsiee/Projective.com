@@ -153,8 +153,10 @@ they govern). `brain.md`/`brain2.md` are redirect stubs — never write to them.
 9. `backdrop-filter` only on viewport-pinned top bars, floating mobile sheets/scrims, marks on
    photography — always on a `::before` underlay.
 10. Conversion lane (entity-view routes): the lane **is** the transaction; no third sticky column;
-    no price/purchase control in the desktop main stage or sticky header; below `--bp-md` the duty
-    moves to one body block (moved, never duplicated); lane resolved by a pure URL slot resolver.
+    no price/purchase control in the desktop main stage or sticky header (the band may carry the
+    rig's own primary + contact only once the lane has scrolled off, Decision #521); below `--bp-md`
+    the duty moves to one body block (moved, never duplicated); lane resolved by a pure URL slot
+    resolver.
 11. A control that renders must do something; a control driving server-rendered DOM must act on the
     DOM.
 12. Press feedback = `transform: scale()` only; never move padding/margin/inset/border-width/size;

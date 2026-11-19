@@ -145,7 +145,13 @@ Deno.test("the projection's keys and the doors' parameters exist in 00001175", a
 		assertStringIncludes(sql.replaceAll("\r\n", "\n"), signature.replaceAll("\r\n", "\n"));
 	}
 	for (
-		const param of ["p_intake jsonb", "p_currency text", "p_idempotency_key text", "p_title text"]
+		const param of [
+			"p_intake jsonb",
+			"p_currency text",
+			"p_idempotency_key text",
+			"p_title text",
+			"p_brief text",
+		]
 	) {
 		assertStringIncludes(sql, param);
 	}
@@ -156,6 +162,7 @@ Deno.test("the projection's keys and the doors' parameters exist in 00001175", a
 			"p_currency:",
 			"p_idempotency_key:",
 			"p_title:",
+			"p_brief:",
 			"p_project_slug:",
 			"p_reason:",
 		]

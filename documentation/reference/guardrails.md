@@ -121,7 +121,9 @@ never by appending new timestamped migrations that patch earlier ones.
       scrollbar) **is** the transaction: price + kebab · stage/seat summary · key terms · ONE tier-1
       accent pill · a tier-4 outlined Add to basket · exactly one ghost (seller contact). **No identity
       band in the card** — the creator is named once, in the editorial byline — and **no price or
-      purchase control in the editorial column on desktop**; none in the sticky header band either.
+      purchase control in the editorial column on desktop**; none in the sticky header band either,
+      until the reader has scrolled past the frame and the lane has left the screen — then the band
+      carries the rig's own primary and contact control, never both at once with the lane (#521).
       The column is content-first in DOM order — header, media, body — never with `order` /
       `direction`. Below 1024px of content the duty transfers to one body-side block — moved, never
       duplicated. No shell lane is built for a listing (`viewLaneFor` answers `null`).

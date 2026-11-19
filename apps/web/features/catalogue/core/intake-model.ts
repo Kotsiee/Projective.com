@@ -1,6 +1,7 @@
 import { hasBeenPublished, type ListingDetail } from "@projective/types/catalogue";
 import {
 	INTAKE_FIELDS_MAX,
+	intakeConditionRefusal,
 	type IntakeField,
 	type IntakeFieldKind,
 	IntakeFieldsSchema,
@@ -147,14 +148,26 @@ function fieldProblem(field: IntakeField, position: number): string | null {
 		if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
 			return `${name}'s lowest value is above its highest.`;
 		}
+		const start = field.defaultValue;
+		if (
+			start !== undefined &&
+			((field.min !== undefined && start < field.min) || (field.max !== undefined && start > field.max))
+		) {
+			return `${name}'s starting value is outside its lowest and highest.`;
+		}
+		if (field.pricing && field.pricing.perUnitMinor === 0) {
+			return `${name} adjusts the guide price by nothing. Set a price per unit, or turn pricing off.`;
+		}
 	}
 	return null;
 }
 
 /**
  * Every question a buyer could not answer, in list order: an unwritten question, a choice with no
- * options or a blank or repeated one, a slider without both bounds, crossed bounds, a cap above the
- * options offered, or two questions sharing an id. Empty when the list saves.
+ * options or a blank or repeated one, a slider without both bounds, crossed bounds, a starting value
+ * outside them, pricing that moves nothing, a cap above the options offered, a follow-up that names no
+ * earlier yes/no or choice question or an answer it no longer offers, or two questions sharing an id.
+ * Empty when the list saves.
  */
 export function intakeProblems(fields: readonly IntakeField[]): IntakeProblem[] {
 	const problems: IntakeProblem[] = [];
@@ -164,7 +177,7 @@ export function intakeProblems(fields: readonly IntakeField[]): IntakeProblem[] 
 			problems.push({ fieldId: field.id, message: `Two questions share the id ${field.id}.` });
 		}
 		seen.add(field.id);
-		const message = fieldProblem(field, i + 1);
+		const message = fieldProblem(field, i + 1) ?? intakeConditionRefusal(field, fields.slice(0, i));
 		if (message) problems.push({ fieldId: field.id, message });
 	});
 	if (problems.length === 0 && !IntakeFieldsSchema.safeParse(fields).success) {

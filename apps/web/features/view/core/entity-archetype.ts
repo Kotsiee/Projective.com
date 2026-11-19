@@ -4,6 +4,7 @@ import type {
 	ServiceViewExtra,
 	SessionPlanItem,
 } from "@projective/types/explore";
+import type { ServiceBookingOffer } from "@projective/types/services";
 
 /**
  * View feature — the polymorphic archetype resolver for `/view/[entity]`.
@@ -285,22 +286,18 @@ export interface SeatCapacity {
  * segmented bar cannot be read aloud, and a nearly-full cohort is precisely when the number matters
  * most. A component that draws the bar and forgets the sentence has shipped a fact only sighted
  * readers receive.
+ *
+ * A cohort's seats are the booking offer's REAL occupancy (`offer.capacity`, read from
+ * `projects.get_cohort_offer`), the same figure the seat field caps at and `reserve_seat` enforces
+ * (Decision #522). With no offer (the owner's own preview card) a cohort states no seat figure at all:
+ * an invented one is the defect this replaced, where the lane said 7 of 16 while 16 could be booked.
  */
-export function seatCapacityFor(view: EntityView, archetype: EntityArchetype): SeatCapacity | null {
-	if (archetype === "cohort") {
-		const total = view.service?.seatsPerSession ?? 0;
-		if (total <= 0) return null;
-		// Fill derives from the item id so a cohort's occupancy is stable across renders. The live path
-		// replaces the number, not the shape.
-		const taken = Math.min(total - 1, Math.max(0, Math.round(total * 0.55)));
-		const remaining = total - taken;
-		return {
-			total,
-			taken,
-			remaining,
-			sentence: `${remaining} of ${total} seats remaining`,
-		};
-	}
+export function seatCapacityFor(
+	view: EntityView,
+	archetype: EntityArchetype,
+	offer?: Pick<ServiceBookingOffer, "capacity"> | null,
+): SeatCapacity | null {
+	if (archetype === "cohort") return offer?.capacity ?? null;
 	if (archetype === "pipeline" && view.service?.stages.length) {
 		const total = view.service.stages.reduce((n, s) => n + s.seatsTotal, 0);
 		const open = view.service.stages.reduce((n, s) => n + s.openSeats, 0);

@@ -2407,7 +2407,7 @@ BEGIN
             END IF;
             INSERT INTO finance.order_lines (
                 order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
-                currency, fulfilment, stage_id, ticket_id, project_id, escrow_id, intake_answers, position
+                currency, fulfilment, stage_id, ticket_id, project_id, escrow_id, intake_answers, quote_offer_id, position
             ) VALUES (
                 v_order_id, (v_line.l ->> 'id')::uuid, (v_line.l ->> 'item_type')::finance.purchasable_item_kind,
                 (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'title',
@@ -2417,8 +2417,17 @@ BEGIN
                 (v_line.l ->> 'gross')::bigint, v_currency, 'engagement',
                 (v_bought -> 'stage_ids' ->> 0)::uuid, (v_bought ->> 'ticket_id')::uuid,
                 (v_bought ->> 'project_id')::uuid, (v_bought ->> 'escrow_id')::uuid,
-                COALESCE(v_bought -> 'intake_answers', '{}'::jsonb), v_i - 1
-            );
+                COALESCE(v_bought -> 'intake_answers', '{}'::jsonb), (v_line.l ->> 'quote_offer_id')::uuid, v_i - 1
+            )
+            RETURNING id INTO v_order_line;
+            -- A custom quote's payment joins its record (Decision #522): the paid event names this line and
+            -- the engagement it funded, and posts its card in the pair's conversation.
+            IF v_line.l ? 'quote_offer_id' THEN
+                PERFORM marketplace.fn_quote_paid(
+                    (v_line.l ->> 'quote_offer_id')::uuid, v_order_line,
+                    (v_bought ->> 'project_id')::uuid, (v_bought ->> 'escrow_id')::uuid
+                );
+            END IF;
             UPDATE finance.basket_items
                SET purchased_at = pg_catalog.now(), updated_at = pg_catalog.now()
              WHERE id = (v_line.l ->> 'id')::uuid;

@@ -2,6 +2,9 @@ import {
 	type SavedCollection,
 	SavedCollectionSchema,
 	type SavedEntityType,
+	type SavedListToBasket,
+	type SavedListToBasketResult,
+	SavedListToBasketResultSchema,
 	type SavedPage,
 	SavedPageSchema,
 	type SavedState,
@@ -15,6 +18,8 @@ import {
 	simCollections,
 	simDeleteCollection,
 	simList,
+	simListToBasket,
+	simRenameCollection,
 	simState,
 	simToggle,
 } from "./saved-sim.ts";
@@ -138,6 +143,39 @@ export const SavedService = {
 			const p = SavedCollectionSchema.safeParse(b);
 			return p.success ? p.data : null;
 		});
+	},
+
+	/** Rename a collection. */
+	renameCollection(id: string, name: string): Promise<SavedResult<SavedCollection>> {
+		if (sim()) return Promise.resolve(simRenameCollection(id, name));
+		return call(
+			`/api/saved/collections/${encodeURIComponent(id)}`,
+			json("PATCH", { name }),
+			(b) => {
+				const p = SavedCollectionSchema.safeParse(b);
+				return p.success ? p.data : null;
+			},
+		);
+	},
+
+	/**
+	 * Put one list's purchasable items into a basket (an existing one, the default, or a new named one).
+	 * `owner` scopes it to the basket owner the shell acts for.
+	 */
+	listToBasket(
+		id: string,
+		input: SavedListToBasket & { owner?: string },
+	): Promise<SavedResult<SavedListToBasketResult>> {
+		if (sim()) return Promise.resolve(simListToBasket(id));
+		return call(
+			`/api/saved/collections/${encodeURIComponent(id)}/basket`,
+			json("POST", input),
+			(b) => {
+				const p = SavedListToBasketResultSchema.safeParse(b);
+				return p.success ? p.data : null;
+			},
+			"Those items didn't reach your basket. Try again.",
+		);
 	},
 
 	/** Delete a collection; its items stay saved, unfiled. */

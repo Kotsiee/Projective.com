@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { useEffect } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
 import type { ExploreItem } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
@@ -7,6 +8,7 @@ import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { applyToProject, projectApplied } from "../core/view-state.ts";
 import { messageHrefFor, signInHref } from "../core/view-model.ts";
 import { AllowanceDisclosure } from "@features/proposals/components/AllowanceDisclosure.tsx";
+import { publishCtaMirror } from "../core/cta-mirror.ts";
 
 /**
  * ProjectCtaRig — the action rig BOTH of a project's transactional regions render.
@@ -28,8 +30,9 @@ import { AllowanceDisclosure } from "@features/proposals/components/AllowanceDis
  * pointing at `dm-{slug}`, which reaches nobody (Decision #422 (b)).
  *
  * Apply opens the listing's one `ProjectApplyModal` (stage, role, applicant, cover note, and the
- * proposal allowance's pre-flight gate). Beneath it sits the cost disclosure — `1 proposal token · N
- * ready` (Decision #154) — in this shared rig, so the lane and the bar quote one cost. "Applied" is
+ * proposal allowance's pre-flight gate). Above it sits the cost disclosure — `1 proposal token · N
+ * ready` (Decision #154) — in this shared rig, so the lane and the bar quote one cost and the reader
+ * meets the cost before the control (Decision #520). "Applied" is
  * derived from the viewer's real pending proposals, and pressing it opens the same modal to manage or
  * withdraw them. Since Decision #144 that is the public listing only: the engagement's own pages are
  * for people already on it.
@@ -48,8 +51,22 @@ export function ProjectCtaRig(
 	const messageHref = messageHrefFor(item);
 	const contactHref = messageHref === null ? null : authed ? messageHref : signInHref(item, ctx);
 
+	useEffect(() => {
+		publishCtaMirror({
+			primary: {
+				label: applied ? "Applied" : "Apply to project",
+				icon: applied ? "check" : "user-plus",
+				run: () => void applyToProject(item, authed, ctx),
+				tone: "primary",
+			},
+			secondary: null,
+			contact: contactHref === null ? null : { label: "Message client", icon: "message", href: contactHref },
+		});
+	});
+
 	return (
 		<div class={layout === "bar" ? "evp-cta evp-cta--bar" : "evp-cta"}>
+			<AllowanceDisclosure authed={authed} />
 			<CtaButton
 				label={applied ? "Applied" : "Apply to project"}
 				ariaLabel={applied ? "Applied — open to manage or withdraw your proposal" : undefined}
@@ -58,9 +75,9 @@ export function ProjectCtaRig(
 				tone={applied ? "brand" : "inverted"}
 				variant={applied ? "outlined" : "filled"}
 				icon={<Icon name={applied ? "check" : "user-plus"} size="sm" aria-hidden />}
+				spark={!applied}
 				onClick={() => void applyToProject(item, authed, ctx)}
 			/>
-			<AllowanceDisclosure authed={authed} />
 
 			{contactHref !== null && (
 				<a class="evp-cta__ghost" href={contactHref}>

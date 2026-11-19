@@ -17,7 +17,7 @@ import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
 import { purchasableKindOf } from "@web/features/checkout/core/purchasable.ts";
 import { BookingCtaRig } from "../components/BookingCtaRig.tsx";
 import BookingPanels from "./BookingPanels.island.tsx";
-import { announce } from "../core/booking-state.ts";
+import { announce, currentOffer } from "../core/booking-state.ts";
 import type { EntityView } from "@projective/types/explore";
 import type { ServiceBookingOffer } from "@projective/types/services";
 import type { HrefContext } from "@features/explore/core/routing.ts";
@@ -69,7 +69,7 @@ export default function EntityBuyBar(
 	const { item } = view;
 	const archetypeOffer = offerFor(archetype);
 	const added = basketIds.value.includes(item.id);
-	const capacity = seatCapacityFor(view, archetype);
+	const capacity = seatCapacityFor(view, archetype, currentOffer.value ?? offer);
 	// The reader's zone once the browser says it; the first byte prints a cohort's times in UTC.
 	const zone = useSignal<string | null>(null);
 	const cohortTerms = archetype === "cohort" ? cohortTermsSentence(offer.cohort, zone.value) : null;
@@ -137,6 +137,12 @@ export default function EntityBuyBar(
 			{capacity && <SeatSummary capacity={capacity} />}
 			{cohortTerms && <p class="evp-buybar__terms">{cohortTerms}</p>}
 
+			{archetypeOffer.escrows && (
+				<p class="evp-buybar__note">
+					<Icon name="shield" size="sm" aria-hidden /> Funds held in escrow until you accept.
+				</p>
+			)}
+
 			<BookingCtaRig
 				offer={offer}
 				layout="bar"
@@ -144,12 +150,6 @@ export default function EntityBuyBar(
 				onPrimaryPurchase={purchaseKind ? onPrimaryPurchase : undefined}
 				onAddToBasket={purchaseKind ? onAddToBasket : undefined}
 			/>
-
-			{archetypeOffer.escrows && (
-				<p class="evp-buybar__note">
-					<Icon name="shield" size="sm" aria-hidden /> Funds held in escrow until you accept.
-				</p>
-			)}
 
 			{
 				/*

@@ -986,6 +986,7 @@ projects.project_required_skills TO anon;
 -- sitting could mark a future one completed and be paid for it, and one able to write a seat could
 -- strand the buyer's escrow. 00002500's blanket grant is narrowed back to SELECT for the client roles.
 REVOKE INSERT, UPDATE, DELETE ON projects.cohort_seat_holds,
+projects.cohort_seat_invites,
 projects.session_attendance,
 projects.lesson_progress,
 projects.cohorts,

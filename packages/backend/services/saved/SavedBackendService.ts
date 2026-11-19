@@ -3,11 +3,16 @@ import {
 	type SavedCollection,
 	type SavedEntityType,
 	type SavedListParams,
+	type SavedListSkip,
+	type SavedListToBasket,
+	type SavedListToBasketResult,
 	type SavedPage,
 	type SavedState,
 	type SavedToggle,
 } from "@projective/types/org";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import { BasketBackendService } from "../finance/BasketBackendService.ts";
+import type { BasketQuery } from "../finance/basket-query.ts";
 import { isSupabaseConfigured, useMocks } from "../../core/supabase.ts";
 import {
 	invalidatePrefix,
@@ -24,9 +29,12 @@ import {
 	isCollectable,
 	LOOKUP_TYPES,
 	lookupSaved,
+	readCollectionBoards,
+	readCollectionListings,
 	readCollections,
 	readSavedRows,
 	removeCollection,
+	renameCollection,
 	savedRefs,
 	sortSaved,
 	writeSaved,
@@ -80,6 +88,15 @@ function invalidateReads(actor: ReadActor): void {
 	invalidatePrefix(projectsReadCache, tenant);
 	invalidatePrefix(messagingReadCache, tenant);
 }
+
+/** Why a saved service cannot go straight into a basket, by its Explore delivery model. */
+const SERVICE_STEP: Readonly<Record<string, string>> = {
+	Pipeline: "Add it to your projects from its page; its stages are bought per ticket.",
+	"One-Off": "Needs your brief first. Open it to scope the work.",
+	"Direct Deliverable": "Needs your brief first. Open it to scope the work.",
+	Session: "Pick a time on its page.",
+	"Group Session": "Choose a seat on its page.",
+};
 
 const SAVED_MESSAGE: Partial<Record<SavedEntityType, [string, string]>> = {
 	project: ["Project starred.", "Star removed."],
@@ -139,7 +156,7 @@ export class SavedBackendService {
 				: SAVED_TAB_TYPES[params.tab];
 			const [rows, collections] = await Promise.all([
 				readSavedRows(a, types, params.collection),
-				readCollections(a),
+				readCollectionBoards(a),
 			]);
 			const offset = Number(params.cursor ?? 0);
 			const sorted = sortSaved(rows);
@@ -200,6 +217,87 @@ export class SavedBackendService {
 	/** Delete a collection; what was in it stays saved, unfiled. */
 	static deleteCollection(id: string, actor: ReadActor): Promise<ServiceResult<{ id: string }>> {
 		return live("collection-delete", actor, (a) => removeCollection(a, id));
+	}
+
+	/** Rename a collection. */
+	static renameCollection(
+		id: string,
+		name: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<SavedCollection>> {
+		return live("collection-rename", actor, (a) => renameCollection(a, id, name));
+	}
+
+	/**
+	 * Put a list's purchasable items into one basket — an existing one, the default, or a new named one.
+	 *
+	 * Only a digital product is bought as it stands. Every service needs a step of its own before it can
+	 * be paid for (a brief, a time, or a project), so each is answered as skipped with its page, never
+	 * added half-configured. Lines go in one at a time through {@link BasketBackendService.addItem}, so
+	 * the basket's own rules (own listing, visibility, currency) refuse exactly what they refuse there.
+	 */
+	static listToBasket(
+		collectionId: string,
+		input: SavedListToBasket,
+		query: BasketQuery,
+		actor: ReadActor,
+	): Promise<ServiceResult<SavedListToBasketResult>> {
+		return live("collection-basket", actor, async (a) => {
+			const collections = await readCollections(a);
+			if (!collections.some((c) => c.id === collectionId)) {
+				return fail(404, { message: "No such list." });
+			}
+			const listings = await readCollectionListings(a, collectionId);
+			const products = listings.filter((l) => l.type === "product" && l.live);
+			const skipped: SavedListSkip[] = listings
+				.filter((l) => !(l.type === "product" && l.live))
+				.map((l) => ({
+					title: l.title,
+					href: l.href,
+					reason: !l.live ? "No longer available." : SERVICE_STEP[l.serviceType ?? ""] ??
+						"Book it from its page.",
+				}));
+			if (products.length === 0) {
+				return ok({ basketId: null, added: [], skipped }, {
+					message: skipped.length > 0
+						? "Nothing in this list can go straight into a basket."
+						: "This list has nothing to buy yet.",
+				});
+			}
+
+			let basketId = input.basketId ?? null;
+			if (input.newBasketName) {
+				const made = await BasketBackendService.createList({ name: input.newBasketName }, query, a);
+				if (!made.ok || !made.data) {
+					return fail(made.status, { message: made.message ?? "That basket could not be made." });
+				}
+				basketId = made.data.lists.activeId;
+			}
+
+			const added: string[] = [];
+			for (const product of products) {
+				const res = await BasketBackendService.addItem({
+					basketId,
+					itemType: "digital_product",
+					itemId: product.slug,
+					quantity: 1,
+					metadata: { serviceId: product.slug, sourceType: "products" },
+				}, { ...query, basketId }, a);
+				if (res.ok) added.push(product.title);
+				else {
+					skipped.push({
+						title: product.title,
+						href: product.href,
+						reason: res.message ?? "The basket refused it.",
+					});
+				}
+			}
+			return ok({ basketId, added, skipped }, {
+				message: added.length === 1
+					? "Added 1 item to your basket."
+					: `Added ${added.length} items to your basket.`,
+			});
+		});
 	}
 
 	// #endregion

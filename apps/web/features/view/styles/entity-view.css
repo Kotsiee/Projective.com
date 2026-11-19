@@ -51,7 +51,6 @@
 	* The lane is no longer a shell slot, so its width is stated HERE rather than passed to a
 	* splitter — one number for both shells, which is the point of moving it into the page.
 	*/
-	--evp-lane-pad: var(--space-5);
 	--evp-lane-w: 23.75rem;
 	--evp-frame-gap: var(--space-5);
 	--evp-frame-col-gap: var(--space-7);
@@ -486,52 +485,60 @@
 	view-transition-name: ex-hero-media;
 }
 
-/* The display is a real button when the artefact is a still image (it opens the lightbox). */
-.evp-canvas__stage--open {
+.evp-canvas__track {
+	display: flex;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	scroll-snap-type: x mandatory;
+	scrollbar-width: none;
+}
+
+.evp-canvas__track::-webkit-scrollbar {
+	display: none;
+}
+
+.evp-canvas__track[data-draggable="true"] {
+	cursor: grab;
+}
+
+.evp-canvas__track.is-dragging,
+.evp-canvas__track.is-gliding {
+	scroll-snap-type: none;
+	scroll-behavior: auto;
+}
+
+.evp-canvas__track.is-dragging {
+	cursor: grabbing;
+	user-select: none;
+}
+
+.evp-canvas__slide {
+	position: relative;
+	flex: 0 0 100%;
+	inline-size: 100%;
+	block-size: 100%;
+	min-inline-size: 0;
+	padding: 0;
+	border: none;
+	background: none;
+	color: inherit;
+	scroll-snap-align: start;
+	scroll-snap-stop: always;
+}
+
+.evp-canvas__slide--open {
 	display: block;
 	cursor: zoom-in;
 }
 
-.evp-canvas__stage--open:focus-visible {
+.evp-canvas__track[data-draggable="true"] .evp-canvas__slide--open {
+	cursor: inherit;
+}
+
+.evp-canvas__slide--open:focus-visible {
 	outline: none;
 	box-shadow: none;
-}
-
-/*
- * The zoom affordance.
- *
- * Glass on a mark that sits over arbitrary uploaded photography is the sanctioned case (§B.4.3), and
- * the veil is `--scrim` rather than a light tint: the ink is fixed white, so the only direction that
- * raises contrast is away from it, and a frosted light veil measured WORSE than the tint it replaced
- * when this was tried on the /explore hero pills (Decision #77).
- */
-.evp-canvas__zoom {
-	position: absolute;
-	inset-block-end: var(--space-3);
-	inset-inline-end: var(--space-3);
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	border-radius: var(--radius-full);
-	color: var(--on-scrim);
-	background: color-mix(in srgb, var(--scrim) 62%, transparent);
-	backdrop-filter: blur(var(--glass-blur));
-	-webkit-backdrop-filter: blur(var(--glass-blur));
-	opacity: 0;
-	transition: opacity var(--dur-fast) var(--ease-standard);
-}
-
-.evp-canvas__stage--open:hover .evp-canvas__zoom,
-.evp-canvas__stage--open:focus-visible .evp-canvas__zoom {
-	opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.evp-canvas__zoom {
-		transition: none;
-	}
 }
 
 /*
@@ -866,11 +873,10 @@
 	color: var(--on-surface);
 }
 
-/* The roles a brief is hiring for — one inline metadata line (§B.11.2), at Body size so it reads as
-   the section's content rather than as a footnote to it. */
 .evp-roles {
-	font-size: var(--text-base);
-	color: var(--on-surface);
+	justify-content: flex-end;
+	font-size: inherit;
+	color: inherit;
 }
 
 /* ============================================================================
@@ -1514,11 +1520,6 @@
 
 /* ============================================================================
  * THE CONVERSION LANE (§D.7) — the frame's END column
- *
- * Layers onto the shared `pf-lane` skeleton for its header / scroll / footer geometry. It no longer
- * uses that skeleton's collapse machinery or its collapsed icon rail: both were reveals keyed on
- * hosts this panel does not have (`.ui-splitter[data-mode]`, `:root[data-guest-nav]`), so the rail
- * could never appear and the toggle drove an event with no listener.
  * ========================================================================== */
 
 /*
@@ -1543,7 +1544,9 @@
 	* exactly the band's height the moment it revealed.
 	*/
 	block-size: auto;
+	max-block-size: calc(var(--evp-col-h) - var(--evp-band-offset));
 	min-inline-size: 0;
+	overflow: hidden;
 	/*
 	* Matched to `.pf-stickyhead`'s own reveal (`--dur-medium` / `--spring-standard`) so the band
 	* growing and the lane stepping down are read as one movement rather than two. `--spring-standard`
@@ -1564,7 +1567,8 @@
 
 @container evp-body (min-width: 1024px) {
 	.evp-laneslot {
-		display: block;
+		display: flex;
+		flex-direction: column;
 	}
 }
 
@@ -1584,9 +1588,13 @@
 }
 
 .evp-card {
+	--scrollbar-track: var(--surface-1);
+
 	display: flex;
+	flex: 0 1 auto;
 	flex-direction: column;
 	gap: var(--space-5);
+	min-block-size: 0;
 	padding: var(--space-5);
 	border-radius: var(--radius-xl);
 	background: var(--surface-1);
@@ -1594,9 +1602,30 @@
 
 .evp-card__head {
 	display: flex;
+	flex: none;
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: var(--space-3);
+}
+
+.evp-card__body {
+	display: flex;
+	flex: 0 1 auto;
+	flex-direction: column;
+	gap: var(--space-5);
+	min-block-size: 0;
+	margin-inline: calc(var(--space-5) * -1);
+	padding-inline: var(--space-5);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.evp-card__body:empty {
+	display: none;
+}
+
+.evp-card__foot {
+	flex: none;
 }
 
 .evp-card .evp-lane__ledger {
@@ -1626,150 +1655,6 @@
 	box-shadow: none;
 }
 
-.evp-cta__inline {
-	display: inline;
-	padding: 0;
-	border: none;
-	background: transparent;
-	font: inherit;
-	color: var(--on-surface);
-	text-decoration: underline;
-	text-underline-offset: 0.2em;
-	cursor: pointer;
-}
-
-.evp-cta__inline:hover {
-	text-decoration-thickness: 2px;
-}
-
-.evp-cta__inline:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-/*
- * ---- THE PROJECT LANE: content-sized, clamped, and docked below both bars (Decision #142) ----
- *
- * A project's lane is short — identity, a price, the stage quick-jumps, three ledger rows, the footer —
- * and a project's frame is short too. Held at the viewport-locked `--evp-col-h` it was taller than the
- * content beside it, so the frame's foot arrived while the lane was still docking and dragged it up
- * into the header band. Sized to its content and CLAMPED to the viewport instead, it docks for as long
- * as the frame has room; the clamp keeps a long stage list scrolling inside the panel (the footer is
- * the skeleton's `flex: none`, so the Apply rig stays on screen), and the flex column below is what lets
- * the clamp reach the scroll region — a percentage height cannot resolve against a `max-block-size`,
- * a shrinking flex item can.
- */
-.evp[data-archetype="project"] .evp-laneslot {
-	flex-direction: column;
-	block-size: auto;
-	max-block-size: var(--evp-col-h);
-}
-
-.evp[data-archetype="project"] .evp-laneslot > .pf-lane,
-.evp[data-archetype="project"] .evp-laneslot .pf-lane__full {
-	flex: 0 1 auto;
-	block-size: auto;
-	min-block-size: 0;
-}
-
-@container evp-body (min-width: 1024px) {
-	.evp[data-archetype="project"] .evp-laneslot {
-		display: flex;
-	}
-}
-
-/*
- * In the authenticated shell the project lane docks clear of BOTH top bars at all times — the shell's
- * top bar and the middle-nav header band — rather than at the top bar and stepping down when the band
- * reveals. On a public brief that band is the migrated header, which a short project page may never
- * condense; on the owner's preview it is the Details ⁄ Preview band, which never collapses at all. A pin
- * line that depends on the band's state was right on one of the two and wrong on the other; a pin line
- * below the band's full height is right on both, and has nothing to animate. The clamp subtracts the
- * same line plus one step, so the docked panel's foot sits one step above the viewport floor.
- */
-.ui-page-canvas__body .evp[data-archetype="project"] .evp-laneslot {
-	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4));
-	margin-block-start: 0;
-	max-block-size: calc(
-		100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) - var(--space-4) * 2
-	);
-	transition: none;
-}
-
-/* ---- Identity band: the uploader's face and NAME, with their earned badges ---- */
-.evp-lane__id {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: var(--space-2);
-	padding: var(--evp-lane-pad) var(--evp-lane-pad) var(--space-4);
-	border-block-end: var(--hairline);
-}
-
-.evp-lane__owner {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	min-inline-size: 0;
-	color: var(--on-surface);
-	text-decoration: none;
-	border-radius: var(--radius-sm);
-}
-
-.evp-lane__avatar {
-	flex: none;
-}
-
-.evp-lane__identity {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	min-inline-size: 0;
-}
-
-/*
- * The display name, at Body register and `--fw-medium`. Never `--fw-bold`+: §A.4 reserves weight
- * escalation for a level change, and this is the only identity on the panel — it has nothing to
- * out-rank.
- */
-.evp-lane__name {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	min-inline-size: 0;
-	font-size: var(--text-md);
-	font-weight: var(--fw-medium);
-	line-height: var(--leading-tight);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.evp-lane__owner:hover .evp-lane__name {
-	text-decoration: underline;
-	text-underline-offset: 0.2em;
-}
-
-.evp-lane__owner:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-/*
- * The earned badges. They wrap rather than truncate: a badge sliced by an ellipsis states a claim the
- * reader cannot finish reading, and the panel would rather be a line taller.
- */
-.evp-lane__badges {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
-	min-inline-size: 0;
-}
-
-.evp-lane__crest {
-	flex: none;
-}
-
 .evp-lane__kebab {
 	display: inline-flex;
 	align-items: center;
@@ -1793,13 +1678,6 @@
 .evp-lane__kebab:focus-visible {
 	outline: none;
 	box-shadow: none;
-}
-
-.evp-lane__scroll {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-5);
-	padding: var(--evp-lane-pad);
 }
 
 /* ---- Price (§D.7.2 item 2) --------------------------------------------
@@ -1905,6 +1783,138 @@
 	gap: var(--space-2);
 }
 
+.evp-cta__sparkhost {
+	position: relative;
+	display: inline-flex;
+	align-self: flex-start;
+}
+
+.evp-cta__sparkhost--fluid {
+	display: flex;
+	align-self: stretch;
+}
+
+.evp-cta__sparkhost--fluid > .evp-cta__ripple {
+	flex: 1 1 auto;
+}
+
+.evp-cta__sparks {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	pointer-events: none;
+}
+
+.evp-cta__spark {
+	--evp-spark-x: 0px;
+	--evp-spark-y: calc(var(--space-3) * -1);
+
+	position: absolute;
+	inset-block-start: 0;
+	inline-size: var(--space-1);
+	block-size: var(--space-1);
+	margin: calc(var(--space-1) / -2);
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	opacity: 0;
+	animation: evp-cta-spark var(--dur-slow) var(--spring-standard) forwards;
+}
+
+.evp-cta__spark:nth-child(1) {
+	inset-inline-start: 22%;
+	--evp-spark-x: calc(var(--space-2) * -1);
+}
+
+.evp-cta__spark:nth-child(2) {
+	inset-inline-start: 50%;
+	--evp-spark-y: calc(var(--space-4) * -1);
+}
+
+.evp-cta__spark:nth-child(3) {
+	inset-inline-start: 78%;
+	--evp-spark-x: var(--space-2);
+}
+
+.evp-cta__spark:nth-child(4),
+.evp-cta__spark:nth-child(5),
+.evp-cta__spark:nth-child(6) {
+	inset-block-start: 100%;
+	--evp-spark-y: var(--space-3);
+}
+
+.evp-cta__spark:nth-child(4) {
+	inset-inline-start: 30%;
+	--evp-spark-x: calc(var(--space-2) * -1);
+}
+
+.evp-cta__spark:nth-child(5) {
+	inset-inline-start: 50%;
+	--evp-spark-y: var(--space-4);
+}
+
+.evp-cta__spark:nth-child(6) {
+	inset-inline-start: 70%;
+	--evp-spark-x: var(--space-2);
+}
+
+@keyframes evp-cta-spark {
+	from {
+		opacity: 1;
+		transform: translate(0, 0) scale(1);
+	}
+
+	to {
+		opacity: 0;
+		transform: translate(var(--evp-spark-x), var(--evp-spark-y)) scale(0.25);
+	}
+}
+
+.evp-cta__sparkhost[data-burst="odd"] .ui-button__icon {
+	animation: evp-cta-nudge-odd var(--dur-slow) var(--spring-standard);
+}
+
+.evp-cta__sparkhost[data-burst="even"] .ui-button__icon {
+	animation: evp-cta-nudge-even var(--dur-slow) var(--spring-standard);
+}
+
+@keyframes evp-cta-nudge-odd {
+	from {
+		transform: scale(0.7) rotate(-12deg);
+	}
+
+	to {
+		transform: none;
+	}
+}
+
+@keyframes evp-cta-nudge-even {
+	from {
+		transform: scale(0.7) rotate(-12deg);
+	}
+
+	to {
+		transform: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.evp-cta__sparks {
+		display: none;
+	}
+
+	.evp-cta__sparkhost[data-burst] .ui-button__icon {
+		animation: none;
+	}
+}
+
+[data-motion="reduced"] .evp-cta__sparks {
+	display: none;
+}
+
+[data-motion="reduced"] .evp-cta__sparkhost[data-burst] .ui-button__icon {
+	animation: none;
+}
+
 /*
  * A NAVIGATING primary (Book session / Reserve seat) is an anchor, not a button. It previously
  * rendered `<a><Button …/></a>` — a `<button>` inside an `<a>`, which is invalid HTML: the parsers
@@ -1983,6 +1993,13 @@ a.evp-cta__btn--accent:hover {
 	box-shadow: inset 0 0 0 var(--fld-bw) color-mix(in srgb, var(--btn-on) 60%, transparent);
 }
 
+:root:not([data-theme="dark"]) :is(.evp-cta, .evp-stickyhead__actions) {
+	--accent: var(--primary);
+	--on-accent: var(--on-primary);
+	--evp-cta-accent-fill: var(--primary);
+	--evp-cta-accent-ink: var(--on-primary);
+}
+
 /*
  * The brand secondary — now OUTLINED.
  *
@@ -2041,6 +2058,7 @@ a.evp-cta__btn--accent:hover {
 	color: var(--text-secondary);
 	font-size: var(--evp-cta-fs);
 	font-weight: var(--fw-normal);
+	text-decoration: none;
 	cursor: pointer;
 	transition: color var(--dur-fast) var(--ease-standard),
 		background-color var(--dur-fast) var(--ease-standard);
@@ -2130,26 +2148,6 @@ a.evp-cta__btn--accent:hover {
 }
 
 /* ---- Summary ledger (§D.7.2 item 5) — facts, not chips ----------------- */
-/* ---- The meta section -------------------------------------------------
- * ONE divider on this whole region, and it is the one at the TOP — the boundary between the stage
- * list and the facts. Inside, the rows are separated by spacing alone: §B.4.1 makes spacing the first
- * separator, and a rule under every row turned a five-fact summary into a five-box table.
- *
- * The divider lives on the meta block rather than under the stage list so it only ever exists when
- * there is something on both sides of it — a listing with no stages, or none of these facts, draws no
- * line at all.
- */
-.evp-lane__meta {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
-}
-
-.evp-stages + .evp-lane__meta {
-	padding-block-start: var(--space-5);
-	border-block-start: var(--hairline);
-}
-
 .evp-lane__ledger {
 	display: flex;
 	flex-direction: column;
@@ -2460,48 +2458,6 @@ a.evp-cta__btn--accent:hover {
 }
 
 /* ============================================================================
- * LANE PANEL — the floating panel treatment (§D.7.2)
- *
- * One width for both shells, stated here, because the panel is a page element now rather than a shell
- * slot. It used to be two: the authenticated lane took its width from `MiddleNavSplitter`'s inline
- * `--shell-lane-w` (which no ancestor rule can override, and overriding `inline-size` instead would
- * make the drag handle lie), while the guest aside took `--guest-aside-w-expanded`. Removing both
- * hosts removes both mechanisms.
- * ========================================================================== */
-
-/*
- * The panel. A SOLID tonal step and a large radius — ONE separation device, and it is the ramp (§B.4).
- *
- * No shadow. It carried `--elevation-medium`, which is a SECOND device on a boundary the tonal step
- * already draws, and §B.4 spends one device per boundary. The elevation was arguing that the panel
- * floats; the pin is what makes it float, and a reader watching the body scroll under a stationary
- * surface does not need to be told so a second time in ink.
- *
- * No glass either. The guest aside this mirrors carries a `backdrop-filter`, and §B.4.3 permits that
- * on viewport-pinned top bars, floating mobile sheets/scrims, and marks over arbitrary photography —
- * a sticky in-page panel is none of the three. The guest aside is grandfathered (flagged in Decision
- * #78(d)); extending the exception to a NEW panel would be choosing the wrong side of a rule that is
- * currently only being tolerated. The solid step reads identically and is measurable.
- */
-.evp-lane__full {
-	/* background: var(--surface-1); */
-	border-radius: var(--radius-container-lg);
-	overflow: hidden;
-}
-
-/* ---- The pinned action footer -------------------------------------------
- * `flex: none` and `sticky` at the base, so it cannot collapse or scroll away: the offer stays on
- * screen however long the ledger above it runs. `display: block` rather than the skeleton's `flex`,
- * because the rig it holds is itself a column and would otherwise be a flex ITEM sized to content.
- */
-.evp-lane__footer {
-	display: block;
-	padding: var(--evp-lane-pad);
-	/* background: var(--surface-1); */
-	border-block-start: var(--hairline);
-}
-
-/* ============================================================================
  * MIGRATED STICKY HEADER (§D.7.6)
  *
  * The reveal transition, the `visibility`-based tab-order gating and the guest shell's glass underlay
@@ -2597,7 +2553,8 @@ a.evp-cta__btn--accent:hover {
  * `:has(.evp-laneslot)` narrows it to this page rather than to any surface with a migrated header, so
  * a profile — which mounts the same `.pf-stickyhead` — cannot pick up an offset meant for this frame.
  */
-.ui-middle-nav:has(.evp-laneslot):has(.pf-stickyhead[data-condensed="true"]) {
+.ui-middle-nav:has(.evp-laneslot):has(.pf-stickyhead[data-condensed="true"]),
+.ui-middle-nav:has(.evp[data-mode="preview"] .evp-laneslot) {
 	--evp-band-offset: var(--shell-midnav-header-h);
 }
 
@@ -2648,6 +2605,56 @@ a.evp-cta__btn--accent:hover {
 	gap: var(--space-4);
 	flex: none;
 	min-inline-size: 0;
+}
+
+.evp-stickyhead__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	animation: evp-stickyhead-actions-in var(--dur-medium) var(--spring-standard);
+}
+
+.ui-button.evp-stickyhead__cta,
+a.evp-stickyhead__cta {
+	--btn-radius: var(--radius-full);
+	text-decoration: none;
+}
+
+a.evp-stickyhead__message {
+	text-decoration: none;
+}
+
+@keyframes evp-stickyhead-actions-in {
+	from {
+		opacity: 0;
+		transform: translateY(var(--space-1));
+	}
+
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.evp-stickyhead__actions {
+		animation: none;
+	}
+}
+
+[data-motion="reduced"] .evp-stickyhead__actions {
+	animation: none;
+}
+
+@media (max-width: 767px) {
+	.evp-stickyhead[data-actions="true"] :is(.evp-stickyhead__seller, .evp-stickyhead__rating) {
+		display: none;
+	}
+}
+
+.evp-frame__probe {
+	display: none;
 }
 
 .evp-stickyhead__seller {
@@ -2977,3 +2984,44 @@ a.evp-cta__btn--accent:hover {
 	animation: none;
 }
 /* #endregion */
+
+.evp-seatshare {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.evp-seatshare__fact {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
+}
+
+.evp-seatshare__meta {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: var(--leading-normal);
+}
+
+.evp-seatshare__link {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.evp-seatshare__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.evp-seatshare__error {
+	margin: 0;
+	color: var(--danger);
+	font-size: var(--text-sm);
+}

@@ -75,6 +75,55 @@ export function stageLedger(funded: readonly ProjectStage[], currency: string): 
 	};
 }
 
+/**
+ * A pipeline's stages at their own prices, with no total: adding one to Projects charges nothing, and
+ * each stage is bought later, one ticket at a time (`PRODUCT_SPEC.md` §Creation & Purchasing Gate).
+ */
+export function pipelineLedger(stages: readonly ProjectStage[], currency: string): ConversionLedger {
+	return {
+		lines: stages.map((stage): LedgerLine => ({
+			key: stage.id,
+			label: `${stage.index}. ${stage.name}`,
+			amount: { minor: toMinorUnits(stage.price.min, currency) ?? 0, currency },
+			isFloor: stage.price.max > stage.price.min,
+		})),
+		total: null,
+		note: "Nothing is charged now. You buy each stage per ticket once the project is under way.",
+	};
+}
+
+/**
+ * What an application to a project stage asks for: the stage, the role (or any open role), the
+ * ticket price the chosen opening pays, and the seats still open. Nothing is charged.
+ */
+export function applyLedger(
+	stage: ProjectStage | null,
+	roleId: string,
+	currency: string,
+): ConversionLedger {
+	if (!stage) return { lines: [], total: null, note: null };
+	const role = stage.roles.find((r) => r.id === roleId) ?? null;
+	const price = role?.price ?? stage.price;
+	const open = role?.openSeats ?? stage.openSeats;
+	const lines: LedgerLine[] = [{ key: "stage", label: "Stage", text: stage.name }];
+	if (stage.roles.some((r) => r.id)) {
+		lines.push({ key: "role", label: "Role", text: role?.name ?? "Any open role" });
+	}
+	lines.push({
+		key: "ticket",
+		label: "Per ticket",
+		amount: { minor: toMinorUnits(price.min, currency) ?? 0, currency },
+		isFloor: price.max > price.min,
+	});
+	lines.push({ key: "open", label: "Open seats", text: open === 1 ? "1 open" : `${open} open` });
+	if (stage.turnaround) lines.push({ key: "turnaround", label: "Turnaround", text: stage.turnaround });
+	return {
+		lines,
+		total: null,
+		note: "Nothing is charged. The client reviews every proposal before seating anyone.",
+	};
+}
+
 /** One fixed-scope deliverable at the listing's headline price. */
 export function flatLedger(price: LedgerPrice, label: string): ConversionLedger {
 	return {

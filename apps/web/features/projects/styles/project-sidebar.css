@@ -245,11 +245,11 @@
 }
 
 .proj-detail__star[data-on="true"] {
-	color: var(--primary-ink);
+	color: color-mix(in srgb, var(--warning) 72%, var(--on-surface));
 }
 
 .proj-detail__star[data-on="true"] :is(svg, path) {
-	fill: var(--primary-ink);
+	fill: currentColor;
 }
 
 .proj-detail__star:focus-visible,

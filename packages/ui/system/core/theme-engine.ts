@@ -263,8 +263,8 @@ export function buildScheme(
 			// BRAND_TONE.
 			"--primary": hx(core.a1.tone(45)),
 			"--primary-mid": hx(core.a1.tone(55)),
-			"--on-primary": hx(core.a1.tone(98)),
-			"--secondary": hx(core.a2.tone(fg(40))),
+			"--on-primary": hx(core.a1.tone(99)),
+			"--secondary": hx(core.a2.tone(fg(60))),
 			"--on-secondary": hx(core.a2.tone(on(98))),
 			"--tertiary": hx(core.a3.tone(fg(40))),
 			"--on-tertiary": hx(core.a3.tone(on(98))),

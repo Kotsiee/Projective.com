@@ -40,6 +40,29 @@ Deno.test("linkActionItems honours include order and names a saved item's remova
 	assertEquals(rows[0].label, "Remove from saved");
 });
 
+Deno.test("linkActionItems makes Save a split row when it carries save-to-list rows", () => {
+	const [row] = linkActionItems({
+		href: "/x",
+		title: "X",
+		include: ["save"],
+		save: {
+			saved: false,
+			onToggle: () => {},
+			lists: [{ key: "list-a", label: "Inspiration" }],
+		},
+	});
+	assertEquals(row.items?.map((item) => item.key), ["list-a"]);
+	assert(typeof row.command === "function");
+	assertEquals(typeof row.emptyLabel, "string");
+	const [plain] = linkActionItems({
+		href: "/x",
+		title: "X",
+		include: ["save"],
+		save: { saved: false, onToggle: () => {} },
+	});
+	assertEquals(plain.items, undefined);
+});
+
 Deno.test("linkActionItems runs the caller's share flow", () => {
 	let shared = 0;
 	const [row] = linkActionItems({

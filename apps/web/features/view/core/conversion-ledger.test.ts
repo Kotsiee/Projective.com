@@ -2,8 +2,10 @@ import { assertEquals } from "@std/assert";
 import type { ProjectStage } from "@projective/types/explore";
 import {
 	callLedger,
+	applyLedger,
 	flatLedger,
 	type LedgerPrice,
+	pipelineLedger,
 	seatLedger,
 	sessionLedger,
 	stageLedger,
@@ -98,4 +100,30 @@ Deno.test("seatLedger multiplies a per-seat price by the seats", () => {
 	const ledger = seatLedger({ ...GBP_60, unit: "seat" }, 3, "4 sittings from Tue 14 Nov");
 	assertEquals(ledger.total?.amount.minor, 18000);
 	assertEquals(ledger.lines[0].key, "sittings");
+});
+
+Deno.test("applyLedger names the stage without its index and prices the chosen role", () => {
+	const s: ProjectStage = {
+		...stage(2, 100, 300),
+		name: "Build",
+		roles: [
+			{ id: "rol-a", name: "Frontend", openSeats: 2, price: { min: 250, max: 250, label: "" } },
+			{ name: "Closed role", openSeats: 0, price: { min: 1, max: 1, label: "" } },
+		],
+	};
+	const any = applyLedger(s, "", "USD");
+	assertEquals(any.lines.map((l) => l.text ?? l.amount?.minor), ["Build", "Any open role", 10000, "1 open"]);
+	assertEquals(any.lines[2].isFloor, true);
+	const picked = applyLedger(s, "rol-a", "USD");
+	assertEquals(picked.lines.map((l) => l.text ?? l.amount?.minor), ["Build", "Frontend", 25000, "2 open"]);
+	assertEquals(picked.total, null);
+	assertEquals(applyLedger(null, "", "USD").lines, []);
+});
+
+Deno.test("pipelineLedger lists every stage at its own price and states no total", () => {
+	const ledger = pipelineLedger([stage(1, 400), stage(2, 600, 900)], "GBP");
+	assertEquals(ledger.lines.map((l) => l.amount?.minor), [40000, 60000]);
+	assertEquals(ledger.lines.map((l) => l.isFloor), [false, true]);
+	assertEquals(ledger.total, null);
+	assertEquals(typeof ledger.note, "string");
 });

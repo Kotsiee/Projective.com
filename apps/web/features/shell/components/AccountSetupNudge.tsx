@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import type { AccountSetup } from "@projective/types/user";
 import { VERIFICATION_STAMP_META } from "@projective/types/org";
-import { ProgressBar } from "@projective/ui/feedback";
+import { ProgressBar, Tooltip } from "@projective/ui/feedback";
 import { VerificationStampBadge } from "@projective/ui/display";
 import { NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import {
@@ -121,19 +121,36 @@ export function AccountSetupNudge(
 			{action
 				? (
 					<div class="shell-setup__next">
-						{SETUP_ACTION_REASON[action]
-							? <p class="shell-setup__reason">{SETUP_ACTION_REASON[action]}</p>
-							: null}
-						<a
-							class="ui-button ui-button--primary ui-button--filled ui-button--size-sm ui-button--fluid shell-setup__cta"
+						<SetupCta
 							href={setupActionHref(action, handle)}
-							onClick={onNavigate}
-						>
-							<span class="ui-button__label">{SETUP_ACTION_LABEL[action]}</span>
-						</a>
+							label={SETUP_ACTION_LABEL[action]}
+							reason={SETUP_ACTION_REASON[action] || null}
+							onNavigate={onNavigate}
+						/>
 					</div>
 				)
 				: null}
 		</div>
 	);
+}
+
+/** The next step's button; why it matters is a hover tooltip rather than a line of text above it. */
+function SetupCta(
+	{ href, label, reason, onNavigate }: {
+		href: string;
+		label: string;
+		reason: string | null;
+		onNavigate: () => void;
+	},
+): JSX.Element {
+	const cta = (
+		<a
+			class="ui-button ui-button--primary ui-button--filled ui-button--size-sm ui-button--fluid shell-setup__cta"
+			href={href}
+			onClick={onNavigate}
+		>
+			<span class="ui-button__label">{label}</span>
+		</a>
+	);
+	return reason ? <Tooltip content={reason} placement="top">{cta}</Tooltip> : cta;
 }

@@ -70,6 +70,7 @@ import FeedbackHost from "@web/features/feedback/islands/FeedbackHost.island.tsx
 import { MoneyFlowMount } from "@web/features/checkout/components/MoneyFlowMount.tsx";
 import { settingsLaneFor } from "@web/features/settings/core/settings-slots.tsx";
 import { notificationsLaneFor } from "@web/features/notifications/core/notifications-lane.tsx";
+import { savedLaneFor } from "@web/features/saved/core/saved-lane.tsx";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
@@ -265,6 +266,9 @@ async function laneFor(
 
 	const notificationsLane = notificationsLaneFor(url);
 	if (notificationsLane) return notificationsLane;
+
+	const savedLane = savedLaneFor(url);
+	if (savedLane) return savedLane;
 
 	if (!url.pathname.startsWith("/projects")) return sectionLane();
 

@@ -407,6 +407,13 @@
 	--wave-rest: color-mix(in srgb, var(--on-primary) 45%, transparent);
 }
 
+.msg-bubble[data-quote="true"] {
+	max-inline-size: min(28rem, 85%);
+	padding: var(--space-3) var(--space-4);
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
 /* A media/audio-only bubble drops the text padding so tiles sit tight to the radius. */
 .msg-bubble:has(.msg-media):not(:has(.msg-bubble__text)),
 .msg-bubble:has(.msg-audio):not(:has(.msg-bubble__text)) {

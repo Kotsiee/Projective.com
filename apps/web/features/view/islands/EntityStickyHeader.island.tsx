@@ -19,6 +19,11 @@ import { BackLink } from "../components/BackLink.tsx";
 import type { ExploreItem } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
+import { Button } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
+import { ctaMirror, type MirroredCta, pastFrame } from "../core/cta-mirror.ts";
+import { currentOffer } from "../core/booking-state.ts";
+import ContactPopover from "./ContactPopover.island.tsx";
 
 /**
  * EntityStickyHeader — the condensed listing identity that MIGRATES into the middle-nav frame's header
@@ -66,11 +71,14 @@ export default function EntityStickyHeader(
 	const owner = item.owner;
 	const handle = owner.handle.replace(/^@/, "");
 	const rating = item.rating?.asHelper ?? item.rating?.asClient ?? null;
+	const mirror = ctaMirror.value;
+	const actions = condensed && pastFrame.value ? mirror?.primary ?? null : null;
 
 	return (
 		<div
 			class="pf-stickyhead evp-stickyhead"
 			data-condensed={condensed ? "true" : "false"}
+			data-actions={actions ? "true" : undefined}
 			aria-hidden={condensed ? undefined : "true"}
 		>
 			<BackLink ctx={ctx} placement="band" />
@@ -139,7 +147,82 @@ export default function EntityStickyHeader(
 						/>
 					</a>
 				)}
+
+				{actions && <HeaderActions primary={actions} contact={mirror?.contact ?? null} />}
 			</div>
+		</div>
+	);
+}
+
+/**
+ * The band's transaction controls, offered only once the reader has scrolled past the frame and the
+ * lane has left the screen (Decision #521, owner ruling): the rig's primary as a small filled button
+ * with its glyph and label, and the contact control as a filled icon-only button — the seller's
+ * Contact menu on a service, Message client on a brief. Each runs the rig's own handler.
+ */
+function HeaderActions(
+	{ primary, contact }: { primary: MirroredCta; contact: MirroredCta | null },
+): JSX.Element {
+	const offer = currentOffer.value;
+	const severity = primary.tone === "primary" ? "primary" : "accent";
+	return (
+		<div class="evp-stickyhead__actions" role="group" aria-label="Actions">
+			{primary.href
+				? (
+					<a
+						class={`ui-button ui-button--${severity} ui-button--filled ui-button--size-sm ui-button--rounded evp-stickyhead__cta`}
+						href={primary.href}
+					>
+						<span class="ui-button__icon">
+							<Icon name={primary.icon} size="sm" aria-hidden />
+						</span>
+						<span class="ui-button__label">{primary.label}</span>
+					</a>
+				)
+				: severity === "accent"
+				? (
+					<Button
+						severity="accent"
+						variant="filled"
+						size="sm"
+						rounded
+						class="evp-stickyhead__cta"
+						icon={<Icon name={primary.icon} size="sm" aria-hidden />}
+						label={primary.label}
+						disabled={primary.disabled}
+						onClick={() => primary.run?.()}
+					/>
+				)
+				: (
+					<Button
+						severity="primary"
+						variant="filled"
+						size="sm"
+						rounded
+						class="evp-stickyhead__cta"
+						icon={<Icon name={primary.icon} size="sm" aria-hidden />}
+						label={primary.label}
+						disabled={primary.disabled}
+						onClick={() => primary.run?.()}
+					/>
+				)}
+			{offer
+				? <ContactPopover offer={offer} variant="icon" />
+				: contact?.href
+				? (
+					<Tooltip content={contact.label} placement="bottom">
+						<a
+							class="ui-button ui-button--secondary ui-button--filled ui-button--size-sm ui-button--rounded ui-button--icon-only evp-stickyhead__message"
+							href={contact.href}
+							aria-label={contact.label}
+						>
+							<span class="ui-button__icon">
+								<Icon name={contact.icon} size="sm" aria-hidden />
+							</span>
+						</a>
+					</Tooltip>
+				)
+				: null}
 		</div>
 	);
 }

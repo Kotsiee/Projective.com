@@ -6,7 +6,7 @@ import { useEffect, useRef } from "preact/hooks";
 /**
  * A stylesheet reaches a page ONLY through a client/island bundle — a sheet imported by a server
  * component ships nothing. This island renders `.fsh-*` and nothing borrowed, so one import is the
- * whole of its layer; the package components it mounts (`Button`, `Checkbox`, `InputNumber`,
+ * whole of its layer; the package components it mounts (`Button`, `Checkbox`, `NumberInput`,
  * `Message`, `Tooltip`) carry their own sheets into this same bundle through their module imports.
  */
 import "../styles/share-drive.css";
@@ -14,7 +14,7 @@ import "../styles/share-drive.css";
 
 import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useId, useOverlayStack } from "@projective/ui/hooks";
-import { Button, Checkbox, InputNumber } from "@projective/ui/fields";
+import { Button, Checkbox, NumberInput } from "@projective/ui/fields";
 import { Message, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 
@@ -673,12 +673,12 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 											/>
 											{limitOn.value
 												? (
-													<InputNumber
+													<NumberInput
 														value={limitCount}
 														min={1}
 														max={100_000}
 														step={1}
-														showButtons
+														maxFractionDigits={0}
 														disabled={busy.value}
 														class="fsh-terms__limit"
 														// Distinct from the checkbox's visible label rather than a copy of it: two

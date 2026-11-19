@@ -101,12 +101,46 @@ export const SavedItemSchema = z.object({
 });
 export type SavedItem = z.infer<typeof SavedItemSchema>;
 
-/** A named collection. */
+/**
+ * A named collection — a "list" in the UI. `count` and `covers` (up to four thumbnails, newest first)
+ * are present where the read draws list boards (`/saved`), and absent on the bare read a save menu uses.
+ */
 export const SavedCollectionSchema = z.object({
 	id: z.string().uuid(),
 	name: z.string(),
+	count: z.number().int().min(0).optional(),
+	covers: z.array(z.string()).max(4).optional(),
 });
 export type SavedCollection = z.infer<typeof SavedCollectionSchema>;
+
+/**
+ * `POST /api/saved/collections/:id/basket` — put a list's purchasable items into a basket: an existing
+ * one (`basketId`, `null` = the default) or a new named one (`newBasketName`).
+ */
+export const SavedListToBasketSchema = z.object({
+	basketId: z.string().uuid().nullable().optional(),
+	newBasketName: z.string().trim().min(1).max(120).optional(),
+}).refine((v) => !(v.basketId && v.newBasketName), {
+	message: "Choose a basket or name a new one, not both.",
+	path: ["newBasketName"],
+});
+export type SavedListToBasket = z.infer<typeof SavedListToBasketSchema>;
+
+/** One list item the bulk add could not place, with where to finish it. */
+export const SavedListSkipSchema = z.object({
+	title: z.string(),
+	href: z.string().nullable(),
+	reason: z.string(),
+});
+export type SavedListSkip = z.infer<typeof SavedListSkipSchema>;
+
+/** What the bulk add answers: the basket it filled, what landed, and what needs a step of its own. */
+export const SavedListToBasketResultSchema = z.object({
+	basketId: z.string().nullable(),
+	added: z.array(z.string()),
+	skipped: z.array(SavedListSkipSchema),
+});
+export type SavedListToBasketResult = z.infer<typeof SavedListToBasketResultSchema>;
 
 /** `GET /api/saved` query. `collection` narrows the bookmark kinds to one collection or the unfiled. */
 export const SavedListParamsSchema = z.object({

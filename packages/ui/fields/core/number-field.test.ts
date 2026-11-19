@@ -16,8 +16,8 @@ import {
  *
  * Two things are being protected here, and only one of them is arithmetic.
  *
- * The first is that these functions are the SINGLE implementation shared by `InputNumber` and
- * `NumberInput`. A second copy of "clamp then snap then round" would agree with this one on the day
+ * The first is that these functions are the SINGLE implementation every numeric control reaches
+ * (`NumberInput`, and what is built on it). A second copy of "clamp then snap then round" would agree with this one on the day
  * it was written and drift afterwards, and on this surface the figures are prices, so the drift is
  * a money defect that no type-checker can see.
  *

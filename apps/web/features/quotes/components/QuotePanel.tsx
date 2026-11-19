@@ -3,6 +3,7 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/quotes.css";
 import { Button, useId } from "@projective/ui/fields";
 import type {
+	QuotableListing,
 	QuoteActInput,
 	QuoteActionKind,
 	QuoteRole,
@@ -30,6 +31,12 @@ export interface QuotePanelProps {
 	headingClass: string;
 	/** Told after an act lands, so a host surface can re-read what the act changed. */
 	onChanged?: () => void;
+	/**
+	 * Offer the viewer's own quote to this person (Decision #522): the panel reads the services the
+	 * viewer may quote and, when there are any, shows Send a quote even before a request exists.
+	 * `preferListing` is the listing slug to start the composer on (a listing's own Clients view).
+	 */
+	issuer?: { buyerName: string; preferListing?: string };
 }
 
 const CONFIRMATIONS: Partial<Record<QuoteActionKind, QuoteConfirmation>> = {
@@ -80,6 +87,55 @@ export function QuotePanel(props: QuotePanelProps): JSX.Element | null {
 	const handle = useSignal(props.handle);
 	if (handle.peek() !== props.handle) handle.value = props.handle;
 	const idBase = useId(undefined, props.idBase);
+	const quotable = useSignal<readonly QuotableListing[] | null>(null);
+	const issueOpen = useSignal(false);
+	const issuing = !!props.issuer;
+
+	useSignalEffect(() => {
+		if (!issuing) return;
+		let live = true;
+		void QuoteService.listings().then((res) => {
+			if (!live) return;
+			const all = res.ok && res.data ? res.data.listings : [];
+			const prefer = props.issuer?.preferListing;
+			quotable.value = prefer && all.some((l) => l.slug === prefer)
+				? [...all.filter((l) => l.slug === prefer), ...all.filter((l) => l.slug !== prefer)]
+				: all;
+		});
+		return () => {
+			live = false;
+		};
+	});
+
+	async function issue(offer: SendQuoteOfferInput, listing: string | null): Promise<void> {
+		if (!listing) return;
+		busy.value = { id: "issue", kind: "send_offer" };
+		fieldErrors.value = {};
+		const res = await QuoteService.issue({
+			action: "issue",
+			buyer: handle.peek(),
+			listing,
+			scope: offer.scope,
+			deliverables: offer.deliverables,
+			priceMinor: offer.priceMinor,
+			turnaroundDays: offer.turnaroundDays,
+			expiresInDays: offer.expiresInDays,
+		});
+		busy.value = null;
+		if (!res.ok || !res.data) {
+			fieldErrors.value = res.errors ?? {};
+			notice.value = { id: "issue", text: res.message ?? "That quote didn't go through. Try again.", tone: "error" };
+			return;
+		}
+		const next = res.data.quote;
+		const known = (quotes.value ?? []).some((q) => q.id === next.id);
+		quotes.value = known
+			? (quotes.value ?? []).map((q) => (q.id === next.id ? next : q))
+			: [next, ...(quotes.value ?? [])];
+		notice.value = { id: next.id, text: res.data.confirmation, tone: "info" };
+		issueOpen.value = false;
+		props.onChanged?.();
+	}
 
 	useSignalEffect(() => {
 		const who = handle.value;
@@ -181,11 +237,34 @@ export function QuotePanel(props: QuotePanelProps): JSX.Element | null {
 			</section>
 		);
 	}
-	if (shown.length === 0) return null;
+	const canIssue = issuing && (quotable.value?.length ?? 0) > 0;
+	if (shown.length === 0 && !canIssue) return null;
 
 	return (
 		<section class={props.sectionClass} aria-labelledby={headingId}>
-			<h3 class={props.headingClass} id={headingId}>{props.heading}</h3>
+			<div class="qte-panel__head">
+				<h3 class={props.headingClass} id={headingId}>{props.heading}</h3>
+				{canIssue && (
+					<Button
+						label="Send a quote"
+						size="sm"
+						severity="neutral"
+						variant="outlined"
+						onClick={() => {
+							fieldErrors.value = {};
+							issueOpen.value = true;
+						}}
+					/>
+				)}
+			</div>
+			{notice.value?.id === "issue" && (
+				<p class="qte__notice qte__notice--error" role="alert">{notice.value.text}</p>
+			)}
+			{shown.length === 0 && (
+				<p class="qte-panel__state">
+					Price a custom scope on one of your services. It lands in your conversation as a quote card.
+				</p>
+			)}
 			<div class="qte-panel">
 				{shown.map((q) => (
 					<QuoteCard
@@ -205,6 +284,15 @@ export function QuotePanel(props: QuotePanelProps): JSX.Element | null {
 					busy={busy.value?.kind === "send_offer"}
 					errors={fieldErrors.value}
 					onSend={(offer) => void send(offer)}
+				/>
+			)}
+			{props.issuer && (
+				<QuoteOfferDialog
+					visible={issueOpen}
+					issue={{ buyerName: props.issuer.buyerName, listings: quotable.value }}
+					busy={busy.value?.id === "issue"}
+					errors={fieldErrors.value}
+					onSend={(offer, listing) => void issue(offer, listing)}
 				/>
 			)}
 			<QuoteConfirmDialog

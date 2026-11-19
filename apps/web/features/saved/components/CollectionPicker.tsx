@@ -5,6 +5,7 @@ import type { SavedCollection, SavedEntityType } from "@projective/types/org";
 import { Dialog, InlineNotice } from "@projective/ui/feedback";
 import { Button, InputText, RadioGroup } from "@projective/ui/fields";
 import { SavedService } from "../core/SavedService.ts";
+import { rememberList } from "../core/saved-state.ts";
 
 /** What the picker files: one saved bookmark (a listing, a person or a channel). */
 export interface PickerTarget {
@@ -61,6 +62,7 @@ export function CollectionPicker(
 			return;
 		}
 		collections.value = [...(collections.value ?? []), res.data];
+		rememberList(res.data);
 		choice.value = res.data.id;
 		name.value = "";
 		error.value = "";
@@ -83,18 +85,18 @@ export function CollectionPicker(
 		}
 		const where = collections.value?.find((c) => c.id === collectionId)?.name;
 		open.value = false;
-		onDone(collectionId, where ? `Saved to ${where}.` : "Saved, in no collection.");
+		onDone(collectionId, where ? `Saved to ${where}.` : "Saved, in no list.");
 	}
 
 	const options = [
-		{ label: "No collection", value: UNFILED },
+		{ label: "No list", value: UNFILED },
 		...(collections.value ?? []).map((c) => ({ label: c.name, value: c.id })),
 	];
 
 	return (
 		<Dialog
 			visible={open}
-			header="Add to collection"
+			header="Save to list"
 			width="26rem"
 			footer={
 				<div class="svd-picker__actions">
@@ -111,7 +113,7 @@ export function CollectionPicker(
 			{target && <p class="svd-picker__subject">{target.title}</p>}
 			{error.value && <InlineNotice text={error.value} align="start" assertive />}
 			<RadioGroup
-				aria-label="Collection"
+				aria-label="List"
 				orientation="vertical"
 				loading={collections.value === null}
 				options={options}
@@ -125,8 +127,8 @@ export function CollectionPicker(
 				}}
 			>
 				<InputText
-					aria-label="New collection name"
-					placeholder="New collection"
+					aria-label="New list name"
+					placeholder="New list"
 					maxLength={60}
 					value={name}
 					fluid

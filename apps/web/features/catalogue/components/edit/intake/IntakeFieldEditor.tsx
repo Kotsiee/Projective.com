@@ -1,8 +1,22 @@
 import type { JSX } from "preact";
 import { useSortable } from "@projective/ui/dnd";
-import { InputText, NumberStepper, Select, ToggleSwitch } from "@projective/ui/fields";
+import {
+	InputText,
+	MoneyInput,
+	MultiSelect,
+	NumberStepper,
+	Select,
+	SelectButton,
+	ToggleSwitch,
+} from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import { type IntakeField, IntakeFieldKind } from "@projective/types/services";
+import {
+	conditionAnswers,
+	conditionSources,
+	type IntakeCondition,
+	type IntakeField,
+	IntakeFieldKind,
+} from "@projective/types/services";
 import { hasOptions, INTAKE_KIND_LABELS, withKind } from "../../../core/intake-model.ts";
 import { IntakeOptionsEditor } from "./IntakeOptionsEditor.tsx";
 
@@ -21,18 +35,30 @@ export interface IntakeFieldEditorProps {
 	/** Published: only the wording and the options may change. */
 	locked: boolean;
 	problem: string | null;
+	/** The questions above this one: what it may follow (Decision #522). */
+	earlier: readonly IntakeField[];
+	/** The listing's currency, which a number question's guide pricing is in. */
+	currency: string;
 	onChange: (field: IntakeField) => void;
 	onRemove: () => void;
 }
 
 /**
  * IntakeFieldEditor — one buyer question: its wording, its kind, whether it must be answered, a
- * one-line hint, and what its kind needs (options for a choice, bounds and a unit for a number, a
- * placeholder for text). Locked once the listing has been published, when only the wording and the
- * options stay editable.
+ * one-line hint, and what its kind needs (options for a choice; bounds, a unit, a starting value and
+ * linear guide pricing for a number; a placeholder for text). Any question below a yes/no or a choice
+ * may be a follow-up to it: asked only when (or unless) that question is answered a given way
+ * (Decision #522). Locked once the listing has been published, when only the wording, the options,
+ * the starting value and the pricing stay editable.
  */
 export function IntakeFieldEditor(props: IntakeFieldEditorProps): JSX.Element {
 	const { index, field, locked, onChange } = props;
+	const sources = conditionSources(props.earlier);
+	const source = field.condition
+		? props.earlier.find((f) => f.id === field.condition?.fieldId) ?? null
+		: null;
+	const setCondition = (next: IntakeCondition | undefined) => onChange({ ...field, condition: next });
+	const unitWord = field.unit ? field.unit.replace(/s$/, "") : "unit";
 	const position = index + 1;
 	const base = `cat-intake-${field.id}`;
 	const sortable = useSortable({
@@ -195,6 +221,160 @@ export function IntakeFieldEditor(props: IntakeFieldEditorProps): JSX.Element {
 							disabled={locked}
 						/>
 					</div>
+				</div>
+			)}
+
+			{field.kind === "number" && (
+				<div class="cat-offer__row">
+					<div class="cat-sec__field">
+						<label class="cat-sec__label" for={`${base}-start`}>Starting value</label>
+						<div class="cat-offer__compact">
+							<NumberStepper
+								id={`${base}-start`}
+								value={field.defaultValue ?? null}
+								min={field.min}
+								max={field.max}
+								onValueChange={(v) => patch({ defaultValue: v ?? undefined })}
+							/>
+						</div>
+					</div>
+					<div class="cat-sec__field cat-intake__required">
+						<ToggleSwitch
+							value={!!field.pricing}
+							onValueChange={(on) =>
+								patch({
+									pricing: on
+										? {
+											model: "linear",
+											perUnitMinor: field.pricing?.perUnitMinor ?? 0,
+											includedUnits: field.pricing?.includedUnits ?? 0,
+										}
+										: undefined,
+								})}
+							label="Adjusts your guide price"
+						/>
+					</div>
+					{field.pricing && (
+						<>
+							<div class="cat-sec__field">
+								<label class="cat-sec__label" for={`${base}-perunit`}>Per {unitWord}</label>
+								<MoneyInput
+									id={`${base}-perunit`}
+									value={field.pricing.perUnitMinor}
+									currency={props.currency}
+									onValueChange={(minor) =>
+										field.pricing && patch({ pricing: { ...field.pricing, perUnitMinor: minor ?? 0 } })}
+								/>
+							</div>
+							<div class="cat-sec__field">
+								<label class="cat-sec__label" for={`${base}-included`}>Included</label>
+								<div class="cat-offer__compact">
+									<NumberStepper
+										id={`${base}-included`}
+										value={field.pricing.includedUnits}
+										min={0}
+										onValueChange={(v) =>
+											field.pricing &&
+											patch({ pricing: { ...field.pricing, includedUnits: Math.max(0, v ?? 0) } })}
+									/>
+								</div>
+							</div>
+						</>
+					)}
+				</div>
+			)}
+			{field.kind === "number" && field.pricing && (
+				<p class="cat-sec__hint">
+					Each {unitWord} past the included amount moves the guide buyers see by this much, up or down. It
+					guides a quote; the price you send is the one charged.
+				</p>
+			)}
+
+			{(sources.length > 0 || field.condition) && (
+				<div class="cat-intake__followup">
+					<ToggleSwitch
+						value={!!field.condition}
+						onValueChange={(on) => {
+							const first = sources[0];
+							setCondition(
+								on && first
+									? { fieldId: first.id, anyOf: [conditionAnswers(first)[0].value], effect: "show" }
+									: undefined,
+							);
+						}}
+						label="Ask this only when an earlier answer matches"
+						disabled={locked}
+					/>
+					{field.condition && (
+						<div class="cat-offer__row">
+							<div class="cat-sec__field">
+								<span class="cat-sec__label">Show or hide</span>
+								<SelectButton
+									aria-label={`Question ${position}: show or hide`}
+									value={field.condition.effect}
+									options={[{ label: "Show", value: "show" }, { label: "Hide", value: "hide" }]}
+									disabled={locked}
+									onValueChange={(v) =>
+										field.condition &&
+										setCondition({ ...field.condition, effect: v === "hide" ? "hide" : "show" })}
+								/>
+							</div>
+							<div class="cat-sec__field">
+								<label class="cat-sec__label" for={`${base}-source`}>When</label>
+								<Select
+									id={`${base}-source`}
+									value={field.condition.fieldId}
+									options={sources.map((s) => ({
+										label: s.label.trim() || `Question ${props.earlier.indexOf(s) + 1}`,
+										value: s.id,
+									}))}
+									disabled={locked}
+									onValueChange={(v) => {
+										const next = sources.find((s) => s.id === v);
+										if (next && field.condition) {
+											setCondition({
+												...field.condition,
+												fieldId: next.id,
+												anyOf: [conditionAnswers(next)[0].value],
+											});
+										}
+									}}
+								/>
+							</div>
+							{source && (
+								<div class="cat-sec__field">
+									<span class="cat-sec__label">is answered</span>
+									{source.kind === "boolean"
+										? (
+											<SelectButton
+												aria-label={`Question ${position}: the answer it follows`}
+												value={field.condition.anyOf[0] === false ? "no" : "yes"}
+												options={[{ label: "Yes", value: "yes" }, { label: "No", value: "no" }]}
+												disabled={locked}
+												onValueChange={(v) =>
+													field.condition &&
+													setCondition({ ...field.condition, anyOf: [v !== "no"] })}
+											/>
+										)
+										: (
+											<MultiSelect
+												aria-label={`Question ${position}: the answers it follows`}
+												value={field.condition.anyOf.filter((v): v is string => typeof v === "string")}
+												options={conditionAnswers(source).map((a) => ({
+													label: a.label,
+													value: String(a.value),
+												}))}
+												display="chip"
+												disabled={locked}
+												onValueChange={(v) => {
+													if (field.condition && v.length > 0) setCondition({ ...field.condition, anyOf: v });
+												}}
+											/>
+										)}
+								</div>
+							)}
+						</div>
+					)}
 				</div>
 			)}
 		</li>

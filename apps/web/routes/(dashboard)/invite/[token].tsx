@@ -1,13 +1,20 @@
 import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
-import { InviteLinkTokenSchema, type InviteLinkView } from "@projective/types/projects";
+import {
+	InviteLinkTokenSchema,
+	type InviteLinkView,
+	SeatLinkCodeSchema,
+	type SeatInviteView,
+} from "@projective/types/projects";
 import { OrgInviteLinkTokenSchema, type OrgInviteLinkView } from "@projective/types/workspace";
 import { InviteLinkService } from "@server/services/projects/InviteLinkService.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
+import { SessionBackendService } from "@server/services/sessions/SessionBackendService.ts";
 import { INVALID_LINK_VIEW } from "@server/services/workspace/live-invite-links.ts";
 import InviteLinkLanding from "@web/features/projects/islands/InviteLinkLanding.island.tsx";
 import OrgInviteLanding from "@web/features/workspaces/islands/OrgInviteLanding.island.tsx";
+import SeatInviteLanding from "@web/features/projects/islands/SeatInviteLanding.island.tsx";
 
 /**
  * `/invite/[token]` — where an invite link lands. Inside `(dashboard)`, so a guest is sent to
@@ -16,7 +23,8 @@ import OrgInviteLanding from "@web/features/workspaces/islands/OrgInviteLanding.
  * the island renders it.
  *
  *   - a stage invite link (24 base64url characters, Decision #145) → {@link InviteLinkService};
- *   - a team's or business's invite link (`w-` + 24, Decision #318) → {@link WorkspaceBackendService}.
+ *   - a team's or business's invite link (`w-` + 24, Decision #318) → {@link WorkspaceBackendService};
+ *   - a buyer's seat link (`s-` + 24, Decision #522) → {@link SessionBackendService}.
  *
  * `noindex` and `no-referrer`: the path is a capability, so it is neither indexed nor announced to
  * the next site the reader opens.
@@ -40,11 +48,19 @@ const INVALID: InviteLinkView = {
 
 type InviteData =
 	| { scope: "stage"; token: string; view: InviteLinkView }
-	| { scope: "workspace"; token: string; view: OrgInviteLinkView };
+	| { scope: "workspace"; token: string; view: OrgInviteLinkView }
+	| { scope: "seat"; token: string; view: SeatInviteView | null };
 
 export const handler = define.handlers({
 	async GET(ctx) {
 		const actor = readActor(ctx);
+		const seat = SeatLinkCodeSchema.safeParse(ctx.params.token);
+		if (seat.success) {
+			const view = await SessionBackendService.seatInvite(seat.data, actor);
+			ctx.state.title = view?.listingTitle ? `A seat on ${view.listingTitle}` : "Seat link";
+			const data: InviteData = { scope: "seat", token: seat.data, view };
+			return page(data, { headers: INVITE_HEADERS });
+		}
 		const org = OrgInviteLinkTokenSchema.safeParse(ctx.params.token);
 		if (org.success) {
 			const result = await WorkspaceBackendService.resolveInviteLink(org.data, actor);
@@ -66,6 +82,7 @@ export const handler = define.handlers({
 });
 
 export default define.page<typeof handler>(function InvitePage({ data }) {
+	if (data.scope === "seat") return <SeatInviteLanding code={data.token} view={data.view} />;
 	return data.scope === "workspace"
 		? <OrgInviteLanding token={data.token} view={data.view} />
 		: <InviteLinkLanding token={data.token} view={data.view} />;

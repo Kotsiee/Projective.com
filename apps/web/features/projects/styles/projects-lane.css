@@ -341,26 +341,49 @@
 	color: var(--primary);
 }
 
-/* Actions — Star + kebab; revealed ONLY on hover / focus / while the menu is open. */
 .proj-card__actions {
+	--proj-card-action-step: calc(1.7rem + 0.1rem);
+
 	display: inline-flex;
 	align-items: center;
 	gap: 0.1rem;
-	opacity: 0;
-	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
-.proj-card:hover .proj-card__actions,
-.proj-card:focus-within .proj-card__actions,
-.proj-card__actions:has([data-open="true"]) {
+.proj-card__actions > .proj-card__star,
+.proj-card__actions > .proj-card__menu {
+	opacity: 0;
+}
+
+.proj-card:hover .proj-card__actions > *,
+.proj-card:focus-within .proj-card__actions > *,
+.proj-card__actions:has([data-open="true"]) > * {
 	opacity: 1;
 }
 
-/* Touch has no hover to reveal them, so they rest visible: the kebab carries Cancel, the only way a
-   client can end an engagement below the lane breakpoint (Decision #467). */
+.proj-card__actions[data-saved="true"] > .proj-card__star {
+	opacity: 1;
+	transform: translateX(var(--proj-card-action-step));
+}
+
+.proj-card__actions[data-saved="true"]:dir(rtl) > .proj-card__star {
+	transform: translateX(calc(var(--proj-card-action-step) * -1));
+}
+
+.proj-card:hover .proj-card__actions[data-saved="true"] > .proj-card__star,
+.proj-card:focus-within .proj-card__actions[data-saved="true"] > .proj-card__star,
+.proj-card__actions[data-saved="true"]:has([data-open="true"]) > .proj-card__star {
+	transform: none;
+}
+
 @media (hover: none) {
-	.proj-card__actions {
+	.proj-card__actions > .proj-card__star,
+	.proj-card__actions > .proj-card__menu {
 		opacity: 1;
+	}
+
+	.proj-card__actions[data-saved="true"] > .proj-card__star,
+	.proj-card__actions[data-saved="true"]:dir(rtl) > .proj-card__star {
+		transform: none;
 	}
 }
 
@@ -380,14 +403,26 @@
 	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard),
 		color var(--dur-fast) var(--ease-standard),
 		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .proj-card__star:hover,
 .proj-card__menu:hover {
-	color: var(--on-surface);
 	background: var(--surface-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.proj-card__star,
+	.proj-card__menu {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] :is(.proj-card__star, .proj-card__menu) {
+	transition: none;
 }
 
 .proj-card__star:focus-visible,
@@ -397,7 +432,7 @@
 }
 
 .proj-card__star[data-on="true"] {
-	color: var(--warning, var(--primary));
+	color: color-mix(in srgb, var(--warning) 72%, var(--on-surface));
 }
 
 .proj-card__star[data-on="true"] svg {

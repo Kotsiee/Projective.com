@@ -61,6 +61,16 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 - **Validation:** `IntakeFieldSchema` at the route (Zod) and `intakeRefusal`'s inverse on the
   seller side — every option-bearing kind needs ≥ 1 option, a `number` with a slider needs both
   bounds, ids are unique within the list. The database refuses only a non-array or > 12 elements.
+- **Follow-ups, starting values and guide pricing (Decision #522).** A question below a yes/no or a
+  choice may carry a `condition` (`fieldId`, `anyOf` answers, `effect` show or hide): the buyer is asked
+  it only while that earlier answer matches (`visibleIntakeIds`), a hidden follow-up is never
+  required, and its answer is dropped on the way in (`normaliseIntakeAnswers`). The builder's "Ask this
+  only when an earlier answer matches" toggle edits it; `intakeConditionRefusal` refuses a follow-up of
+  nothing above it or of an answer the question no longer offers, and `UpdateListingInputSchema` holds
+  the same rule at the route (`intakeListRefusal`). A `number` may take a `defaultValue` (the form opens
+  on it, the slider rests on it) and `pricing` (`linear` only: `perUnitMinor` per unit past
+  `includedUnits`, in the listing's currency); `intakePriceAdjustment` turns the answers into the guide
+  the quote dialog states. Pricing is a guide for a quote, never a checkout price.
 - **Live write:** `UPDATE marketplace.service_blueprints SET intake_fields = $1 WHERE id = $2` under
   the owner's RLS (`"Owners manage own blueprints"`). The `catalogue.listings` row points at the
   blueprint and restates nothing, so there is exactly one column to write.
@@ -68,8 +78,10 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
   sold would orphan the stored `answers` under the old id on every basket line and invitation. "Has
   been published" means `catalogue.listings.published_at` is set (`ListingDetail.publishedAt`,
   `hasBeenPublished`), which outlives a pause, an archive and a restore to draft. From then on:
-  - The builder lets only the wording (label, hint, placeholder) and the options change, and says why.
-    The pure guard is `intakeLockRefusal` (`@projective/types/services`).
+  - The builder lets only the wording (label, hint, placeholder), the options, a number's starting
+    value and its guide pricing change (none of them changes the shape of a stored answer), and says
+    why; a follow-up rule is locked with everything else, because it decides which answers exist
+    (Decision #522). The pure guard is `intakeLockRefusal` (`@projective/types/services`).
   - `catalogue.save_listing` refuses any change to the questions' ids, order or kinds with 22023
     `DETAIL = 'intake'` (probe `supabase/probes/catalogue_publish_locks.sql`).
   - The same instant fixes the listing's currency, which a never-published draft may still change in

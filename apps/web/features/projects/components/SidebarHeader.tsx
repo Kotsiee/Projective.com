@@ -5,11 +5,11 @@ import { Popover } from "@projective/ui/feedback";
 import { LaneBackLink } from "@projective/ui/navigation";
 import {
 	ArchiveIcon,
+	BookmarkIcon,
 	CloseIcon,
 	ExternalLinkIcon,
 	KebabIcon,
 	ShareIcon,
-	StarIcon,
 } from "./glyphs.tsx";
 
 /**
@@ -97,10 +97,10 @@ export function SidebarHeader(
 					class="proj-detail__star"
 					data-on={starred ? "true" : undefined}
 					aria-pressed={starred}
-					aria-label={starred ? "Unstar project" : "Star project"}
+					aria-label={starred ? "Remove project from saved" : "Save project"}
 					onClick={onToggleStar}
 				>
-					{StarIcon}
+					{BookmarkIcon}
 				</button>
 
 				<Popover

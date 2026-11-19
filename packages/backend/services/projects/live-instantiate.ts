@@ -189,6 +189,8 @@ export interface InstantiateArgs {
 	currency: string | null;
 	idempotencyKey: string;
 	title: string | null;
+	/** The buyer's own description of what they need; `null` = none. */
+	brief: string | null;
 }
 
 /** `marketplace.instantiate_service_blueprint` — the one transaction. */
@@ -202,6 +204,7 @@ export async function instantiateBlueprintRow(
 		p_currency: args.currency,
 		p_idempotency_key: args.idempotencyKey,
 		p_title: args.title,
+		p_brief: args.brief,
 	});
 	if (error) return { refusal: instantiateRefusal(error) };
 	if (!data || typeof data !== "object") return null;

@@ -222,6 +222,7 @@ export function ConversationContextDrawer(props: ConversationContextDrawerProps)
 						heading="Quotes"
 						sectionClass="msg-ctx__section"
 						headingClass="msg-ctx__heading"
+						issuer={{ buyerName: context.counterpart.name }}
 					/>
 				)}
 				{current

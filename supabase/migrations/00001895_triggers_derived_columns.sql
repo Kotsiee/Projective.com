@@ -64,6 +64,29 @@ CREATE TRIGGER trg_quote_requests_parties
         'requester_user_id', 'host_user_id', 'blueprint_id'
     );
 
+-- The quote record (Decision #522): an offer's terms_hash is derived from the row on insert; its terms
+-- never change after (only its lifecycle columns move); an event is never changed; and none of the three
+-- is ever deleted except by the cascade of an erased account (marketplace.fn_quote_record_kept).
+DROP TRIGGER IF EXISTS trg_quote_offers_stamp ON marketplace.quote_offers;
+CREATE TRIGGER trg_quote_offers_stamp
+    BEFORE INSERT ON marketplace.quote_offers
+    FOR EACH ROW EXECUTE FUNCTION marketplace.fn_quote_offers_stamp();
+
+DROP TRIGGER IF EXISTS trg_quote_offers_kept ON marketplace.quote_offers;
+CREATE TRIGGER trg_quote_offers_kept
+    BEFORE UPDATE OR DELETE ON marketplace.quote_offers
+    FOR EACH ROW EXECUTE FUNCTION marketplace.fn_quote_record_kept();
+
+DROP TRIGGER IF EXISTS trg_quote_requests_kept ON marketplace.quote_requests;
+CREATE TRIGGER trg_quote_requests_kept
+    BEFORE DELETE ON marketplace.quote_requests
+    FOR EACH ROW EXECUTE FUNCTION marketplace.fn_quote_record_kept();
+
+DROP TRIGGER IF EXISTS trg_quote_events_kept ON marketplace.quote_events;
+CREATE TRIGGER trg_quote_events_kept
+    BEFORE UPDATE OR DELETE ON marketplace.quote_events
+    FOR EACH ROW EXECUTE FUNCTION marketplace.fn_quote_record_kept();
+
 DROP TRIGGER IF EXISTS trg_listings_derived ON catalogue.listings;
 CREATE TRIGGER trg_listings_derived
     BEFORE INSERT OR UPDATE ON catalogue.listings

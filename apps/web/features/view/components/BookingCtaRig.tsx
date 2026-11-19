@@ -5,6 +5,7 @@ import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { previewWaitlistOffer, type WaitlistPreview } from "../core/waitlist-preview.ts";
 import { Icon } from "@projective/ui/icons";
 import { Button } from "@projective/ui/fields";
+import { Tooltip } from "@projective/ui/feedback";
 import { CtaButton, CtaLink } from "./CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { BookingService } from "../core/BookingService.ts";
@@ -13,10 +14,12 @@ import {
 	applyOffer,
 	currentOffer,
 	openBookingPanel,
+	requestContact,
 	waitlistJoined,
 } from "../core/booking-state.ts";
+import { publishCtaMirror } from "../core/cta-mirror.ts";
 import ContactPopover from "../islands/ContactPopover.island.tsx";
-import { commitArchiveDraft, commitPipeline, commitWaitlist } from "../core/booking-commits.ts";
+import { commitArchiveDraft, commitWaitlist } from "../core/booking-commits.ts";
 import { SIMULATED_SETTLED_LABEL, simulating } from "../core/simulation.ts";
 import { SimulationOutcome } from "./SimulationNotices.tsx";
 import type { BookingActionKind, ServiceBookingOffer } from "@projective/types/services";
@@ -31,10 +34,12 @@ import type { BookingActionKind, ServiceBookingOffer } from "@projective/types/s
  *
  * # The pipeline CTA is never destructive
  *
- * With a draft in place the primary becomes **Open project →**, and removal moves to a secondary
- * control behind an explicit confirmation. A conversion CTA that turned into a delete would put a
- * destructive action under a cursor that was hovering the primary one render ago, and the reader's
- * next click is aimed at where the button WAS rather than at what it now says (root CLAUDE.md §3).
+ * **Add to projects** opens the pipeline dialog (the buyer's requirements and the seller's questions)
+ * rather than writing on press. With a draft in place the primary becomes **Open project →**, and
+ * removal is a circular icon-only ghost beside it, behind an explicit confirmation. A conversion CTA
+ * that turned into a delete would put a destructive action under a cursor that was hovering the
+ * primary one render ago (root CLAUDE.md §3). Helper text sits ABOVE the primary, so the reader meets
+ * the condition before the control it qualifies.
  *
  * # It dispatches on `kind`, not on format
  *
@@ -145,40 +150,10 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				return true;
 			}
 
-			case "instantiate_pipeline": {
+			case "instantiate_pipeline":
 				if (bouncedGuest()) return false;
-				const out = await commitPipeline({
-					serviceId: offer.value.subjectId,
-					workspaceId: null,
-					/*
-					 * A stable key per (listing, tab-session).
-					 *
-					 * Instantiation creates a project, so a double-press or a retry after an unseen timeout
-					 * must resolve to the SAME draft rather than leaving two identical pipelines in someone's
-					 * workspace. Deriving it from the listing id plus a per-load nonce is enough: a retry
-					 * within one page load is the case that needs protecting, and a genuinely new visit
-					 * legitimately wants a new key.
-					 */
-					idempotencyKey: `${offer.value.subjectId}-${loadNonce()}`,
-				});
-				// A simulated draft is never created, so there is no offer to re-read either.
-				if (out.simulated) return true;
-				const res = out.value;
-				if (!res.ok || !res.data) {
-					error.value = res.message ?? "Could not add that to your projects.";
-					return false;
-				}
-				announce(
-					res.data.created
-						? "Added to your projects as a draft."
-						: "This service is already in your projects.",
-				);
-				// Re-read so BOTH regions flip to "Open project" together. Patching the local offer would
-				// leave whichever region did not perform the write showing the old verb.
-				const fresh = await BookingService.offer(offer.value.subjectId);
-				if (fresh.ok && fresh.data) applyOffer(fresh.data.offer);
-				return true;
-			}
+				openBookingPanel("pipeline");
+				return false;
 
 			case "buy_now":
 			case "add_to_basket":
@@ -222,57 +197,67 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 	const heldUntil = mounted.value && offer.value.waitlist?.status === "invited"
 		? offer.value.waitlist.holdExpiresAt
 		: null;
-	const privateCohort = waitlist && (
-		<button
-			type="button"
-			class="evp-cta__inline"
-			onClick={() => {
-				if (!bouncedGuest()) openBookingPanel("quote");
-			}}
-		>
-			Request a private cohort for your team
-		</button>
-	);
+
+	useEffect(() => {
+		publishCtaMirror({
+			primary: {
+				label: joined ? "On the waitlist" : cta.primary.label,
+				icon: cta.primary.href
+					? "arrow-right"
+					: joined
+					? "check"
+					: primaryGlyph(cta.primary.kind),
+				href: cta.primary.href ?? undefined,
+				run: cta.primary.href ? undefined : () => void primary.run(runPrimary),
+				disabled: cta.primary.disabled || joined,
+				tone: "accent",
+			},
+			secondary: cta.secondary?.kind === "add_to_basket" && onAddToBasket
+				? {
+					label: inBasket ? "In basket" : cta.secondary.label,
+					icon: inBasket ? "check" : "basket",
+					run: () =>
+						void secondary.run(async () => {
+							if (bouncedGuest()) return false;
+							return onAddToBasket ? await onAddToBasket() : false;
+						}),
+				}
+				: null,
+			contact: { label: "Contact seller", icon: "message", run: () => void requestContact() },
+		});
+	});
+
+	const primaryControl = cta.primary.href
+		? (
+			<CtaLink
+				label={cta.primary.label}
+				ariaLabel={cta.primary.ariaLabel}
+				href={cta.primary.href}
+				tone="accent"
+				icon={<Icon name="arrow-right" size="sm" aria-hidden />}
+			/>
+		)
+		: (
+			<CtaButton
+				label={joined ? "On the waitlist" : cta.primary.label}
+				ariaLabel={joined ? "You're on the waitlist for the next cohort" : cta.primary.ariaLabel}
+				settledLabel={simulating.value
+					? SIMULATED_SETTLED_LABEL
+					: settledLabelFor(cta.primary.kind)}
+				phase={primary.phase}
+				tone={waitlist ? "neutral" : "accent"}
+				disabled={cta.primary.disabled || joined}
+				icon={<Icon name={joined ? "check" : primaryGlyph(cta.primary.kind)} size="sm" aria-hidden />}
+				spark={cta.primary.kind === "instantiate_pipeline"}
+				onClick={() => void primary.run(runPrimary)}
+			/>
+		);
 
 	return (
 		<div class={layout === "bar" ? "evp-cta evp-cta--bar" : "evp-cta"}>
-			{cta.primary.href
-				? (
-					<CtaLink
-						label={cta.primary.label}
-						ariaLabel={cta.primary.ariaLabel}
-						href={cta.primary.href}
-						tone="accent"
-						icon={<Icon name="arrow-right" size="sm" aria-hidden />}
-					/>
-				)
-				: (
-					<CtaButton
-						label={joined ? "On the waitlist" : cta.primary.label}
-						ariaLabel={joined ? "You're on the waitlist for the next cohort" : cta.primary.ariaLabel}
-						settledLabel={simulating.value
-							? SIMULATED_SETTLED_LABEL
-							: settledLabelFor(cta.primary.kind)}
-						phase={primary.phase}
-						tone={waitlist ? "neutral" : "accent"}
-						disabled={cta.primary.disabled || joined}
-						icon={<Icon name={joined ? "check" : primaryGlyph(cta.primary.kind)} size="sm" aria-hidden />}
-						onClick={() => void primary.run(runPrimary)}
-					/>
-				)}
-
-			{
-				/*
-			  A refused primary states its reason NEXT TO ITSELF rather than in a `title` or a tooltip, and
-			  so does the state a waitlist answers. A cohort's note carries the one alternative path — a
-			  private cohort is a scoped request, so it opens the quote composer, never a second button.
-			*/
-			}
 			{cta.primary.disabled && cta.primary.disabledReason && (
 				<p class="evp-cta__reason">
 					{cta.primary.disabledReason}
-					{privateCohort && " "}
-					{privateCohort}
 				</p>
 			)}
 			{!cta.primary.disabled && cta.primary.note && (
@@ -284,10 +269,34 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 							<time dateTime={heldUntil}>{HELD_UNTIL.format(new Date(heldUntil))}</time>.
 						</>
 					)}
-					{privateCohort && " "}
-					{privateCohort}
 				</p>
 			)}
+			{draft && draft.archivesAt !== null && (
+				<p class="evp-cta__drafthint">
+					Unfunded drafts are archived after 30 days of inactivity.
+				</p>
+			)}
+
+			{draft && !confirmArchive.value
+				? (
+					<div class="evp-cta__draftrow">
+						{primaryControl}
+						<Tooltip content="Remove draft">
+							<Button
+								variant="text"
+								severity="secondary"
+								size="sm"
+								rounded
+								iconOnly
+								class="evp-cta__draftaction"
+								icon={<Icon name="archive-box" size="sm" />}
+								aria-label="Remove draft"
+								onClick={() => (confirmArchive.value = true)}
+							/>
+						</Tooltip>
+					</div>
+				)
+				: primaryControl}
 
 			{/* The SECONDARY: the basket line — a write, with its own pending/settled cycle and handler. */}
 			{cta.secondary?.kind === "add_to_basket" && onAddToBasket && (
@@ -305,49 +314,23 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				/>
 			)}
 
-			{
-				/*
-			  The draft's secondary controls. Present only once a draft exists, so the rig does not carry
-			  a management affordance for something that has not been created.
-			*/
-			}
-			{draft && (
-				<div class="evp-cta__draft">
-					{draft.archivesAt !== null && (
-						<p class="evp-cta__drafthint">
-							Unfunded drafts are archived after 30 days of inactivity.
-						</p>
-					)}
-					{confirmArchive.value
-						? (
-							<div class="evp-cta__confirm" role="group" aria-label="Confirm archiving this draft">
-								<span class="evp-cta__confirmtext">Archive this draft?</span>
-								<Button
-									severity="secondary"
-									variant="text"
-									size="sm"
-									label="Keep"
-									onClick={() => (confirmArchive.value = false)}
-								/>
-								<Button
-									severity="danger"
-									variant="text"
-									size="sm"
-									label="Archive"
-									onClick={() => void archiveDraft()}
-								/>
-							</div>
-						)
-						: (
-							<button
-								type="button"
-								class="evp-cta__draftaction"
-								onClick={() => (confirmArchive.value = true)}
-							>
-								<Icon name="archive-box" size="sm" aria-hidden />
-								<span>Remove draft</span>
-							</button>
-						)}
+			{draft && confirmArchive.value && (
+				<div class="evp-cta__confirm" role="group" aria-label="Confirm archiving this draft">
+					<span class="evp-cta__confirmtext">Archive this draft?</span>
+					<Button
+						severity="secondary"
+						variant="text"
+						size="sm"
+						label="Keep"
+						onClick={() => (confirmArchive.value = false)}
+					/>
+					<Button
+						severity="danger"
+						variant="text"
+						size="sm"
+						label="Archive"
+						onClick={() => void archiveDraft()}
+					/>
 				</div>
 			)}
 
@@ -412,22 +395,4 @@ function settledLabelFor(kind: BookingActionKind): string {
 	}
 }
 
-/**
- * A per-page-load nonce for idempotency keys.
- *
- * Module-level and computed once, so every press within one page load shares it — which is exactly
- * the window a double-press or a retry lives in. `crypto.randomUUID` where available, and a
- * timestamp-plus-counter fallback where it is not (an insecure context has no `crypto.randomUUID`,
- * and the key only has to be unique per load rather than unguessable).
- */
-let nonce: string | null = null;
-function loadNonce(): string {
-	if (nonce) return nonce;
-	try {
-		nonce = crypto.randomUUID();
-	} catch {
-		nonce = `${Date.now().toString(36)}-${Math.floor(performance.now()).toString(36)}`;
-	}
-	return nonce;
-}
 // #endregion

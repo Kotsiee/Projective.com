@@ -32,7 +32,7 @@ export interface SavedRowProps {
 /**
  * SavedRow — one `/saved` row: a picture (a person's avatar, a listing's or file's thumbnail, else the
  * kind's glyph), the title as a link to the thing, and ONE inline meta line in `--text-secondary` —
- * kind · owner or place · when — never pills. Add to collection and Remove are sibling icon controls,
+ * kind · owner or place · when — never pills. Save to list and Remove are sibling icon controls,
  * never inside the link, each named with the row's title.
  */
 export function SavedRow({ item, now, onRemove, onCollect }: SavedRowProps): JSX.Element {
@@ -70,7 +70,7 @@ export function SavedRow({ item, now, onRemove, onCollect }: SavedRowProps): JSX
 						iconOnly
 						class="svd-row__action"
 						icon={<Icon name="folder" />}
-						aria-label={`Add to collection: ${item.title}`}
+						aria-label={`Save to list: ${item.title}`}
 						onClick={() => onCollect(item)}
 					/>
 				)
@@ -80,8 +80,8 @@ export function SavedRow({ item, now, onRemove, onCollect }: SavedRowProps): JSX
 				severity="secondary"
 				size="sm"
 				iconOnly
-				class="svd-row__action"
-				icon={<Icon name={item.following ? "user-minus" : "star"} filled={!item.following} />}
+				class={item.following ? "svd-row__action" : "svd-row__action svd-row__action--saved"}
+				icon={<Icon name={item.following ? "user-minus" : "bookmark"} filled={!item.following} />}
 				aria-label={item.following ? `Unfollow: ${item.title}` : `Remove from saved: ${item.title}`}
 				onClick={() => onRemove(item)}
 			/>

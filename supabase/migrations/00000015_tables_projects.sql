@@ -882,10 +882,19 @@ CREATE TABLE projects.cohort_memberships (
 	status text NOT NULL DEFAULT 'active'::text,
 	-- The order line that paid for the seat. FK in 00000032 (finance is created after projects).
 	order_line_id uuid,
+	-- A seat claimed through the buyer's seat link (Decision #522): the membership whose paid seats this
+	-- one draws on, and whose order line it carries. The seat moves out of the sponsor's count when it is
+	-- claimed, so occupancy is unchanged; it holds exactly one seat and no escrow of its own, and it ends
+	-- with the sponsor's membership (projects.tg_cohort_sponsored_seats). NULL on a seat its holder paid for.
+	sponsor_membership_id uuid,
 	joined_at timestamp with time zone NOT NULL DEFAULT now(),
 	cancelled_at timestamp with time zone,
 
 	CONSTRAINT cohort_memberships_pkey PRIMARY KEY (id),
+	CONSTRAINT cohort_memberships_sponsor_fkey FOREIGN KEY (sponsor_membership_id) REFERENCES projects.cohort_memberships(id),
+	CONSTRAINT ck_cohort_memberships_sponsored CHECK (
+		sponsor_membership_id IS NULL OR (seats = 1 AND sponsor_membership_id <> id)
+	),
 	CONSTRAINT cohort_memberships_cohort_id_fkey FOREIGN KEY (cohort_id) REFERENCES projects.cohorts(id),
 	CONSTRAINT cohort_memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public(user_id),
 	CONSTRAINT cohort_memberships_unique_user UNIQUE (cohort_id, user_id),
@@ -894,6 +903,28 @@ CREATE TABLE projects.cohort_memberships (
 	CONSTRAINT ck_cohort_memberships_status CHECK (status IN ('active', 'cancelled', 'completed')),
 	CONSTRAINT ck_cohort_memberships_seats CHECK (seats BETWEEN 1 AND 500),
 	CONSTRAINT ck_cohort_memberships_cancelled_at CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL))
+);
+
+-- A buyer's seat link (Decision #522): how a multi-seat booking hands its spare seats to other people.
+-- Anyone signed in who holds the code may claim one seat while the buyer has more than their own, first
+-- come first served (projects.claim_cohort_seat locks the buyer's membership, so two claims for the last
+-- seat queue), until the cohort's first sitting starts. One open link per membership; revoking it stops
+-- new claims and leaves claimed seats seated. The code is a capability: written and read only through
+-- the doors in 00001155, so the table has no client policy at all.
+CREATE TABLE projects.cohort_seat_invites (
+	id uuid NOT NULL DEFAULT gen_random_uuid(),
+	membership_id uuid NOT NULL,
+	code text NOT NULL,
+	status text NOT NULL DEFAULT 'open'::text,
+	created_at timestamp with time zone NOT NULL DEFAULT now(),
+	revoked_at timestamp with time zone,
+
+	CONSTRAINT cohort_seat_invites_pkey PRIMARY KEY (id),
+	CONSTRAINT cohort_seat_invites_code_key UNIQUE (code),
+	CONSTRAINT cohort_seat_invites_membership_fkey FOREIGN KEY (membership_id) REFERENCES projects.cohort_memberships(id),
+	CONSTRAINT ck_cohort_seat_invites_code CHECK (code ~ '^s-[A-Za-z0-9_-]{24}$'),
+	CONSTRAINT ck_cohort_seat_invites_status CHECK (status IN ('open', 'revoked')),
+	CONSTRAINT ck_cohort_seat_invites_revoked CHECK ((status = 'revoked') = (revoked_at IS NOT NULL))
 );
 
 
@@ -1326,6 +1357,7 @@ dismissed_at timestamp with time zone,
 --
 -- `intake_answers` are the buyer's answers to the listing's own intake (`IntakeAnswersSchema`, keyed
 -- by `service_blueprints.intake_fields[].id`), reduced by the function to the ids the listing asks.
+-- `brief` is the buyer's own description of what they need, as they wrote it (NULL when none).
 -- `currency` is the one the engagement was priced in — always the listing's own (the function refuses
 -- any other), recorded so a later reprice of the listing cannot make the history ambiguous.
 --
@@ -1338,6 +1370,7 @@ CREATE TABLE projects.service_instantiations (
   owner_user_id uuid NOT NULL,
   idempotency_key text NOT NULL,
   intake_answers jsonb NOT NULL DEFAULT '{}'::jsonb,
+  brief text,
   currency text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
 
@@ -1351,6 +1384,7 @@ CREATE TABLE projects.service_instantiations (
   -- outer limit no reader could interpret past.
   CONSTRAINT ck_service_instantiations_key CHECK (char_length(idempotency_key) BETWEEN 8 AND 120),
   CONSTRAINT ck_service_instantiations_answers CHECK (jsonb_typeof(intake_answers) = 'object'),
+  CONSTRAINT ck_service_instantiations_brief CHECK (brief IS NULL OR char_length(brief) BETWEEN 1 AND 8000),
   CONSTRAINT ck_service_instantiations_currency CHECK (currency ~ '^[A-Z]{3}$')
 );
 -- #endregion

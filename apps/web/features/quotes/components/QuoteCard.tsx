@@ -2,10 +2,11 @@ import type { JSX } from "preact";
 import { Tag } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import { Button } from "@projective/ui/fields";
-import type { QuoteActionKind, QuoteView } from "@projective/types/services";
+import { type QuoteActionKind, type QuoteView, termsReference } from "@projective/types/services";
 import {
 	offerMoneyNote,
 	offerStateLabel,
+	quoteMoveLabel,
 	quoteStatusLabel,
 	revisionsLabel,
 	shortDate,
@@ -38,10 +39,11 @@ const LABELS: Record<Exclude<QuoteActionKind, "send_offer">, string> = {
 const COMMITS: readonly QuoteActionKind[] = ["send_offer", "accept_offer", "checkout"];
 
 /**
- * QuoteCard — one quote request between two people, from the viewer's side: the ask, the current offer
- * (its price, turnaround, the revisions the listing includes, its expiry and its deliverables as a
- * checklist) and the acts the server says the viewer may take. Static content is never boxed; the
- * request's lifecycle is the one container.
+ * QuoteCard — one quote request between two people, from the viewer's side: the ask (with the buyer's
+ * answers to the listing's questions), the current offer (its price, turnaround, the revisions the
+ * listing includes, its expiry, its deliverables as a checklist and the reference of its terms hash),
+ * the request's history of moves, and the acts the server says the viewer may take. Static content is
+ * never boxed; the request's lifecycle is the one container.
  */
 export function QuoteCard(props: QuoteCardProps): JSX.Element {
 	const q = props.quote;
@@ -96,15 +98,25 @@ export function QuoteCard(props: QuoteCardProps): JSX.Element {
 			</header>
 			<p class="qte__meta">
 				<span class="qte__meta-part">
-					{q.listing.privateCohort ? "Private cohort" : "Custom scope"}
+					{q.origin === "host"
+						? (q.role === "host" ? "Your quote" : "Quote from the seller")
+						: q.listing.privateCohort
+						? "Private cohort"
+						: "Custom scope"}
 				</span>
 				<span class="qte__meta-part">Requested {shortDate(q.requestedAt)}</span>
 				{q.offersSent > 1 && <span class="qte__meta-part">{q.offersSent} offers sent</span>}
 			</p>
 
+			{q.origin === "buyer" && (
 			<section class="qte__sec" aria-label={q.role === "host" ? "Their request" : "Your request"}>
 				<h5 class="qte__label">{q.role === "host" ? "Their request" : "Your request"}</h5>
 				<p class="qte__text">{q.scope}</p>
+				{q.answerLines.length > 0 && (
+					<ul class="qte__deliverables" aria-label={q.role === "host" ? "Their answers" : "Your answers"}>
+						{q.answerLines.map((line, i) => <li key={i} class="qte__text">{line}</li>)}
+					</ul>
+				)}
 				{((q.budgetMinor !== null && q.budgetCurrency) || q.timeline) && (
 					<p class="qte__meta">
 						{q.budgetMinor !== null && q.budgetCurrency && (
@@ -117,6 +129,7 @@ export function QuoteCard(props: QuoteCardProps): JSX.Element {
 					</p>
 				)}
 			</section>
+			)}
 
 			{offer && (
 				<section class="qte__sec" aria-label={offerStateLabel(offer.state)}>
@@ -146,7 +159,29 @@ export function QuoteCard(props: QuoteCardProps): JSX.Element {
 						</ul>
 					)}
 					{moneyNote && <p class="qte__escrow">{moneyNote}</p>}
+					<p class={offer.termsIntact ? "qte__ref" : "qte__ref qte__ref--broken"} title={offer.termsHash}>
+						{offer.termsIntact
+							? `Terms ref ${termsReference(offer.termsHash)}`
+							: "These terms no longer match their record. Contact support before paying."}
+					</p>
 				</section>
+			)}
+
+			{q.history.length > 0 && (
+				<details class="qte-history">
+					<summary class="qte-history__toggle">History · {q.history.length} {q.history.length === 1 ? "move" : "moves"}</summary>
+					<ol class="qte-history__list">
+						{q.history.map((e) => (
+							<li key={e.id} class="qte-history__row">
+								<span class="qte-history__what">
+									{quoteMoveLabel(e.kind, e.by === q.role)}
+									{e.termsHash ? ` · ref ${termsReference(e.termsHash)}` : ""}
+								</span>
+								<time class="qte-history__when" dateTime={e.at}>{shortDate(e.at)}</time>
+							</li>
+						))}
+					</ol>
+				</details>
 			)}
 
 			{q.declineReason && (

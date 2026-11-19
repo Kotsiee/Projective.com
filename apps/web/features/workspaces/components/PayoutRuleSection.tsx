@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useMemo } from "preact/hooks";
 import type { Signal } from "@preact/signals";
 import { InlineNotice } from "@projective/ui/feedback";
-import { FormControl, InputNumber, Select, SelectButton } from "@projective/ui/fields";
+import { FormControl, NumberInput, Select, SelectButton } from "@projective/ui/fields";
 import { Link } from "@projective/ui/navigation";
 import type { SplitRuleType } from "@projective/types/finance";
 import type { SplitStake } from "@projective/types/workspace";
@@ -179,7 +179,7 @@ export function PayoutRuleSection(props: PayoutRuleSectionProps): JSX.Element {
 							status={props.problems.finderCut ? "invalid" : "default"}
 						>
 							{({ id, describedBy, status }) => (
-								<InputNumber
+								<NumberInput
 									id={id}
 									aria-describedby={describedBy}
 									status={status}
@@ -189,6 +189,7 @@ export function PayoutRuleSection(props: PayoutRuleSectionProps): JSX.Element {
 									max={100}
 									maxFractionDigits={2}
 									suffix="%"
+									hideSteppers
 									disabled={!props.editable}
 									readOnly={readOnly}
 									fluid
@@ -203,7 +204,7 @@ export function PayoutRuleSection(props: PayoutRuleSectionProps): JSX.Element {
 							: "Taken before the members' split."}
 					>
 						{({ id, describedBy }) => (
-							<InputNumber
+							<NumberInput
 								id={id}
 								aria-describedby={describedBy}
 								value={props.vaultPct}
@@ -212,6 +213,7 @@ export function PayoutRuleSection(props: PayoutRuleSectionProps): JSX.Element {
 								max={100}
 								maxFractionDigits={2}
 								suffix="%"
+								hideSteppers
 								disabled={!props.editable}
 								readOnly={readOnly}
 								fluid

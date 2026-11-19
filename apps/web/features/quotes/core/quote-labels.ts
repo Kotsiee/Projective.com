@@ -1,4 +1,6 @@
 import type {
+	QuoteCardState,
+	QuoteEventKind,
 	QuoteOfferState,
 	QuoteRequestStatus,
 	QuoteRole,
@@ -87,4 +89,57 @@ export function revisionsLabel(count: number | null): string | null {
 	if (count === null) return null;
 	if (count === 0) return "No revisions included";
 	return `${count} ${count === 1 ? "revision" : "revisions"} included`;
+}
+
+/** What a quote card's move was, from the viewer's side. */
+export function quoteMoveLabel(kind: QuoteEventKind, mine: boolean): string {
+	switch (kind) {
+		case "requested":
+			return mine ? "You asked for a quote" : "Quote request";
+		case "issued":
+			return mine ? "You sent a quote" : "Quote received";
+		case "offer_sent":
+			return mine ? "You sent an offer" : "Offer received";
+		case "offer_revised":
+			return mine ? "You revised the offer" : "Revised offer";
+		case "offer_withdrawn":
+			return mine ? "You withdrew the offer" : "Offer withdrawn";
+		case "request_declined":
+			return mine ? "You declined the request" : "Request declined";
+		case "offer_accepted":
+			return mine ? "You accepted the offer" : "Offer accepted";
+		case "offer_declined":
+			return mine ? "You declined the offer" : "Offer declined";
+		case "request_withdrawn":
+			return mine ? "You withdrew the request" : "Request withdrawn";
+		case "paid":
+			return mine ? "You paid for the offer" : "Offer paid";
+	}
+}
+
+/** Where a card's offer stands now, as its status reads. */
+export function quoteCardStateLabel(state: QuoteCardState): string {
+	switch (state) {
+		case "pending":
+			return "Open";
+		case "accepted":
+			return "Accepted";
+		case "paid":
+			return "Paid";
+		case "declined":
+			return "Declined";
+		case "withdrawn":
+			return "Withdrawn";
+		case "superseded":
+			return "Superseded";
+		case "expired":
+			return "Expired";
+		case "closed":
+			return "Closed";
+	}
+}
+
+/** Whether a card's status waits on this viewer (the attention tone). */
+export function cardWaitsOnViewer(state: QuoteCardState | null, role: QuoteRole): boolean {
+	return role === "buyer" && (state === "pending" || state === "accepted");
 }

@@ -63,11 +63,45 @@ export interface RawDispute {
 	project: { id: string; slug: string } | null;
 	sitting: { id: string; slug: string; title: string; starts_at: string; ends_at: string } | null;
 	messages: RawMessage[] | null;
+	/** The custom quote the engagement was bought on (Decision #522); absent before the key existed. */
+	agreed_terms?: RawAgreedTerms | null;
 	can_respond: boolean;
 	can_escalate: boolean;
 	can_resolve: boolean;
 }
 // #endregion
+
+/** `finance.get_dispute.agreed_terms`: the offer's canonical terms and its hash. */
+interface RawAgreedTerms {
+	offer_id: string;
+	terms: {
+		scope?: string;
+		deliverables?: string[];
+		price_cents?: number;
+		currency?: string;
+		turnaround_days?: number;
+	} | null;
+	terms_hash: string;
+	terms_intact: boolean;
+	accepted_at: string | null;
+	paid_at: string | null;
+}
+
+function agreedTermsOf(raw: RawAgreedTerms | null | undefined): DisputeCase["agreedTerms"] {
+	if (!raw?.terms || !/^[0-9a-f]{64}$/.test(raw.terms_hash)) return null;
+	const currency = (raw.terms.currency ?? "").toUpperCase();
+	return {
+		offerId: raw.offer_id,
+		scope: (raw.terms.scope ?? "").slice(0, 4000),
+		deliverables: (raw.terms.deliverables ?? []).slice(0, 12).map((d) => d.slice(0, 160)),
+		priceLabel: currency ? formatMoney(Math.max(0, int(raw.terms.price_cents)), currency) : "",
+		turnaroundDays: Math.min(90, Math.max(1, int(raw.terms.turnaround_days))),
+		termsHash: raw.terms_hash,
+		intact: raw.terms_intact === true,
+		acceptedAt: raw.accepted_at,
+		paidAt: raw.paid_at,
+	};
+}
 
 // #region Helpers
 function int(value: unknown): number {
@@ -184,6 +218,7 @@ export function toDisputeCase(raw: RawDispute | null): DisputeCase | null {
 				})),
 			}];
 		}),
+		agreedTerms: agreedTermsOf(raw.agreed_terms),
 		canRespond: !!raw.can_respond,
 		canEscalate: !!raw.can_escalate,
 		canResolve: !!raw.can_resolve,

@@ -1,11 +1,11 @@
 import type { JSX } from "preact";
-import type { Signal } from "@preact/signals";
+import { type Signal, useComputed, useSignal } from "@preact/signals";
 import "../../styles/intake-fields.css";
 import {
 	Checkbox,
 	FormControl,
-	InputNumber,
 	InputText,
+	NumberInput,
 	MultiSelect,
 	type Option,
 	RadioGroup,
@@ -21,7 +21,7 @@ import type {
 	IntakeField,
 	IntakeRefusal,
 } from "@projective/types/services";
-import { INTAKE_TEXT_MAX, isMultiChoice } from "@projective/types/services";
+import { INTAKE_TEXT_MAX, isMultiChoice, visibleIntakeFields } from "@projective/types/services";
 
 /**
  * IntakeFields — the dynamic renderer for a seller's own requirements: one `@projective/ui`
@@ -37,8 +37,10 @@ import { INTAKE_TEXT_MAX, isMultiChoice } from "@projective/types/services";
  *
  * Kind → control:
  *  - `text` → `InputText` · `textarea` → `Textarea`
- *  - `number` → `InputNumber`, plus a `Slider` when the seller set both bounds and asked for one —
- *    one compound control on one value, the bounds printed under the track (Decision #424)
+ *  - `number` → `NumberInput` (hold +/- to ramp, wheel to step), plus a `Slider` when the seller set
+ *    both bounds and asked for one — one compound control on ONE value, so dragging the track moves the
+ *    figure and typing moves the track (Decisions #424, #522); the bounds print under the track, the
+ *    track rests on the seller's starting value, and an empty field shows a placeholder
  *  - `boolean` → `ToggleSwitch`
  *  - `select` → `Select` · `multiselect` → `MultiSelect`
  *  - `radio` → `RadioGroup` · `pills` → `SelectButton` (single or `multiple`) · `checkboxes` → a
@@ -47,6 +49,9 @@ import { INTAKE_TEXT_MAX, isMultiChoice } from "@projective/types/services";
  * Every control is labelled through `FormControl`, so "label in name" (WCAG 2.5.3) holds for all
  * nine kinds, and a required field carries the asterisk the wrapper draws rather than one typed
  * into the label.
+ *
+ * Only the questions the buyer is asked now render (`visibleIntakeFields`, Decision #522): a follow-up
+ * appears under the answer that reveals it and closes again when that answer changes.
  */
 export interface IntakeFieldsProps {
 	fields: readonly IntakeField[];
@@ -108,7 +113,7 @@ export function IntakeFields(
 
 	return (
 		<div class="pf-intake">
-			{fields.map((field) => (
+			{visibleIntakeFields(fields, answers.value).map((field) => (
 				<IntakeControl
 					key={field.id}
 					field={field}
@@ -124,6 +129,15 @@ export function IntakeFields(
 }
 
 // #region One control
+/** The placeholder an empty number shows: the seller's own, else its range, else an example. */
+export function numberPlaceholder(field: IntakeField): string {
+	if (field.placeholder) return field.placeholder;
+	const unit = field.unit ? ` ${field.unit}` : "";
+	if (field.min !== undefined && field.max !== undefined) return `${field.min}–${field.max}${unit}`;
+	if (field.min !== undefined) return `${field.min} or more${unit}`;
+	return `e.g. ${field.defaultValue ?? 5}${unit}`;
+}
+
 interface IntakeControlProps {
 	field: IntakeField;
 	answer: IntakeAnswer;
@@ -137,9 +151,75 @@ function optionsOf(field: IntakeField): Option[] {
 	return field.options.map((o) => ({ value: o.value, label: o.label }));
 }
 
-function IntakeControl(
-	{ field, answer, refused, disabled, id, onChange }: IntakeControlProps,
-): JSX.Element {
+/**
+ * One number question: the field and, when offered, the slider, bound to ONE signal so either moves
+ * the other. The answer is mirrored into a signal rather than handed over raw, because a field control
+ * seeds from a raw value once and would otherwise keep showing its first figure.
+ */
+function NumberIntake({ field, answer, refused, disabled, id, onChange }: IntakeControlProps): JSX.Element {
+	const value = typeof answer === "number" ? answer : null;
+	const mirror = useSignal<number | null>(value);
+	if (mirror.peek() !== value) mirror.value = value;
+	const bounded = field.min !== undefined && field.max !== undefined;
+	const slider = bounded && !!field.slider;
+	const rest = field.defaultValue ?? field.min ?? 0;
+	const track = useComputed(() => mirror.value ?? rest);
+	const withUnit = (v: number) => `${v}${field.unit ? ` ${field.unit}` : ""}`;
+	return (
+		<FormControl
+			label={field.label}
+			hint={field.hint}
+			error={refused ?? undefined}
+			status={refused ? "invalid" : "default"}
+			required={field.required}
+			class="pf-intake__field"
+		>
+			{(a) => (
+				<div class="pf-intake__number" data-slider={slider ? "true" : undefined}>
+					<NumberInput
+						id={id}
+						aria-describedby={a.describedBy}
+						status={a.status}
+						required={a.required}
+						value={mirror}
+						onValueChange={(v) => onChange(v)}
+						min={field.min}
+						max={field.max}
+						step={field.step ?? 1}
+						maxFractionDigits={Number.isInteger(field.step ?? 1) ? 0 : undefined}
+						suffix={field.unit}
+						placeholder={numberPlaceholder(field)}
+						disabled={disabled}
+						fluid={!slider}
+						class={slider ? "pf-intake__numberinput" : undefined}
+					/>
+					{slider && (
+						<div class="pf-intake__range">
+							<Slider
+								aria-label={field.label}
+								aria-describedby={a.describedBy}
+								value={track}
+								onValueChange={(v) => onChange(Array.isArray(v) ? v[0] : v)}
+								min={field.min}
+								max={field.max}
+								step={field.step ?? 1}
+								disabled={disabled}
+								formatValue={withUnit}
+							/>
+							<span class="pf-intake__bounds" aria-hidden="true">
+								<span>{withUnit(field.min!)}</span>
+								<span>{withUnit(field.max!)}</span>
+							</span>
+						</div>
+					)}
+				</div>
+			)}
+		</FormControl>
+	);
+}
+
+function IntakeControl(props: IntakeControlProps): JSX.Element {
+	const { field, answer, refused, disabled, id, onChange } = props;
 	const status = refused ? "invalid" : "default";
 	const common = {
 		label: field.label,
@@ -194,54 +274,8 @@ function IntakeControl(
 				</FormControl>
 			);
 
-		case "number": {
-			const bounded = field.min !== undefined && field.max !== undefined;
-			const slider = bounded && !!field.slider;
-			const value = typeof answer === "number" ? answer : null;
-			const withUnit = (v: number) => `${v}${field.unit ? ` ${field.unit}` : ""}`;
-			return (
-				<FormControl {...common}>
-					{(a) => (
-						<div class="pf-intake__number" data-slider={slider ? "true" : undefined}>
-							<InputNumber
-								id={id}
-								aria-describedby={a.describedBy}
-								status={a.status}
-								required={a.required}
-								value={value}
-								onValueChange={(v) => onChange(v)}
-								min={field.min}
-								max={field.max}
-								step={field.step ?? 1}
-								suffix={field.unit ? ` ${field.unit}` : undefined}
-								disabled={disabled}
-								fluid={!slider}
-								class={slider ? "pf-intake__numberinput" : undefined}
-							/>
-							{slider && (
-								<div class="pf-intake__range">
-									<Slider
-										aria-label={field.label}
-										aria-describedby={a.describedBy}
-										value={value ?? field.min!}
-										onValueChange={(v) => onChange(Array.isArray(v) ? v[0] : v)}
-										min={field.min}
-										max={field.max}
-										step={field.step ?? 1}
-										disabled={disabled}
-										formatValue={withUnit}
-									/>
-									<span class="pf-intake__bounds" aria-hidden="true">
-										<span>{withUnit(field.min!)}</span>
-										<span>{withUnit(field.max!)}</span>
-									</span>
-								</div>
-							)}
-						</div>
-					)}
-				</FormControl>
-			);
-		}
+		case "number":
+			return <NumberIntake {...props} />;
 
 		case "boolean":
 			return (

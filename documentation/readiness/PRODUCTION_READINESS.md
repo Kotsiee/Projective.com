@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
-| **UAT**          | **70%** |           68 | 41 |  9 | 18 |           4 |
-| **Production**   | **47%** |          151 | 53 | 27 | 71 |          14 |
+| **UAT**          | **70%** |           69 | 42 |  9 | 18 |           4 |
+| **Production**   | **48%** |          152 | 54 | 27 | 71 |          14 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -56,7 +56,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | C. Security & access control       |   35 | 18 |  4 | 13 |   60% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   18 |  3 |  7 |  8 |   42% |
-| F. Money, ledger & reconciliation  |   22 |  6 |  5 | 11 |   43% |
+| F. Money, ledger & reconciliation  |   23 |  7 |  5 | 11 |   45% |
 | G. Scheduled jobs & operations     |   10 |  5 |  2 |  3 |   63% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
@@ -225,6 +225,7 @@ Work orders for every open row, with the run order:
 | PRD-F22 | Cancelling or archiving a project settles its escrow first                    | ✅     | Critical | UAT  | #479 (MR2, ruling #467): every kind cancels through one settle-first door (`projects.cancel_project` → `fn_settle_project_escrow`; an open dispute refuses, PD409) and `set_project_status` refuses Cancelled or Archived while anything is held (PF409); `brief_cancel.sql` + `service_cancel.sql`; live at 1440 and 390 px | MR2 |
 | PRD-F23 | Held escrow cannot strand: a silent client's delivery auto-approves           | ❌     | Critical | UAT  | No `submitted_at` or timer (PRODUCT_SPEC §Escrow 5, "No Forever-Escrow"): delivered work a client never answers can sit held indefinitely                                                                                         | PM-GH1           |
 | PRD-F24 | A bought service's unclaimed escrow is refunded, never paid out               | ✅     | Critical | UAT  | #474 (MR1, ruling #466): no payee binds until somebody holds the ticket, on every kind of project (`fn_ticket_payee`), so the prepaid TTL, `approve_stage` and a stage Fair Exit refund an unclaimed escrow whole; an unclaimed ticket can't enter work (`PF402` `unclaimed`). `service_unclaimed_escrow.sql` + a live run | MR1 (#466)       |
+| PRD-F25 | An agreed custom quote is charged at its frozen terms, with a record both parties read | ✅     | High     | UAT  | #522: an offer's terms never change once sent (`trg_quote_offers_kept`, every role) and carry a SHA-256 `terms_hash` stamped from the row; every move is one append-only `marketplace.quote_events` row and a quote card in the pair's conversation; checkout re-hashes the offer before charging (`terms_mismatch`), the paid line links it (`order_lines.quote_offer_id`, one per offer) and `get_dispute` carries the agreed terms. Probe `quote_evidence.sql` (47 checks); `quote_offers` and `quote_checkout` re-run green |
 
 ## G. Scheduled jobs & operations
 
@@ -433,3 +434,4 @@ Work orders for every open row, with the run order:
 | 2026-11-19 | OPS5 (#518): no row flips; PRD-G7 narrowed (stale jobs, configuration skips and webhook bursts alert on three channels, and the heartbeat reports a dead scheduler; the hosted drills are OPS7's); new PRD-G10 ❌ (no "resolved" message) | 76% | 69% |  47% |
 | 2026-11-19 | NT4 (EPI §8.2, #344 (a)): PRD-E7 ❌ → 🟡 (Web Push through the dispatcher; a browser gets one account's alerts and sign-out stops them; proved live in Chromium against FCM); new PRD-E18 ❌ (a failing push device is never reaped) | 76% | 69% |  47% |
 | 2026-11-19 | OPS3 (#519): PRD-G3 ❌ → ✅ (the workload-report expiry sweep locks, closes a settled ticket's report `acknowledged` with no penalty, and runs every 15 minutes; idle until PM-WP5a makes reports fileable); new PRD-G11 ❌ (a report's way out leaves an unfunded ticket suspended) | 76% | 70% |  47% |
+| 2026-11-19 | #522: PRD-F25 added ✅ (an agreed custom quote is charged at its frozen, hashed terms; an append-only record and quote cards both parties read; the engagement links the offer and a dispute shows the agreed terms; probe `quote_evidence`) | 76% | 70% | 48% |

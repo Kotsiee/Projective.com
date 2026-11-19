@@ -21,7 +21,7 @@ import {
 } from "../core/booking-state.ts";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import type { ContactActionKind, ServiceBookingOffer } from "@projective/types/services";
-import { ResizeFrame } from "@projective/ui/fields";
+import { Textarea } from "@projective/ui/fields";
 
 /**
  * ContactPopover — the **Contact Me** secondary control and its context-sensitive menu.
@@ -57,8 +57,11 @@ import { ResizeFrame } from "@projective/ui/fields";
  */
 export interface ContactPopoverProps {
 	offer: ServiceBookingOffer;
-	/** Rendered as a compact ghost control in the lane, or a full-width one in the mobile buy bar. */
-	variant?: "ghost" | "block";
+	/**
+	 * A compact ghost control in the lane, a full-width one in the mobile buy bar, or an icon-only
+	 * filled button in the condensed header band.
+	 */
+	variant?: "ghost" | "block" | "icon";
 }
 
 export default function ContactPopover(
@@ -80,6 +83,13 @@ export default function ContactPopover(
 	const error = useSignal<string | null>(null);
 	const cta = useCtaFeedback();
 	const trigger = useRef<HTMLButtonElement | null>(null);
+	const composer = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!composing.value) return;
+		const id = setTimeout(() => composer.current?.querySelector("textarea")?.focus(), 0);
+		return () => clearTimeout(id);
+	}, [composing.value]);
 
 	useEffect(() =>
 		registerContactControl({
@@ -162,7 +172,7 @@ export default function ContactPopover(
 	return (
 		<Popover
 			open={open}
-			placement="top-start"
+			placement={variant === "icon" ? "bottom-end" : "top-start"}
 			avoid={[".ui-app-shell__sidebar"]}
 			class="sbk-contact"
 			onOpenChange={(next) => {
@@ -180,14 +190,29 @@ export default function ContactPopover(
 						api.ref.current = el;
 						trigger.current = el;
 					}}
-					class={variant === "block" ? "evp-cta__ghost sbk-contact__trigger--block" : "evp-cta__ghost"}
+					class={variant === "icon"
+						? "ui-button ui-button--secondary ui-button--filled ui-button--size-sm ui-button--rounded ui-button--icon-only evp-stickyhead__message"
+						: variant === "block"
+						? "evp-cta__ghost sbk-contact__trigger--block"
+						: "evp-cta__ghost"}
+					aria-label={variant === "icon" ? `Contact ${contact.value.sellerName}` : undefined}
 					aria-expanded={api.expanded ? "true" : "false"}
 					aria-controls={api.panelId}
 					aria-haspopup="menu"
 					onClick={api.toggle}
 				>
-					<Icon name="message" size="sm" aria-hidden />
-					<span>Contact me</span>
+					{variant === "icon"
+						? (
+							<span class="ui-button__icon">
+								<Icon name="message" size="sm" aria-hidden />
+							</span>
+						)
+						: (
+							<>
+								<Icon name="message" size="sm" aria-hidden />
+								<span>Contact me</span>
+							</>
+						)}
 				</button>
 			)}
 		>
@@ -211,23 +236,21 @@ export default function ContactPopover(
 								<p class="sbk-contact__about">
 									About <span class="sbk-contact__subject">{contact.value.subjectTitle}</span>
 								</p>
-								<label class="ui-visually-hidden" for="sbk-contact-msg">
-									Your question for {contact.value.sellerName}
-								</label>
-								<ResizeFrame>
-									<textarea
+								<div ref={composer}>
+									<Textarea
 										id="sbk-contact-msg"
-										class="sbk-contact__field"
+										aria-label={`Your question for ${contact.value.sellerName}`}
+										value={draft}
 										rows={4}
-										autoFocus
+										maxRows={10}
+										autoResize
 										placeholder={`Hi ${
 											contact.value.sellerName.split(/\s+/)[0] ?? contact.value.sellerName
 										}, before I buy…`}
-										value={draft.value}
 										disabled={cta.busy}
-										onInput={(e) => (draft.value = (e.target as HTMLTextAreaElement).value)}
+										fluid
 									/>
-								</ResizeFrame>
+								</div>
 								<p class="sbk-contact__hint">
 									This starts a conversation, not a project.
 								</p>

@@ -370,14 +370,16 @@ function callDurationFor(offer: PublicCallOffer, callType: "courtesy" | "paid"):
  * **An action the seller does not offer is ABSENT, never disabled.** A seller who takes no calls has
  * no "Book a discovery call" row; a product has no "Request a custom quote" row, because a quote is a
  * proposal against a SERVICE blueprint and there is nothing for a product quote to be recorded
- * against. The one thing that IS rendered-and-refused is the sign-in bounce, because that is a state
- * the viewer can change.
+ * against. A group session has none either: it is booked by the seat at the seller's price, and its
+ * cohort is the same for everyone in it (Decision #521). The one thing that IS rendered-and-refused
+ * is the sign-in bounce, because that is a state the viewer can change.
  */
 function contactOfferFor(
 	item: ExploreItem,
 	signedIn: boolean,
 	signInHref: string | null,
 	callOffer: PublicCallOffer | null,
+	format: ServiceBookingFormat,
 ): ContactOffer {
 	const handle = item.owner.handle.replace(/^@/, "");
 	const actions: ContactAction[] = [];
@@ -397,7 +399,7 @@ function contactOfferFor(
 		description: "Start a conversation. This does not commission anything.",
 		href: null,
 	});
-	if (item.type === "services") {
+	if (item.type === "services" && format !== "cohort") {
 		actions.push({
 			kind: "custom_quote",
 			label: "Request a custom quote",
@@ -500,6 +502,9 @@ async function composeOffer(
 		: null;
 	const capacity = viewerCapacity(cohort?.seats ?? null, waitlist);
 	const signedIn = audience.kind === "simulated" || audience.actor.userId !== null;
+	const seat = format === "cohort" && audience.kind === "buyer" && cohort
+		? await SessionBackendService.mySeats(cohort.cohortId, readerOf(audience.actor))
+		: null;
 
 	// A failed read of the call offer leaves the call row out rather than failing the whole page:
 	// the listing is still buyable, and "takes no calls" is the safer thing to show than a row whose
@@ -526,10 +531,11 @@ async function composeOffer(
 			draftHref: draft?.boardHref ?? null,
 			bookingsOpen,
 		}),
-		contact: contactOfferFor(item, signedIn, signInHref, callOffer),
+		contact: contactOfferFor(item, signedIn, signInHref, callOffer, format),
 		capacity,
 		cohort,
 		waitlist,
+		seat,
 		draft,
 		sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
 		durationMinutes: view.service?.bookable ? (view.service.sessionMinutes ?? 60) : null,
@@ -1362,11 +1368,27 @@ async function requestQuote(
 			errors: { subjectId: "not_quotable" },
 		});
 	}
+	if (item.type === "services" && item.serviceType === "Group Session") {
+		return fail(422, {
+			message: "Group sessions are booked by the seat, so they take no custom quotes.",
+			errors: { subjectId: "group_session" },
+		});
+	}
 	if (owner.accountUserId === actor.userId) {
 		return fail(422, { message: "That is your own listing.", errors: { handle: "self_quote" } });
 	}
 	if (input.budgetMinor !== undefined && !input.currency) {
 		return fail(422, { message: "Add a currency for that budget.", errors: { currency: "currency_required" } });
+	}
+
+	const intake = listing.view.service?.intake ?? [];
+	const answers = normaliseIntakeAnswers(intake, input.answers ?? {});
+	const intakeBlock = intakeRefusal(intake, answers);
+	if (intakeBlock) {
+		return fail(422, {
+			message: intakeBlock.message,
+			errors: { [`answers.${intakeBlock.fieldId}`]: intakeBlock.code },
+		});
 	}
 
 	const sent = await QuoteBackendService.request({
@@ -1375,6 +1397,7 @@ async function requestQuote(
 		budgetMinor: input.budgetMinor,
 		currency: input.currency,
 		timeline: input.timeline,
+		answers,
 	}, actor);
 	if (!sent.ok || !sent.data) {
 		return fail(sent.status, {

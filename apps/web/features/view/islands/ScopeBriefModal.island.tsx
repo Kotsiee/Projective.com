@@ -1,7 +1,14 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Button, DatePicker, type DateValue, FormControl, Textarea } from "@projective/ui/fields";
+import {
+	Button,
+	DatePicker,
+	type DateValue,
+	FileUpload,
+	FormControl,
+	Textarea,
+} from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { MoneyView } from "@projective/ui/display/money";
@@ -81,6 +88,7 @@ export default function ScopeBriefModal(
 	const target = useSignal<DateValue>(null);
 	const files = useSignal<readonly File[]>([]);
 	const fileNote = useSignal<string | null>(null);
+	const pickKey = useSignal(0);
 	const error = useSignal<string | null>(null);
 	const cta = useCtaFeedback();
 	const bodyRef = useRef<HTMLDivElement>(null);
@@ -156,9 +164,9 @@ export default function ScopeBriefModal(
 		return true;
 	}
 
-	function addFiles(list: FileList | null): void {
-		if (!list) return;
-		const next = [...files.value, ...Array.from(list)];
+	function addFiles(list: readonly File[]): void {
+		if (list.length === 0) return;
+		const next = [...files.value, ...list];
 		fileNote.value = next.length > FILES_MAX
 			? `Up to ${FILES_MAX} files. The extras were not added.`
 			: null;
@@ -236,6 +244,7 @@ export default function ScopeBriefModal(
 								maxRows={12}
 								autoResize
 								maxLength={BRIEF_MAX}
+								placeholder="What you need delivered, who it's for, what's out of scope, and how you'll judge it's done"
 								fluid
 							/>
 						)}
@@ -259,16 +268,19 @@ export default function ScopeBriefModal(
 
 			<section class="sbk__section" aria-labelledby="sbk-scope-files-label">
 				<h3 class="sbk__sectiontitle" id="sbk-scope-files-label">Reference files</h3>
-				<label class="sbk__filepick">
-					<Icon name="attachment" size="sm" aria-hidden />
-					<span>Add reference files</span>
-					<input
-						class="ui-visually-hidden"
-						type="file"
-						multiple
-						onChange={(e) => addFiles((e.target as HTMLInputElement).files)}
-					/>
-				</label>
+				<FileUpload
+					key={pickKey.value}
+					mode="basic"
+					multiple
+					size="sm"
+					chooseLabel="Add reference files"
+					aria-label="Add reference files"
+					class="sbk__filepick"
+					onSelect={(picked) => {
+						addFiles(picked.map((u) => u.file));
+						pickKey.value++;
+					}}
+				/>
 				{files.value.length > 0 && (
 					<ul class="sbk__files">
 						{files.value.map((f, i) => (

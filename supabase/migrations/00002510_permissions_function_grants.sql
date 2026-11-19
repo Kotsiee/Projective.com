@@ -2434,6 +2434,24 @@ GRANT EXECUTE ON FUNCTION projects.get_cohort_offer (uuid) TO anon, authenticate
 -- Signed-in doors; each authorises the caller with auth.uid().
 REVOKE ALL ON FUNCTION projects.reserve_seat (uuid, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.reserve_seat (uuid, integer) TO authenticated;
+-- Seat links (Decision #522): the buyer's own reads and doors, and the claim. Helpers are internal.
+REVOKE ALL ON FUNCTION projects.get_my_cohort_seats (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_my_cohort_seats (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.share_cohort_seats (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.share_cohort_seats (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.revoke_cohort_seat_link (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.revoke_cohort_seat_link (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.get_cohort_seat_invite (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_cohort_seat_invite (text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.claim_cohort_seat (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.claim_cohort_seat (text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fn_seat_code () FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_seat_code () TO service_role;
+REVOKE ALL ON FUNCTION projects.fn_cohort_first_start (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_cohort_first_start (uuid) TO service_role;
+REVOKE ALL ON FUNCTION projects.fn_cohort_claimable (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_cohort_claimable (uuid) TO service_role;
+REVOKE ALL ON FUNCTION projects.tg_cohort_sponsored_seats () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.cancel_cohort_membership (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.cancel_cohort_membership (uuid) TO authenticated;
 -- The waitlist (Decision #455): joining, the buyer's own place, and the seller's queue (which asks
@@ -2586,8 +2604,8 @@ REVOKE ALL ON FUNCTION marketplace.fn_plain_text_html (text) FROM PUBLIC, anon, 
 GRANT EXECUTE ON FUNCTION marketplace.fn_plain_text_html (text) TO service_role;
 REVOKE ALL ON FUNCTION marketplace.get_service_draft (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION marketplace.get_service_draft (uuid) TO authenticated, service_role;
-REVOKE ALL ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text, text) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION marketplace.archive_service_draft (text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION marketplace.archive_service_draft (text, text) TO authenticated, service_role;
 -- A One-Off or Task bought at checkout (Decision #457): written only by finance.place_wallet_order, as
@@ -2641,8 +2659,26 @@ REVOKE ALL ON FUNCTION marketplace.fn_quote_offer_line (uuid) FROM PUBLIC, anon,
 GRANT EXECUTE ON FUNCTION marketplace.fn_quote_offer_line (uuid) TO service_role;
 REVOKE ALL ON FUNCTION marketplace.fn_quote_offer_terms (uuid, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION marketplace.fn_quote_offer_terms (uuid, uuid) TO service_role;
-REVOKE ALL ON FUNCTION marketplace.request_quote (uuid, text, bigint, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION marketplace.request_quote (uuid, text, bigint, text, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.request_quote (uuid, text, bigint, text, text, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.request_quote (uuid, text, bigint, text, text, jsonb) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.issue_quote (uuid, uuid, text, text[], bigint, integer, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.issue_quote (uuid, uuid, text, text[], bigint, integer, integer) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.get_quote_cards (uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.get_quote_cards (uuid[]) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_terms (marketplace.quote_offers) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_terms (marketplace.quote_offers) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_hash (jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_hash (jsonb) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_offers_stamp () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_record_kept () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_thread (marketplace.quote_requests) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_thread (marketplace.quote_requests) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_event (marketplace.quote_requests, uuid, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_event (marketplace.quote_requests, uuid, text, jsonb) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_put_offer (marketplace.quote_requests, text, text[], bigint, integer, integer, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_put_offer (marketplace.quote_requests, text, text[], bigint, integer, integer, text) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_quote_paid (uuid, uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_quote_paid (uuid, uuid, uuid, uuid) TO service_role;
 REVOKE ALL ON FUNCTION marketplace.send_quote_offer (uuid, text, text[], bigint, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION marketplace.send_quote_offer (uuid, text, text[], bigint, integer, integer) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION marketplace.withdraw_quote_offer (uuid) FROM PUBLIC, anon;

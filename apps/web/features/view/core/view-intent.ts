@@ -9,9 +9,9 @@ import type { EntityArchetype } from "./entity-archetype.ts";
  * - `?intent=book` opens the session slot picker or a cohort's seat panel, `?intent=contact` the
  *   Contact menu and `?intent=apply` a project's apply dialog — each the panel the page's own control
  *   opens (Reserve seat opens its panel since Decision #424).
- * - Only panel-opening controls qualify. Buy now, Add to projects and Join the waitlist write the
- *   moment they are pressed, and a URL can be pasted, prefetched or reopened, so no address may run
- *   them.
+ * - Only panel-opening controls qualify. Buy now and Join the waitlist write the moment they are
+ *   pressed, and a URL can be pasted, prefetched or reopened, so no address may run them. Add to
+ *   projects opens its dialog since Decision #520 but has no intent of its own yet.
  * - A guest is sent to sign-in first, returning to the same URL; the page strips the parameter on
  *   arrival, so a reload or Back never reopens the panel.
  *

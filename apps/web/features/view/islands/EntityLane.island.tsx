@@ -1,13 +1,15 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { requestShare } from "@web/features/share/core/share-request.ts";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 // `profile-skeleton.css` rides this island because it pulls in `explore.css`, which the page's server-rendered
 // parts read; `entity-view.css` is the page's own sheet, and this island delivers it (§C.1 — a sheet
 // imported by a server component alone never ships).
 import "@features/profile/styles/profile-skeleton.css";
 import "../styles/entity-view.css";
 import {
+	CARD_STAGE_LIMIT,
+	LaneContextMenu,
 	LaneLedger,
 	type LaneLedgerRow,
 	LaneMenu,
@@ -19,12 +21,22 @@ import {
 import { basketIds, hydrateBasket } from "../core/basket-state.ts";
 import { signInHref } from "../core/view-model.ts";
 import { offerSummaryFor } from "../core/offer-summary.ts";
-import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-state.ts";
+import {
+	ensureSavedLists,
+	savedFlag,
+	savedLists,
+	savedTypeOf,
+	saveToList,
+	toggleFlag,
+} from "@features/saved/core/saved-state.ts";
+import { saveListRows } from "@features/saved/core/saved-menu.ts";
+import { COLLECTABLE_TYPES } from "@projective/types/org";
 import { CollectionPicker } from "@features/saved/components/CollectionPicker.tsx";
 import "@features/saved/styles/saved.css";
 import { BookingCtaRig } from "../components/BookingCtaRig.tsx";
 import BookingPanels from "./BookingPanels.island.tsx";
-import { announce as announceBooking, openBookingPanel } from "../core/booking-state.ts";
+import { announce as announceBooking, currentOffer, openBookingPanel } from "../core/booking-state.ts";
+import { SeatShare } from "../components/SeatShare.tsx";
 import { type EntityArchetype, offerFor, seatCapacityFor } from "../core/entity-archetype.ts";
 import { cohortTermRows } from "../core/cohort-terms.ts";
 import { browserZone } from "../core/sitting-time.ts";
@@ -47,9 +59,11 @@ import type { PriceAmount } from "@features/explore/core/pricing.ts";
  * the page's byline, so the card never repeats the avatar, name, crest and rating the reader has just
  * read.
  *
- * **It is bounded and never scrolls on its own.** A long stage run lists its first rows and folds the
- * rest into one jump into the body's stage ledger, so every key term and the commit are on screen
- * without an inner scrollbar.
+ * **It is bounded by the viewport.** A long stage run lists its first rows and folds the rest into one
+ * jump into the body's stage ledger; when the card is still taller than the space below the pin line
+ * (a short window), only its body scrolls and the footer's action stack stays on screen (Decisions
+ * #520, #521). A right-click anywhere on the card opens the kebab's rows with the rig's own controls
+ * above them (`LaneContextMenu`).
  *
  * **Below that width it is not rendered at all** and the duty transfers to `EntityBuyBar`. The two are
  * mutually exclusive by `display`, so only ever one is in the accessibility tree, and both derive their
@@ -87,9 +101,6 @@ export interface EntityLaneProps {
 	simulation?: SimulationFacts;
 }
 
-/** The most stage rows the card lists before folding the rest into one jump into the body. */
-const CARD_STAGE_LIMIT = 4;
-
 export default function EntityLane(
 	{
 		view,
@@ -113,12 +124,14 @@ export default function EntityLane(
 	useEffect(() => {
 		zone.value = browserZone();
 	}, []);
-	const capacity = seatCapacityFor(view, archetype);
+	const liveOffer = currentOffer.value ?? bookingOffer;
+	const capacity = seatCapacityFor(view, archetype, liveOffer);
 	const hasStages = !!stages?.length;
 
 	const kind = savedTypeOf(item.type);
 	const saved = authed ? savedFlag(kind, item.id) : null;
 	const picking = useSignal(false);
+	const card = useRef<HTMLDivElement>(null);
 	const status = useSignal("");
 	const added = basketIds.value.includes(item.id);
 
@@ -166,26 +179,35 @@ export default function EntityLane(
 		if (out.simulated) announce(out.outcome);
 	}
 
+	/** Save straight into one of the viewer's lists; a simulation states what it would do instead. */
+	async function saveInto(list: Parameters<typeof saveToList>[2]): Promise<void> {
+		const out = await commitOrSimulate({ kind: "collection" }, () => saveToList(kind, item.id, list));
+		announce(out.simulated ? out.outcome : out.value);
+	}
+
+	const lists = (saved || simulation) && COLLECTABLE_TYPES.includes(kind)
+		? saveListRows({
+			lists: savedLists.value,
+			onPick: (list) => void saveInto(list),
+			onNewList: () => void collect(),
+		})
+		: undefined;
 	const menu: LaneMenuItem[] = [
 		{ key: "share", label: "Share listing", icon: "share", onSelect: () => void share() },
 		{
 			key: "save",
 			label: saved?.value ? "Remove from saved" : "Save",
-			icon: "star",
-			onSelect: () => void save(),
-		},
-		{
-			key: "collection",
-			label: "Add to collection…",
 			icon: "bookmark",
-			onSelect: () => void collect(),
+			onSelect: () => void save(),
+			items: lists,
+			emptyLabel: "Loading your lists…",
 		},
-		{
+		...(archetype === "cohort" ? [] : [{
 			key: "scope",
 			label: "Request custom scope",
-			icon: "edit",
+			icon: "edit" as const,
 			onSelect: () => openBookingPanel("quote"),
-		},
+		}]),
 	];
 
 	const purchaseKind = purchasableKindOf(item);
@@ -295,48 +317,41 @@ export default function EntityLane(
 		(item.type === "services" || item.type === "products" ? item.currency : undefined) ?? "USD";
 
 	return (
-		<div class="evp-card">
-			{
-				/*
-			  1. PRICE, with every SECONDARY action behind the kebab beside it. No identity band: the
-			  creator is named once, in the page's byline (Decision #424), and the card opens on the figure.
-
-			  Request custom scope opens the QUOTE composer rather than the generic message box, so "price
-			  this different scope" reaches the provider as a structured proposal, not an untyped message.
-			*/
-			}
+		<div class="evp-card" ref={card}>
 			<div class="evp-card__head">
 				<PriceBlock amount={amount} fallback={fallback} unit={unit} isFloor={isFloor} />
-				<LaneMenu menu={menu} menuLabel="More listing actions" />
+				<LaneMenu menu={menu} menuLabel="More listing actions" onOpen={() => lists && ensureSavedLists()} />
 			</div>
 
-			{
-				/*
-			  2. STAGE / SEAT SUMMARY — compact rows, capped so the card is bounded and never scrolls on
-			  its own (the rest of a long run is one jump into the body's stage ledger), and the cohort's
-			  single seat meter.
-			*/
-			}
-			{hasStages && (
-				<LaneStages
-					stages={stages!}
-					currency={stageCurrency}
-					label="Pipeline stages"
-					limit={CARD_STAGE_LIMIT}
+			<div class="evp-card__body">
+				{hasStages && (
+					<LaneStages
+						stages={stages!}
+						currency={stageCurrency}
+						label="Pipeline stages"
+						limit={CARD_STAGE_LIMIT}
+					/>
+				)}
+				{capacity && <SeatSummary capacity={capacity} />}
+				{liveOffer.seat && <SeatShare seat={liveOffer.seat} title={item.title} />}
+				<LaneLedger rows={ledger} />
+			</div>
+
+			<div class="evp-card__foot">
+				<BookingCtaRig
+					offer={bookingOffer}
+					layout="lane"
+					inBasket={added}
+					onPrimaryPurchase={purchaseKind ? onPrimaryPurchase : undefined}
+					onAddToBasket={purchaseKind ? onAddToBasket : undefined}
 				/>
-			)}
-			{capacity && <SeatSummary capacity={capacity} />}
+			</div>
 
-			{/* 3. KEY TERMS — inline meta rows, never chips (§B.11.2). */}
-			<LaneLedger rows={ledger} />
-
-			{/* 4. THE ACTION STACK — tier 1 · tier 4 · the one ghost (§B.8.1). */}
-			<BookingCtaRig
-				offer={bookingOffer}
-				layout="lane"
-				inBasket={added}
-				onPrimaryPurchase={purchaseKind ? onPrimaryPurchase : undefined}
-				onAddToBasket={purchaseKind ? onAddToBasket : undefined}
+			<LaneContextMenu
+				menu={menu}
+				surface={() => card.current}
+				label="Listing actions"
+				onOpen={() => lists && ensureSavedLists()}
 			/>
 
 			{

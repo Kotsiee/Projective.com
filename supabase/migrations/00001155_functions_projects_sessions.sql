@@ -433,7 +433,7 @@ BEGIN
     VALUES (v_cohort.id, p_buyer, v_hold.seats, 'active', p_order_line_id)
     ON CONFLICT (cohort_id, user_id) DO UPDATE
        SET status = 'active', seats = EXCLUDED.seats, order_line_id = EXCLUDED.order_line_id,
-           joined_at = pg_catalog.now(), cancelled_at = NULL
+           sponsor_membership_id = NULL, joined_at = pg_catalog.now(), cancelled_at = NULL
      WHERE projects.cohort_memberships.status <> 'active'
     RETURNING id INTO v_membership;
     IF v_membership IS NULL THEN
@@ -3346,4 +3346,318 @@ COMMENT ON FUNCTION projects.fn_waitlist_dispatch(timestamptz) IS
 (fn_close_cohort_enrolment), expires lapsed invites (releasing their holds), then invites
 the people waiting in queue order, one per free seat, each holding its seat for
 waitlist_invite_hold_hours. Internal; scheduled in 00005060. {expired, invited}.';
+-- #endregion
+
+
+-- #region 16. Seat links — a multi-seat booking shares its spare seats (Decision #522)
+-- A buyer who paid for several seats keeps one and may hand the rest out through one link. A claim moves
+-- one seat from the buyer's membership to a new membership for the claimer that names the buyer's as its
+-- sponsor, so occupancy never changes and nothing is charged: the buyer's escrow already holds every seat.
+-- Claims are first come first served under a row lock on the buyer's membership, and stop when the
+-- cohort's first sitting starts, when the link is revoked, or when the buyer is down to their own seat.
+-- Refusals are 'Seat refused: <code>' (23514), which SessionBackendService turns into a sentence.
+
+-- A fresh link code: `s-` and 24 base64url characters (18 random bytes).
+CREATE OR REPLACE FUNCTION projects.fn_seat_code()
+RETURNS text
+LANGUAGE sql
+VOLATILE
+SET search_path = ''
+AS $$
+    SELECT 's-' || pg_catalog.translate(pg_catalog.encode(extensions.gen_random_bytes(18), 'base64'), '+/', '-_');
+$$;
+
+-- When a cohort's first sitting starts, or NULL with none on the calendar.
+CREATE OR REPLACE FUNCTION projects.fn_cohort_first_start(p_cohort_id uuid)
+RETURNS timestamptz
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.min(se.start_time)
+      FROM projects.session_events se
+     WHERE se.cohort_id = p_cohort_id AND se.status IN ('scheduled', 'completed');
+$$;
+
+-- Whether a cohort still takes claims: not cancelled or over, and its first sitting not yet begun.
+CREATE OR REPLACE FUNCTION projects.fn_cohort_claimable(p_cohort_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT c.status IN ('enrolling', 'active')
+           AND COALESCE(projects.fn_cohort_first_start(c.id) > pg_catalog.now(), true)
+      FROM projects.cohorts c
+     WHERE c.id = p_cohort_id;
+$$;
+
+-- The caller's own place on a cohort: their seats, who claimed the ones they shared, and their open link.
+-- NULL when they hold no active seat. `can_share` is true only for a paid membership of more than one
+-- seat on a cohort that still takes claims.
+CREATE OR REPLACE FUNCTION projects.get_my_cohort_seats(p_cohort_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_m projects.cohort_memberships;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO v_m FROM projects.cohort_memberships cm
+     WHERE cm.cohort_id = p_cohort_id AND cm.user_id = v_uid AND cm.status = 'active';
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+    RETURN pg_catalog.jsonb_build_object(
+        'membership_id', v_m.id,
+        'seats', v_m.seats,
+        'sponsored', v_m.sponsor_membership_id IS NOT NULL,
+        'can_share', v_m.sponsor_membership_id IS NULL AND v_m.seats > 1 AND projects.fn_cohort_claimable(p_cohort_id),
+        'claimed', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                'name', marketplace.fn_quote_party_name(s.user_id), 'handle', u.username, 'joined_at', s.joined_at
+            ) ORDER BY s.joined_at)
+              FROM projects.cohort_memberships s
+              JOIN org.users_public u ON u.user_id = s.user_id
+             WHERE s.sponsor_membership_id = v_m.id AND s.status = 'active'
+        ), '[]'::jsonb),
+        'code', (SELECT i.code FROM projects.cohort_seat_invites i
+                  WHERE i.membership_id = v_m.id AND i.status = 'open' LIMIT 1)
+    );
+END;
+$$;
+
+-- Open (or return) the link for the caller's own paid membership of more than one seat.
+CREATE OR REPLACE FUNCTION projects.share_cohort_seats(p_membership_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_m projects.cohort_memberships;
+    v_code text;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Seat refused: not_signed_in' USING ERRCODE = 'check_violation';
+    END IF;
+    SELECT * INTO v_m FROM projects.cohort_memberships WHERE id = p_membership_id FOR UPDATE;
+    IF NOT FOUND OR v_m.user_id <> v_uid OR v_m.status <> 'active' THEN
+        RAISE EXCEPTION 'Seat refused: not_found' USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_m.sponsor_membership_id IS NOT NULL OR v_m.seats < 2 THEN
+        RAISE EXCEPTION 'Seat refused: nothing_to_share' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NOT projects.fn_cohort_claimable(v_m.cohort_id) THEN
+        RAISE EXCEPTION 'Seat refused: started' USING ERRCODE = 'check_violation';
+    END IF;
+    SELECT i.code INTO v_code FROM projects.cohort_seat_invites i
+     WHERE i.membership_id = v_m.id AND i.status = 'open';
+    IF v_code IS NULL THEN
+        INSERT INTO projects.cohort_seat_invites (membership_id, code)
+        VALUES (v_m.id, projects.fn_seat_code())
+        RETURNING code INTO v_code;
+    END IF;
+    RETURN pg_catalog.jsonb_build_object('code', v_code, 'seats_left', v_m.seats - 1);
+END;
+$$;
+
+-- Close the caller's open link. Seats already claimed stay claimed.
+CREATE OR REPLACE FUNCTION projects.revoke_cohort_seat_link(p_membership_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_owner uuid;
+BEGIN
+    SELECT cm.user_id INTO v_owner FROM projects.cohort_memberships cm WHERE cm.id = p_membership_id;
+    IF v_uid IS NULL OR v_owner IS DISTINCT FROM v_uid THEN
+        RAISE EXCEPTION 'Seat refused: not_found' USING ERRCODE = 'check_violation';
+    END IF;
+    UPDATE projects.cohort_seat_invites
+       SET status = 'revoked', revoked_at = pg_catalog.now()
+     WHERE membership_id = p_membership_id AND status = 'open';
+    RETURN pg_catalog.jsonb_build_object('revoked', FOUND);
+END;
+$$;
+
+-- What a link offers the signed-in person holding it, and why it can't be claimed when it can't:
+-- `open` · `revoked` · `full` (the buyer is down to their own seat) · `started` · `ended` (the buyer's
+-- seat is no longer active) · `host` (the session's own provider) · `own` (the buyer) · `seated` (already
+-- in the cohort). NULL for a code that names no link.
+CREATE OR REPLACE FUNCTION projects.get_cohort_seat_invite(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_i projects.cohort_seat_invites;
+    v_m projects.cohort_memberships;
+    v_c projects.cohorts;
+    v_state text;
+BEGIN
+    IF v_uid IS NULL OR p_code IS NULL OR p_code !~ '^s-[A-Za-z0-9_-]{24}$' THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO v_i FROM projects.cohort_seat_invites WHERE code = p_code;
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO v_m FROM projects.cohort_memberships WHERE id = v_i.membership_id;
+    SELECT * INTO v_c FROM projects.cohorts WHERE id = v_m.cohort_id;
+    v_state := CASE
+        WHEN v_i.status = 'revoked' THEN 'revoked'
+        WHEN v_m.status <> 'active' THEN 'ended'
+        WHEN NOT projects.fn_cohort_claimable(v_c.id) THEN 'started'
+        WHEN projects.fn_is_session_host(v_c.project_id, v_uid) THEN 'host'
+        WHEN v_m.user_id = v_uid THEN 'own'
+        WHEN EXISTS (SELECT 1 FROM projects.cohort_memberships cm
+                      WHERE cm.cohort_id = v_c.id AND cm.user_id = v_uid AND cm.status = 'active') THEN 'seated'
+        WHEN v_m.seats < 2 THEN 'full'
+        ELSE 'open'
+    END;
+    RETURN pg_catalog.jsonb_build_object(
+        'state', v_state,
+        'seats_left', GREATEST(v_m.seats - 1, 0),
+        'cohort_name', v_c.name,
+        'first_start', projects.fn_cohort_first_start(v_c.id),
+        'sponsor_name', marketplace.fn_quote_party_name(v_m.user_id),
+        'listing_title', (SELECT b.title FROM projects.projects p
+                            JOIN marketplace.service_blueprints b ON b.id = p.source_blueprint_id
+                           WHERE p.id = v_c.project_id),
+        'listing_slug', (SELECT b.slug FROM projects.projects p
+                           JOIN marketplace.service_blueprints b ON b.id = p.source_blueprint_id
+                          WHERE p.id = v_c.project_id),
+        'project_slug', (SELECT p.slug FROM projects.projects p WHERE p.id = v_c.project_id)
+    );
+END;
+$$;
+
+-- Claim one seat through a link: first come first served under a row lock on the buyer's membership.
+-- The claimer joins the cohort as a member sponsored by the buyer; the buyer is told.
+CREATE OR REPLACE FUNCTION projects.claim_cohort_seat(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_i projects.cohort_seat_invites;
+    v_m projects.cohort_memberships;
+    v_c projects.cohorts;
+    v_seat uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Seat refused: not_signed_in' USING ERRCODE = 'check_violation';
+    END IF;
+    PERFORM org.fn_assert_adult(v_uid);
+    IF p_code IS NULL OR p_code !~ '^s-[A-Za-z0-9_-]{24}$' THEN
+        RAISE EXCEPTION 'Seat refused: not_found' USING ERRCODE = 'check_violation';
+    END IF;
+    SELECT * INTO v_i FROM projects.cohort_seat_invites WHERE code = p_code FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Seat refused: not_found' USING ERRCODE = 'check_violation';
+    END IF;
+    SELECT * INTO v_m FROM projects.cohort_memberships WHERE id = v_i.membership_id FOR UPDATE;
+    SELECT * INTO v_c FROM projects.cohorts WHERE id = v_m.cohort_id;
+
+    IF v_i.status <> 'open' THEN
+        RAISE EXCEPTION 'Seat refused: revoked' USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_m.status <> 'active' THEN
+        RAISE EXCEPTION 'Seat refused: ended' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NOT projects.fn_cohort_claimable(v_c.id) THEN
+        RAISE EXCEPTION 'Seat refused: started' USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_m.user_id = v_uid OR projects.fn_is_session_host(v_c.project_id, v_uid) THEN
+        RAISE EXCEPTION 'Seat refused: own' USING ERRCODE = 'check_violation';
+    END IF;
+    IF EXISTS (SELECT 1 FROM projects.cohort_memberships cm
+                WHERE cm.cohort_id = v_c.id AND cm.user_id = v_uid AND cm.status = 'active') THEN
+        RAISE EXCEPTION 'Seat refused: seated' USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_m.seats < 2 THEN
+        RAISE EXCEPTION 'Seat refused: full' USING ERRCODE = 'check_violation';
+    END IF;
+
+    UPDATE projects.cohort_memberships SET seats = seats - 1 WHERE id = v_m.id;
+    INSERT INTO projects.cohort_memberships (cohort_id, user_id, seats, status, order_line_id, sponsor_membership_id)
+    VALUES (v_c.id, v_uid, 1, 'active', v_m.order_line_id, v_m.id)
+    ON CONFLICT (cohort_id, user_id) DO UPDATE
+       SET status = 'active', seats = 1, order_line_id = EXCLUDED.order_line_id,
+           sponsor_membership_id = EXCLUDED.sponsor_membership_id,
+           joined_at = pg_catalog.now(), cancelled_at = NULL
+     WHERE projects.cohort_memberships.status <> 'active'
+    RETURNING id INTO v_seat;
+
+    PERFORM comms.fn_notify(
+        v_m.user_id, 'session.seat_claimed', 'A seat was claimed',
+        marketplace.fn_quote_party_name(v_uid) || ' took one of your seats on ' || v_c.name || '.',
+        'projects.cohorts', v_c.id, '{}'::jsonb, v_uid,
+        'project', v_c.project_id, NULL,
+        '/projects/' || (SELECT p.slug FROM projects.projects p WHERE p.id = v_c.project_id)
+    );
+    RETURN pg_catalog.jsonb_build_object(
+        'membership_id', v_seat,
+        'cohort_id', v_c.id,
+        'project_slug', (SELECT p.slug FROM projects.projects p WHERE p.id = v_c.project_id),
+        'seats_left', v_m.seats - 2
+    );
+END;
+$$;
+
+-- AFTER UPDATE OF status on cohort_memberships: a buyer's seats that were given away end with the buyer's
+-- (cancelled or completed alike) and their open link closes; a claimed seat given up on its own goes back
+-- to the buyer, who may share it again.
+CREATE OR REPLACE FUNCTION projects.tg_cohort_sponsored_seats()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF OLD.status <> 'active' OR NEW.status = 'active' THEN
+        RETURN NULL;
+    END IF;
+    IF NEW.sponsor_membership_id IS NULL THEN
+        UPDATE projects.cohort_memberships
+           SET status = NEW.status,
+               cancelled_at = CASE WHEN NEW.status = 'cancelled' THEN pg_catalog.now() END
+         WHERE sponsor_membership_id = NEW.id AND status = 'active';
+        UPDATE projects.cohort_seat_invites
+           SET status = 'revoked', revoked_at = pg_catalog.now()
+         WHERE membership_id = NEW.id AND status = 'open';
+    ELSIF NEW.status = 'cancelled' THEN
+        UPDATE projects.cohort_memberships
+           SET seats = seats + 1
+         WHERE id = NEW.sponsor_membership_id AND status = 'active';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+COMMENT ON FUNCTION projects.claim_cohort_seat(text) IS
+'Claim one seat through a buyer''s seat link (Decision #522): first come first served under a row lock on the buyer''s membership, until the first sitting starts. Moves one seat to a membership sponsored by the buyer''s; charges nothing. Refusals ''Seat refused: <code>''.';
+COMMENT ON FUNCTION projects.share_cohort_seats(uuid) IS
+'Open (or return) the seat link of the caller''s own paid membership of more than one seat (Decision #522).';
 -- #endregion

@@ -52,19 +52,9 @@ export function ProjectHero(
 
 	return (
 		<div class="evp-overview evp-overview--project">
-			<h1 class="evp-overview__title">{item.title}</h1>
-
-			{
-				/*
-			  Metadata as ONE muted middot-separated line (§B.11.2): the live stage, the classification
-			  and the leading skills. The classification used to be a tinted pill in the title and the
-			  stage a second pill beneath it — neither could be clicked, and containment is a promise
-			  of interactivity.
-			*/
-			}
 			<MetaLine items={meta} />
 
-			<p class="evp-overview__summary">{item.summary}</p>
+			<h1 class="evp-overview__title">{item.title}</h1>
 
 			<SellerLine
 				item={item}
@@ -74,6 +64,8 @@ export function ProjectHero(
 				headline={project.ownerHeadline}
 				reviewsHref={reviewsHref}
 			/>
+
+			<p class="evp-overview__summary">{item.summary}</p>
 		</div>
 	);
 }
@@ -104,8 +96,9 @@ export function PreviewNotice({ editHref }: { editHref?: string }): JSX.Element 
 
 // #region Body
 /**
- * The project's evaluation body: the classification-tailored details ledger, the roles the brief is
- * hiring for, and the stage run on the shared timeline track (§D.8.1) with its seat facts shown.
+ * The project's evaluation body, in the order every archetype keeps after the hero: the
+ * classification-tailored details ledger (the roles the brief is hiring for are one of its rows), then
+ * the stage run on the shared timeline track (§D.8.1) with its seat facts shown.
  *
  * It carries NO price and NO apply control on desktop — the offer has exactly one home (§D.7.3).
  */
@@ -114,18 +107,18 @@ export function ProjectBody(
 ): JSX.Element {
 	const roles = projectRoles(view);
 	const isOneOff = project.classification !== "pipeline";
+	const rows = roles.length > 0
+		? [
+			...projectDetailRows(view, project),
+			{ label: "Roles needed", value: <MetaLine items={roles} class="evp-roles" /> },
+		]
+		: projectDetailRows(view, project);
 
 	return (
 		<>
 			<Section title="Project details">
-				<SpecLedger rows={projectDetailRows(view, project)} columns />
+				<SpecLedger rows={rows} columns />
 			</Section>
-
-			{roles.length > 0 && (
-				<Section title="Who this project needs">
-					<MetaLine items={roles} class="evp-roles" />
-				</Section>
-			)}
 
 			{project.stages.length > 0 && (
 				<Section title={projectStagesHeading(project)}>

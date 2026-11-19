@@ -187,3 +187,14 @@
 	gap: var(--space-2);
 }
 /* #endregion */
+
+.dispute-dlg__terms {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding-inline-start: var(--space-4);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+}

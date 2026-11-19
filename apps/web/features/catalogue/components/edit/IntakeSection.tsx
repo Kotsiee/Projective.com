@@ -57,7 +57,8 @@ export function IntakeSection(props: { listing: ListingDetail }): JSX.Element {
 			{locked && (
 				<p class="cat-sec__hint" id={LOCK_ID}>
 					This listing has been published, so buyers' answers are stored against these questions.
-					You can reword them and edit their options, but not add, remove, reorder or change them.
+					You can reword them and edit their options, starting values and pricing, but not add,
+					remove, reorder or change them, or when they are asked.
 				</p>
 			)}
 
@@ -84,6 +85,8 @@ export function IntakeSection(props: { listing: ListingDetail }): JSX.Element {
 									field={field}
 									locked={locked}
 									problem={problem?.fieldId === field.id ? problem.message : null}
+									earlier={fields.slice(0, i)}
+									currency={listing.currency}
 									onChange={(next) => gated.set([...replaceItem(fields, i, next)])}
 									onRemove={() => gated.set([...removeItem(fields, i)])}
 								/>

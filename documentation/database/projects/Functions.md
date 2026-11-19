@@ -2425,6 +2425,26 @@ Zod: `ScheduleSittingInputSchema`, `RetitleSittingInputSchema` and `SittingWrite
 and 24-hour limits to the SQL. No route or service calls either door yet. The provider-side
 cohort UI that would call them is still to be built.
 
+## Sessions — seat links (`00001155` §16, Decision #522)
+
+A buyer of several seats keeps one and hands the rest out through one link. A claim moves one seat from
+the buyer's membership to a new one-seat membership sponsored by it, so occupancy never changes and
+nothing is charged. Refusals are `Seat refused: <code>` (`23514`): `not_signed_in` · `not_found` ·
+`nothing_to_share` · `started` · `revoked` · `ended` · `own` (the buyer or the host) · `seated` · `full`.
+Probe: `supabase/probes/quote_evidence.sql` §7.
+
+| Function | Door | What it does |
+| :-- | :-- | :-- |
+| `projects.get_my_cohort_seats(cohort) → jsonb` | `authenticated` | The caller's active seat or `NULL`: `membership_id`, `seats`, `sponsored`, `can_share` (a paid membership of more than one seat on a cohort that still takes claims), who `claimed` the shared seats, and the open link's `code`. Read into `ServiceBookingOffer.seat`. |
+| `projects.share_cohort_seats(membership) → jsonb` | `authenticated` | Opens (or returns) the link of the caller's own paid membership of 2+ seats on a claimable cohort: `{code, seats_left}`. |
+| `projects.revoke_cohort_seat_link(membership) → jsonb` | `authenticated` | Closes the caller's open link; claimed seats stay. |
+| `projects.get_cohort_seat_invite(code) → jsonb` | `authenticated` | What a link offers the person holding it: `state` (`open` · `revoked` · `full` · `started` · `ended` · `host` · `own` · `seated`), `seats_left`, the cohort, its first start, the sharer, the listing and the engagement. `NULL` for a code that names nothing. |
+| `projects.claim_cohort_seat(code) → jsonb` | `authenticated` (adult) | Locks the link and the buyer's membership (first come first served), refuses as above, moves one seat, seats the claimer sponsored by the buyer (re-activating an earlier row of theirs), and tells the buyer (`session.seat_claimed`). |
+| `projects.fn_cohort_claimable(cohort)` · `fn_cohort_first_start(cohort)` · `fn_seat_code()` | Internal | A cohort takes claims while `enrolling` or `active` and before its first sitting; the link code generator. |
+| `projects.tg_cohort_sponsored_seats()` | Trigger | When a buyer's membership leaves `active`, the seats they gave away follow it (same status) and their link closes; a claimed seat given up on its own returns to the buyer. |
+
+`fn_confirm_seat`'s upsert clears `sponsor_membership_id` when a former claimer pays for their own seats.
+
 ## Sessions — cohort waitlist (`00001155` §1 / §15, Decision #455)
 
 A group-session listing's queue (`projects.waitlists`) is served first in, first out. When the

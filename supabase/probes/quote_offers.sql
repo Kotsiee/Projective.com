@@ -262,9 +262,12 @@ SELECT pg_temp.refused(pg_temp.s('buyer'), format('SELECT marketplace.accept_quo
 -- #endregion
 
 -- #region 4. An expired offer
+-- The terms are frozen (trg_quote_offers_kept, Decision #522): the guard is lifted for this one rewrite.
+ALTER TABLE marketplace.quote_offers DISABLE TRIGGER trg_quote_offers_kept;
 UPDATE marketplace.quote_offers
    SET created_at = now() - interval '15 days', expires_at = now() - interval '1 day'
  WHERE id = pg_temp.s('offer_b');
+ALTER TABLE marketplace.quote_offers ENABLE TRIGGER trg_quote_offers_kept;
 SELECT pg_temp.refused(pg_temp.s('buyer'), format('SELECT marketplace.accept_quote_offer(%L::uuid)', pg_temp.s('offer_b')),
     'offer_expired', '4 an expired offer cannot be accepted');
 SELECT pg_temp.refused(pg_temp.s('buyer'), format('SELECT marketplace.decline_quote_offer(%L::uuid)', pg_temp.s('offer_b')),

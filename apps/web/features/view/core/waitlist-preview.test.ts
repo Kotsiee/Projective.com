@@ -41,6 +41,7 @@ function cohortOffer(remaining: number): ServiceBookingOffer {
 			cadence: null,
 		},
 		waitlist: null,
+		seat: null,
 		draft: null,
 		sessionCount: 1,
 		durationMinutes: 60,

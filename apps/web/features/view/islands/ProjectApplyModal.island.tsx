@@ -1,9 +1,11 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
-import { useEffect } from "preact/hooks";
-import { Dialog, InlineNotice } from "@projective/ui/feedback";
-import { Select, Textarea } from "@projective/ui/fields";
+import { useEffect, useRef } from "preact/hooks";
+import { InlineNotice } from "@projective/ui/feedback";
+import { Button, FormControl, Select, SelectButton, Textarea } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
+import "@features/profile/styles/profile-hire.css";
+import "../styles/service-booking.css";
 import "../styles/project-apply.css";
 import "@features/proposals/styles/proposals.css";
 import type { ProjectStage } from "@projective/types/explore";
@@ -25,7 +27,11 @@ import {
 } from "@features/proposals/core/allowance-state.ts";
 import { AllowanceNotice } from "@features/proposals/components/AllowanceNotice.tsx";
 import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx";
+import { SplitModal } from "@web/features/profile/components/hire/SplitModal.tsx";
 import { CtaButton } from "../components/CtaButton.tsx";
+import { OfferLedger } from "../components/OfferLedger.tsx";
+import { applyLedger } from "../core/conversion-ledger.ts";
+import type { OfferSummary } from "../core/offer-summary.ts";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { applyOpen, applyProjectSlug } from "../core/view-state.ts";
 import {
@@ -47,12 +53,18 @@ export interface ProjectApplyModalProps {
 	 * (`applyAsDefault`, Decision #154 (c)).
 	 */
 	actingTeamId?: string | null;
+	/** The listing as the page names it: the offer column's cover, title and owner. */
+	summary?: OfferSummary | null;
+	/** The project's currency (ISO-4217); every stage price is quoted in it. */
+	currency?: string;
 }
 
 /**
  * ProjectApplyModal — the listing's one application surface (`DESIGN_SYSTEM.md` §D.7): which stage
  * (and role), who applies (you, or a team you may bind), an optional cover note, and the proposal
- * allowance's **pre-flight gate**.
+ * allowance's **pre-flight gate**, in the shared two-column conversion frame (`SplitModal`): the inputs
+ * on the left, the chosen opening (stage, role, ticket price, open seats) on the right. Stages are
+ * pills named without their order number, each with its price and open seats as a sub-line.
  *
  * Mounted ONCE per listing page by `EntityViewPage` (outside the lane and the bar, which hide each
  * other by `display`), and opened by the shared `ProjectCtaRig` / `ProjectActions` through `applyOpen`.
@@ -69,7 +81,8 @@ export interface ProjectApplyModalProps {
  *
  * # Apply as
  *
- * While the shell is acting as a team the viewer may bind (`bind_seat`), "Apply as" opens on that team;
+ * The field renders only when the viewer has a team to apply as; with none, the applicant is always
+ * the viewer and there is nothing to choose. While the shell is acting as a team the viewer may bind (`bind_seat`), "Apply as" opens on that team;
  * otherwise on "Yourself" (Decision #154 (c), `apply-as.ts`). A pick the reader makes is never
  * overridden. A refusal the server gives for the team itself — unpublished, under two members, or a
  * viewer who may not bind it (B2) — is stated as this modal's `InlineNotice`, not as an error line.
@@ -81,7 +94,7 @@ export interface ProjectApplyModalProps {
  * popover and the CTA's "Applied" all move with no reload.
  */
 export default function ProjectApplyModal(
-	{ projectSlug, title, stages, actingTeamId = null }: ProjectApplyModalProps,
+	{ projectSlug, title, stages, actingTeamId = null, summary = null, currency = "USD" }: ProjectApplyModalProps,
 ): JSX.Element {
 	const open = applyOpen;
 	const accepting = stages.filter((s) => s.acceptingApplications);
@@ -106,6 +119,7 @@ export default function ProjectApplyModal(
 	const withdrawing = useSignal<string | null>(null);
 	const announcement = useSignal("");
 	const cta = useCtaFeedback();
+	const firstRef = useRef<HTMLDivElement>(null);
 
 	// Seed the page's slug so "Applied" can be derived, and read the stores once (external fetches).
 	useEffect(() => {
@@ -193,6 +207,7 @@ export default function ProjectApplyModal(
 			? (teams.value ?? []).find((t) => t.id === unpublishedTeamId) ?? null
 			: null;
 
+	const teamChoices = (teams.value ?? []).length > 0;
 	const applicantOptions = [
 		{ label: "Yourself", value: SELF },
 		...(teams.value ?? []).map((t) => ({ label: `${t.name} (team)`, value: t.id })),
@@ -242,19 +257,205 @@ export default function ProjectApplyModal(
 		void readApplicant();
 	}
 
+	const ledger = applyLedger(chosenStage ?? null, role.value, currency);
+
+	const left = (
+		<div class="sbk__form">
+			{pending.length > 0 && (
+				<section class="pam__pending" aria-label="Your pending proposals here">
+					<p class="pam__label">You've already applied</p>
+					<ul class="pam__pendinglist">
+						{pending.map((row) => (
+							<li key={row.id} class="pam__pendingrow">
+								<span class="pam__pendingname">
+									{[row.stageName ?? row.stageSlug, row.roleTitle, row.teamName && `as ${row.teamName}`]
+										.filter(Boolean).join(" · ")}
+								</span>
+								<span class="prop-list__status" data-status="pending">
+									<span class="prop-list__dot" aria-hidden="true" />
+									Awaiting approval
+								</span>
+								{row.canWithdraw
+									? confirming.value === row.id
+										? (
+											<span class="pam__pendingactions">
+												<button
+													type="button"
+													class="prop-list__btn prop-list__btn--danger"
+													disabled={withdrawing.value === row.id}
+													onClick={() => void withdraw(row)}
+												>
+													{withdrawing.value === row.id ? "Withdrawing…" : "Confirm withdraw"}
+												</button>
+												<button
+													type="button"
+													class="prop-list__btn"
+													onClick={() => (confirming.value = null)}
+												>
+													Keep
+												</button>
+											</span>
+										)
+										: (
+											<button
+												type="button"
+												class="prop-list__btn"
+												onClick={() => (confirming.value = row.id)}
+											>
+												Withdraw proposal (refunds 1 proposal)
+											</button>
+										)
+									: null}
+							</li>
+						))}
+					</ul>
+				</section>
+			)}
+
+			{accepting.length === 0
+				? <p class="pam__none">No stage on this project is taking applications right now.</p>
+				: (
+					<>
+						<div class="pam__scope" ref={firstRef} tabIndex={-1}>
+							<FormControl label="Stage" collapseHint>
+								{(a) => (
+									<SelectButton
+										id={a.id}
+										aria-describedby={a.describedBy}
+										aria-label="Stage"
+										value={stage}
+										fluid
+										options={accepting.map((s) => ({
+											label: s.name,
+											value: s.id,
+											description: stageFacts(s),
+										}))}
+										onValueChange={(v) => {
+											stage.value = typeof v === "string" ? v : stage.peek();
+											role.value = "";
+										}}
+									/>
+								)}
+							</FormControl>
+						</div>
+
+						{roleOptions.length > 0 && (
+							<FormControl label="Role" collapseHint>
+								{(a) => (
+									<Select
+										id={a.id}
+										aria-describedby={a.describedBy}
+										value={role}
+										fluid
+										aria-label="Role"
+										options={[
+											{ label: "Any role on this stage", value: "" },
+											...roleOptions.map((r) => ({ label: r.name, value: r.id ?? "" })),
+										]}
+										onValueChange={(v) => (role.value = v ?? "")}
+									/>
+								)}
+							</FormControl>
+						)}
+
+						{teamChoices && (
+							<FormControl label="Apply as" collapseHint>
+								{(a) => (
+									<Select
+										id={a.id}
+										aria-describedby={a.describedBy}
+										value={applicant}
+										fluid
+										aria-label="Apply as"
+										options={applicantOptions}
+										onValueChange={(v) => {
+											picked.value = true;
+											applicant.value = v ?? SELF;
+											refusal.value = null;
+											void readApplicant();
+										}}
+									/>
+								)}
+							</FormControl>
+						)}
+
+						<FormControl label="Cover note" hint="Optional. It opens your conversation with the client." collapseHint>
+							{(a) => (
+								<Textarea
+									id={a.id}
+									aria-describedby={a.describedBy}
+									value={note}
+									rows={4}
+									autoResize
+									maxRows={10}
+									maxLength={HIRE_MESSAGE_MAX}
+									fluid
+									aria-label="Cover note"
+									placeholder="A line on why you fit this stage: similar work, availability, your approach."
+									onValueChange={(v) => (note.value = v)}
+								/>
+							)}
+						</FormControl>
+					</>
+				)}
+
+			{snapshot.value ? <AllowanceNotice snapshot={snapshot.value} /> : null}
+			{showsRefusal(refusal.value, status?.blockReason)
+				? (
+					<InlineNotice
+						align="start"
+						class="prop-notice"
+						assertive
+						icon={<Icon name="info" size="sm" />}
+						text={refusal.value.text}
+					/>
+				)
+				: null}
+			{unpublishedTeam
+				? (
+					<a
+						class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm pam__settings"
+						href={workspaceHref("team", unpublishedTeam.handle, "settings")}
+					>
+						<span class="ui-button__label">Open settings</span>
+					</a>
+				)
+				: null}
+			{readError.value ? <p class="pam__error" role="alert">{readError.value}</p> : null}
+			{error.value
+				? (
+					<p class="pam__error" role="alert">
+						{error.value} <PayoutGateLink details={errorDetails.value} />
+					</p>
+				)
+				: null}
+		</div>
+	);
+
 	return (
 		<>
-			<Dialog
-				visible={open}
-				onVisibleChange={(next) => (open.value = next)}
-				header={`Apply to ${title}`}
-				width="min(36rem, 94vw)"
-				class="pam"
-				footer={
-					<div class="pam__footer">
-						<p class="pam__cost">
+			<SplitModal
+				open={open}
+				title={`Apply to ${title}`}
+				subtitle={chosenStage ? `Proposal for ${chosenStage.name}` : "Proposal"}
+				left={left}
+				right={summary ? <OfferLedger summary={summary} ledger={ledger} escrows={false} /> : null}
+				asideLabel="What you're applying for"
+				summary={
+					<>
+						<span class="sbk__summarymain">
 							{status ? `Uses ${disclosureLine(status)}` : "Applying uses 1 proposal token."}
-						</p>
+						</span>
+						{teamChoices && applicant.value !== SELF && (
+							<span class="sbk__summarynote">
+								As {(teams.value ?? []).find((t) => t.id === applicant.value)?.name ?? "your team"}
+							</span>
+						)}
+					</>
+				}
+				actions={
+					<>
+						<Button variant="text" severity="secondary" label="Cancel" onClick={() => (open.value = false)} />
 						<CtaButton
 							label="Send proposal"
 							settledLabel="Sent"
@@ -265,176 +466,19 @@ export default function ProjectApplyModal(
 							fluid={false}
 							onClick={() => void cta.run(submit)}
 						/>
-					</div>
+					</>
 				}
-			>
-				<div class="pam__body">
-					{pending.length > 0
-						? (
-							<section class="pam__pending" aria-label="Your pending proposals here">
-								<p class="pam__label">You've already applied</p>
-								<ul class="pam__pendinglist">
-									{pending.map((row) => (
-										<li key={row.id} class="pam__pendingrow">
-											<span class="pam__pendingname">
-												{[
-													row.stageName ?? row.stageSlug,
-													row.roleTitle,
-													row.teamName && `as ${row.teamName}`,
-												]
-													.filter(Boolean).join(" · ")}
-											</span>
-											<span class="prop-list__status" data-status="pending">
-												<span class="prop-list__dot" aria-hidden="true" />
-												Awaiting approval
-											</span>
-											{row.canWithdraw
-												? confirming.value === row.id
-													? (
-														<span class="pam__pendingactions">
-															<button
-																type="button"
-																class="prop-list__btn prop-list__btn--danger"
-																disabled={withdrawing.value === row.id}
-																onClick={() => void withdraw(row)}
-															>
-																{withdrawing.value === row.id ? "Withdrawing…" : "Confirm withdraw"}
-															</button>
-															<button
-																type="button"
-																class="prop-list__btn"
-																onClick={() => (confirming.value = null)}
-															>
-																Keep
-															</button>
-														</span>
-													)
-													: (
-														<button
-															type="button"
-															class="prop-list__btn"
-															onClick={() => (confirming.value = row.id)}
-														>
-															Withdraw proposal (refunds 1 proposal)
-														</button>
-													)
-												: null}
-										</li>
-									))}
-								</ul>
-							</section>
-						)
-						: null}
-
-					{accepting.length === 0
-						? <p class="pam__none">No stage on this project is taking applications right now.</p>
-						: (
-							<>
-								<div class="pam__row">
-									<label class="pam__field">
-										<span class="pam__label">Stage</span>
-										<Select
-											value={stage}
-											fluid
-											aria-label="Stage"
-											options={accepting.map((s) => ({
-												label: `${s.index}. ${s.name}`,
-												value: s.id,
-											}))}
-											onValueChange={(v) => {
-												stage.value = v ?? "";
-												role.value = "";
-											}}
-										/>
-									</label>
-									{roleOptions.length > 0
-										? (
-											<label class="pam__field">
-												<span class="pam__label">Role</span>
-												<Select
-													value={role}
-													fluid
-													aria-label="Role"
-													options={[
-														{ label: "Any role on this stage", value: "" },
-														...roleOptions.map((r) => ({ label: r.name, value: r.id ?? "" })),
-													]}
-													onValueChange={(v) => (role.value = v ?? "")}
-												/>
-											</label>
-										)
-										: null}
-								</div>
-
-								<label class="pam__field">
-									<span class="pam__label">Apply as</span>
-									<Select
-										value={applicant}
-										fluid
-										aria-label="Apply as"
-										loading={teams.value === null && open.value}
-										options={applicantOptions}
-										onValueChange={(v) => {
-											picked.value = true;
-											applicant.value = v ?? SELF;
-											refusal.value = null;
-											void readApplicant();
-										}}
-									/>
-								</label>
-
-								<label class="pam__field">
-									<span class="pam__label">
-										Cover note <span class="pam__optional">(optional)</span>
-									</span>
-									<Textarea
-										value={note}
-										rows={4}
-										autoResize
-										maxRows={10}
-										maxLength={HIRE_MESSAGE_MAX}
-										fluid
-										aria-label="Cover note"
-										placeholder="A line on why you fit this stage. It opens your conversation with the client."
-										onValueChange={(v) => (note.value = v)}
-									/>
-								</label>
-							</>
-						)}
-
-					{snapshot.value ? <AllowanceNotice snapshot={snapshot.value} /> : null}
-					{showsRefusal(refusal.value, status?.blockReason)
-						? (
-							<InlineNotice
-								align="start"
-								class="prop-notice"
-								assertive
-								icon={<Icon name="info" size="sm" />}
-								text={refusal.value.text}
-							/>
-						)
-						: null}
-					{unpublishedTeam
-						? (
-							<a
-								class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm pam__settings"
-								href={workspaceHref("team", unpublishedTeam.handle, "settings")}
-							>
-								<span class="ui-button__label">Open settings</span>
-							</a>
-						)
-						: null}
-					{readError.value ? <p class="pam__error" role="alert">{readError.value}</p> : null}
-					{error.value
-						? (
-							<p class="pam__error" role="alert">
-								{error.value} <PayoutGateLink details={errorDetails.value} />
-							</p>
-						)
-						: null}
-				</div>
-			</Dialog>
+				initialFocusRef={firstRef}
+				onClose={() => (open.value = false)}
+				class="sbk-split pam"
+			/>
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{announcement.value}</p>
 		</>
 	);
+}
+
+/** A stage's pill sub-line: its ticket price and the seats still open. */
+function stageFacts(stage: ProjectStage): string {
+	const open = stage.openSeats === 1 ? "1 seat open" : `${stage.openSeats} seats open`;
+	return [stage.price.label, open].filter(Boolean).join(" · ");
 }

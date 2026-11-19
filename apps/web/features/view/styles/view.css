@@ -181,6 +181,56 @@
     margin-block-start: var(--space-3);
 }
 
+.evp-railsrow {
+    inline-size: 100%;
+    min-inline-size: 0;
+}
+
+.vw-related .ex-rail--projects .ex-rail__track {
+    --ex-cell-w: calc(100cqi - var(--space-6));
+}
+
+@container (min-width: 36rem) {
+    .vw-related .ex-rail--projects .ex-rail__track {
+        --ex-cell-w: calc((100cqi - var(--space-4)) / 2);
+    }
+}
+
+@container (min-width: 96rem) {
+    .vw-related .ex-rail--projects .ex-rail__track {
+        --ex-cell-w: calc((100cqi - var(--space-4) * 2) / 3);
+    }
+}
+
+@container (min-width: 128rem) {
+    .vw-related .ex-rail--projects .ex-rail__track {
+        --ex-cell-w: calc((100cqi - var(--space-4) * 3) / 4);
+    }
+}
+
+.vw-related .ex-card--project .ex-proj__pipeline {
+    flex-wrap: nowrap;
+    overflow: hidden;
+}
+
+.vw-related .ex-card--project .ex-proj__stage {
+    flex: none;
+}
+
+.vw-related .ex-card--project .ex-proj__stage:last-child {
+    flex: 0 1 auto;
+}
+
+.vw-related .ex-card--project .ex-proj__desc {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.vw-related .ex-card--project .ex-proj__skills {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+}
+
 /* #endregion */
 
 /* #region Reviews */
@@ -402,7 +452,7 @@
 	 * `--evp-band-offset` stands this clear of the entity view's revealed header band, exactly as the
 	 * conversion lane does. Without it the toolbar pinned at 56px INSIDE a band running 48→96 with
 	 * 544px of horizontal overlap, and at `--z-raised` against the band's `--z-sticky` it lost — the
-	 * glass slab covered the count, the clear control and the sort switch (measured).
+	 * glass slab covered the sort switch (measured).
 	 *
 	 * The fallback is what makes this safe to state here: the token is declared on `:root` by
 	 * `entity-view.css`, which every surface that renders this toolbar happens to load, but a sheet
@@ -416,7 +466,7 @@
     transition: inset-block-start var(--dur-medium) var(--spring-standard);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: var(--space-3);
     flex-wrap: wrap;
     padding-block: var(--space-2);
@@ -432,30 +482,6 @@
 
 [data-motion="reduced"] .vw-revlist__toolbar {
     transition: none;
-}
-
-.vw-revlist__count {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-}
-
-.vw-revlist__clear {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-px);
-    min-block-size: var(--fld-hit);
-    border: none;
-    background: transparent;
-    color: var(--primary-ink);
-    font-size: var(--text-sm);
-    font-weight: var(--fw-semibold);
-    cursor: pointer;
-    padding: 0;
-}
-
-.vw-revlist__clear:focus-visible {
-    outline: none;
-    box-shadow: none;
 }
 
 .vw-sort {

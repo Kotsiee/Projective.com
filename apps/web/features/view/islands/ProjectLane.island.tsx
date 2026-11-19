@@ -1,23 +1,22 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
+import { useRef } from "preact/hooks";
 import { requestShare } from "@web/features/share/core/share-request.ts";
-// The lane reuses the profile lane's `pf-lane*` skeleton (header + scroll + footer geometry), and
-// `entity-view.css` layers the conversion-rail content on top — the SAME sheet and the SAME classes
-// the commerce `EntityLane` renders, which is what makes the two one control set (§C.1 — a sheet
-// imported by a server component alone never ships, so it rides this island's bundle).
-import "@features/profile/styles/profile.css";
+import "@features/profile/styles/profile-skeleton.css";
 import "../styles/entity-view.css";
 import type { EntityView, ProjectViewExtra } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 import {
-	LaneIdentity,
+	CARD_STAGE_LIMIT,
+	LaneContextMenu,
 	LaneLedger,
+	LaneMenu,
 	type LaneMenuItem,
 	LaneStages,
 	PriceBlock,
 } from "../components/lane-parts.tsx";
 import { ProjectCtaRig, ProjectPreviewCta } from "../components/ProjectCtaRig.tsx";
-import { sellerBadges, signInHref } from "../core/view-model.ts";
+import { signInHref } from "../core/view-model.ts";
 import { savedFlag, toggleFlag } from "@features/saved/core/saved-state.ts";
 import {
 	projectCurrency,
@@ -26,18 +25,13 @@ import {
 } from "../core/project-view-model.ts";
 
 /**
- * ProjectLane — the Projects archetype's conversion rail (`DESIGN_SYSTEM.md` §D.7), mounted as the
- * frame's END column exactly where a service's `EntityLane` mounts.
+ * ProjectLane — the Projects archetype's purchase card (`DESIGN_SYSTEM.md` §D.7), mounted as the
+ * frame's END column exactly where a listing's `EntityLane` mounts, in the same `.evp-card` anatomy:
+ * the ticket price with the overflow kebab (Share · Save) · the stage quick-jumps, capped at
+ * {@link CARD_STAGE_LIMIT} · the summary ledger · the action footer carrying the single Apply primary
+ * and the Message ghost. It carries no identity: the client is named once, in the hero's seller line.
  *
- * Same anatomy, top to bottom: the client's identity band with their earned badges and the overflow
- * kebab (Share · Save · Report); the ticket-price figure in two registers; the stage quick-jumps,
- * which drive the server-rendered `StageProgressLedger` in the body; the summary ledger; and the
- * pinned action footer carrying the single Apply primary and the Message ghost.
- *
- * It replaces the `ProjectViewLane` that lived in the SHELL's navigation slot — a drag-resizable
- * middle-nav lane for a signed-in reader and a floating glass aside for a guest, neither of which
- * was the panel a service showed. One presentation now serves both shells, and the lane is not
- * rendered below the frame breakpoint, where `ProjectApplyBar` takes the duty (§D.7.4).
+ * Below the frame breakpoint it is not rendered, and `ProjectApplyBar` takes the duty (§D.7.4).
  */
 export interface ProjectLaneProps {
 	view: EntityView;
@@ -58,6 +52,7 @@ export default function ProjectLane(
 	const { item } = view;
 	const saved = authed ? savedFlag("project", item.id) : null;
 	const status = useSignal("");
+	const card = useRef<HTMLDivElement>(null);
 
 	/** Save the project (its star, Decision #180); a guest is sent to sign in first. */
 	async function save(): Promise<void> {
@@ -79,7 +74,7 @@ export default function ProjectLane(
 		{
 			key: "save",
 			label: saved?.value ? "Remove from saved" : "Save project",
-			icon: "star",
+			icon: "bookmark",
 			onSelect: () => void save(),
 		},
 	];
@@ -87,41 +82,40 @@ export default function ProjectLane(
 	const price = projectTicketPrice(project);
 
 	return (
-		<div class="pf-lane evp-lane">
-			<div class="pf-lane__full evp-lane__full">
-				<LaneIdentity
-					item={item}
-					badges={sellerBadges(item, view.responseMinutes)}
-					menu={menu}
-					menuLabel="More project actions"
+		<div class="evp-card" ref={card}>
+			<div class="evp-card__head">
+				<PriceBlock
+					amount={price.amount}
+					fallback={price.fallback}
+					unit={price.unit}
+					isFloor={price.isFloor}
 				/>
-
-				<div class="pf-lane__scroll evp-lane__scroll">
-					<PriceBlock
-						amount={price.amount}
-						fallback={price.fallback}
-						unit={price.unit}
-						isFloor={price.isFloor}
-					/>
-
-					<LaneStages
-						stages={project.stages}
-						currency={projectCurrency(project)}
-						label="Project stages"
-					/>
-
-					<div class="evp-lane__meta">
-						<LaneLedger rows={projectLaneRows(project)} />
-					</div>
-				</div>
-
-				<div class="pf-lane__footer evp-lane__footer">
-					{preview
-						? <ProjectPreviewCta layout="lane" />
-						: <ProjectCtaRig item={item} authed={authed} ctx={ctx} layout="lane" />}
-				</div>
+				<LaneMenu menu={menu} menuLabel="More project actions" />
 			</div>
 
+			<div class="evp-card__body">
+				<LaneStages
+					stages={project.stages}
+					currency={projectCurrency(project)}
+					label="Project stages"
+					limit={CARD_STAGE_LIMIT}
+				/>
+				<LaneLedger rows={projectLaneRows(project)} />
+			</div>
+
+			<div class="evp-card__foot">
+				{preview
+					? <ProjectPreviewCta layout="lane" />
+					: <ProjectCtaRig item={item} authed={authed} ctx={ctx} layout="lane" />}
+			</div>
+
+			{!preview && (
+				<LaneContextMenu
+					menu={menu}
+					surface={() => card.current}
+					label="Project actions"
+				/>
+			)}
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{status.value}</p>
 		</div>
 	);

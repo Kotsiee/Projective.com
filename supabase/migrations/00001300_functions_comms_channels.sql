@@ -1381,7 +1381,7 @@ DECLARE
     v_rule comms.auto_responses;
     v_now timestamptz := now();
 BEGIN
-    IF NEW.auto_response_id IS NOT NULL OR NEW.deleted_at IS NOT NULL THEN
+    IF NEW.auto_response_id IS NOT NULL OR NEW.quote_event_id IS NOT NULL OR NEW.deleted_at IS NOT NULL THEN
         RETURN NULL;
     END IF;
 

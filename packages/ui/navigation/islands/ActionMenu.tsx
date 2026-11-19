@@ -114,10 +114,8 @@ interface FlyoutProps {
 
 const EDITABLE = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
 
-function selectingWithin(surface: HTMLElement): boolean {
-	const selection = globalThis.getSelection?.();
-	if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
-	return surface.contains(selection.getRangeAt(0).commonAncestorContainer);
+function selectingText(): boolean {
+	return (globalThis.getSelection?.()?.toString().trim().length ?? 0) > 0;
 }
 
 function keepInsideMenu(e: JSX.TargetedMouseEvent<HTMLDivElement>): void {
@@ -428,7 +426,7 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 				keyboard,
 				shiftKey: e.shiftKey,
 				editable: !!target?.closest(EDITABLE),
-				selecting: !keyboard && !surfaceLive.current.surfaceSelection && selectingWithin(el),
+				selecting: !keyboard && !surfaceLive.current.surfaceSelection && selectingText(),
 			});
 			if (!open) return;
 			e.preventDefault();

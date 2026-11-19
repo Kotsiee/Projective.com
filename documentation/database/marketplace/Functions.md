@@ -21,7 +21,7 @@ describe a draft three different ways.
 
 | Function | Security | Does |
 | :-- | :-- | :-- |
-| `instantiate_service_blueprint(p_blueprint_id uuid, p_intake jsonb, p_currency text, p_idempotency_key text, p_title text)` | DEFINER | In **one transaction** it writes: the project (**owned by the listing's seller** — `freelancer_profile_id`, filed under the listing's `owner_team_id` — with the caller recorded as its client, `client_user_id = auth.uid()`, Decision #427; `format = 'pipeline'`, `status = 'draft'`, `visibility = 'unlisted'`, `source_blueprint_id`, the listing's brief and currency); one stage per `stage_template` entry with the seller's seat and the stage's room (`fn_write_blueprint_stages`, below); **no ticket** — the client creates them (Decision #409, amending #209); the project-wide Discussion room; and the `projects.service_instantiations` request row, its answers reduced by `fn_intake_answers`. A ticket the client creates on a stage defaults to its price. A listing whose seller is a minor is refused as unavailable (`P0002`): the seller owns the engagement now, and a minor's project is forced personal. Returns the projection plus `created`. |
+| `instantiate_service_blueprint(p_blueprint_id uuid, p_intake jsonb, p_currency text, p_idempotency_key text, p_title text, p_brief text)` | DEFINER | In **one transaction** it writes: the project (**owned by the listing's seller** — `freelancer_profile_id`, filed under the listing's `owner_team_id` — with the caller recorded as its client, `client_user_id = auth.uid()`, Decision #427; `format = 'pipeline'`, `status = 'draft'`, `visibility = 'unlisted'`, `source_blueprint_id`, the listing's brief and currency); one stage per `stage_template` entry with the seller's seat and the stage's room (`fn_write_blueprint_stages`, below); **no ticket** — the client creates them (Decision #409, amending #209); the project-wide Discussion room; and the `projects.service_instantiations` request row, its answers reduced by `fn_intake_answers` and the buyer's brief (`p_brief`, trimmed and capped at 8000 characters, NULL when blank — the "Add to projects" dialog's requirements, Decision #520). A ticket the client creates on a stage defaults to its price. A listing whose seller is a minor is refused as unavailable (`P0002`): the seller owns the engagement now, and a minor's project is forced personal. Returns the projection plus `created`. |
 | `get_service_draft(p_blueprint_id uuid)` | DEFINER | The **live** draft the caller bought from a listing (`client_user_id = auth.uid()`, no paying business or enterprise — Decision #427), `draft` or `active`, newest first. It returns NULL when there is none. This is what flips the listing's primary control to "Open project →". It uses the same predicate the write dedupes on. |
 | `archive_service_draft(p_project_slug text, p_reason text)` | DEFINER | "Remove draft". The instantiated project the caller bought (`client_user_id`, Decision #427) is soft-archived through `projects.set_project_status` (status history and activity written). It is **refused once any stage holds an escrow row**, the sweep's own evidence that money moved. The check and the archive happen in one transaction, after locking the project and its stage rows. Archiving an archived draft returns it unchanged. |
 | `fn_service_draft_json(p_project_id uuid)` | DEFINER (internal) | The shared projection: `project_id, slug, title, status, source_blueprint_slug, stage_count, ticket_count, funded_stage_count, currency, created_at, last_activity_at`. `funded_stage_count` counts stages with any escrow row, as `projects.fn_archive_stale_service_drafts` does. No client role may execute it. |
@@ -157,7 +157,8 @@ age gate's `PM403` passes through. No door moves money.
 
 | Door | Who | From | Effect | Notifies |
 | :-- | :-- | :-- | :-- | :-- |
-| `request_quote(p_blueprint, p_scope, p_budget_cents, p_currency, p_timeline)` | an adult, not the seller or their team | a published blueprint, no open request of theirs on it | a `sent` request addressed to the blueprint's seller | host `quote.requested` |
+| `request_quote(p_blueprint, p_scope, p_budget_cents, p_currency, p_timeline, p_answers = NULL)` | an adult, not the seller or their team | a published blueprint that is not a group session, no open request of theirs on it | a `sent` request addressed to the blueprint's seller, the buyer's answers to its questions kept (`answers`, Decision #522) | host `quote.requested` |
+| `issue_quote(p_counterpart, p_blueprint, p_scope, p_deliverables, p_price_cents, p_turnaround_days, p_expires_in_days = 14)` | an adult seller, on their own published listing (never a group session), to an adult buyer who has written to them in a `dm` / `service_inquiry` thread | — | answers the buyer's open request on the listing (superseding its pending offer), else opens a host-issued request (`origin = 'host'`) born `answered` with this offer (Decision #522) | buyer `quote.offer_received` ("You have a quote") |
 | `send_quote_offer(p_request, p_scope, p_deliverables, p_price_cents, p_turnaround_days, p_expires_in_days = 14)` | the host (adult) | `sent` / `answered` | a `pending` offer in the blueprint's currency; the previous `pending` one `withdrawn` + `superseded_by`; the request `answered` | buyer `quote.offer_received` |
 | `withdraw_quote_offer(p_offer)` | the host | a `pending` offer | `withdrawn` | buyer `quote.offer_withdrawn` |
 | `decline_quote_request(p_request, p_reason)` | the host | `sent` / `answered` | `declined` + reason; a `pending` offer `withdrawn` | buyer `quote.declined` |
@@ -169,31 +170,53 @@ Refusal codes: `not_signed_in`, `quote_not_found` (a stranger and a missing id a
 `not_open`, `listing_unavailable`, `own_listing`, `scope_required`, `budget_invalid`,
 `currency_required`, `timeline_too_long`, `already_open`, `too_many_deliverables`,
 `deliverable_too_long`, `price_required`, `turnaround_invalid`, `expiry_invalid`, `offer_expired`,
-`already_ordered`, `offer_not_accepted`.
+`already_ordered`, `offer_not_accepted`, and since Decision #522 `group_session`, `answers_invalid`,
+`buyer_unavailable`, `buyer_restricted`, `not_your_listing`, `no_conversation`, `terms_mismatch`,
+`terms_frozen`, `record_kept`, `too_many_cards`.
+
+**The record (Decision #522).** Every offer write goes through `fn_quote_put_offer` (shared by
+`send_quote_offer` and `issue_quote`). `fn_quote_terms(offer)` is the offer's canonical terms
+(offer, request, listing, seller, buyer, scope, deliverables, price, currency, turnaround, expiry and
+issue instants in UTC); `fn_quote_hash(terms)` its hex SHA-256. `trg_quote_offers_stamp` writes
+`terms_hash` from the row on insert. Every door then calls `fn_quote_event(request, offer, kind,
+detail)`, which appends one `quote_events` row with the offer's terms and hash and posts a quote card
+(`comms.dm_messages` with `quote_event_id`, sent as the mover) into the pair's `dm` /
+`service_inquiry` thread, opened if they have none (`fn_quote_thread`; a buyer's first ask opens it as
+an inquiry about the listing). Auto-replies never answer a quote card.
 
 **Reads.** `get_quotes_with(p_counterpart)` returns every request between the caller and one person
-in either role, newest first and at most 20. Each entry carries the caller's `role`, the listing
-(slug, title, currency, delivery model, `free_revisions`), `offers_sent`, the current offer (the
-`pending` or `accepted` one, else the latest, with `expired` derived: a `pending` offer, or an
-`accepted` one not yet paid for, past `expires_at`, Decision #491), the buyer's live
-`basket_item_id` and `ordered`. Notices link the host to `/catalogue?view=clients&client=@buyer` and
+in either role, newest first and at most 20. Each entry carries the caller's `role`, `origin`, the
+buyer's `answers` and the listing's `intake_fields` (to label them), the listing (slug, title,
+currency, delivery model, `free_revisions`), `offers_sent`, the current offer (the `pending` or
+`accepted` one, else the latest, with `expired` derived: a `pending` offer, or an `accepted` one not
+yet paid for, past `expires_at`, Decision #491; and its `terms_hash` with `terms_intact`, the stored
+hash compared to the terms re-hashed now), the request's `history` (its last 30 events), the buyer's
+live `basket_item_id` and `ordered`. `get_quote_cards(p_events uuid[])` (Decision #522) answers, for
+up to 100 event ids the caller is a party to, the move (`kind`, who moved, when), the terms and hash
+as they stood, and the offer's and request's state now (`superseded`, `expired`, `ordered`,
+`terms_intact`); ids the caller is not a party to are left out. Notices link the host to `/catalogue?view=clients&client=@buyer` and
 the buyer to `/messages/dm-host` (`fn_quote_link`).
 
 **Checkout's terms.** `fn_quote_offer_terms(p_offer, p_basket_item)` is internal to
 `finance.place_wallet_order`, as the buyer, after that function has checked the same in checkout's
 own words (`database/finance/Functions.md`, Decision #491), so these refusals are its backstop. It
 refuses unless the offer and its request are `accepted`, the offer is not past `expires_at`
-(`offer_expired`), the line is a live line in the caller's personal basket carrying this offer, and
-no other line has bought it. It returns
-`{offer_id, quote_request_id, blueprint_id, brief, target_date (today + turnaround), price_cents, currency, terms}`.
+(`offer_expired`), the offer's terms still hash to its `terms_hash` (`terms_mismatch`, Decision #522),
+the line is a live line in the caller's personal basket carrying this offer, and no other line has
+bought it. It returns
+`{offer_id, quote_request_id, blueprint_id, brief, answers, terms_hash, target_date (today + turnaround), price_cents, currency, terms}`.
+After the order line is written, `fn_quote_paid(p_offer, p_order_line, p_project, p_escrow)` records
+the `paid` event with the engagement it funded.
 `terms` is a one-row array in `fn_blueprint_stage_terms`' shape (one Standard, locked stage at the
 offer's price, its deliverables the stage checklist), which `fn_buy_scoped_service`'s `p_terms`
 writes through.
 
-`EXECUTE` (`00002510`): the seven doors and the read go to `authenticated` and `service_role`. The
-helpers (`fn_lock_quote`, `fn_lock_quote_offer`, `fn_quote_party_name`, `fn_quote_link`,
-`fn_notify_quote`, `fn_quote_listing_title`, `fn_quote_basket`, `fn_quote_offer_line`) and
-`fn_quote_offer_terms` go to `service_role` only.
+`EXECUTE` (`00002510`): the eight doors (with `issue_quote`) and the two reads (with
+`get_quote_cards`) go to `authenticated` and `service_role`. The helpers (`fn_lock_quote`,
+`fn_lock_quote_offer`, `fn_quote_party_name`, `fn_quote_link`, `fn_notify_quote`,
+`fn_quote_listing_title`, `fn_quote_basket`, `fn_quote_offer_line`, `fn_quote_terms`, `fn_quote_hash`,
+`fn_quote_thread`, `fn_quote_event`, `fn_quote_put_offer`, `fn_quote_paid`) and `fn_quote_offer_terms` go
+to `service_role` only; the two trigger functions to nobody.
 
 **Verified by execution:** `supabase/probes/quote_offers.sql`, in one rolled-back transaction. Only
 the host answers. A stranger can neither price nor read a request. Revisions supersede. An expired
@@ -201,3 +224,10 @@ offer can be neither accepted nor declined. Accepting makes exactly one basket l
 re-added after a removal, and a second line written by hand is refused. The terms are read by the
 buyer and that line only, and refused once paid for. Every decline and withdrawal is covered, with its
 notice and link. Both sides' reads and the pipeline's offer price are checked.
+`supabase/probes/quote_evidence.sql` (Decision #522, 47 checks): the stamped hash equals the terms
+re-hashed; no role rewrites an offer's terms or hash, deletes an offer or a request, or changes or
+appends an event by hand; every move is one event and one card sent as the mover; a stranger reads no
+card and a client cannot forge one; `issue_quote` is refused without a conversation and on another's
+listing, and otherwise opens a host-issued request born `answered` with its card in the buyer's
+thread; the buyer's answers ride the request and the basket line with the accepted hash; a group
+session takes no request. `quote_checkout.sql` pays an accepted offer through the new link and event.

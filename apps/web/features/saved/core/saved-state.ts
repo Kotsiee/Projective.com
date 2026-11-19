@@ -1,5 +1,5 @@
 import { type Signal, signal } from "@preact/signals";
-import { type SavedEntityType, savedKey } from "@projective/types/org";
+import { type SavedCollection, type SavedEntityType, savedKey } from "@projective/types/org";
 import type { ExploreEntity } from "@projective/types/explore";
 import { subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { SavedService } from "./SavedService.ts";
@@ -103,6 +103,8 @@ export function toggleFlag(type: SavedEntityType, ref: string): Promise<ToggleOu
 
 /** Forget every known flag so the next read asks again — after the dev axis changes the saved set. */
 function resetSavedFlags(): void {
+	savedLists.value = null;
+	listsRequested = false;
 	for (const [key, flag] of flags) {
 		flag.value = null;
 		queued.add(key);
@@ -114,5 +116,41 @@ function resetSavedFlags(): void {
 }
 
 subscribeDevSeam(resetSavedFlags);
+
+// #endregion
+
+// #region Lists (save into a named collection from any card or lane menu)
+
+/** The viewer's lists, read once per page the first time a save menu opens; `null` until then. */
+export const savedLists = signal<SavedCollection[] | null>(null);
+let listsRequested = false;
+
+/** Read the viewer's lists if no menu has yet. A failed read leaves them unknown, to retry. */
+export function ensureSavedLists(): void {
+	if (listsRequested || typeof document === "undefined") return;
+	listsRequested = true;
+	void SavedService.collections().then((res) => {
+		if (res.ok) savedLists.value = res.data;
+		else listsRequested = false;
+	});
+}
+
+/** Put a list the viewer just made at the end of the shared set. */
+export function rememberList(list: SavedCollection): void {
+	const known = savedLists.peek() ?? [];
+	if (!known.some((l) => l.id === list.id)) savedLists.value = [...known, list];
+}
+
+/** Save one thing into a list (saving it if it was not saved), and say where it went. */
+export async function saveToList(
+	type: SavedEntityType,
+	ref: string,
+	list: SavedCollection,
+): Promise<string> {
+	const res = await SavedService.toggle({ type, ref, saved: true, collectionId: list.id });
+	if (!res.ok) return res.message;
+	if (typeof document !== "undefined") savedFlag(type, ref).value = true;
+	return `Saved to ${list.name}.`;
+}
 
 // #endregion

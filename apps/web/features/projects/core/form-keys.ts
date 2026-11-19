@@ -86,7 +86,7 @@ const MULTILINE = 'textarea, [contenteditable="true"], .ql-editor';
 const ADVANCE_SCOPE = "form, .psu, .psu-shell, .pjc__panel";
 
 /** The numeric field families whose `<input>` is auto-selected on keyboard entry. */
-const NUMERIC_HOSTS = ".ui-input-number, .ui-number-input, .ui-field--number";
+const NUMERIC_HOSTS = ".ui-number-input, .ui-field--number";
 
 /** Whether this element is a text-shaped control that takes a whole line and nothing more. */
 function isAdvanceableInput(el: HTMLElement): el is HTMLInputElement {
@@ -107,7 +107,7 @@ function isNumericField(el: Element | null): el is HTMLInputElement {
 	if (!(el instanceof HTMLInputElement)) return false;
 	if (el.readOnly || el.disabled) return false;
 	if (NUMERIC_INPUT_TYPES.has(el.type)) return true;
-	// `InputNumber` renders `type="text"` so it can format its own value; the host class is what
+	// `NumberInput` renders `type="text"` so it can format its own value; the host class is what
 	// identifies it, and asking the input alone would miss every currency field on the surface.
 	return el.type === "text" && el.closest(NUMERIC_HOSTS) !== null;
 }
@@ -139,7 +139,7 @@ export function selectNumericContents(el: Element | null): void {
 	/*
 	 * And again on the next macrotask, because the first attempt is routinely UNDONE.
 	 *
-	 * `InputNumber` formats its value for display and swaps in an unformatted draft on focus, so the
+	 * `NumberInput` formats its value for display and swaps in an unformatted draft on focus, so the
 	 * `<input>`'s `value` changes one render after the caret arrives — and writing `value` collapses
 	 * any selection to the end of the new string. Measured: a field holding `1250.00` was selected,
 	 * re-rendered to `1250`, and the reader was left with a caret at offset 4 and nothing highlighted.

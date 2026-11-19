@@ -220,6 +220,67 @@ export const ViewerWaitlistPlaceSchema = z.object({
 });
 export type ViewerWaitlistPlace = z.infer<typeof ViewerWaitlistPlaceSchema>;
 
+// #region Seat links (Decision #522)
+/** A seat link's code: `s-` and 24 base64url characters. Also the `/invite/:token` shape it lands on. */
+export const SeatLinkCodeSchema = z.string().regex(/^s-[A-Za-z0-9_-]{24}$/);
+
+/**
+ * The viewer's own seats on a cohort (`projects.get_my_cohort_seats`): how many they hold, who claimed
+ * the ones they shared, and their open link. `canShare` only for a paid membership of more than one
+ * seat on a cohort that has not started.
+ */
+export const ViewerSeatSchema = z.object({
+	membershipId: uuid,
+	seats: z.number().int().min(1).max(500),
+	/** This seat was claimed through someone else's link. */
+	sponsored: z.boolean(),
+	canShare: z.boolean(),
+	claimed: z.array(z.object({
+		name: z.string().min(1).max(120),
+		handle: z.string().min(1).max(64),
+		joinedAt: iso,
+	})).max(500),
+	code: SeatLinkCodeSchema.nullable(),
+});
+export type ViewerSeat = z.infer<typeof ViewerSeatSchema>;
+
+/** Why a seat link can or cannot be claimed by the person holding it. */
+export const SeatInviteState = z.enum(["open", "revoked", "full", "started", "ended", "host", "own", "seated"]);
+export type SeatInviteState = z.infer<typeof SeatInviteState>;
+
+/** What a seat link offers the signed-in person holding it (`projects.get_cohort_seat_invite`). */
+export const SeatInviteViewSchema = z.object({
+	state: SeatInviteState,
+	seatsLeft: z.number().int().min(0).max(500),
+	cohortName: z.string().max(200),
+	firstStartsAt: iso.nullable(),
+	sponsorName: z.string().max(120),
+	listingTitle: z.string().max(200).nullable(),
+	listingSlug: z.string().max(160).nullable(),
+	projectSlug: z.string().max(120).nullable(),
+});
+export type SeatInviteView = z.infer<typeof SeatInviteViewSchema>;
+
+/** `POST /api/services/seats`: open or close the buyer's link, or claim a seat through one. */
+export const SeatLinkActionSchema = z.discriminatedUnion("action", [
+	z.object({ action: z.literal("share"), membershipId: uuid }),
+	z.object({ action: z.literal("revoke"), membershipId: uuid }),
+	z.object({ action: z.literal("claim"), code: SeatLinkCodeSchema }),
+]);
+export type SeatLinkAction = z.infer<typeof SeatLinkActionSchema>;
+
+/** What a seat-link act answers. */
+export const SeatLinkResultSchema = z.object({
+	/** The link, for share; `null` after a revoke or a claim. */
+	code: SeatLinkCodeSchema.nullable(),
+	seatsLeft: z.number().int().min(0).max(500),
+	/** Where a claimer goes next: the engagement. */
+	projectSlug: z.string().max(120).nullable(),
+	confirmation: z.string().max(240),
+});
+export type SeatLinkResult = z.infer<typeof SeatLinkResultSchema>;
+// #endregion
+
 /** One place on the seller's view of a listing's waitlist. The buyer is named by the profile directory. */
 export const ListingWaitlistEntrySchema = z.object({
 	userId: uuid,

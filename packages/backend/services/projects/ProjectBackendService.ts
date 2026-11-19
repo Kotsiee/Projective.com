@@ -3804,8 +3804,9 @@ export class ProjectBackendService {
 	 * returns the SAME draft with `created: false` rather than refusing, so a double-press or a retry
 	 * after an unseen timeout cannot leave two identical pipelines in someone's workspace.
 	 *
-	 * The intake answers are kept, never required here: the draft commits nobody, and the listing
-	 * page's "Add to Projects" collects none (Decision #209 flag).
+	 * The intake answers and the buyer's brief are kept on the request record, never required here:
+	 * the draft commits nobody (Decision #209). The listing page's "Add to Projects" dialog collects
+	 * both (Decision #520).
 	 */
 	static async instantiateService(
 		input: InstantiateServiceInput,
@@ -3869,6 +3870,7 @@ export class ProjectBackendService {
 					currency,
 					idempotencyKey: input.idempotencyKey,
 					title: input.title?.trim() || null,
+					brief: input.brief?.trim() || null,
 				});
 				if (outcome === null) return notFound("service", input.serviceId);
 				if ("refusal" in outcome) return refused(outcome.refusal);

@@ -22,7 +22,7 @@ import type { ContactOffer, ServiceBookingOffer } from "@projective/types/servic
  * fifteen of which are wrong, and the one that bites is two panels open at once — two focus traps,
  * two `Escape` owners, and a backdrop belonging to whichever mounted last.
  */
-export type BookingPanel = "scheduler" | "scope" | "quote" | "call" | null;
+export type BookingPanel = "scheduler" | "scope" | "quote" | "call" | "pipeline" | null;
 
 /** The open panel. */
 export const openPanel = signal<BookingPanel>(null);

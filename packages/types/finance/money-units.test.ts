@@ -41,7 +41,7 @@ Deno.test("a negative figure clamps to zero rather than storing a negative price
 });
 
 Deno.test("a non-finite figure is null, not NaN", () => {
-	// An empty or mid-typing `InputNumber` can yield NaN; `Math.round(NaN)` is NaN, and NaN in a money
+	// An empty or mid-typing `NumberInput` can yield NaN; `Math.round(NaN)` is NaN, and NaN in a money
 	// column is a write that fails at the database with nothing to point the owner at.
 	assertEquals(toMinorUnits(Number.NaN, "GBP"), null);
 	assertEquals(toMinorUnits(Number.POSITIVE_INFINITY, "GBP"), null);

@@ -12,7 +12,12 @@ import { z } from "zod";
  * Rows mirror `marketplace.quote_requests` and `marketplace.quote_offers` column for column; the
  * views are what the conversation panel and the client drawer render, with every act derived
  * server-side so a control only renders when its door would accept it.
+ *
+ * The evidence (Decision #522): a seller may also issue a quote from a conversation the buyer started;
+ * every offer's terms are frozen and carry a SHA-256 `termsHash`; every move is a
+ * `marketplace.quote_events` row (the request's `history`) and a quote card in the pair's thread.
  */
+import { IntakeAnswersSchema, intakeAnswerLines, IntakeFieldsSchema } from "./intake.ts";
 
 // #region Lifecycles and bounds
 /** `marketplace.quote_requests.status` (PRODUCT_MANAGEMENT §3.5). */
@@ -29,6 +34,28 @@ export type QuoteOfferStatus = z.infer<typeof QuoteOfferStatus>;
  */
 export const QuoteOfferState = z.enum(["pending", "accepted", "declined", "withdrawn", "expired"]);
 export type QuoteOfferState = z.infer<typeof QuoteOfferState>;
+
+/** Who opened a request: the buyer asking, or the seller issuing a quote (Decision #522). */
+export const QuoteOrigin = z.enum(["buyer", "host"]);
+export type QuoteOrigin = z.infer<typeof QuoteOrigin>;
+
+/** `marketplace.quote_events.kind`: one move on a request (Decision #522). */
+export const QuoteEventKind = z.enum([
+	"requested",
+	"issued",
+	"offer_sent",
+	"offer_revised",
+	"offer_withdrawn",
+	"request_declined",
+	"offer_accepted",
+	"offer_declined",
+	"request_withdrawn",
+	"paid",
+]);
+export type QuoteEventKind = z.infer<typeof QuoteEventKind>;
+
+/** A hex SHA-256 of an offer's canonical terms. */
+export const TermsHashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 
 /** The bounds the doors and the table CHECKs enforce. */
 export const QUOTE_LIMITS = {
@@ -55,6 +82,9 @@ export const QuoteRequestRowSchema = z.object({
 	budget_cents: z.number().int().min(0).nullable(),
 	currency: currencyCode.nullable(),
 	timeline: z.string().nullable(),
+	/** The buyer's answers to the listing's own questions, keyed by question id. */
+	answers: IntakeAnswersSchema,
+	origin: QuoteOrigin,
 	status: QuoteRequestStatus,
 	answered_at: isoInstant.nullable(),
 	closed_at: isoInstant.nullable(),
@@ -79,6 +109,8 @@ export const QuoteOfferRowSchema = z.object({
 		QUOTE_LIMITS.turnaroundDays.max,
 	),
 	expires_at: isoInstant,
+	/** Stamped from the row on insert; the terms never change after (Decision #522). */
+	terms_hash: TermsHashSchema,
 	status: QuoteOfferStatus,
 	superseded_by: z.string().uuid().nullable(),
 	decided_at: isoInstant.nullable(),
@@ -101,6 +133,19 @@ export const QuoteWithOfferRowSchema = z.object({
 	expires_at: isoInstant,
 	created_at: isoInstant,
 	decided_at: isoInstant.nullable(),
+	terms_hash: TermsHashSchema,
+	/** The stored hash still matches the terms re-hashed now. */
+	terms_intact: z.boolean(),
+});
+
+/** One `marketplace.quote_events` row as a request's history carries it. */
+export const QuoteHistoryRowSchema = z.object({
+	id: z.string().uuid(),
+	kind: QuoteEventKind,
+	by: z.enum(["buyer", "host"]),
+	at: isoInstant,
+	offer_id: z.string().uuid().nullable(),
+	terms_hash: TermsHashSchema.nullable(),
 });
 
 /** One entry of `marketplace.get_quotes_with(counterpart)`, as the database returns it. */
@@ -108,7 +153,9 @@ export const QuoteWithRowSchema = z.object({
 	id: z.string().uuid(),
 	role: z.enum(["buyer", "host"]),
 	status: QuoteRequestStatus,
+	origin: QuoteOrigin,
 	scope: z.string(),
+	answers: IntakeAnswersSchema,
 	budget_cents: z.number().int().min(0).nullable(),
 	currency: currencyCode.nullable(),
 	timeline: z.string().nullable(),
@@ -122,12 +169,59 @@ export const QuoteWithRowSchema = z.object({
 	listing_currency: currencyCode,
 	listing_delivery_model: z.string(),
 	free_revisions: z.number().int().min(0).nullable(),
+	/** The listing's own questions, so the buyer's answers are read back by their labels. */
+	intake_fields: z.array(z.unknown()).max(12),
 	offers_sent: z.number().int().min(0),
 	offer: QuoteWithOfferRowSchema.nullable(),
+	history: z.array(QuoteHistoryRowSchema).max(30),
 	basket_item_id: z.string().uuid().nullable(),
 	ordered: z.boolean(),
 });
 export type QuoteWithRow = z.infer<typeof QuoteWithRowSchema>;
+
+/** An offer's canonical terms as an event snapshots them (`marketplace.fn_quote_terms`). */
+export const QuoteTermsRowSchema = z.object({
+	offer: z.string().uuid(),
+	request: z.string().uuid(),
+	listing: z.string().uuid(),
+	seller: z.string().uuid(),
+	buyer: z.string().uuid(),
+	scope: z.string(),
+	deliverables: z.array(z.string()),
+	price_cents: z.number().int().positive(),
+	currency: currencyCode,
+	turnaround_days: z.number().int(),
+	expires_at: isoInstant,
+	issued_at: isoInstant,
+});
+export type QuoteTermsRow = z.infer<typeof QuoteTermsRowSchema>;
+
+/** One entry of `marketplace.get_quote_cards(events)`, as the database returns it. */
+export const QuoteCardRowSchema = z.object({
+	event_id: z.string().uuid(),
+	kind: QuoteEventKind,
+	by: z.enum(["buyer", "host"]),
+	at: isoInstant,
+	role: z.enum(["buyer", "host"]),
+	request_id: z.string().uuid(),
+	request_status: QuoteRequestStatus,
+	origin: QuoteOrigin,
+	listing_slug: z.string(),
+	listing_title: z.string(),
+	free_revisions: z.number().int().min(0).nullable(),
+	terms: QuoteTermsRowSchema.nullable(),
+	terms_hash: TermsHashSchema.nullable(),
+	detail: z.record(z.string(), z.unknown()),
+	offer: z.object({
+		id: z.string().uuid(),
+		status: QuoteOfferStatus,
+		superseded: z.boolean(),
+		ordered: z.boolean(),
+		expired: z.boolean(),
+		terms_intact: z.boolean(),
+	}).nullable(),
+});
+export type QuoteCardRow = z.infer<typeof QuoteCardRowSchema>;
 // #endregion
 
 // #region Views
@@ -146,8 +240,22 @@ export const QuoteOfferViewSchema = z.object({
 	turnaroundDays: z.number().int(),
 	expiresAt: isoInstant,
 	sentAt: isoInstant,
+	/** The SHA-256 of the terms; what either party quotes as the offer's reference. */
+	termsHash: TermsHashSchema,
+	/** The stored hash still matches the terms re-hashed now. */
+	termsIntact: z.boolean(),
 });
 export type QuoteOfferView = z.infer<typeof QuoteOfferViewSchema>;
+
+/** One move in a request's history, newest last. */
+export const QuoteHistoryEntrySchema = z.object({
+	id: z.string().uuid(),
+	kind: QuoteEventKind,
+	by: QuoteRole,
+	at: isoInstant,
+	termsHash: TermsHashSchema.nullable(),
+});
+export type QuoteHistoryEntry = z.infer<typeof QuoteHistoryEntrySchema>;
 
 /** The acts a viewer may take on a request, derived server-side from its state and their side. */
 export const QuoteActionKind = z.enum([
@@ -166,8 +274,11 @@ export const QuoteViewSchema = z.object({
 	id: z.string().uuid(),
 	role: QuoteRole,
 	status: QuoteRequestStatus,
-	/** The buyer's ask, in their words. */
+	origin: QuoteOrigin,
+	/** The buyer's ask, in their words (a seller-issued request carries the first offer's scope). */
 	scope: z.string(),
+	/** The buyer's answers to the listing's questions, as `Label: value` lines. */
+	answerLines: z.array(z.string().max(2200)).max(12),
 	budgetMinor: z.number().int().min(0).nullable(),
 	budgetCurrency: currencyCode.nullable(),
 	timeline: z.string().nullable(),
@@ -186,6 +297,8 @@ export const QuoteViewSchema = z.object({
 	freeRevisions: z.number().int().min(0).nullable(),
 	offersSent: z.number().int().min(0),
 	offer: QuoteOfferViewSchema.nullable(),
+	/** Every move on the request, oldest first: the record both parties can point to. */
+	history: z.array(QuoteHistoryEntrySchema).max(30),
 	/** The accepted offer has been paid for: its engagement now runs as a project. */
 	ordered: z.boolean(),
 	/**
@@ -231,11 +344,16 @@ export function quoteActionsOf(row: QuoteWithRow): QuoteActionKind[] {
 
 /** A `get_quotes_with` entry as the panel and the drawer render it. Pure. */
 export function quoteViewOf(row: QuoteWithRow): QuoteView {
+	const fields = IntakeFieldsSchema.safeParse(row.intake_fields);
 	return {
 		id: row.id,
 		role: row.role,
 		status: row.status,
+		origin: row.origin,
 		scope: row.scope,
+		answerLines: fields.success
+			? intakeAnswerLines(fields.data, row.answers).slice(0, 12).map((l) => l.slice(0, 2200))
+			: [],
 		budgetMinor: row.budget_cents,
 		budgetCurrency: row.currency,
 		timeline: row.timeline,
@@ -261,10 +379,121 @@ export function quoteViewOf(row: QuoteWithRow): QuoteView {
 				turnaroundDays: row.offer.turnaround_days,
 				expiresAt: row.offer.expires_at,
 				sentAt: row.offer.created_at,
+				termsHash: row.offer.terms_hash,
+				termsIntact: row.offer.terms_intact,
 			}
 			: null,
+		history: row.history.map((e) => ({ id: e.id, kind: e.kind, by: e.by, at: e.at, termsHash: e.terms_hash })),
 		ordered: row.ordered,
 		actions: quoteActionsOf(row),
+	};
+}
+
+/** The first eight characters of a terms hash: how a card and a receipt name an offer's terms. */
+export function termsReference(hash: string): string {
+	return hash.slice(0, 8).toUpperCase();
+}
+
+/** Where one offer named by a quote card stands now. */
+export const QuoteCardStateSchema = z.enum([
+	"pending",
+	"accepted",
+	"paid",
+	"declined",
+	"withdrawn",
+	"superseded",
+	"expired",
+	"closed",
+]);
+export type QuoteCardState = z.infer<typeof QuoteCardStateSchema>;
+
+/** The acts a quote card offers its viewer: only on the request's live offer, and only the doors'. */
+export const QuoteCardActionKind = z.enum(["accept_offer", "decline_offer", "checkout", "withdraw_offer"]);
+export type QuoteCardActionKind = z.infer<typeof QuoteCardActionKind>;
+
+/** One quote card in a conversation (Decision #522): one move, the terms as they stood, and now. */
+export const QuoteCardViewSchema = z.object({
+	eventId: z.string().uuid(),
+	kind: QuoteEventKind,
+	/** The viewer made this move. */
+	mine: z.boolean(),
+	at: isoInstant,
+	role: QuoteRole,
+	requestId: z.string().uuid(),
+	listing: z.object({ title: z.string(), href: z.string().max(200) }),
+	freeRevisions: z.number().int().min(0).nullable(),
+	terms: z.object({
+		offerId: z.string().uuid(),
+		scope: z.string(),
+		deliverables: z.array(z.string()),
+		priceMinor: z.number().int().positive(),
+		currency: currencyCode,
+		turnaroundDays: z.number().int(),
+		expiresAt: isoInstant,
+		hash: TermsHashSchema,
+	}).nullable(),
+	/** Where the named offer stands now; `null` on a move that names none. */
+	state: QuoteCardStateSchema.nullable(),
+	/** The terms still hash to what the card shows. */
+	intact: z.boolean(),
+	actions: z.array(QuoteCardActionKind).max(QuoteCardActionKind.options.length),
+});
+export type QuoteCardView = z.infer<typeof QuoteCardViewSchema>;
+
+/** The cards a conversation asked for. */
+export const QuoteCardListSchema = z.object({ cards: z.array(QuoteCardViewSchema).max(100) });
+export type QuoteCardList = z.infer<typeof QuoteCardListSchema>;
+
+/** Where a card's offer stands now. Pure. */
+export function quoteCardStateOf(row: QuoteCardRow): QuoteCardState | null {
+	const o = row.offer;
+	if (!o) return null;
+	if (o.superseded) return "superseded";
+	if (o.status === "accepted") return o.ordered ? "paid" : o.expired ? "expired" : "accepted";
+	if (o.status === "pending") {
+		if (o.expired) return "expired";
+		return row.request_status === "answered" ? "pending" : "closed";
+	}
+	return o.status;
+}
+
+/** The acts the doors would accept from this viewer on this card's offer now. Pure. */
+export function quoteCardActionsOf(row: QuoteCardRow): QuoteCardActionKind[] {
+	const state = quoteCardStateOf(row);
+	if (row.role === "buyer") {
+		if (state === "pending") return ["accept_offer", "decline_offer"];
+		if (state === "accepted" && row.request_status === "accepted") return ["checkout"];
+		return [];
+	}
+	return state === "pending" ? ["withdraw_offer"] : [];
+}
+
+/** A `get_quote_cards` entry as a conversation renders it. Pure. */
+export function quoteCardOf(row: QuoteCardRow): QuoteCardView {
+	return {
+		eventId: row.event_id,
+		kind: row.kind,
+		mine: row.by === row.role,
+		at: row.at,
+		role: row.role,
+		requestId: row.request_id,
+		listing: { title: row.listing_title, href: `/view/${row.listing_slug}` },
+		freeRevisions: row.free_revisions,
+		terms: row.terms && row.terms_hash
+			? {
+				offerId: row.terms.offer,
+				scope: row.terms.scope,
+				deliverables: row.terms.deliverables,
+				priceMinor: row.terms.price_cents,
+				currency: row.terms.currency,
+				turnaroundDays: row.terms.turnaround_days,
+				expiresAt: row.terms.expires_at,
+				hash: row.terms_hash,
+			}
+			: null,
+		state: quoteCardStateOf(row),
+		intact: row.offer?.terms_intact ?? true,
+		actions: quoteCardActionsOf(row),
 	};
 }
 // #endregion
@@ -308,6 +537,37 @@ export const QuoteActInputSchema = z.discriminatedUnion("action", [
 	z.object({ action: z.literal("withdraw_request") }),
 ]);
 export type QuoteActInput = z.infer<typeof QuoteActInputSchema>;
+
+/**
+ * `POST /api/services/quotes` with `action: "issue"` — a seller's own quote from a conversation
+ * (Decision #522), priced against one of their published services for the buyer behind `buyer`.
+ */
+export const IssueQuoteInputSchema = z.object({
+	action: z.literal("issue"),
+	/** The buyer, `@handle`. */
+	buyer: z.string().trim().regex(/^@?[A-Za-z0-9_.-]{1,64}$/),
+	/** The listing's `svc-` slug. */
+	listing: z.string().trim().min(1).max(160),
+	scope: SendQuoteOfferInputSchema.shape.scope,
+	deliverables: SendQuoteOfferInputSchema.shape.deliverables,
+	priceMinor: SendQuoteOfferInputSchema.shape.priceMinor,
+	turnaroundDays: SendQuoteOfferInputSchema.shape.turnaroundDays,
+	expiresInDays: SendQuoteOfferInputSchema.shape.expiresInDays,
+});
+export type IssueQuoteInput = z.infer<typeof IssueQuoteInputSchema>;
+
+/** One service a seller may quote from a conversation: published, theirs, never a group session. */
+export const QuotableListingSchema = z.object({
+	slug: z.string().min(1).max(160),
+	title: z.string().min(1).max(200),
+	/** The listing's currency: a quote on it is priced in it. */
+	currency: currencyCode,
+});
+export type QuotableListing = z.infer<typeof QuotableListingSchema>;
+
+/** `GET /api/services/quotes/listings`. */
+export const QuotableListingListSchema = z.object({ listings: z.array(QuotableListingSchema).max(60) });
+export type QuotableListingList = z.infer<typeof QuotableListingListSchema>;
 
 /** What an act answers: the request as it now stands. */
 export const QuoteActResultSchema = z.object({

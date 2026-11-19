@@ -76,6 +76,13 @@ export const StarIcon = (
 	</Svg>
 );
 
+/** A bookmark outline (filled via CSS when saved) — the platform's one save glyph (Decision #520). */
+export const BookmarkIcon = (
+	<Svg>
+		<path d="M6 4.5h12v15l-6-4-6 4z" />
+	</Svg>
+);
+
 /** Envelope — the Unread state toggle in the utility bar. */
 export const MailIcon = (
 	<Svg>

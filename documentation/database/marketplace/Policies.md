@@ -60,3 +60,12 @@ could not tell which party moved which status, so a buyer could mark their own r
 No client write: the offer doors in 00001177 are the only way in. Both tables are verified by
 execution in `supabase/probes/quote_offers.sql`: a direct insert answers `42501`, a buyer's
 direct status update changes nothing, and a stranger reads neither table.
+
+### `marketplace.quote_events`
+
+| Policy                         | Command | Roles         | Rule                                                 |
+| :----------------------------- | :------ | :------------ | :--------------------------------------------------- |
+| Parties see their quote events | SELECT  | authenticated | The caller is the requester or the host of its request. |
+
+No client write (Decision #522): the doors and checkout append it, and `trg_quote_events_kept` refuses
+every change, for every role. `quote_evidence.sql` asserts a client append answers `42501`.
