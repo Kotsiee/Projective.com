@@ -237,7 +237,7 @@ below when it eventually runs.
 
 ### 2.1 PM-WP1 deltas — paste after PM-WP1
 
-> **Status 2026-11-19: PM-WP1 landed (Decision #516; PRD-G2 ✅, USER_FLOWS PJ-25 ✅).** D3 was
+> **Status 2026-11-19: PM-WP1 landed** (`07d853f6`, Decision #516; PRD-G2 ✅, USER_FLOWS PJ-25 ✅). D3 was
 > ruled A (re-arm). The prepaid marker is `escrows.created_at < tickets.claimed_at`, pinned in
 > `claim_ttl_sweep.sql`. D5 needed one change: `fn_ticket_escrow_sync`'s removal branch released (in
 > fact refunded) an unbound held escrow, and now leaves it held for the next claim. D7: MR1 had
