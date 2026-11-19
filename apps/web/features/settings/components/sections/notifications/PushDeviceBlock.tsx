@@ -3,6 +3,7 @@ import { useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Button } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
+import { subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { SettingsBlock, SettingsRow } from "../../SettingsParts.tsx";
 import {
 	disablePush,
@@ -25,13 +26,19 @@ export function PushDeviceBlock(): JSX.Element | null {
 	const busy = useSignal(false);
 	const notice = useSignal<string | null>(null);
 
+	// Read now, and again whenever the Dev Context Switcher changes the `pushPermission` axis, so a
+	// simulated state shows at once (a no-op subscription outside development).
 	useEffect(() => {
 		let live = true;
-		void readPushState().then((s) => {
-			if (live) state.value = s;
-		});
+		const read = () =>
+			void readPushState().then((s) => {
+				if (live) state.value = s;
+			});
+		read();
+		const stop = subscribeDevSeam(read);
 		return () => {
 			live = false;
+			stop();
 		};
 	}, []);
 

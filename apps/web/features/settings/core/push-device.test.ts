@@ -7,6 +7,7 @@ const BASE: PushInputs = {
 	platform: "supported",
 	permission: "default",
 	endpoint: null,
+	registered: false,
 };
 
 Deno.test("pushStateFor — push not configured, or no Push API: nothing renders", () => {
@@ -28,12 +29,30 @@ Deno.test("pushStateFor — the real browser: never asked, blocked, iOS outside 
 		kind: "ios-not-installed",
 	});
 	assertEquals(
-		pushStateFor({ ...BASE, permission: "granted", endpoint: "https://fcm.googleapis.com/x" }),
+		pushStateFor({
+			...BASE,
+			permission: "granted",
+			endpoint: "https://fcm.googleapis.com/x",
+			registered: true,
+		}),
 		{
 			kind: "on",
 			publicKey: "BPub",
 			endpoint: "https://fcm.googleapis.com/x",
 		},
+	);
+});
+
+Deno.test("pushStateFor — a shared browser: a subscription that is not the caller's own device reads off", () => {
+	// Someone else turned alerts on in this browser, or its row was released: B must not see "on".
+	assertEquals(
+		pushStateFor({
+			...BASE,
+			permission: "granted",
+			endpoint: "https://fcm.googleapis.com/x",
+			registered: false,
+		}),
+		{ kind: "off", publicKey: "BPub" },
 	);
 });
 

@@ -1,11 +1,14 @@
 -- push_devices.sql — probe for Web Push devices (COMMS NT4; providers spec §8.2).
 --
---   1. A signed-in person registers this browser through comms.register_device (an invoker function,
---      own rows by RLS): one live web_push row with its endpoint and keys; registering the same
---      subscription again refreshes that row rather than adding one.
+--   1. A signed-in person registers this browser through comms.register_device (pinned to auth.uid()):
+--      one live web_push row with its endpoint and keys; registering the same subscription again
+--      refreshes that row rather than adding one.
 --   2. Nobody can revoke someone else's device; the owner can (comms.revoke_device), and the keys go.
 --   3. NT2's claim hands the push transport the live device (endpoint, p256dh, auth) with the
 --      notification's urgency and group_key (the Urgency and Topic headers).
+--   4. A shared browser belongs to whoever turned alerts on in it last: when B registers the endpoint
+--      A registered, A's row is released ('reassigned', keys dropped), so A's notifications stop
+--      reaching B's screen, and a push for A finds no device. A guest registers nothing.
 --
 -- Every section runs in a transaction that is ROLLED BACK, so this is safe on the shared local DB.
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -X -q < supabase/probes/push_devices.sql
@@ -46,13 +49,21 @@ DECLARE
     v_endpoint text := 'https://fcm.googleapis.com/fcm/send/probe-' || gen_random_uuid();
     v_id uuid;
     v_again uuid;
+    v_plain uuid;
+    v_split uuid;
     d comms.device_tokens;
 BEGIN
     PERFORM pg_temp.act(v_owner);
     SET LOCAL ROLE authenticated;
     v_id := comms.register_device(v_endpoint, 'web', 'web_push', v_endpoint, 'probe-p256dh', 'probe-auth', 'Chrome on Windows', 'probe-agent');
     v_again := comms.register_device(v_endpoint, 'web', 'web_push', v_endpoint, 'probe-p256dh-2', 'probe-auth-2', NULL, 'probe-agent');
+    -- Called straight through PostgREST, past the app's allowlist: the Web Push shape still holds.
+    v_plain := comms.register_device('http://push.example/probe', 'web', 'web_push', 'http://push.example/probe', 'k', 'a', NULL, NULL);
+    v_split := comms.register_device('probe-token', 'web', 'web_push', v_endpoint || '-other', 'k', 'a', NULL, NULL);
     RESET ROLE;
+    PERFORM pg_temp.ok(v_plain IS NULL AND v_split IS NULL
+        AND NOT EXISTS (SELECT 1 FROM comms.device_tokens WHERE token IN ('http://push.example/probe', 'probe-token')),
+        'a web_push device must be an https endpoint stored as its own token: anything else registers nothing');
 
     SELECT * INTO d FROM comms.device_tokens WHERE id = v_id;
     PERFORM pg_temp.ok(v_id IS NOT NULL AND d.user_id = v_owner AND d.provider = 'web_push' AND d.platform = 'web'
@@ -109,6 +120,71 @@ BEGIN
         'the claim hands push the live device: endpoint, p256dh and auth');
     PERFORM pg_temp.ok(r.urgency = 'critical' AND r.group_key = 'probe:push:group',
         'with the notification''s urgency and group_key (the Urgency and Topic headers)');
+END $$;
+ROLLBACK;
+-- #endregion
+
+-- #region 4. A shared browser: the last person to turn alerts on owns it
+BEGIN;
+DO $$
+DECLARE
+    v_a uuid := pg_temp.person(1);
+    v_b uuid := pg_temp.person(2);
+    v_endpoint text := 'https://fcm.googleapis.com/fcm/send/probe-' || gen_random_uuid();
+    v_a_id uuid;
+    v_b_id uuid;
+    v_guest uuid;
+    v_n uuid;
+    d comms.device_tokens;
+    r record;
+BEGIN
+    PERFORM pg_temp.act(v_a);
+    SET LOCAL ROLE authenticated;
+    v_a_id := comms.register_device(v_endpoint, 'web', 'web_push', v_endpoint, 'a-p256dh', 'a-auth', 'Chrome on Windows', 'probe-agent');
+    RESET ROLE;
+
+    PERFORM pg_temp.act(v_b);
+    SET LOCAL ROLE authenticated;
+    v_b_id := comms.register_device(v_endpoint, 'web', 'web_push', v_endpoint, 'b-p256dh', 'b-auth', 'Chrome on Windows', 'probe-agent');
+    -- B cannot see A's row at all; B's own row is live.
+    PERFORM pg_temp.ok(
+        (SELECT count(*) FROM comms.device_tokens WHERE token = v_endpoint AND revoked_at IS NULL) = 1,
+        'B sees exactly one live row for the browser: their own');
+    RESET ROLE;
+
+    SELECT * INTO d FROM comms.device_tokens WHERE id = v_a_id;
+    PERFORM pg_temp.ok(d.revoked_at IS NOT NULL AND d.revoked_reason = 'reassigned' AND d.p256dh IS NULL AND d.auth_key IS NULL,
+        'B turning alerts on in A''s browser releases A''s row (reassigned, keys dropped)');
+    PERFORM pg_temp.ok(v_b_id IS NOT NULL AND v_b_id <> v_a_id
+        AND (SELECT count(*) FROM comms.device_tokens WHERE token = v_endpoint AND revoked_at IS NULL) = 1
+        AND (SELECT user_id FROM comms.device_tokens WHERE token = v_endpoint AND revoked_at IS NULL) = v_b,
+        'one live row for the endpoint across every account, and it is B''s');
+
+    -- A push for A now finds no device here: the claim skips it (no_target), never sends to B's screen.
+    INSERT INTO comms.notification_types (key, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible)
+    VALUES ('probe.push_shared', 'system', 'critical', '{in_app,push}', true, true, false)
+    ON CONFLICT (key) DO NOTHING;
+    UPDATE comms.notification_prefs SET quiet_hours_enabled = false, muted_until = NULL WHERE user_id = v_a;
+    -- A's OTHER devices are set aside, so only the released browser could have carried this push.
+    UPDATE comms.device_tokens SET revoked_at = now(), revoked_reason = 'probe'
+     WHERE user_id = v_a AND revoked_at IS NULL AND token <> v_endpoint;
+    UPDATE security.feature_flags SET enabled = true WHERE key = 'comms.dispatch_webhook';
+    v_n := comms.fn_notify(v_a, 'probe.push_shared', 'For A only', 'Private body');
+    SELECT * INTO r FROM comms.fn_claim_deliveries(ARRAY['push']::comms.notification_channel[], v_n);
+    -- With A's only browser released there is no push delivery to claim at all (or, at most, one
+    -- skipped for no target): nothing is ever queued for the browser B now holds.
+    PERFORM pg_temp.ok(r.status IS DISTINCT FROM 'queued' AND r.destination IS NULL
+        AND NOT EXISTS (SELECT 1 FROM comms.notification_deliveries
+                         WHERE notification_id = v_n AND channel = 'push' AND status IN ('queued', 'sent')),
+        'a push for A is never queued for the browser B now holds');
+
+    -- Signed out, nobody registers anything.
+    PERFORM set_config('request.jwt.claims', json_build_object('role', 'anon')::text, true);
+    SET LOCAL ROLE authenticated;
+    v_guest := comms.register_device(v_endpoint, 'web', 'web_push', v_endpoint, 'g-p256dh', 'g-auth', NULL, 'probe-agent');
+    RESET ROLE;
+    PERFORM pg_temp.ok(v_guest IS NULL AND (SELECT user_id FROM comms.device_tokens WHERE token = v_endpoint AND revoked_at IS NULL) = v_b,
+        'with no signed-in person, register_device writes and releases nothing');
 END $$;
 ROLLBACK;
 -- #endregion

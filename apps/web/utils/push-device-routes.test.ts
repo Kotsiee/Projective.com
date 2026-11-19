@@ -2,6 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import type { UserContext } from "@projective/types/auth";
 import { handler as config } from "../routes/api/notifications/push/config.ts";
 import { handler as devices } from "../routes/api/notifications/devices.ts";
+import { handler as deviceStatus } from "../routes/api/notifications/devices/status.ts";
 import { toB64Url } from "@server/services/comms/transport-webpush.ts";
 import type { State } from "./state.ts";
 
@@ -115,4 +116,19 @@ Deno.test("devices — a guest registers nothing; DELETE needs an endpoint", asy
 		assertEquals(guest.status, 401);
 		assertEquals((await call(devices, "DELETE", "/api/notifications/devices", {})).status, 422);
 	});
+});
+
+Deno.test("devices/status — needs an endpoint in the body, and a guest has no device", async () => {
+	assertEquals(
+		(await call(deviceStatus, "POST", "/api/notifications/devices/status", {})).status,
+		422,
+	);
+	const guest = await call(
+		deviceStatus,
+		"POST",
+		"/api/notifications/devices/status",
+		{ endpoint: SUBSCRIPTION.endpoint },
+		{},
+	);
+	assertEquals([guest.status, guest.headers.get("cache-control")], [401, "no-store"]);
 });

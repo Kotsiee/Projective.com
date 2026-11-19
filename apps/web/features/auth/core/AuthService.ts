@@ -1,4 +1,5 @@
 import { purgeThumbs } from "@features/files/core/thumbs/thumb-cache.ts";
+import { releasePushOnSignOut } from "@features/settings/core/push-device.ts";
 import { getAuth, postAuth } from "./api.ts";
 import type { AuthResult } from "../types/mod.ts";
 
@@ -61,10 +62,13 @@ export const AuthService = {
 	 * (best-effort) and clears the HttpOnly `sb-*` cookies. Resolves even on a network hiccup (a soft
 	 * `ok: false`), so the caller can proceed with its route-aware redirect regardless — the cookies are
 	 * cleared server-side, so the local session is gone either way. Thumbnails of the viewer's files go
-	 * first: they are copies of private content on this device.
+	 * first: they are copies of private content on this device. So does this browser's push
+	 * subscription, while the session can still revoke its device: a shared browser must not keep
+	 * showing the last person's notifications (COMMS NT4).
 	 */
 	async logout(): Promise<AuthResult> {
 		await purgeThumbs();
+		await releasePushOnSignOut();
 		return await postAuth("/api/auth/logout", {});
 	},
 };

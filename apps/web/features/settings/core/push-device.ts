@@ -70,7 +70,24 @@ function deviceLabel(): string {
 	return `${browser} on ${os}`;
 }
 
-/** Read the control's state: the served key, the seam, the platform, permission and subscription. */
+/** Whether `endpoint` is the caller's own live device. Any failure reads as "not theirs". */
+async function isMine(endpoint: string): Promise<boolean> {
+	try {
+		const res = await fetch("/api/notifications/devices/status", {
+			method: "POST",
+			headers: { "content-type": "application/json", accept: "application/json" },
+			body: JSON.stringify({ endpoint }),
+		});
+		return res.ok && (await res.json()).live === true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Read the control's state: the served key, the seam, the platform, permission, the subscription
+ * and whether that subscription is the caller's own device.
+ */
 export async function readPushState(): Promise<PushDeviceState> {
 	let publicKey: string | null = null;
 	try {
@@ -83,12 +100,14 @@ export async function readPushState(): Promise<PushDeviceState> {
 	}
 	const seam = readDevSeam()?.pushPermission;
 	const platform = detectPlatform();
+	const endpoint = publicKey && platform === "supported" ? await currentEndpoint() : null;
 	return pushStateFor({
 		publicKey,
 		simulated: seam && seam !== "auto" ? seam : null,
 		platform,
 		permission: platform === "supported" ? Notification.permission : null,
-		endpoint: platform === "supported" ? await currentEndpoint() : null,
+		endpoint,
+		registered: endpoint ? await isMine(endpoint) : false,
 	});
 }
 
@@ -163,6 +182,28 @@ export async function disablePush(): Promise<PushPress> {
 			ok: false,
 			message: "This browser couldn't turn off alerts just now. Try again in a moment.",
 		};
+	}
+}
+
+/**
+ * Before signing out: a shared browser must not keep receiving this person's notifications after
+ * they leave it (COMMS NT4). Revokes the caller's device for this browser while the session still
+ * works, then unsubscribes the browser either way, so a subscription anyone left here stops too.
+ * Best effort and silent: signing out never waits on, or fails because of, push.
+ */
+export async function releasePushOnSignOut(): Promise<void> {
+	try {
+		const reg = await navigator.serviceWorker?.getRegistration("/");
+		const sub = await reg?.pushManager.getSubscription();
+		if (!sub) return;
+		await fetch("/api/notifications/devices", {
+			method: "DELETE",
+			headers: { "content-type": "application/json", accept: "application/json" },
+			body: JSON.stringify({ endpoint: sub.endpoint }),
+		}).catch(() => null);
+		await sub.unsubscribe().catch(() => false);
+	} catch {
+		// No service worker or Push API here: there is nothing to release.
 	}
 }
 // #endregion

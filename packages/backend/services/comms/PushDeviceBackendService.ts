@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "supabaseClient";
-import type { PushConfig, RevokeWebPush, WebPushSubscription } from "@projective/types/comms";
+import type {
+	PushConfig,
+	PushDeviceStatus,
+	RevokeWebPush,
+	WebPushSubscription,
+} from "@projective/types/comms";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient, isAuthBackendLive } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -7,11 +12,14 @@ import { isPushEndpoint, vapidConfig } from "./transport-webpush.ts";
 
 /**
  * PushDeviceBackendService — this browser's Web Push subscription (COMMS NT4; providers spec §8.2),
- * behind `GET /api/notifications/push/config` and `POST`/`DELETE /api/notifications/devices`.
+ * behind `GET /api/notifications/push/config`, `POST`/`DELETE /api/notifications/devices` and
+ * `POST /api/notifications/devices/status`.
  *
  * Registration and revocation run under the CALLER's JWT through `comms.register_device` and
- * `comms.revoke_device` (invoker functions, own rows only), so nobody can register or revoke a device
- * for someone else. The endpoint is accepted only from a known push service over https
+ * `comms.revoke_device`, so nobody can register or revoke a device for someone else. A browser
+ * belongs to the account that last turned alerts on in it: `register_device` (a definer for that
+ * one step) releases another account's live row for the same endpoint, and Settings reads "on" only
+ * for the caller's own live row ({@link PushDeviceBackendService.status}). The endpoint is accepted only from a known push service over https
  * (`isPushEndpoint`), the same check the transport repeats before every send: a browser supplies it,
  * and the dispatcher later POSTs to it. Nothing here works while push is not configured (VAPID): the
  * config read is a 404, and the Settings control does not render.
@@ -78,6 +86,31 @@ export class PushDeviceBackendService {
 			return fail(503, {
 				message: "Alerts couldn't be turned on just now. Try again in a moment.",
 			});
+		}
+	}
+
+	/**
+	 * Is the browser holding `endpoint` the caller's own live device? False for a browser another
+	 * account turned on, or one released since, so the control offers "Turn on alerts" there.
+	 */
+	static async status(
+		actor: ReadActor,
+		input: RevokeWebPush,
+	): Promise<ServiceResult<PushDeviceStatus>> {
+		const token = sessionToken(actor);
+		if (typeof token !== "string") return token;
+		try {
+			const { data, error } = await commsDb(token)
+				.from("device_tokens")
+				.select("id")
+				.eq("token", input.endpoint)
+				.is("revoked_at", null)
+				.limit(1);
+			if (error) throw new Error(`device_tokens read failed (${error.code ?? "no code"})`);
+			return ok({ live: (data ?? []).length > 0 });
+		} catch (error) {
+			console.error("[comms:devices]", error instanceof Error ? error.message : error);
+			return fail(503, { message: "This device's alerts couldn't be checked just now." });
 		}
 	}
 

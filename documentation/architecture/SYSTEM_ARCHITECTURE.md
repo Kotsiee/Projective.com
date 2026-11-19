@@ -2859,13 +2859,16 @@ three VAPID keys are well formed (§Environment Variable Contract):
 A 404 or 410 records `gone`, which revokes the device; 429 and 5xx fail for the sweep's back-off.
 A person turns alerts on per browser in Settings → Notifications → This device
 (`PushDeviceBackendService` through `POST`/`DELETE /api/notifications/devices`, the caller's JWT on
-`comms.register_device`/`revoke_device`). Permission is asked only on that press. `static/sw.js`
+`comms.register_device`/`revoke_device`). Permission is asked only on that press. A browser
+belongs to whoever turned alerts on in it last: registering releases another account's row for
+the same endpoint, "on" needs the caller's own live row (`/api/notifications/devices/status`),
+and signing out revokes and unsubscribes this browser first. `static/sw.js`
 shows the notification and opens only a same-origin path on a click. The web app manifest lets
 iOS deliver to a Home-Screen app.
 
 **Still to build:** SMS (NT5, Twilio), a transport in the same registry with its provider
 credentials; the daily and weekly digest emails (PRD-E15); and device health for push
-(`failure_count` is never incremented, so `fn_reap_dead_devices` reaps nothing, PRD-E17).
+(`failure_count` is never incremented, so `fn_reap_dead_devices` reaps nothing, PRD-E18).
 
 ---
 

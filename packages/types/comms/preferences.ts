@@ -219,6 +219,14 @@ export type WebPushSubscription = z.infer<typeof WebPushSubscriptionSchema>;
 export const RevokeWebPushSchema = z.object({ endpoint: z.string().url().max(2048) });
 export type RevokeWebPush = z.infer<typeof RevokeWebPushSchema>;
 
+/**
+ * `POST /api/notifications/devices/status` (body, never a query string: an endpoint is a capability
+ * URL): is this browser's subscription the caller's own live device? A browser someone else turned
+ * on, or one whose row was released, reads `live: false`, so Settings never shows "on" for it.
+ */
+export const PushDeviceStatusSchema = z.object({ live: z.boolean() });
+export type PushDeviceStatus = z.infer<typeof PushDeviceStatusSchema>;
+
 /** `GET /api/notifications/push/config`: the VAPID public key a browser subscribes with. */
 export const PushConfigSchema = z.object({ publicKey: z.string() });
 export type PushConfig = z.infer<typeof PushConfigSchema>;

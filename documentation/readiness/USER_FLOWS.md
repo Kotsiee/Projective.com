@@ -35,7 +35,7 @@ signed-in person).
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
 | **UAT**          | **72%** |           191 | 98 |  78 | 15 |              25 |
-| **Production**   | **65%** |           248 | 103 | 105 | 40 |              36 |
+| **Production**   | **65%** |           248 | 103 | 106 | 39 |              36 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,7 +45,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    60 | 25 | 24 |  9 |  2 |   66% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 29 | 35 | 11 |  2 |   64% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 29 | 36 | 10 |  2 |   64% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
 **Critical flows not yet ✅, by the tier they gate:**
@@ -349,7 +349,7 @@ The operator's ruling is MW-59.
 | :---- | :---------------------------------------- | :------ | :--------------------- | :----- | :------- | :--- | :---------------------------------------------------------------------- |
 | PJ-59 | Notifications drawer and `/notifications` | Any     | `/api/notifications/*` | ✅     | High     | MVP  | 30 s ETag poll; in-app only                                             |
 | PJ-60 | Email notifications, digests, escalation  | System  | —                      | 🟡     | Critical | UAT  | Built locally: the dispatcher (NT2, #344 (a)) and email through Resend with signed bounces (NT3, #339 N3). A hard bounce blocks every category, and Settings → Account offers Confirm again. Escalation adds an email the dispatcher sends. Left: the digest emails (PRD-E15) and a hosted send (CD2; PRD-E4, E5, E10) |
-| PJ-61 | Web push and SMS                          | System  | —                      | ❌     | Normal   | PROD | NT4 (VAPID), NT5 (Twilio) (PRD-E7, E8)                                  |
+| PJ-61 | Web push and SMS                          | System  | —                      | 🟡     | Normal   | PROD | Web push is built locally (NT4): a browser turned on in Settings → Notifications → This device gets notifications through the dispatcher, proved in Chromium against FCM. Left: SMS (NT5, PRD-E8) and hosted VAPID keys (CD2; PRD-E7) |
 | PJ-62 | Chat message notifications                | Any     | —                      | ❌     | High     | UAT  | No `message.*` emitter (MS4, PRD-E9)                                    |
 
 Notification preferences are ID-42.
@@ -550,3 +550,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-19 | OPS2 (#513): PJ-73 🟡 → ✅ (a reschedule vote past its deadline settles on a timer; PRD-G4 ✅) | 83% | 71% |  64% |
 | 2026-11-19 | DB19 (#511): no row flips; MK-31 narrowed, still ❌ (lines and orders reach `refunded` and `cancelled` from escrow refunds; nobody can start a refund until DB21 and MR3) | 83% | 71% | 64% |
 | 2026-11-19 | PM-WP1 (#516): PJ-25 ❌ → ✅ (the claim sweep runs every 15 minutes, locked and re-checked; a lapsed prepaid claim is re-armed, not refunded; PRD-G2 ✅) | 83% | 72% | 65% |
+| 2026-11-19 | NT4: PJ-61 ❌ → 🟡 (web push delivers through the dispatcher, proved live in Chromium against FCM; a browser gets one account's alerts; SMS waits for NT5, PRD-E8) | 83% | 72% | 65% |

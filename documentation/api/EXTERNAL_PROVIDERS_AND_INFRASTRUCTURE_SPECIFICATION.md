@@ -1595,7 +1595,7 @@ Notifications → This device.
    the browser has the Push API.
 2. `registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })`.
 3. `POST /api/notifications/devices` writes `comms.device_tokens` through `comms.register_device`
-   (an invoker function, own rows by RLS) under the caller's JWT: `platform 'web'`, `provider
+   (pinned to `auth.uid()`; a narrow definer, see below) under the caller's JWT: `platform 'web'`, `provider
    'web_push'`, `token` = `endpoint`, `p256dh`, `auth_key`, `label`, `user_agent`. The service
    first refuses (422) an endpoint that is not one of the allowlisted push services, since the
    server will POST to it. "Stop on this device" is `DELETE` → `comms.revoke_device`, then
@@ -1606,6 +1606,17 @@ Notifications → This device.
    else opens `/`, so a crafted payload cannot open a redirect. In development the shell worker is
    off, so the device control registers `/sw.js?mode=push`, a push-only worker that handles no
    `fetch` and caches nothing (`ServiceWorkerBridge` keeps it).
+**A shared browser** belongs to whoever turned alerts on in it last, so the previous person's
+notification titles never reach the next person's screen:
+- Registering an endpoint revokes any other account's live row for it (`revoked_reason =
+  'reassigned'`, keys dropped). That release is why `register_device` is `SECURITY DEFINER`:
+  another account's row is invisible under RLS.
+- Settings shows "on" only when `POST /api/notifications/devices/status` says this subscription
+  is the caller's own live device. A subscription alone is not "on".
+- Signing out (`AuthService.logout`) first revokes the caller's device for this browser and
+  unsubscribes it. A session that simply expires leaves the row until someone turns alerts on in
+  that browser, or the push service drops the subscription (404/410 → `gone`).
+
 5. `apps/web/static/manifest.webmanifest` (linked from `_app.tsx`): `start_url` and `scope` `/`,
    `display: standalone`, the 192 and 512 icons. A manifest is JSON and cannot read a CSS variable,
    so its colours are copies of the default theme's light-mode tokens: `theme_color` = `--primary`
@@ -1636,7 +1647,7 @@ control.
 
 **Not built.** `Retry-After` is not read (the sweep's back-off governs), and no send increments
 `comms.device_tokens.failure_count`, so `fn_reap_dead_devices` reaps nothing yet; a 404 or 410
-revokes the device at once, which covers the common case. Tracked as PRD-E17.
+revokes the device at once, which covers the common case. Tracked as PRD-E18.
 
 ### 8.3 Apple Push Notification service (Growth: native iOS app)
 

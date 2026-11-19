@@ -891,21 +891,41 @@ CREATE OR REPLACE FUNCTION comms.register_device(
     p_user_agent text DEFAULT NULL
 ) RETURNS uuid
 LANGUAGE plpgsql
-SET search_path = comms, public
+-- A definer for one reason only: a browser belongs to the account that last turned alerts on in it
+-- (COMMS NT4). Another person's live row for the same token is invisible under RLS, so the release
+-- below needs the owner's rights. Everything else is pinned to the caller (auth.uid()).
+SECURITY DEFINER
+SET search_path = ''
 AS $$
 DECLARE
+    v_user uuid := auth.uid();
     v_id uuid;
 BEGIN
-    IF auth.uid() IS NULL OR p_token IS NULL OR p_token = '' THEN
+    IF v_user IS NULL OR p_token IS NULL OR p_token = '' THEN
+        RETURN NULL;
+    END IF;
+    -- A Web Push device is its endpoint: an https URL, stored as the token too. The app checks the
+    -- push-service allowlist first (PushDeviceBackendService); this holds the shape for a direct call.
+    IF p_provider = 'web_push'
+       AND (p_endpoint IS DISTINCT FROM p_token OR p_endpoint NOT LIKE 'https://%') THEN
         RETURN NULL;
     END IF;
 
-    -- Re-registering the same browser refreshes the live row (and resurrects a revoked one)
-    -- instead of accumulating duplicates that each cost a push request.
-    INSERT INTO comms.device_tokens (
+    -- A shared browser: whoever turned alerts on here before stops receiving them here, so their
+    -- notification titles never reach the next person (the keys go with the row, as in revoke_device).
+    UPDATE comms.device_tokens
+    SET revoked_at = pg_catalog.now(),
+        revoked_reason = 'reassigned',
+        auth_key = NULL,
+        p256dh = NULL
+    WHERE token = p_token AND user_id <> v_user AND revoked_at IS NULL;
+
+    -- Re-registering the same browser refreshes its live row instead of accumulating duplicates that
+    -- each cost a push request. A revoked row stays revoked: registering again inserts a new live row.
+    INSERT INTO comms.device_tokens AS d (
         user_id, token, platform, provider, endpoint, p256dh, auth_key, label, user_agent, last_seen_at
     ) VALUES (
-        auth.uid(), p_token, p_platform, p_provider, p_endpoint, p_p256dh, p_auth_key, p_label, p_user_agent, now()
+        v_user, p_token, p_platform, p_provider, p_endpoint, p_p256dh, p_auth_key, p_label, p_user_agent, pg_catalog.now()
     )
     ON CONFLICT (user_id, token) WHERE revoked_at IS NULL
     DO UPDATE SET
@@ -914,11 +934,11 @@ BEGIN
         endpoint = EXCLUDED.endpoint,
         p256dh = EXCLUDED.p256dh,
         auth_key = EXCLUDED.auth_key,
-        label = COALESCE(EXCLUDED.label, device_tokens.label),
+        label = COALESCE(EXCLUDED.label, d.label),
         user_agent = EXCLUDED.user_agent,
-        last_seen_at = now(),
+        last_seen_at = pg_catalog.now(),
         failure_count = 0
-    RETURNING id INTO v_id;
+    RETURNING d.id INTO v_id;
 
     RETURN v_id;
 END;

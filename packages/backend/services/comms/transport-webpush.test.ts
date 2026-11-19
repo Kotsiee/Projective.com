@@ -5,6 +5,7 @@ import {
 	encryptPayload,
 	fromB64Url,
 	isPushEndpoint,
+	MAX_PLAINTEXT,
 	toB64Url,
 	topicOf,
 	vapidAuthorization,
@@ -38,13 +39,22 @@ Deno.test("encryptPayload — reproduces RFC 8291's published aes128gcm body exa
 	assertEquals(body.length, 144);
 });
 
-Deno.test("encryptPayload — a fresh send uses its own key and salt each time, and refuses an oversized payload", async () => {
+Deno.test("encryptPayload — a fresh send uses its own key and salt each time, and the body never passes 4096 octets", async () => {
 	const once = await encryptPayload(b(RFC.plaintext), b(RFC.receiverPublic), b(RFC.authSecret));
 	const twice = await encryptPayload(b(RFC.plaintext), b(RFC.receiverPublic), b(RFC.authSecret));
 	assertEquals(once.length, 144);
 	assert(toB64Url(once) !== toB64Url(twice));
+	// The largest plaintext makes a body of exactly 4096 octets, header included; one more is refused.
+	assertEquals(MAX_PLAINTEXT, 3993);
+	const largest = await encryptPayload(
+		new Uint8Array(MAX_PLAINTEXT),
+		b(RFC.receiverPublic),
+		b(RFC.authSecret),
+	);
+	assertEquals(largest.length, 4096);
 	await assertRejects(
-		() => encryptPayload(new Uint8Array(4080), b(RFC.receiverPublic), b(RFC.authSecret)),
+		() =>
+			encryptPayload(new Uint8Array(MAX_PLAINTEXT + 1), b(RFC.receiverPublic), b(RFC.authSecret)),
 		Error,
 		"payload_too_large",
 	);
@@ -232,6 +242,16 @@ Deno.test("send — a 201 is sent, with the RFC 8030 headers and an encrypted bo
 	assert(
 		!new TextDecoder().decode(sent).includes("Stage 2"),
 		"the title is encrypted, not in the clear",
+	);
+});
+
+Deno.test("send — an overlong title is cut to 200 characters, so the body stays inside 4096 octets", async () => {
+	const { transport, calls } = await transportAnswering(201);
+	const d = { ...(await delivery()), title: "x".repeat(5000) };
+	assertEquals((await transport.send(d, buildDispatchPayload(d, APP))).status, "sent");
+	assert(
+		(calls[0].init.body as Uint8Array).length < 600,
+		"200 title characters and the link, encrypted",
 	);
 });
 

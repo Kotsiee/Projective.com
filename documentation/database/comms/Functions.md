@@ -191,11 +191,12 @@ the finder returns `0`. Probe: `supabase/probes/basket_nudge.sql`.
 | `comms.mark_notifications_seen()`              | `integer` | Clears the **badge** without marking anything read — what opening the drawer does. |
 | `comms.archive_notifications(uuid[])`          | `integer` | Dismiss = archive. Nothing is hard-deleted.                                        |
 | `comms.get_notification_summary()`             | `jsonb`   | `{ unread, unseen, total, by_category }` — the shell badge in one round trip.      |
-| `comms.register_device(…)`                     | `uuid`    | Upserts the live row for a browser; resets `failure_count`. Called by `POST /api/notifications/devices` (`PushDeviceBackendService`, COMMS NT4) under the caller's JWT, with `token = endpoint`, `provider 'web_push'`, `platform 'web'`, after the service checks the endpoint is a known push service. |
-| `comms.revoke_device(id, reason)`              | `boolean` | Soft-revokes and clears the Web Push keys. Called by `DELETE /api/notifications/devices` ("Stop on this device"). |
+| `comms.register_device(…)`                     | `uuid`    | Upserts the caller's live row for a browser; resets `failure_count`. A browser belongs to whoever turned alerts on in it last (COMMS NT4): another account's live row for the same token is first revoked (`revoked_reason = 'reassigned'`, keys dropped), so a shared browser never shows the previous person's notifications. That release is why it is `SECURITY DEFINER` (`search_path = ''`, every write pinned to `auth.uid()`; no caller, no write). Called by `POST /api/notifications/devices` (`PushDeviceBackendService`) under the caller's JWT, with `token = endpoint`, `provider 'web_push'`, `platform 'web'`, after the service checks the endpoint is a known push service. |
+| `comms.revoke_device(id, reason)`              | `boolean` | Soft-revokes and clears the Web Push keys. Called by `DELETE /api/notifications/devices`: "Stop on this device", and signing out on that browser (`AuthService.logout`). |
 
-These run as the caller, so the policies in [Policies.md](Policies.md) are the real boundary; the
-explicit `auth.uid()` predicates are belt-and-braces. They write only `read_at` / `seen_at` /
+These run as the caller (`register_device` excepted, above), so the policies in
+[Policies.md](Policies.md) are the real boundary; the explicit `auth.uid()` predicates are
+belt-and-braces. They write only `read_at` / `seen_at` /
 `archived_at`, the three columns `authenticated` holds `UPDATE` on (`00002520` §2). The app reaches
 the first five through `NotificationInboxBackendService` (`/api/notifications/*`).
 

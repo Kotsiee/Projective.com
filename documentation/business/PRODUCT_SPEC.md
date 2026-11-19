@@ -121,7 +121,9 @@ aligned on time and location.
   for a channel, that channel's notices wait. Email is built (COMMS NT3, through the email provider)
   and sends once the provider key and the dispatcher are switched on. Push to a browser is built too
   (COMMS NT4). A person turns alerts on for each browser in Settings → Notifications → This device,
-  and is asked for permission only then, never on page load. On an iPhone or iPad, alerts need
+  and is asked for permission only then, never on page load. A browser gets one person's alerts:
+  signing out stops them there, and turning alerts on in a browser someone else used stops theirs.
+  On an iPhone or iPad, alerts need
   Projective added to the Home Screen first, and Settings says so. A notification click opens only
   a page inside Projective. The SMS setting shows only once the SMS provider (Twilio) is configured.
   **Not built yet:** SMS, and the daily and weekly digest emails (Decision #339, rulings P3 and N3).

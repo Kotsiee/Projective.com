@@ -1161,6 +1161,61 @@ ACCEPTANCE:
 
 ### NT4 — Web Push: VAPID, device registration from an explicit control, a push handler
 
+> **Status 2026-11-19: ✅ built (PRD-E7 🟡; ✅ on COMMS_DELIVERY CD2).** The code reached main in
+> the owner's working-tree commit `322c4dc9`; the status and readiness update is its own commit.
+>
+> What landed:
+> - `transport-webpush.ts`, registered as `push` in `dispatch-transports.ts` while all three VAPID
+>   keys are well formed. It signs a VAPID ES256 JWT (the endpoint's origin, 12 hours) and encrypts
+>   `{ title, url, id, tag }` with RFC 8291 `aes128gcm` in Web Crypto. It sends `TTL` (one day),
+>   `Urgency` and `Topic` (the SHA-256 of `group_key`, else the id). `fn_claim_deliveries` now
+>   returns `urgency` and `group_key`.
+> - Answers: 201 sent; 404 or 410 `gone` (NT2 revokes the device); 413 logged; 429 and 5xx retried.
+>   The test reproduces the RFC 8291 §5 vector byte for byte.
+> - An endpoint allowlist (FCM, Mozilla, Windows and Apple push hosts; `https`, no credentials or
+>   port), checked when a device registers and again at send.
+> - `GET /api/notifications/push/config` and `POST`/`DELETE /api/notifications/devices`
+>   (`PushDeviceBackendService`, the caller's JWT on `register_device` / `revoke_device`).
+> - Settings → Notifications → **This device** (`PushDeviceBlock`, `push-device.ts`,
+>   `push-device-model.ts`). It asks for permission only on **Turn on alerts**, and offers **Stop
+>   on this device**. A blocked browser gets the reason; iOS outside a Home-Screen app gets the
+>   how-to.
+> - `sw.js` push and `notificationclick` handlers. The click opens only a same-origin path, `/`
+>   otherwise. In development the device control registers `/sw.js?mode=push`, a push-only worker
+>   with no `fetch` handler and no cache, which `ServiceWorkerBridge` keeps.
+> - `manifest.webmanifest`, linked from `_app.tsx`. Its colours are the default theme's light
+>   `--primary` and `--bg`, pinned to the engine by `manifest.test.ts`.
+> - The `pushPermission` dev axis, the three VAPID env keys, probe `push_devices.sql`, and the route
+>   test `push-device-routes.test.ts`.
+> - Found in review and fixed by owner choice: **a shared browser** belongs to whoever turned alerts
+>   on in it last. `register_device` (now a narrow `SECURITY DEFINER`) releases another account's
+>   live row for the same endpoint (`reassigned`). Settings shows "on" only for the caller's own
+>   live row (`POST /api/notifications/devices/status`). Signing out revokes and unsubscribes the
+>   browser first (`AuthService.logout`). Probe section 4 fails on the old function.
+> - Also from review: the size guard bounds the whole body (the 86-octet header included) at 4096
+>   octets, so a plaintext tops out at 3993; the transport cuts a title to 200 characters.
+>
+> Both §2 deltas are done. `channel-liveness.ts` needed no edit (it reads the registry since NT2),
+> and its test gained the push case; `pushPermission` is its own axis, and the block re-reads it
+> on every Dev Context Switcher change.
+>
+> Proved live in Chromium 157 against FCM, signed in as a seed persona:
+> - A browser subscribed under nobody's row showed **Off**. **Turn on alerts** answered 201 and wrote
+>   one live `web_push` row.
+> - A mandatory notice (`fn_notify`, then `POST /api/comms/dispatch` with the flag on for that
+>   call) went `push: sent`. It showed with the generic body, the in-app path and a 32-character
+>   Topic tag.
+> - A hand-built push with `https://evil.example` showed with `/`.
+> - Signing out revoked the device (`user_revoked`, keys dropped) before the session ended, and the
+>   browser was unsubscribed.
+> - Screenshots of every `pushPermission` state were taken at 1440 and 390.
+>
+> Not built, logged as a new row:
+> - **PRD-E18:** nothing increments `device_tokens.failure_count`, so `fn_reap_dead_devices` reaps
+>   nothing, and `Retry-After` is not read. A 404 or 410 still revokes at once. How many failures
+>   reap a device is the owner's call: counting every attempt would let one push-service outage
+>   reap a working device.
+
 ```text
 PROMPT NT4: Web Push — VAPID, device registration from an explicit control, and a push handler
 

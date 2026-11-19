@@ -9,7 +9,8 @@ import type { DispatchTransport, TransportOutcome } from "./dispatch-transports.
  * - **VAPID (RFC 8292):** an ES256 JWT with `aud` = the endpoint's origin, `exp` ≤ 24 h and
  *   `sub` = `VAPID_SUBJECT`, sent as `Authorization: vapid t=…, k=<public key>`.
  * - **Encryption (RFC 8291 / RFC 8188):** the payload is encrypted `aes128gcm` to the subscription's
- *   `p256dh` key and `auth` secret, in one record of 4096 octets.
+ *   `p256dh` key and `auth` secret, in one record; the whole body (its 86-octet header included)
+ *   stays within the 4096 octets every push service must accept (RFC 8030 §7.2).
  * - **Headers:** `TTL` (a day, the claim's own window), `Urgency` (from `comms.notification_urgency`)
  *   and `Topic` (the notification's collapse key, else its id).
  *
@@ -158,8 +159,16 @@ export async function vapidAuthorization(
 // #endregion
 
 // #region Encryption (RFC 8291)
-/** The single record's size. A payload must fit in it with its delimiter and the 16-octet tag. */
+/** The single record's size, written into the header's `rs` field. */
 const RECORD_SIZE = 4096;
+/** The `aes128gcm` header: salt (16) ‖ rs (4) ‖ idlen (1) ‖ the sender's public key (65). */
+const HEADER_SIZE = 86;
+/** The largest body a push service must accept (RFC 8030 §7.2): header, ciphertext and tag. */
+const MAX_BODY = 4096;
+/** The longest plaintext that fits: {@link MAX_BODY} less the header, the 0x02 delimiter and the tag. */
+export const MAX_PLAINTEXT = MAX_BODY - HEADER_SIZE - 1 - 16;
+/** A title longer than this is cut, as the service worker shows at most this many characters. */
+const MAX_TITLE = 200;
 
 async function hmac(key: Bytes, message: Bytes): Promise<Bytes> {
 	const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, [
@@ -178,7 +187,8 @@ export interface SenderMaterial {
 /**
  * Encrypt `plaintext` for a subscription (`uaPublic` = its p256dh, `authSecret` = its auth), as the
  * complete `aes128gcm` body: salt ‖ rs ‖ idlen ‖ sender key ‖ ciphertext. Throws
- * `payload_too_large` when the payload does not fit one record.
+ * `payload_too_large` when the body would pass {@link MAX_BODY} (a plaintext over
+ * {@link MAX_PLAINTEXT} octets).
  */
 export async function encryptPayload(
 	plaintext: Bytes,
@@ -188,7 +198,7 @@ export async function encryptPayload(
 ): Promise<Bytes> {
 	if (uaPublic.length !== 65 || uaPublic[0] !== 0x04) throw new Error("bad_subscription_key");
 	if (authSecret.length !== 16) throw new Error("bad_subscription_auth");
-	if (plaintext.length + 1 + 16 > RECORD_SIZE) throw new Error("payload_too_large");
+	if (plaintext.length > MAX_PLAINTEXT) throw new Error("payload_too_large");
 
 	let senderPrivateKey: CryptoKey;
 	let senderPublic: Bytes;
@@ -316,7 +326,7 @@ export function webPushTransport(
 			const tag = await topicOf(delivery.groupKey, payload.notificationId);
 			const body = await encryptPayload(
 				utf8(JSON.stringify({
-					title: payload.title,
+					title: payload.title.slice(0, MAX_TITLE),
 					url: link.pathname + link.search + link.hash,
 					id: payload.notificationId,
 					tag,

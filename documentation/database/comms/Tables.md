@@ -219,7 +219,7 @@ actually send.
 | `p256dh` / `auth_key`    | text                    | Web Push subscription keys — see the note below.         |
 | `label` / `user_agent`   | text                    | For the device list in settings.                         |
 | `last_seen_at`           | timestamptz             | Drives the stale-device reaper.                          |
-| `revoked_at` / `_reason` | timestamptz / text      | Soft retirement; the router skips revoked tokens.        |
+| `revoked_at` / `_reason` | timestamptz / text      | Soft retirement; the router skips revoked tokens. Reasons: `user_revoked` (Stop on this device, or sign-out), `gone` (the push service answered 404/410), `reassigned` (another account turned alerts on in this browser, COMMS NT4). |
 | `failure_count`          | smallint                | Consecutive gateway failures; auto-revoked at threshold. |
 
 A partial unique index on `(user_id, token) WHERE revoked_at IS NULL` means re-registering a browser

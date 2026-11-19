@@ -18,7 +18,7 @@ export type PushDeviceState =
 	| { kind: "denied" }
 	/** Not on for this browser yet: one press asks (if needed) and subscribes. */
 	| { kind: "off"; publicKey: string }
-	/** This browser is subscribed. `endpoint` is null under a simulated state. */
+	/** This browser is subscribed AND is the caller's own live device. `endpoint` is null under a simulated state. */
 	| { kind: "on"; publicKey: string; endpoint: string | null };
 
 /** What the browser can do here. */
@@ -32,6 +32,11 @@ export interface PushInputs {
 	platform: PushPlatform;
 	permission: NotificationPermission | null;
 	endpoint: string | null;
+	/**
+	 * Whether `endpoint` is the caller's own live device (`/api/notifications/devices/status`). A
+	 * browser another account turned on, or one released since, is subscribed but not the caller's.
+	 */
+	registered: boolean;
 }
 
 /** The control's state for these inputs. A simulated state wins over the real browser. */
@@ -53,7 +58,8 @@ export function pushStateFor(input: PushInputs): PushDeviceState {
 	if (input.platform === "unsupported") return { kind: "hidden" };
 	if (input.platform === "ios-not-installed") return { kind: "ios-not-installed" };
 	if (input.permission === "denied") return { kind: "denied" };
-	return input.endpoint
+	// A subscription alone is not "on": on a shared browser it may be someone else's (COMMS NT4).
+	return input.endpoint && input.registered
 		? { kind: "on", publicKey, endpoint: input.endpoint }
 		: { kind: "off", publicKey };
 }
