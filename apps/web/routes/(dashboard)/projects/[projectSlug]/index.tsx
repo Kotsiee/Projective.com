@@ -95,7 +95,10 @@ export const handler = define.handlers({
 		const reviewSim = isDevelopmentEnv()
 			? parseReviewStateSim(readCookies(ctx.req)[REVIEW_STATE_SIM_COOKIE])
 			: null;
-		const reviewItems = applyReviewStateSim(reviewables.ok ? reviewables.data ?? [] : [], reviewSim);
+		const reviewItems = applyReviewStateSim(
+			reviewables.ok ? reviewables.data ?? [] : [],
+			reviewSim,
+		);
 		const shown = workspace && resolved.simulated
 			? withStatus(workspace, resolved.status)
 			: workspace;
