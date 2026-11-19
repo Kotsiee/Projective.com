@@ -377,26 +377,31 @@ BEGIN
      WHERE project_id = v_done::uuid AND to_status = 'completed';
 END $$;
 
--- An engagement bought from a listing: the seed's unreviewed one. Its review shows on the listing,
--- moves the listing's average as well as the provider's, and the provider is told at /view.
+-- An engagement bought from a listing (a seeded one, its own reviews set aside inside this
+-- transaction, so a live review written on it since the reset does not move the fixture). Its review
+-- shows on the listing, moves the listing's average as well as the provider's, and the provider is
+-- told at /view.
 DO $$
 DECLARE
     r record;
     v text;
     v_before integer;
 BEGIN
-    SELECT p.id, p.client_user_id, b.id AS blueprint, b.freelancer_profile_id AS provider, b.rating_count
+    SELECT p.id, p.client_user_id, b.id AS blueprint, b.freelancer_profile_id AS provider
       INTO r
       FROM projects.projects p
       JOIN marketplace.service_blueprints b ON b.id = p.source_blueprint_id
      WHERE p.status = 'completed' AND p.client_user_id IS NOT NULL AND b.owner_team_id IS NULL
-       AND NOT EXISTS (SELECT 1 FROM reviews.entity_reviews er WHERE er.project_id = p.id)
+       AND NOT org.fn_is_minor(p.client_user_id)
      ORDER BY p.id
      LIMIT 1;
     IF r.id IS NULL THEN
-        RAISE EXCEPTION 'PROBE FAIL: fixture: no unreviewed engagement bought from a listing (deno task db:reset)';
+        RAISE EXCEPTION 'PROBE FAIL: fixture: no completed engagement bought from a listing (deno task db:reset)';
     END IF;
-    v_before := r.rating_count;
+    DELETE FROM reviews.entity_reviews er WHERE er.project_id = r.id;
+    UPDATE projects.project_status_history h SET created_at = now() - interval '2 days'
+     WHERE h.project_id = r.id AND h.to_status = 'completed';
+    SELECT b.rating_count INTO v_before FROM marketplace.service_blueprints b WHERE b.id = r.blueprint;
     v := pg_temp.door(r.client_user_id, pg_temp.submit('project', r.id::text, 'freelancer', r.provider::text, 5));
     PERFORM pg_temp.check(v = '', format('5w the buyer of a listing reviews its provider (got %L)', v));
     PERFORM pg_temp.check((SELECT b.rating_count FROM marketplace.service_blueprints b WHERE b.id = r.blueprint) = v_before + 1,

@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
-| **UAT**          | **71%** |           191 | 96 |  78 | 17 |              26 |
-| **Production**   | **64%** |           248 | 101 | 105 | 42 |              37 |
+| **UAT**          | **71%** |           191 | 96 |  79 | 16 |              26 |
+| **Production**   | **64%** |           248 | 101 | 106 | 41 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -44,7 +44,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | Cluster                                          | Flows | ✅ | 🟡 | ❌ |  ⏸ | Score |
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
-| MK — Discovery, marketplace, checkout & sessions |    60 | 25 | 23 | 10 |  2 |   65% |
+| MK — Discovery, marketplace, checkout & sessions |    60 | 25 | 24 |  9 |  2 |   66% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 27 | 36 | 12 |  2 |   61% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
@@ -204,9 +204,9 @@ PRODUCTION_READINESS.md.
 
 | ID    | Flow                                                  | Persona       | Entry                            | Status | Crit   | Gate | What's missing                                                                                                      |
 | :---- | :---------------------------------------------------- | :------------ | :------------------------------- | :----- | :----- | :--- | :------------------------------------------------------------------------------------------------------------------ |
-| MK-32 | Leave a review; seller reply                          | Buyer, Seller | —                                | ❌     | High   | UAT  | `reviews.entity_reviews` has a read policy only (`00002018:49`) and no write door; `review.received` has no emitter |
+| MK-32 | Leave a review; seller reply                          | Buyer, Seller | `/projects/:slug?review=`, `/view` ReviewsPanel, `/:handle/reviews` | 🟡     | High   | UAT  | Built (b8958f1d, #487): a completed engagement's client, a released seat's client and a completed sitting's attendee review the provider through `reviews.submit_review` (30-day window, one per party, a 13–17 account refused), from the Overview's Reviews block or the reminder; the provider is told (`review.received`, at the listing or the profile) and replies once, under the review on `/view` and `/:handle/reviews` (probe-proven; a guest's read checked live). Left: the signed-in walk in the app (local sign-in refused the captcha: the auth container lacked the test secret); product reviews, ruled to wait for CK1's delivery record (#487 ruling 5), which is now on main as the entitlement (#488) but not yet wired; no Report action on a review (T&S R2); the author is not told of a reply |
 | MK-33 | Reciprocal client review, Client Trust Score, warning | Freelancer    | —                                | ❌     | Normal | PROD | Not built (PRODUCT_SPEC §Reputation 3)                                                                              |
-| MK-34 | Read reviews and ratings                              | Any           | `/view` ReviewsPanel, `/:handle` | ✅     | Normal | UAT  | Seed data only until MK-32                                                                                          |
+| MK-34 | Read reviews and ratings                              | Any           | `/view` ReviewsPanel, `/:handle` | ✅     | Normal | UAT  | Every review rests on a completed anchor and the reply renders under it; a withdrawn or hidden review leaves every reader and average (#487) |
 
 ### Seller catalogue
 
@@ -546,3 +546,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-19 | SC3 (#498): MK-40 ❌ → 🟡 (a seller opens a cohort and cancels one before it starts, every seat refunded, the queue kept in order; later sittings wait for SCH-WP7 step 5); MK-12 narrowed, still 🟡 (the seed holds a cohort and its terms are disclosed; a live seat checkout was not run); new MK-58 ❌, MK-59 ❌ | 83% | 70% | 63% |
 | 2026-11-19 | CK1 (#488): MK-29 ❌ → 🟡 (a bought product reaches its buyer: an entitlement per product line, versions frozen at publish into the policy-less `originals` bucket, `/api/downloads/[entitlement]/[fileId]`, the A8 box before Pay and `/files?source=purchases`, probe-proven; the live run in the app is left); MK-37 narrowed, still 🟡; new MK-60 🟡 (a product publishes with no file to deliver) | 83% | 71% | 64% |
 | 2026-11-19 | SR2: MK-02 narrowed (a bounded query at both doors, 422 or a canonical redirect; a per-caller embedding budget); still 🟡 (offset paging, S24) | 83% | 71% |  64% |
+| 2026-11-19 | RV1 (#487): MK-32 ❌ → 🟡 (a client reviews a completed engagement or session through doors only and the provider replies once; product reviews wait on wiring to CK1's entitlement, Report on T&S R2); MK-34's note cleared; the signed-in walk in the app is left | 83% | 71% | 64% |
