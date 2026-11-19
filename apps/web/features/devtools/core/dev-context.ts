@@ -509,7 +509,8 @@ export interface DevOverrides {
 	 * What Pay's payment answers (FINANCE_AUDIT CO29): the real answer, or — after every real check has
 	 * passed — a declined card, the bank's 3-D Secure step, the processor unreachable, a card charged
 	 * whose order was refused (the money left in the wallet), or the order door's `price_changed` /
-	 * `promo_exhausted`. Its own axis because none of these can be made to happen on cue. Server-side,
+	 * `promo_exhausted` / `promo_already_used`. Its own axis because none of these can be made to happen
+	 * on cue. Server-side,
 	 * through the `pj.dev.checkout-payment` cookie `POST /api/checkout/create` reads in development
 	 * only; the processor's answers replace a card or express charge, the door's any route's.
 	 */
@@ -1131,6 +1132,7 @@ export const DEV_CHECKOUT_PAYMENTS: ReadonlyArray<DevOption<DevCheckoutPayment>>
 	{ value: "unapplied", label: "Charged, order refused" },
 	{ value: "price_changed", label: "Price changed" },
 	{ value: "promo_exhausted", label: "Promo used up" },
+	{ value: "promo_already_used", label: "Promo already used by this account" },
 ];
 
 /** Paying-in-one's-own-currency positions (Decision #436). `Database` lets `fx_checkout_enabled` decide. */

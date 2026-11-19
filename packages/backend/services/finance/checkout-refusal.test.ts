@@ -178,6 +178,14 @@ Deno.test("PC409 sub-codes become their own blockers, in the checkout's words", 
 		exhausted?.message,
 		"Your promo code has been used up. Remove it to pay the full price.",
 	);
+	const used = pc409(
+		"promo_already_used: You've already used this code — remove it to pay the full price",
+	);
+	assertEquals(used?.code, "promo_already_used");
+	assertEquals(
+		used?.message,
+		"You've already used this promo code. Remove it to pay the full price.",
+	);
 	const live = pc409("payment_in_progress: A payment for these items is already in progress");
 	assertEquals(live, pc409Blocker("payment_in_progress"));
 	assertEquals(live?.itemId, null);

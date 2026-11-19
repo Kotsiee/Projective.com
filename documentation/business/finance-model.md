@@ -676,11 +676,16 @@ Governs shared wallets (Business / Team / Enterprise).
   - **A digital product** (Decision #337, ruling M8) is not refunded after its first download,
     except for non-delivery or a defective file, through a dispute; recovery comes from the seller's
     pending row first (§7). **Not built yet.**
-  - **An escrow refund** makes its order line `refunded`, and the order is `refunded` only when
-    every line is (ruling M8) — **Not built yet** (`PRODUCT_MANAGEMENT.md` §3.5, Checkout order).
-- **Promo codes** (ruling M8): the code is recorded on the order (built), and by default an account
-  redeems a code once, configurable per code. **Not built yet**: the per-account cap — today only
-  `max_redemptions` limits a code.
+  - **An escrow refund** is recorded on the order line it bought (ruling M8; Decision #469): partial
+    refunds accumulate on the line, and refunded in full it is `cancelled` when no delivery had
+    begun and `refunded` when it had. The order is `cancelled` when every line is, and `refunded`
+    when every line is refunded or cancelled with at least one refunded. A refund of an escrow no
+    order paid for touches no order. **Built** (FBP DB19; `PRODUCT_MANAGEMENT.md` §3.5, Checkout
+    order).
+- **Promo codes** (ruling M8): the code is recorded on the order, and by default an account redeems
+  a code once, configurable per code (`max_redemptions_per_account`; none means no limit). Every
+  order of the account counts, refunded or not, so a refund gives no redemption back; the basket
+  refuses the code before checkout does. **Built** (FBP DB19).
 - **Reconciliation:** internal self-consistency via `finance.v_wallet_reconciliation` (materialised
   balance vs ledger sum → `drift_cents` must be 0), checked nightly with the running balance by
   `finance.fn_reconcile_wallets`, which reports drift to ops and never corrects it; the ledger

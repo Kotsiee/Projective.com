@@ -750,6 +750,10 @@ Deno.test("checkoutPayment: the door's PC409s replace the wallet order; the proc
 			(await create(byWallet, { payment: "promo_exhausted" })).blockers[0]?.code,
 			"promo_exhausted",
 		);
+		assertEquals(
+			(await create(byWallet, { payment: "promo_already_used" })).blockers[0]?.code,
+			"promo_already_used",
+		);
 		assertEquals(spy.orders.length, 0);
 		// A card's answer has no card to answer for here: the real order is placed.
 		assertEquals((await create(byWallet, { payment: "declined" })).status, "succeeded");

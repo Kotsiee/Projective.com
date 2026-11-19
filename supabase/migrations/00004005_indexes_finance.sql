@@ -201,6 +201,12 @@ CREATE INDEX IF NOT EXISTS idx_order_lines_project
     ON finance.order_lines (project_id) WHERE project_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_order_lines_escrow
     ON finance.order_lines (escrow_id) WHERE escrow_id IS NOT NULL;
+-- The ticket line a refunded ticket escrow maps back to (finance.fn_order_line_of_escrow, FBP DB19).
+CREATE INDEX IF NOT EXISTS idx_order_lines_ticket
+    ON finance.order_lines (ticket_id) WHERE ticket_id IS NOT NULL;
+-- One account's uses of a promo code (finance.fn_promo_uses, FBP DB19).
+CREATE INDEX IF NOT EXISTS idx_orders_owner_promo
+    ON finance.orders (owner_id, promo_code) WHERE promo_code IS NOT NULL;
 -- The daily listing rollup reads one UTC day of orders (placed, or last changed for refunds) and of
 -- basket additions.
 CREATE INDEX IF NOT EXISTS idx_orders_placed_at ON finance.orders (placed_at);

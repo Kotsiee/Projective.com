@@ -1004,6 +1004,11 @@ CREATE TABLE finance.promo_codes (
     starts_at timestamptz,
     expires_at timestamptz,
     max_redemptions integer CHECK (max_redemptions IS NULL OR max_redemptions > 0),
+    -- How many times ONE account may redeem the code (Decision #337, ruling M8; FBP DB19): its orders
+    -- that used it, in every status, so a refund does not give a redemption back (finance.fn_promo_uses).
+    -- The default allows one; NULL is no per-account limit.
+    max_redemptions_per_account integer DEFAULT 1
+        CHECK (max_redemptions_per_account IS NULL OR max_redemptions_per_account > 0),
     redemption_count integer NOT NULL DEFAULT 0 CHECK (redemption_count >= 0),
     -- Withdrawing a code is a soft state with a useful instant, not a boolean: knowing WHEN a code
     -- was pulled is what makes a later "why was my code refused" answerable. NULL = still live.
@@ -1024,7 +1029,9 @@ COMMENT ON TABLE finance.promo_codes IS
 'The source of truth for what a promotional code is worth and whether it may still be redeemed.
 redemption_count is deliberately NOT constrained against max_redemptions: concurrent redemptions
 race, the cap is enforced by the redeeming function under a row lock, and lowering a cap later must
-not retroactively invalidate rows that were legitimately issued under the old one.';
+not retroactively invalidate rows that were legitimately issued under the old one.
+max_redemptions_per_account caps one account''s uses, counted from its orders in every status under
+the same lock (FBP DB19).';
 
 -- A named collection of purchasable intents. A "wishlist" is not a separate table or a separate
 -- kind — it is simply a non-default basket with its own name ('3D Asset Wishlist'), which is why
@@ -1203,7 +1210,9 @@ CREATE TABLE finance.orders (
     -- Buyer-facing reference ('PJ-8QK4-2M7X'). Separate from `id` because a support conversation
     -- needs something a human can read aloud, and a UUID is not that.
     reference text NOT NULL UNIQUE,
-    status finance.order_status NOT NULL DEFAULT 'processing',
+    -- Written `confirmed` once paid, or `invoiced` on account; finance.fn_roll_up_order_status writes
+    -- `refunded` and `cancelled` from the lines (Decision #469). `processing` is retired (00000004).
+    status finance.order_status NOT NULL DEFAULT 'confirmed',
     placed_at timestamptz NOT NULL DEFAULT now(),
 
     -- The wide 5-value finance owner axis, matching finance.baskets rather than inventing a narrower
@@ -1300,6 +1309,19 @@ CREATE TABLE finance.order_lines (
     platform_fee_bp integer CHECK (platform_fee_bp IS NULL OR platform_fee_bp BETWEEN 0 AND 10000),
     platform_fee_minor bigint NOT NULL DEFAULT 0 CHECK (platform_fee_minor >= 0),
 
+    -- What has gone back to the buyer for this line, and where the line stands (Decision #337, ruling
+    -- M8; Decision #469; FBP DB19). Written only by finance.fn_record_order_line_refund, which every
+    -- escrow refund reaches: `refunded_minor` accumulates partial refunds (a Fair Exit split) in the
+    -- line's currency, never past what the buyer paid for the line (`line_total_minor -
+    -- promo_discount_minor`), and `refunded_at` is when the latest one landed. Refunded in full, the line
+    -- is `cancelled` when no delivery had begun (no sitting held, no work started, the revision not
+    -- resolved) and `refunded` when it had; until then it stays `confirmed`. A product line's refunds
+    -- are DB21's.
+    status finance.order_status NOT NULL DEFAULT 'confirmed'
+        CHECK (status IN ('confirmed', 'refunded', 'cancelled')),
+    refunded_minor bigint NOT NULL DEFAULT 0 CHECK (refunded_minor >= 0),
+    refunded_at timestamptz,
+
     fulfilment finance.fulfilment_kind NOT NULL DEFAULT 'pending',
     -- Download fulfilment.
     asset_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
@@ -1329,7 +1351,13 @@ CREATE TABLE finance.order_lines (
     intake_answers jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(intake_answers) = 'object'),
 
     position integer NOT NULL DEFAULT 0 CHECK (position >= 0),
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_order_lines_refund_within_charge
+        CHECK (refunded_minor <= GREATEST(line_total_minor - promo_discount_minor, 0)),
+    CONSTRAINT ck_order_lines_refunded_at CHECK ((refunded_minor = 0) = (refunded_at IS NULL)),
+    CONSTRAINT ck_order_lines_refund_state CHECK (
+        status = 'confirmed' OR refunded_minor = GREATEST(line_total_minor - promo_discount_minor, 0)
+    )
 );
 
 -- The buyer's saved delivery and billing record, per billing identity.

@@ -1585,8 +1585,12 @@ async function resolvePromo(
 			message: PROMO_NOT_APPLICABLE,
 		};
 	}
+	// The account the basket pays from, so a code it has already used up is refused here as checkout
+	// refuses it (`promo_already_used`, FBP DB19).
 	const { data, error } = await session.db.schema("finance").rpc("resolve_promo_code", {
 		p_code: code,
+		p_owner_type: session.owner.ownerType,
+		p_owner_id: session.owner.ownerId,
 	});
 	if (error) throw new Error(`finance.resolve_promo_code failed: ${error.message}`);
 	const promo = data as PromoJson | null;

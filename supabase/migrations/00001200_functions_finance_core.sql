@@ -360,7 +360,9 @@ $$;
 -- conversion funded goes back to the payer's own currency, into the wallet the conversion drew on, at
 -- its pinned figure (finance.fn_fx_refund_minor of what it cost), recorded as an `unwind` conversion;
 -- nothing passes through the payer's wallet in the escrow's currency. The credit carries `p_reason` and
--- names the escrow either way. Returns what was credited, in the currency it was credited in. Internal.
+-- names the escrow either way. The order line the escrow was bought on records the refund first, in
+-- the escrow's currency (finance.fn_record_order_line_refund, FBP DB19). Returns what was credited, in
+-- the currency it was credited in. Internal.
 CREATE OR REPLACE FUNCTION finance.fn_refund_escrow_to_payer(p_escrow_id uuid, p_amount bigint, p_reason text)
 RETURNS bigint
 LANGUAGE plpgsql
@@ -384,6 +386,7 @@ BEGIN
         RAISE EXCEPTION 'escrow: % does not exist', p_escrow_id USING ERRCODE = 'P0002';
     END IF;
     v_payer := COALESCE(r.payer_business_id, r.payer_user_id);
+    PERFORM finance.fn_record_order_line_refund(r.id, p_amount);
 
     IF r.fx_conversion_id IS NULL THEN
         v_type := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);

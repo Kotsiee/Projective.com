@@ -1,14 +1,21 @@
 -- =============================================================================================
--- Probe: a capped promo code and an attempt key under concurrency (finance.place_wallet_order;
--- FINANCE_BUILD_PROMPTS DB7, audit CO6 / CO11).
+-- Probe: a capped promo code, one account's redemptions and an attempt key under concurrency
+-- (finance.place_wallet_order, finance.resolve_promo_code; FINANCE_BUILD_PROMPTS DB7 and DB19, audit
+-- CO6 / CO11 / CO13).
 --
 -- Two real sessions (dblink 'a' and 'b'). A runs first and keeps its transaction open; B is sent and
 -- the probe waits until B is blocked on one of A's locks; A commits; B finishes and commits.
---   1. Two baskets, one code with max_redemptions = 1: A's order redeems it; B, blocked on the code's
---      row lock, then refuses PC409 `promo_exhausted:`. Exactly one order carries the code and its
---      redemption_count is 1.
+--   1. Two baskets, one code with max_redemptions = 1 and no per-account limit: A's order redeems it;
+--      B, blocked on the code's row lock, then refuses PC409 `promo_exhausted:`. Exactly one order
+--      carries the code and its redemption_count is 1.
 --   2. One basket, one attempt key, twice: B, blocked on the basket lock, replays A's order
 --      (`"replayed": true`) instead of refusing on lines A already consumed. One order exists.
+--   3. One account, two baskets, one uncapped code allowing one use per account (the default): A's
+--      order redeems it; B, blocked on the code's row lock, then refuses PC409 `promo_already_used:`.
+--      The preview (resolve_promo_code with the account) now refuses the code to that account, and
+--      still offers it to the buyer's personal account and to a caller who names no account.
+--   4. Another account (the buyer's personal one) redeems the same code: two accounts, two orders,
+--      redemption_count 2.
 --
 -- COMMITS. A race needs both sessions to commit, so this probe cannot run inside a rolled-back
 -- transaction. It refuses the shared dev database `postgres`; run it against a disposable copy:
@@ -38,7 +45,8 @@ END $$;
 CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-CREATE TEMP TABLE probe_fx (biz uuid, buyer uuid, currency text, product uuid, l1 uuid, l2 uuid, l3 uuid);
+CREATE TEMP TABLE probe_fx (biz uuid, buyer uuid, currency text, product uuid, l1 uuid, l2 uuid, l3 uuid,
+                            l4 uuid, l5 uuid, l6 uuid);
 CREATE TEMP TABLE probe_results (scenario text, verdict text, detail text);
 
 DO $$
@@ -49,6 +57,7 @@ DECLARE
     v_wallet uuid;
     v_product uuid;
     v_code text := 'PROBERACE' || upper(substr(md5(gen_random_uuid()::text), 1, 6));
+    v_once text := 'PROBEONCE' || upper(substr(md5(gen_random_uuid()::text), 1, 6));
     v_l uuid[] := '{}';
     v_basket uuid;
     v_one uuid;
@@ -69,19 +78,30 @@ BEGIN
     UPDATE catalogue.products SET price_cents = 1000 WHERE id = v_product;
     UPDATE finance.wallets SET approval_threshold_cents = NULL WHERE id = v_wallet;
     UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
-    INSERT INTO finance.promo_codes (code, label, kind, value_bp, max_redemptions)
-    VALUES (v_code, 'Probe race 10% off', 'percent', 1000, 1);
-    -- Baskets 1 and 2 carry the code; basket 3 is the same-key race.
-    FOR i IN 1..3 LOOP
+    INSERT INTO finance.promo_codes (code, label, kind, value_bp, max_redemptions, max_redemptions_per_account)
+    VALUES (v_code, 'Probe race 10% off', 'percent', 1000, 1, NULL);
+    -- Uncapped, one use per account (the column's default).
+    INSERT INTO finance.promo_codes (code, label, kind, value_bp)
+    VALUES (v_once, 'Probe once 10% off', 'percent', 1000);
+    -- The buyer's personal account is the second account of scenario 4.
+    PERFORM finance.fn_ensure_wallet(finance.fn_person_wallet_type(v_buyer), v_buyer, v_currency);
+    PERFORM finance.fn_wallet_credit(v_buyer, finance.fn_person_wallet_type(v_buyer), v_currency, 10000,
+        'topup', 'inbound_payments', gen_random_uuid());
+    -- Baskets 1 and 2 carry the race code; basket 3 is the same-key race; baskets 4 and 5 (the business)
+    -- and 6 (the buyer's personal account) carry the once-per-account code.
+    FOR i IN 1..6 LOOP
         INSERT INTO finance.baskets (owner_type, owner_id, name, promo_code)
-        VALUES ('business', v_biz, 'Probe race ' || i, CASE WHEN i < 3 THEN v_code END) RETURNING id INTO v_basket;
+        VALUES (CASE WHEN i = 6 THEN finance.fn_person_wallet_type(v_buyer) ELSE 'business' END,
+                CASE WHEN i = 6 THEN v_buyer ELSE v_biz END, 'Probe race ' || i,
+                CASE WHEN i < 3 THEN v_code WHEN i > 3 THEN v_once END) RETURNING id INTO v_basket;
         INSERT INTO finance.basket_items (basket_id, item_type, item_id, title, unit_price_minor, currency, destination_email)
         VALUES (v_basket, 'digital_product', v_product, 'Probe product', 1000, v_currency, 'probe@example.com')
         RETURNING id INTO v_one;
         v_l := v_l || v_one;
     END LOOP;
-    INSERT INTO probe_fx VALUES (v_biz, v_buyer, v_currency, v_product, v_l[1], v_l[2], v_l[3]);
+    INSERT INTO probe_fx VALUES (v_biz, v_buyer, v_currency, v_product, v_l[1], v_l[2], v_l[3], v_l[4], v_l[5], v_l[6]);
     PERFORM set_config('probe.code', v_code, false);
+    PERFORM set_config('probe.once', v_once, false);
 END $$;
 -- #endregion
 
@@ -196,6 +216,66 @@ BEGIN
         r.ra LIKE 'ok %' AND r.rb LIKE 'ok %' AND (substr(r.rb, 4)::jsonb ->> 'replayed')::boolean AND v_orders = 1,
         format('A=%s; B (%s) %s; %s order(s)', left(r.ra, 60),
                CASE WHEN r.blocked THEN 'blocked on A' ELSE 'never blocked' END, left(r.rb, 160), v_orders));
+END $$;
+-- #endregion
+
+-- #region 3. One account races itself for a once-per-account code
+DO $$
+DECLARE
+    v_once text := current_setting('probe.once');
+    r record;
+    v_orders int;
+    v_preview jsonb;
+    v_personal jsonb;
+    v_unnamed jsonb;
+BEGIN
+    SELECT * INTO r FROM pg_temp.probe_race(
+        pg_temp.order_sql((SELECT l4 FROM probe_fx), v_once, 'probe-once-a-' || v_once, 900),
+        pg_temp.order_sql((SELECT l5 FROM probe_fx), v_once, 'probe-once-b-' || v_once, 900));
+    SELECT count(*) INTO v_orders FROM finance.orders
+     WHERE promo_code = v_once AND owner_type = 'business' AND owner_id = (SELECT biz FROM probe_fx);
+    PERFORM pg_temp.probe_record('3 one use per account at commit',
+        r.ra LIKE 'ok %' AND r.rb LIKE 'refused PC409 promo_already_used:%' AND v_orders = 1,
+        format('A=%s; B (%s) %s; the account has %s order(s) with the code', left(r.ra, 60),
+               CASE WHEN r.blocked THEN 'blocked on A' ELSE 'never blocked' END, left(r.rb, 90), v_orders));
+
+    -- The preview, as the buyer: refused for the business that used it, offered elsewhere.
+    PERFORM set_config('request.jwt.claims',
+        json_build_object('sub', (SELECT buyer FROM probe_fx), 'role', 'authenticated')::text, true);
+    v_preview := finance.resolve_promo_code(v_once, 'business', (SELECT biz FROM probe_fx));
+    v_personal := finance.resolve_promo_code(v_once, finance.fn_person_wallet_type((SELECT buyer FROM probe_fx)),
+        (SELECT buyer FROM probe_fx));
+    v_unnamed := finance.resolve_promo_code(v_once);
+    PERFORM set_config('request.jwt.claims', '', true);
+    PERFORM pg_temp.probe_record('3 one use per account at preview',
+        NOT (v_preview ->> 'valid')::boolean AND v_preview ->> 'reason' = 'You''ve already used this code.'
+        AND (v_personal ->> 'valid')::boolean AND (v_unnamed ->> 'valid')::boolean,
+        format('business %s; personal %s; no account %s', v_preview, v_personal ->> 'valid', v_unnamed ->> 'valid'));
+END $$;
+-- #endregion
+
+-- #region 4. Another account redeems the same code
+DO $$
+DECLARE
+    v_once text := current_setting('probe.once');
+    v_out text;
+    v_count int;
+    v_accounts int;
+BEGIN
+    PERFORM dblink_connect('c', 'dbname=' || current_database());
+    PERFORM dblink_exec('c', format('SET request.jwt.claims = %L',
+        json_build_object('sub', (SELECT buyer FROM probe_fx), 'role', 'authenticated')::text));
+    SELECT r INTO v_out FROM dblink('c',
+        pg_temp.order_sql((SELECT l6 FROM probe_fx), v_once, 'probe-once-c-' || v_once, 900)) AS t(r text);
+    PERFORM dblink_disconnect('c');
+    SELECT redemption_count INTO v_count FROM finance.promo_codes WHERE code = v_once;
+    SELECT count(DISTINCT (owner_type, owner_id)) INTO v_accounts FROM finance.orders WHERE promo_code = v_once;
+    PERFORM pg_temp.probe_record('4 two accounts both redeem',
+        v_out IS NOT NULL AND v_count = 2 AND v_accounts = 2,
+        format('personal order %s; redemption_count %s across %s accounts', left(v_out, 80), v_count, v_accounts));
+EXCEPTION WHEN OTHERS THEN
+    IF 'c' = ANY (COALESCE(dblink_get_connections(), '{}')) THEN PERFORM dblink_disconnect('c'); END IF;
+    PERFORM pg_temp.probe_record('4 two accounts both redeem', false, SQLSTATE || ' ' || SQLERRM);
 END $$;
 -- #endregion
 

@@ -36,7 +36,7 @@
 | PRD-F9  | High · PROD     | ❌  | FBP **DB16** (the reader) + **MR4** (the alert)                  | ruled (#461)                    |
 | PRD-F10 | High · PROD     | ❌  | FBP **DB8 step 2** (N24). PRD's Track "—" is wrong; MR0 fixes it | —                               |
 | PRD-F11 | High · PROD     | ❌  | FBP **SV8**                                                      | ⚖️ M9 as built (no flag needed) |
-| PRD-F12 | High · PROD     | ❌  | FBP **DB19 → DB21** + **MR3** (the card-refund half)             | ruled (#469, #470; MR3 #464)    |
+| PRD-F12 | High · PROD     | ❌  | FBP DB19 ✅ (#511) → **DB21** + **MR3** (the card-refund half)   | ruled (#469, #470; MR3 #464)    |
 | PRD-F13 | Normal · PROD   | ❌  | FBP **DB13 → DB20**                                              | ruled (#468)                    |
 | PRD-F14 | High · UAT      | ❌  | SBP **S1 → S2 → S3 → S4**                                        | ruled (#252 (f); interim #472)  |
 | PRD-F15 | Critical · PROD | ❌  | **MR7**, then counsel. No prompt can close it                    | ⚖️ counsel + Stripe             |

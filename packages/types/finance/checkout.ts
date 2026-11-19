@@ -741,6 +741,12 @@ export const CheckoutBlockerCode = z.enum([
 	/** The promo code reached its redemption cap while the buyer was paying (PC409 `promo_exhausted`). */
 	"promo_exhausted",
 	/**
+	 * This account has already used the promo code as many times as it allows, one by default (PC409
+	 * `promo_already_used`, `promo_codes.max_redemptions_per_account`; FBP DB19). A refunded order still
+	 * counts: a refund does not give a redemption back.
+	 */
+	"promo_already_used",
+	/**
 	 * Another live card payment already pays for these lines (PC409 `payment_in_progress`). The attempt
 	 * keeps its key: a fresh one would start a second charge for lines one is already paying for.
 	 */
@@ -1159,7 +1165,8 @@ export type CheckoutResult = z.infer<typeof CheckoutResultSchema>;
  *    exist, so the page reaches the bank step and Stripe.js refuses it, charging nothing); the
  *    processor unreachable; the card charged but the order not placed (`settled_unapplied`, the money
  *    left in the wallet).
- *  - `price_changed` · `promo_exhausted` — the database's PC409 refusals, on any route.
+ *  - `price_changed` · `promo_exhausted` · `promo_already_used` — the database's PC409 refusals, on
+ *    any route.
  */
 export const CheckoutPaymentSim = z.enum([
 	"ok",
@@ -1169,6 +1176,7 @@ export const CheckoutPaymentSim = z.enum([
 	"unapplied",
 	"price_changed",
 	"promo_exhausted",
+	"promo_already_used",
 ]);
 export type CheckoutPaymentSim = z.infer<typeof CheckoutPaymentSim>;
 

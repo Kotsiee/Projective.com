@@ -4,6 +4,7 @@ import type {
 	MoneyView,
 	Order,
 	OrderLine,
+	OrderLineStatus,
 	OrderPage,
 	OrderStatus,
 	PurchasableItemKind,
@@ -52,7 +53,8 @@ const LINE_COLS =
 	"id, order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor, " +
 	"currency, promo_discount_minor, platform_fee_bp, platform_fee_minor, fulfilment, asset_id, " +
 	"download_name, download_bytes, download_format, licence, stage_id, scheduled_at, timezone, " +
-	"duration_minutes, seats, conferencing_provider, intake_answers, position, ticket_id, project_id";
+	"duration_minutes, seats, conferencing_provider, intake_answers, position, ticket_id, project_id, " +
+	"status, refunded_minor, refunded_at";
 
 interface OrderRow {
 	id: string;
@@ -112,6 +114,11 @@ interface LineRow {
 	ticket_id: string | null;
 	/** The engagement a One-Off or Task line created at payment (Decision #457); `null` otherwise. */
 	project_id: string | null;
+	/** Where the line stands as its money goes back (Decision #469; FBP DB19). */
+	status: OrderLineStatus;
+	/** What has been refunded on this line, in its currency; `0` until a refund lands. */
+	refunded_minor: number | string;
+	refunded_at: string | null;
 }
 // #endregion
 
@@ -190,7 +197,7 @@ const STATUS_MESSAGE: Record<OrderStatus, (total: string) => string> = {
 	awaiting_payment: () => "This order is waiting for payment to complete.",
 	invoiced: (total) => `Invoice raised for ${total}. It's due on your usual terms.`,
 	refunded: (total) => `Refunded ${total}.`,
-	cancelled: () => "This order was cancelled.",
+	cancelled: () => "This order was cancelled before anything was delivered, and refunded in full.",
 };
 // #endregion
 
@@ -470,6 +477,9 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 		promoDiscount: receipt(line.promo_discount_minor, line.currency),
 		platformFee: receipt(line.platform_fee_minor, line.currency),
 		platformFeeBp: line.platform_fee_bp,
+		status: line.status,
+		refunded: receipt(line.refunded_minor, line.currency),
+		refundedAt: line.refunded_at ? new Date(line.refunded_at).toISOString() : null,
 		fulfilment: natural,
 		pendingNote: null,
 		assetId: null,

@@ -288,6 +288,12 @@ wallet with any amount. So (`00002510`):
   the definer predicates and money RPCs, which run it as its owner.
 - **`fn_purchase_owner_json` is internal** — it builds the owner projection for the two owner doors and
   is callable by neither client role, because it answers for whatever owner it is handed.
+- **`resolve_promo_code` takes an account now** (`(text, text, uuid)`, FBP DB19): `authenticated` keeps
+  it, and it counts the account's past uses only when `fn_owner_visible` lets the caller see that
+  account (reviewed in `function_grants.sql` (d)). **The order-refund writer and its helpers are
+  internal** — `fn_record_order_line_refund`, `fn_order_line_of_escrow`, `fn_order_line_delivery_began`,
+  `fn_roll_up_order_status` and `fn_promo_uses` are `REVOKE`d from PUBLIC, anon and authenticated and
+  reached only through the refund doors and the promo doors, which run them as their owner.
 - **`simulate_wallet_transaction` is revoked from `service_role` explicitly**, AFTER the blanket
   service-role grant in the same file: that grant would otherwise hand it back, and a context with no
   `auth.uid()` is exactly what gate 2 below refuses.

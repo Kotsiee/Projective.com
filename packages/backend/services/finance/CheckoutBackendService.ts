@@ -823,7 +823,7 @@ function simulatedCharge(
  * place of the call — mapped to its blocker by the same code a real refusal is. `null` otherwise.
  */
 function simulatedDoor(sim: CheckoutPaymentSim | null): { data: null; error: DoorError } | null {
-	return sim === "price_changed" || sim === "promo_exhausted"
+	return sim === "price_changed" || sim === "promo_exhausted" || sim === "promo_already_used"
 		? {
 			data: null,
 			error: { code: "PC409", message: `${sim}: simulated by the Dev Context Switcher` },

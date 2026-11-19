@@ -1154,8 +1154,15 @@ or are an active member of — each in the fn_purchase_owner_json shape. Empty f
 --
 -- Returns `{ found, code, label, kind, value_bp, value_minor, currency, valid, reason }`. `reason` is
 -- the buyer-facing sentence for a refusal, decided here once so the basket and the checkout cannot
--- word the same refusal two ways.
-CREATE OR REPLACE FUNCTION finance.resolve_promo_code(p_code text)
+-- word the same refusal two ways. Given the basket's owner, it also refuses a code that account has
+-- already used up (`max_redemptions_per_account`, finance.fn_promo_uses), the same count
+-- place_wallet_order refuses at commit (FBP DB19), so no buyer is shown a saving checkout refuses. It
+-- counts only an account the caller may see (finance.fn_owner_visible); any other owner is ignored.
+CREATE OR REPLACE FUNCTION finance.resolve_promo_code(
+    p_code text,
+    p_owner_type text DEFAULT NULL,
+    p_owner_id uuid DEFAULT NULL
+)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -1166,6 +1173,7 @@ DECLARE
     v_code text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_code, '')));
     v_row finance.promo_codes;
     v_reason text;
+    v_used boolean := false;
 BEGIN
     IF auth.uid () IS NULL OR v_code = '' THEN
         RETURN NULL;
@@ -1179,12 +1187,18 @@ BEGIN
         );
     END IF;
 
+    IF p_owner_id IS NOT NULL AND v_row.max_redemptions_per_account IS NOT NULL
+       AND finance.fn_owner_visible (p_owner_type, p_owner_id) THEN
+        v_used := finance.fn_promo_uses (v_row.code, p_owner_type, p_owner_id) >= v_row.max_redemptions_per_account;
+    END IF;
+
     v_reason := CASE
         WHEN v_row.deactivated_at IS NOT NULL THEN 'This code is no longer active.'
         WHEN v_row.starts_at IS NOT NULL AND v_row.starts_at > pg_catalog.now () THEN
             'This code isn''t active yet.'
         WHEN v_row.expires_at IS NOT NULL AND v_row.expires_at <= pg_catalog.now () THEN
             'This code expired on ' || pg_catalog.to_char(v_row.expires_at AT TIME ZONE 'UTC', 'FMDD FMMonth YYYY') || '.'
+        WHEN v_used THEN 'You''ve already used this code.'
         WHEN v_row.max_redemptions IS NOT NULL AND v_row.redemption_count >= v_row.max_redemptions THEN
             'This code has been fully redeemed.'
         ELSE NULL
@@ -1204,9 +1218,213 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION finance.resolve_promo_code(text) IS
+COMMENT ON FUNCTION finance.resolve_promo_code(text, text, uuid) IS
 'What ONE promotional code is worth, for the signed-in buyer who typed it: its label, kind and value,
-and — when it cannot be used — the buyer-facing reason. Never lists codes and never redeems one.';
+and — when it cannot be used — the buyer-facing reason, including an account (one the caller may see)
+that has already used it up. Never lists codes and never redeems one.';
+-- #endregion
+
+-- #region 9b. Order refunds — the line writer and the order rollup (FBP DB19)
+-- An order line moves from `confirmed` to `refunded` or `cancelled` only as its money goes back
+-- (Decision #337, ruling M8; Decision #469). Every escrow refund reaches finance.fn_refund_escrow_to_payer
+-- (Decision #435 (D)), which calls finance.fn_record_order_line_refund with the escrow and the amount in
+-- the escrow's own currency, the line's: the one writer, in the refund's own transaction. A refund of an
+-- escrow no order line paid for (a stage funded from the Finance tab) touches no order; neither does a
+-- captured card payment whose engagement was refused, which stays in the wallet with no line (#457 (b)).
+-- A digital product's refunds are DB21's.
+
+-- How many orders of ONE account used a promo code, in every status: a refund does not give a
+-- redemption back. A person's account is one account whichever personal wallet type its basket names.
+-- The one count behind finance.place_wallet_order's refusal and finance.resolve_promo_code's preview.
+-- Internal.
+CREATE OR REPLACE FUNCTION finance.fn_promo_uses(p_code text, p_owner_type text, p_owner_id uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.count(*)::integer
+      FROM finance.orders o
+     WHERE o.promo_code = pg_catalog.upper(pg_catalog.btrim(p_code))
+       AND o.owner_id = p_owner_id
+       AND (o.owner_type = p_owner_type
+            OR (o.owner_type IN ('user', 'freelancer') AND p_owner_type IN ('user', 'freelancer')));
+$$;
+
+COMMENT ON FUNCTION finance.fn_promo_uses(text, text, uuid) IS
+'How many of one account''s orders used a promo code, in every status (a refund does not give a
+redemption back). Personal user and freelancer owners count as one account. Internal: the count behind
+place_wallet_order''s promo_already_used refusal and resolve_promo_code''s preview of it.';
+
+-- The order line an escrow was bought on, or NULL. Through the links each kind already writes: a One-Off
+-- or Task line names its held escrow (`order_lines.escrow_id`, #457); a seat or a 1-1 session's sittings
+-- name the membership the line created (`cohort_memberships.order_line_id`); a paid revision's line is
+-- the revision itself (`item_id`); a ticket line, and a One-Off's later milestones, are the escrows the
+-- order's own transaction held or reserved on the line's ticket (both rows carry that transaction's
+-- instant), so a later stage funded from the Finance tab maps to no line. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_order_line_of_escrow(p_escrow_id uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT m.line_id
+      FROM finance.escrows e
+     CROSS JOIN LATERAL (
+            SELECT l.id AS line_id, 1 AS rank FROM finance.order_lines l WHERE l.escrow_id = e.id
+            UNION ALL
+            SELECT cm.order_line_id, 2 FROM projects.cohort_memberships cm
+             WHERE cm.id = e.cohort_membership_id AND cm.order_line_id IS NOT NULL
+            UNION ALL
+            SELECT l.id, 3 FROM finance.order_lines l
+             WHERE e.revision_id IS NOT NULL AND l.item_type = 'paid_revision' AND l.item_id = e.revision_id
+            UNION ALL
+            SELECT l.id, 4 FROM finance.order_lines l
+              JOIN finance.orders o ON o.id = l.order_id
+             WHERE e.ticket_id IS NOT NULL AND e.revision_id IS NULL AND e.cohort_membership_id IS NULL
+               AND l.ticket_id = e.ticket_id AND o.created_at = e.created_at
+         ) m
+     WHERE e.id = p_escrow_id
+     ORDER BY m.rank, m.line_id
+     LIMIT 1;
+$$;
+
+COMMENT ON FUNCTION finance.fn_order_line_of_escrow(uuid) IS
+'The order line an escrow was bought on, or NULL (a stage funded from the Finance tab): the One-Off line
+naming it, the seat or session line its membership names, the paid-revision line of its revision, or
+the ticket line whose order''s own transaction held or reserved it. Internal (FBP DB19).';
+
+-- Whether delivery of a line had begun (Decision #469): it decides `refunded` over `cancelled` when the
+-- line is refunded in full. A paid revision began when it was resolved; a ticket line (and a One-Off or
+-- Task, which carries its master ticket) when its ticket reached in_progress, in_review or completed,
+-- now or in its history since the order; a seat or session line when one of its sittings was completed
+-- or the buyer joined one. A line with no such fact here (a digital product, whose download rule is
+-- DB21's) counts as begun, so nothing is called cancelled that this cannot show. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_order_line_delivery_began(p_line_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN l.item_type = 'paid_revision' THEN EXISTS (
+            SELECT 1 FROM projects.stage_revision_requests rv WHERE rv.id = l.item_id AND rv.status = 'resolved')
+        WHEN l.ticket_id IS NOT NULL THEN EXISTS (
+            SELECT 1 FROM projects.tickets t
+             WHERE t.id = l.ticket_id
+               AND t.status IN ('in_progress'::public.ticket_status, 'in_review'::public.ticket_status,
+                                'completed'::public.ticket_status))
+          OR EXISTS (
+            SELECT 1 FROM projects.ticket_history h
+             WHERE h.ticket_id = l.ticket_id AND h.created_at >= o.created_at
+               AND h.new_status IN ('in_progress'::public.ticket_status, 'in_review'::public.ticket_status,
+                                    'completed'::public.ticket_status))
+        WHEN EXISTS (SELECT 1 FROM projects.cohort_memberships cm WHERE cm.order_line_id = l.id) THEN EXISTS (
+            SELECT 1 FROM projects.cohort_memberships cm
+              JOIN projects.session_events se ON se.cohort_id = cm.cohort_id
+             WHERE cm.order_line_id = l.id
+               AND (se.status = 'completed'::projects.session_event_status
+                    OR EXISTS (SELECT 1 FROM projects.session_attendance a
+                                WHERE a.session_event_id = se.id AND a.user_id = cm.user_id)))
+        ELSE true
+    END
+      FROM finance.order_lines l
+      JOIN finance.orders o ON o.id = l.order_id
+     WHERE l.id = p_line_id;
+$$;
+
+COMMENT ON FUNCTION finance.fn_order_line_delivery_began(uuid) IS
+'Whether delivery of an order line had begun (Decision #469): a resolved paid revision; a ticket that
+reached in_progress, in_review or completed since the order; a completed or attended sitting. Any other
+line counts as begun (a product''s download rule is DB21''s). Internal (FBP DB19).';
+
+-- An order's status from its lines (Decision #469): `cancelled` when every line is cancelled, `refunded`
+-- when every line is refunded or cancelled and at least one is refunded; otherwise it keeps its status
+-- (`confirmed`, or `invoiced` for an on-account order). Returns the status the order has after. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_roll_up_order_status(p_order_id uuid)
+RETURNS finance.order_status
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_next finance.order_status;
+    v_now finance.order_status;
+BEGIN
+    SELECT CASE WHEN pg_catalog.bool_and(l.status = 'cancelled'::finance.order_status) THEN 'cancelled'
+                WHEN pg_catalog.bool_and(l.status IN ('refunded'::finance.order_status,
+                                                      'cancelled'::finance.order_status)) THEN 'refunded'
+           END::finance.order_status
+      INTO v_next
+      FROM finance.order_lines l
+     WHERE l.order_id = p_order_id;
+    IF v_next IS NOT NULL THEN
+        UPDATE finance.orders o
+           SET status = v_next, updated_at = pg_catalog.now()
+         WHERE o.id = p_order_id AND o.status IS DISTINCT FROM v_next;
+    END IF;
+    SELECT o.status INTO v_now FROM finance.orders o WHERE o.id = p_order_id;
+    RETURN v_now;
+END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_roll_up_order_status(uuid) IS
+'Rolls an order''s status up from its lines (Decision #469): cancelled when every line is cancelled,
+refunded when every line is refunded or cancelled with at least one refunded; otherwise unchanged.
+Internal (FBP DB19).';
+
+-- The line writer: an escrow refund of `p_amount` (in the escrow's currency, the line's) adds to the
+-- line it was bought on, capped at what the buyer paid for the line. Refunded in full, the line becomes
+-- `refunded` when its delivery had begun and `cancelled` when it had not, and the order rolls up. A line
+-- already refunded or cancelled, or an escrow no line paid for, changes nothing. Returns the line, or
+-- NULL. Internal: only finance.fn_refund_escrow_to_payer calls it.
+CREATE OR REPLACE FUNCTION finance.fn_record_order_line_refund(p_escrow_id uuid, p_amount bigint)
+RETURNS uuid
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_line finance.order_lines;
+    v_charge bigint;
+    v_total bigint;
+BEGIN
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO v_line FROM finance.order_lines l
+     WHERE l.id = finance.fn_order_line_of_escrow(p_escrow_id)
+       FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+    v_charge := GREATEST(v_line.line_total_minor - v_line.promo_discount_minor, 0);
+    IF v_line.status <> 'confirmed'::finance.order_status OR v_charge = 0 THEN
+        RETURN v_line.id;
+    END IF;
+    v_total := LEAST(v_line.refunded_minor + p_amount, v_charge);
+    UPDATE finance.order_lines l
+       SET refunded_minor = v_total,
+           refunded_at = pg_catalog.clock_timestamp(),
+           status = CASE WHEN v_total < v_charge THEN 'confirmed'::finance.order_status
+                         WHEN finance.fn_order_line_delivery_began(l.id) THEN 'refunded'::finance.order_status
+                         ELSE 'cancelled'::finance.order_status END
+     WHERE l.id = v_line.id;
+    PERFORM finance.fn_roll_up_order_status(v_line.order_id);
+    RETURN v_line.id;
+END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_record_order_line_refund(uuid, bigint) IS
+'Records an escrow refund against the order line it was bought on (Decision #337, ruling M8; Decision
+#469): accumulates refunded_minor up to what the buyer paid, marks the line refunded (delivery had
+begun) or cancelled (it had not) once refunded in full, and rolls the order up. Internal: called by
+finance.fn_refund_escrow_to_payer, in the refund''s transaction (FBP DB19).';
 -- #endregion
 
 -- #region 10. Invoicing terms — a business's monthly-statement setting (2026-09-23)
@@ -1351,7 +1569,10 @@ and KYB verification (PK403 kyb_required).';
 --     (`settled_unapplied`, Decision #200) instead of drawing the difference from an existing balance.
 --   * A promo is redeemed atomically: the code is read FOR UPDATE and its count is raised only while
 --     under `max_redemptions`; the redemption lost to a concurrent order refuses PC409
---     `promo_exhausted`. The code applied is recorded on the order (`orders.promo_code`).
+--     `promo_exhausted`. Under the same lock, an account that has used the code
+--     `max_redemptions_per_account` times already (its orders, in every status:
+--     finance.fn_promo_uses) refuses PC409 `promo_already_used` (FBP DB19). The code applied is
+--     recorded on the order (`orders.promo_code`).
 CREATE OR REPLACE FUNCTION finance.place_wallet_order(
     p_basket_id uuid,
     p_item_ids uuid[],
@@ -1998,6 +2219,14 @@ BEGIN
         END IF;
         v_promo_minor := LEAST(GREATEST(v_promo_minor, 0), v_subtotal - v_creator);
         IF v_promo_minor > 0 THEN
+            -- One account, one redemption by default: counted under the code's row lock, so two of the
+            -- account's orders racing for the code are decided one after the other.
+            IF v_promo.max_redemptions_per_account IS NOT NULL
+               AND finance.fn_promo_uses(v_promo.code, v_basket.owner_type, v_basket.owner_id)
+                   >= v_promo.max_redemptions_per_account THEN
+                RAISE EXCEPTION 'promo_already_used: You''ve already used this code — remove it to pay the full price'
+                    USING ERRCODE = 'PC409';
+            END IF;
             UPDATE finance.promo_codes
                SET redemption_count = redemption_count + 1
              WHERE id = v_promo.id

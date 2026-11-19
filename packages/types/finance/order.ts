@@ -45,13 +45,16 @@ import { IntakeAnswersSchema } from "../services/intake.ts";
  * still in escrow. Conflating them is how "paid" comes to mean "delivered".
  */
 export const OrderStatus = z.enum([
-	/** Money taken, everything fulfilled or in progress. */
+	/** Money taken; every line fulfilled, in progress, or partly refunded. */
 	"confirmed",
-	/** Money taken, at least one line still awaiting a provider-side step. */
+	/**
+	 * RETIRED (ruling Q0.2 (e); FBP DB19): no writer sets it, because an order is written only once it is
+	 * paid. Kept because the database enum never drops a member.
+	 */
 	"processing",
 	/**
-	 * Awaiting a provider action (3-D Secure, a PayPal approval) — the order exists, the charge does not
-	 * yet. No path writes it today: a card checkout's order is placed only once its payment settles.
+	 * RETIRED (ruling Q0.2 (e); FBP DB19): no writer sets it — a card checkout's order is placed only once
+	 * its payment settles. Kept because the database enum never drops a member.
 	 */
 	"awaiting_payment",
 	/**
@@ -59,12 +62,26 @@ export const OrderStatus = z.enum([
 	 * (`finance.place_on_account_order`), with `charged` zero and the label "On account".
 	 */
 	"invoiced",
-	/** Reversed in full. */
+	/**
+	 * Every line refunded or cancelled, at least one refunded after its delivery began
+	 * (`finance.fn_roll_up_order_status`, Decision #469).
+	 */
 	"refunded",
-	/** The attempt never completed and the order was abandoned. */
+	/** Every line refunded in full before any delivery began (Decision #469). */
 	"cancelled",
 ]);
 export type OrderStatus = z.infer<typeof OrderStatus>;
+
+/**
+ * Where one purchased line stands (`finance.order_lines.status`; Decision #337, ruling M8; Decision
+ * #469). A subset of {@link OrderStatus}, the same three words the order rolls up from:
+ *  - `confirmed` — the line stands, wholly or partly (its `refunded` figure says how much came back);
+ *  - `refunded` — refunded in full after its delivery began (a sitting held, work started, the paid
+ *    revision resolved);
+ *  - `cancelled` — refunded in full before any delivery began.
+ */
+export const OrderLineStatus = z.enum(["confirmed", "refunded", "cancelled"]);
+export type OrderLineStatus = z.infer<typeof OrderLineStatus>;
 // #endregion
 
 // #region Fulfilment
@@ -134,6 +151,15 @@ export const OrderLineSchema = z.object({
 	platformFee: MoneyViewSchema,
 	/** The rate {@link platformFee} was charged at, in basis points; `null` on an escrow line. */
 	platformFeeBp: basisPoints.nullable(),
+	/** Where this line stands (`finance.order_lines.status`): see {@link OrderLineStatus}. */
+	status: OrderLineStatus.default("confirmed"),
+	/**
+	 * What has gone back to the buyer for this line (`finance.order_lines.refunded_minor`): partial
+	 * refunds accumulate (a Fair Exit split), never past what the buyer paid for it. Zero until one lands.
+	 */
+	refunded: MoneyViewSchema,
+	/** When the latest refund of this line landed (`finance.order_lines.refunded_at`); `null` if none. */
+	refundedAt: timestamp.nullable().default(null),
 	/** The resolved fulfilment route. Drives which action the confirmation row renders. */
 	fulfilment: FulfilmentKind,
 	/** A display-ready sentence for a `pending` line ("Starts when Stage 2 is funded"). */

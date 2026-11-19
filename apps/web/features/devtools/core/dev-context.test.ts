@@ -248,6 +248,7 @@ Deno.test("checkoutPayment — the inert default is ok; every other option is a 
 		"unapplied",
 		"price_changed",
 		"promo_exhausted",
+		"promo_already_used",
 	]);
 	for (const { value } of ctx.DEV_CHECKOUT_PAYMENTS) {
 		assertEquals(parseCheckoutPaymentSim(value), value === "ok" ? null : value);

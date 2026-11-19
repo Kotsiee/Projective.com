@@ -3238,16 +3238,19 @@ The commerce rules every order follows (Decision #337, ruling M8):
     `finance.delivered_refund_refusal` flag after counsel signs off, a delivered line is refunded
     like any other; a line paid without the tick is never treated as downloaded. **Built behind the
     flag, off.**
-- **An order is refunded line by line.** When an escrow behind a line is refunded, that line becomes
-  refunded; the order becomes refunded only once every line is.
+- **An order is refunded line by line.** When an escrow behind a line is refunded, the line records
+  it; a line refunded in full before any delivery began (no sitting held, no work started) is
+  **cancelled**, and one refunded in full after is **refunded** (Decision #469). The order is
+  cancelled once every line is, and refunded once every line is refunded or cancelled with at least
+  one refunded. **Built** (FBP DB19).
 - **An order's states are the ones it can reach.** An on-account order is **invoiced**; refunds and
   cancellations write **refunded** and **cancelled**; the never-written `processing` and
-  `awaiting_payment` states are retired.
+  `awaiting_payment` states are retired. **Built.**
 - **A promo code is recorded on the order,** and by default each account may redeem a code once; a
-  code may allow more.
+  code may allow more. A refund does not give the use back. **Built** (FBP DB19).
 
-These are **Not built yet**, except that an on-account order is already written as invoiced, a
-code is already recorded on its order, and what "downloaded" means is recorded (above).
+The download refusal above waits for counsel, and a refund the buyer or provider starts is **Not
+built yet** (FBP DB21).
 
 #### 7. Asset Protection (Decision #393)
 

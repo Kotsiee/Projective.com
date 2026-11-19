@@ -87,8 +87,10 @@ BEGIN
     UPDATE catalogue.products SET price_cents = 1000 WHERE id = v_product;
     UPDATE finance.wallets SET approval_threshold_cents = NULL WHERE id = v_wallet;
     UPDATE security.platform_params SET value = '{"default": 0}'::jsonb WHERE key = 'vault_approval_threshold_cents';
-    INSERT INTO finance.promo_codes (code, label, kind, value_bp, max_redemptions)
-    VALUES ('PROBEDB7', 'Probe 10% off', 'percent', 1000, 1);
+    -- No per-account limit, so the second use below meets the code's own cap (the per-account refusal,
+    -- FBP DB19, is promo_redemption_concurrency.sql's).
+    INSERT INTO finance.promo_codes (code, label, kind, value_bp, max_redemptions, max_redemptions_per_account)
+    VALUES ('PROBEDB7', 'Probe 10% off', 'percent', 1000, 1, NULL);
     RAISE NOTICE 'fixture business=% buyer=% product=% %', v_biz, v_buyer, v_product, v_currency;
     -- #endregion
 

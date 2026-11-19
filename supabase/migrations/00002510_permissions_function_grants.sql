@@ -923,7 +923,7 @@ EXECUTE ON FUNCTION finance.list_purchase_owners () TO authenticated;
 -- One typed code's worth (00001210 §9). The table itself stays unreadable: this answers for the one
 -- code the buyer typed and never lists the book.
 GRANT
-EXECUTE ON FUNCTION finance.resolve_promo_code (text) TO authenticated;
+EXECUTE ON FUNCTION finance.resolve_promo_code (text, text, uuid) TO authenticated;
 
 -- A business's invoicing terms (00001210 §10) — gated inside on manage_billing and, for the monthly
 -- mode, on KYB verification.
@@ -1247,6 +1247,12 @@ GRANT EXECUTE ON FUNCTION finance.fund_with_conversion (uuid, uuid, uuid, uuid, 
 REVOKE ALL ON FUNCTION finance.fn_execute_fx_quote (uuid, uuid, text, uuid, boolean) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_stamp_escrow_fx (uuid, uuid[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_refund_escrow_to_payer (uuid, bigint, text) FROM PUBLIC, anon, authenticated;
+-- The order-refund writer and its helpers (00001210 §9b, FBP DB19): reached only through the refund doors.
+REVOKE ALL ON FUNCTION finance.fn_promo_uses (text, text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_order_line_of_escrow (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_order_line_delivery_began (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_roll_up_order_status (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_record_order_line_refund (uuid, bigint) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_carry_spend_cover (uuid, uuid, bigint) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_wallet_credit_fx (uuid, text, text, bigint, text, text, uuid, text, numeric, timestamptz) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_wallet_debit_fx (uuid, text, text, bigint, text, text, uuid, text, numeric, timestamptz) FROM PUBLIC, anon, authenticated;

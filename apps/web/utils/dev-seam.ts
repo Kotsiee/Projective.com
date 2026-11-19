@@ -377,7 +377,8 @@ export type DevCheckoutGate =
 /**
  * What a checkout's payment answers when the buyer presses Pay (FINANCE_AUDIT CO29): `ok` the real
  * answer; `declined` · `authenticate` · `timeout` · `unapplied` the processor's, on a card or express
- * payment; `price_changed` · `promo_exhausted` the order door's PC409 refusals, on any route.
+ * payment; `price_changed` · `promo_exhausted` · `promo_already_used` the order door's PC409 refusals,
+ * on any route.
  * SERVER-side: the switcher mirrors it into the `pj.dev.checkout-payment` cookie, which
  * `POST /api/checkout/create` passes to `CheckoutBackendService.create` in development only, and the
  * service answers with it in place of the money call once every real check has passed.
@@ -1009,6 +1010,7 @@ const CHECKOUT_PAYMENTS: readonly DevCheckoutPayment[] = [
 	"unapplied",
 	"price_changed",
 	"promo_exhausted",
+	"promo_already_used",
 ];
 const FX_CHECKOUTS: readonly DevFxCheckout[] = ["auto", "on", "off"];
 const SPEND_REQUEST_SIMS: readonly DevSpendRequests[] = [

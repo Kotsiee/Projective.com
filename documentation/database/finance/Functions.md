@@ -909,17 +909,55 @@ and is what the Details form pre-fills delivery from. An anonymous caller gets `
 `fn_purchase_owner_json` itself is callable by neither client role: it answers for whatever owner it
 is handed, so only the two doors above — which pass it the caller's own context — may reach it.
 
-### `finance.resolve_promo_code(p_code)` → jsonb
+### `finance.resolve_promo_code(p_code, p_owner_type DEFAULT NULL, p_owner_id DEFAULT NULL)` → jsonb
 
 What **one** code is worth, for the signed-in buyer who typed it:
 `{ found, code, label, kind, value_bp, value_minor, currency, valid, reason }`. `reason` is the
-buyer-facing refusal sentence (unknown · no longer active · not active yet · expired on _date_ · fully
-redeemed), decided here once so the basket and the checkout cannot word the same refusal two ways.
-It never lists codes and never redeems one — `redemption_count` moves only in `place_wallet_order`.
+buyer-facing refusal sentence (unknown · no longer active · not active yet · expired on _date_ ·
+already used by this account · fully redeemed), decided here once so the basket and the checkout
+cannot word the same refusal two ways. Given the basket's owner, it counts that account's past uses
+(`fn_promo_uses`) against `max_redemptions_per_account` and refuses "You've already used this code."
+— the refusal `place_wallet_order` makes at commit (FBP DB19). It counts only an account the caller
+may see (`fn_owner_visible`); any other owner is ignored, so the door says nothing about an account
+the caller cannot see. It never lists codes and never redeems one — `redemption_count` moves only in
+`place_wallet_order`.
 
 The saving itself is computed by the application against the lines (a percent of what is left after
 creator discounts; a flat saving only where every eligible line is priced in the code's currency),
 because it depends on the basket, not the code.
+
+### Order refunds: the line writer and the order rollup (`00001210` §9b, FBP DB19)
+
+An order line moves from `confirmed` to `refunded` or `cancelled` only as its money goes back
+(Decision #337, ruling M8; Decision #469). All five are internal: definers with no client grant,
+reached only through the refund doors (probe `order_refund_lifecycle.sql`).
+
+- **`finance.fn_record_order_line_refund(p_escrow_id, p_amount)` → uuid**: the one writer, called by
+  `fn_refund_escrow_to_payer` in the refund's own transaction with the amount in the escrow's
+  currency (the line's). It adds the amount to the line's `refunded_minor`, capped at what the buyer
+  paid for the line, and stamps `refunded_at`. Refunded in full, the line becomes `refunded` when its
+  delivery had begun and `cancelled` when it had not, and the order rolls up. A line already refunded
+  or cancelled, and an escrow no line paid for (a stage funded from the Finance tab; #457 (b)'s
+  refused engagement), change nothing. Returns the line, or `NULL`.
+- **`finance.fn_order_line_of_escrow(p_escrow_id)` → uuid**: the line an escrow was bought on, through
+  the links each kind writes: a One-Off or Task line's `escrow_id`; a seat's or 1-1 session's
+  `cohort_memberships.order_line_id`; a paid revision's `item_id`; a ticket line's `ticket_id` for
+  the escrows the order's own transaction held or reserved (`orders.created_at = escrows.created_at`,
+  both that transaction's instant), so a later Finance-tab hold on the same ticket maps to no line.
+- **`finance.fn_order_line_delivery_began(p_line_id)` → boolean**: whether delivery had begun, which
+  decides `refunded` over `cancelled`. A paid revision: `resolved`. A ticket line (and a One-Off or
+  Task, through its master ticket): the ticket at `in_progress`, `in_review` or `completed`, now or in
+  `projects.ticket_history` since the order. A seat or session line: a sitting `completed` or joined
+  by the buyer (`projects.session_attendance`). Any other line counts as begun; a digital product's
+  download rule is DB21's.
+- **`finance.fn_roll_up_order_status(p_order_id)` → `finance.order_status`**: `cancelled` when every
+  line is cancelled, `refunded` when every line is refunded or cancelled with at least one refunded,
+  otherwise unchanged (`confirmed` or `invoiced`). It moves `orders.updated_at` with the status, which
+  the listing rollup reads for refunds. Returns the status after.
+- **`finance.fn_promo_uses(p_code, p_owner_type, p_owner_id)` → integer**: how many of one account's
+  orders used a code, in every status (a refund gives no redemption back); a person's `user` and
+  `freelancer` owners are one account. The count behind `place_wallet_order`'s `promo_already_used`
+  and `resolve_promo_code`'s preview of it.
 
 ### `finance.set_invoicing_terms(p_owner_type, p_owner_id, p_mode, p_billing_day)` → jsonb
 
@@ -971,9 +1009,11 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
 5. **The promo the buyer saw applied.** `p_promo_code` `NULL` → no promo, whatever code sits on the
    basket (a code the page refused applies nothing here either). Non-null → it must still be the
    basket's code, still valid, and applicable (a flat code only in its own currency) — or `PC409`.
-   The code is read `FOR UPDATE` and redeemed **atomically**: `redemption_count + 1` only while under
-   `max_redemptions`, else `PC409 promo_exhausted:` — two orders racing for the last redemption get
-   exactly one (DB7, CO6; probe `promo_redemption_concurrency.sql` §1). Then the net must equal
+   The code is read `FOR UPDATE` and redeemed **atomically**: under that lock an account that has
+   used it `max_redemptions_per_account` times already (`fn_promo_uses`: its orders in every status)
+   refuses `PC409 promo_already_used:` (FBP DB19, CO13; probe `promo_redemption_concurrency.sql` §3),
+   then `redemption_count + 1` only while under `max_redemptions`, else `PC409 promo_exhausted:` — two
+   orders racing for the last redemption get exactly one (DB7, CO6; probe §1). Then the net must equal
    `p_expected_minor`, the total the buyer was shown, or `PC409 price_changed:` before any money moves
    (CO4; probe `checkout_charge_assert.sql`).
 6. **The wallet** in `p_currency` is locked (a personal owner's `user` and `freelancer` wallets are
@@ -2346,7 +2386,9 @@ honoured from any caller (it refuses only its sender); `on` loosens the gate, so
   (`00001260`) and the lost-chargeback refund in `record_dispute_closed` (`00001240`). An unconverted
   escrow is credited in its currency, as before; a converted one is credited to the conversion's
   source wallet in the payer's currency at its pinned figure (`fn_fx_refund_minor`), recorded as an
-  `unwind`, never passing through the escrow currency's wallet. Returns what was credited.
+  `unwind`, never passing through the escrow currency's wallet. Before the credit, the order line the
+  escrow was bought on records the refund in the escrow's currency (`fn_record_order_line_refund`,
+  FBP DB19, below). Returns what was credited.
 - **`finance.fn_carry_spend_cover(p_from_wallet, p_to_wallet, p_to_amount)`** (`00001210`, internal):
   moves the business spend gate's transaction-local cover from the wallet a conversion drew on to the
   one it paid into, so the holds beneath count the buyer's envelope once, on the money that left.

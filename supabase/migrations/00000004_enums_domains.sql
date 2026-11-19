@@ -516,10 +516,15 @@ CREATE TYPE finance.inbound_payment_status AS ENUM (
 
 -- `order_status` — mirrors @projective/types/finance OrderStatus, member for member.
 --
--- `awaiting_payment` and `invoiced` are the two that earn their place. The first says the order
--- exists but the charge does not yet (3-D Secure, a PayPal approval); the second says the money was
--- never going to be charged now because it is raised against a monthly statement. Collapsing either
--- into `processing` would make "why has this not been paid" unanswerable from the row.
+-- An order is written `confirmed` once it is paid, or `invoiced` when it is raised against a monthly
+-- statement (finance.place_on_account_order): that money was never going to be charged now. The
+-- rollup (finance.fn_roll_up_order_status, FBP DB19) writes the two ends from the order's lines,
+-- which carry `confirmed`, `refunded` and `cancelled` themselves (Decision #337, ruling M8; Decision
+-- #469): `cancelled` when every line was refunded in full before any delivery began, `refunded` when
+-- every line is refunded or cancelled and at least one was refunded after. A partly refunded order
+-- keeps its status. `processing` and `awaiting_payment` are RETIRED (ruling Q0.2 (e)): no writer sets
+-- either, since an order is written only once it is paid, and the members stay because an enum value
+-- is never dropped.
 CREATE TYPE finance.order_status AS ENUM (
     'confirmed', 'processing', 'awaiting_payment', 'invoiced', 'refunded', 'cancelled'
 );

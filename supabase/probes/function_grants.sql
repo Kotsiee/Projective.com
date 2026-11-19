@@ -161,6 +161,7 @@ INSERT INTO probe_actor_reviewed VALUES
     ('finance.get_purchase_owner(text,uuid)',                'public: an active public or unlisted entity''s face; the rest to members (#481)', NULL),
     ('finance.get_seller_commission(text,uuid)',             'authorised: fn_owner_visible or 42501', NULL),
     ('finance.quote_fx_conversion(text,uuid,text,text,bigint,text,text,uuid)', 'authorised: the basket''s spender or the project''s payer', NULL),
+    ('finance.resolve_promo_code(text,text,uuid)',           'authorised: counts the account''s past uses only under fn_owner_visible (FBP DB19)', NULL),
     ('finance.save_payout_schedule(text,uuid,text,finance.payout_mode,bigint,uuid,boolean)', 'authorised: own wallet, or withdraw on the entity''s', NULL),
     ('finance.save_split_rule(uuid,finance.split_rule_type,integer,uuid,integer)', 'authorised: manage_finances; the finder is an active member', NULL),
     ('finance.set_invoicing_terms(text,uuid,text,integer)',  'authorised: manage_billing on the business', NULL),

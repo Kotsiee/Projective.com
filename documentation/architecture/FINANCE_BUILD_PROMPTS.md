@@ -70,7 +70,7 @@ lanes. The waves are indicative: inside a wave, §0.2 and §0.3 still decide wha
 
 | Wave | SQL lane (serial)                                                                                  | App lane (parallel, file-disjoint)                                                       |
 | :--- | :------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------- |
-| Done | ✅ DB1 · ✅ DB7 (remainder → DB19) · ✅ N1 · ✅ N5                                                 | ✅ SV1 Zod half (CHECKs → DB8)                                                           |
+| Done | ✅ DB1 · ✅ DB7 · ✅ DB19 (#511) · ✅ N1 · ✅ N5                                                   | ✅ SV1 Zod half (CHECKs → DB8)                                                           |
 | 1    | ✅ DB10 per-currency thresholds (P0)                                                               | ✅ SV6 wallet covers (P0) · ✅ SV2 wallet honesty (P0) · UI1 styles (partly: D6, D11)    |
 | 2    | ✅ DB11 seller commission (P0)                                                                     | ✅ SV4 checkout service (P0; after SV6) · ✅ SV3 locks and recurring actions (after SV2) |
 | 3    | DB16 conservation identity                                                                         | UI2 island and money-verb tiers (partly: D16; after UI1)                                 |
@@ -1603,7 +1603,12 @@ DESIGN_SYSTEM.md tier-1 list.
 HOT: 00001240, 00002510, live-wallet.ts, WalletDialogs.tsx (never beside UI3 or UI5).
 ```
 
-### DB19 — Order lifecycle writers and one redemption per account (M8) — 🧑 at step 3
+### DB19 — ✅ Done: order lifecycle writers and one redemption per account (M8)
+
+> **Status 2026-11-19:** Done (Decision #511). The line writer sits in
+> `finance.fn_refund_escrow_to_payer`, not in a trigger on `finance.transactions`: since #435 (D) a
+> converted escrow's refund is credited in the payer's own currency, so a ledger row no longer
+> carries the line's amount (#511 (E)). Its delivery predicate leaves the digital-product rule to DB21.
 
 ```text
 PROMPT DB19: Orders reach every state they can: refunded and cancelled lines, and one redemption per

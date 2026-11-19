@@ -681,12 +681,13 @@ Zod `InboundPaymentStatus` (`payments.contract.test.ts` reads the migration and 
 ### `finance.order_status` and the order record (`finance.orders`)
 
 `order_status`: `confirmed` · `processing` · `awaiting_payment` · `invoiced` · `refunded` ·
-`cancelled`, mirrored by the Zod `OrderStatus`. Writers today: `confirmed` by
-`finance.place_wallet_order` (a wallet order, including a card checkout's, which is placed only once its
-top-up settles); `invoiced` by `finance.place_on_account_order` (label "On account", `charged_minor` 0 —
-`total_minor` is what is owed, billed on the monthly invoice). `processing`, `awaiting_payment`,
-`refunded` and `cancelled` have no writer: `awaiting_payment` is kept for a provider-side step no path
-takes yet, and the refund / cancel writers wait for ruling M8 (FDD D-12). Never dropped (edit-in-place).
+`cancelled`, mirrored by the Zod `OrderStatus`. Writers: `confirmed` by `finance.place_wallet_order`
+(a wallet order, including a card checkout's, which is placed only once its top-up settles; also the
+column's DEFAULT); `invoiced` by `finance.place_on_account_order` (label "On account", `charged_minor`
+0 — `total_minor` is what is owed, billed on the monthly invoice); `refunded` and `cancelled` by
+`finance.fn_roll_up_order_status`, from the lines (FBP DB19, Decision #469; below). `processing` and
+`awaiting_payment` are **retired** (ruling Q0.2 (e)): no writer, retired in the enum's comment, never
+dropped (edit-in-place).
 
 `finance.orders.fx_conversion_id` (uuid, NULL, FK → `finance.fx_conversions` RESTRICT; Decision #435):
 the conversion that paid for the order when the buyer paid in their own currency. The order's figures
@@ -697,6 +698,13 @@ stay in its lines' currency; the buyer's charge is that conversion's `from_minor
 as `finance.promo_codes.code`; `NULL` when no promo saved anything. Not a foreign key, for the reason
 `baskets.promo_code` gives. Mirrored by the Zod `Order.promoCode`. The code's `redemption_count` is
 raised by the same transaction, atomically under `max_redemptions` (DB7).
+
+`finance.promo_codes.max_redemptions_per_account` (`integer`, NULL, `DEFAULT 1`, `> 0`; FBP DB19,
+ruling M8): how many orders of ONE account may use the code; NULL is no per-account limit. Counted by
+`finance.fn_promo_uses` from `finance.orders.promo_code` in every status, so a refund gives no
+redemption back, and a person's `user` and `freelancer` owners count as one account. Refused at
+commit (`place_wallet_order`, PC409 `promo_already_used`) and at preview (`resolve_promo_code` with the
+basket's owner). Partial index `idx_orders_owner_promo` (`owner_id, promo_code`, `00004005`).
 
 **The fee on each line (Decision #337, ruling M1).** `finance.order_lines` records what was taken on
 a line when it was bought: `platform_fee_minor` (`bigint`, NOT NULL `DEFAULT 0`, `≥ 0`) and its rate
@@ -730,6 +738,21 @@ any later milestone prepaid under the whole-project prepay is found through `tic
 receipt links the engagement by `project_id` (`OrderLine.engagementHref`, `/projects/<slug>`), and
 an escrow refund maps back to its line by `escrow_id`. Partial indexes
 `idx_order_lines_project` and `idx_order_lines_escrow` (`00004005`).
+
+**Where a line stands as its money goes back (FBP DB19; Decision #337, ruling M8; Decision #469).**
+`finance.order_lines.status` (`finance.order_status`, NOT NULL `DEFAULT 'confirmed'`, CHECK one of
+`confirmed` · `refunded` · `cancelled`), `refunded_minor` (`bigint`, NOT NULL `DEFAULT 0`, `≥ 0`) and
+`refunded_at` (`timestamptz`, NULL). Written only by `finance.fn_record_order_line_refund`, which every
+escrow refund reaches through `fn_refund_escrow_to_payer`. `refunded_minor` accumulates partial refunds
+(a Fair Exit split) in the line's currency; refunded in full the line is `cancelled` when no delivery
+had begun and `refunded` when it had (`fn_order_line_delivery_began`), and the order rolls up
+(`fn_roll_up_order_status`). CHECKs: `ck_order_lines_refund_within_charge` (`refunded_minor ≤
+GREATEST(line_total_minor − promo_discount_minor, 0)`, what the buyer paid for the line),
+`ck_order_lines_refunded_at` (`refunded_at` set exactly when something was refunded) and
+`ck_order_lines_refund_state` (`refunded` and `cancelled` only when refunded in full). Projected as
+`OrderLine.status` (`OrderLineStatus`), `refunded` and `refundedAt`. A ticket line maps back through
+`ticket_id`: partial index `idx_order_lines_ticket` (`00004005`). A digital product line's refunds are
+DB21's.
 
 **A product line's delivery (Decision #488).** `finance.order_lines.asset_id` is **reserved**: no
 door writes it and no reader reads it (it is kept, never dropped). A `digital_product` line's files

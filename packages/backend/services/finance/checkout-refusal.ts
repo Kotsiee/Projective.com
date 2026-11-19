@@ -50,15 +50,21 @@ const NOT_ACTIVE_SQLSTATE = "55000";
  * The PC409 refusals whose prefix says what happened, each its own blocker code (FINANCE_AUDIT CO8,
  * CO11; DB7): `price_changed` — the order's net is not the total the buyer was shown
  * (`place_wallet_order`'s `p_expected_minor`); `promo_exhausted` — the code reached its redemption cap
- * while they paid; `payment_in_progress` — another live card payment already pays for these lines
+ * while they paid; `promo_already_used` — this account has already used the code as often as it allows
+ * (FBP DB19); `payment_in_progress` — another live card payment already pays for these lines
  * (`attach_checkout_order`). Any other PC409 stays `price_changed` with the database's own sentence.
  */
-export type Pc409Refusal = "price_changed" | "promo_exhausted" | "payment_in_progress";
+export type Pc409Refusal =
+	| "price_changed"
+	| "promo_exhausted"
+	| "promo_already_used"
+	| "payment_in_progress";
 
 /** What a buyer reads for each {@link Pc409Refusal} — the checkout's words, whatever the door said. */
 const PC409_COPY: Readonly<Record<Pc409Refusal, string>> = {
 	price_changed: "The total changed while you were paying. Review the new total and try again.",
 	promo_exhausted: "Your promo code has been used up. Remove it to pay the full price.",
+	promo_already_used: "You've already used this promo code. Remove it to pay the full price.",
 	payment_in_progress:
 		"A payment for these items is already in progress. Finish it, or wait for it to end, before paying again.",
 };
