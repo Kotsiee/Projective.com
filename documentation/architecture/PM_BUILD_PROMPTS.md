@@ -42,7 +42,7 @@ axes exists. The rows below are the state each prompt starts from.
 | Fair Exit                            | Client-chosen `{25, 50, 75}`, stage-wide only      | `cancel_stage_fair_exit` (`00001150:1138`, other tiers refused at :1166); no `fn_fair_exit_floor`, no ticket door; `project_stages` stores no start time; `fair-exit-model.ts` offers 25 · 50 · 75                                                                                                                                                                                                                                       |
 | Removal and deletion                 | Pay 100 %; hard-delete; the product: pristine only | `release_ticket_to_backlog`, `delete_ticket` (`00001120:56-110`) unchanged since `3fcf2d54`, `delete_ticket` granted to `authenticated` (`00002510:1363-1364`); `fn_ticket_delete_protocol` (`00001110:409`). `8a3fd595` (#409 (F)): `ticketDeletable` (`types/projects/board.ts:1251`), `ProjectBackendService.deleteTicket`, `live-ticket-delete.ts`, `POST /api/projects/ticket/delete`, `DeleteTicketDialog`, a TypeScript gate only |
 | `payment_status = 'refunded'`        | Never written                                      | `fn_refund_ticket_escrow` (`00001200:1022`; `unpaid` at :1049) and the lost chargeback (`00001240:131`) write `unpaid`                                                                                                                                                                                                                                                                                                                   |
-| Workload reports                     | The engine only                                    | no grant on `file_workload_report` (`00001140:729`); no Zod, service, route or control; both penalties seeded `0` (`00005001:32-35`); no `projects-resolve-workload-reports` row; `categoryWeight` still in `board.ts:136`, and now in `write-store.ts` too                                                                                                                                                                              |
+| Workload reports                     | The engine; the expiry sweep runs                  | no grant on `file_workload_report` (`00001140:948`); no Zod, service, route or control; both penalties seeded `0` (`00005001:38-41`); the expiry sweep locks, closes a settled ticket's report `acknowledged` and runs as `projects-resolve-workload-reports` (OPS3, #519); `categoryWeight` still in `board.ts:136`, and now in `write-store.ts` too                                                                                    |
 | Stage dependencies                   | Drawn only                                         | no guard and no engine; `live-board.ts:291` reads `start_dependency_stage_id` only to draw a planned start; `startsWithId = null` means "the stage above" (`setup.ts:275`)                                                                                                                                                                                                                                                               |
 | Ghosting timer                       | None                                               | no `stage_submissions.submitted_at` (`00001100:661` labels `created_at` so); `submission.auto_approved` is catalogued (`00005010:50`); its worker `comms-process-queue` runs (`00005060:119`)                                                                                                                                                                                                                                            |
 | Drafts                               | Visible to reviewers                               | _View submissions_ (`00002011:834`), _Insert own submissions_ (`:316`) and `resolveIsolation` (`live-submissions.ts:765`) unchanged                                                                                                                                                                                                                                                                                                      |
@@ -877,6 +877,18 @@ ACCEPTANCE:
 ## 4. Phase 3 — Workload & reliability
 
 ### PM-WP5a — Workload reporting reaches the product
+
+> **Status 2026-11-19:** Partly done: step 3g and the sweep-time half of 3d landed in OPS3 (#519).
+> `fn_resolve_expired_workload_reports(p_now, p_limit)` locks the ticket before its report
+> (`SKIP LOCKED`) and re-checks it `open`. A lapsed report whose ticket has left `reported_hidden`, or
+> carries a later report, closes `acknowledged` with no penalty. `projects-resolve-workload-reports`
+> runs every 15 minutes (`6,21,36,51`) and idles until 3a makes reports fileable. Keep that; add 3c on
+> the new signature, and 3d's settle-time trigger. Step 2's W4 reproduction is now
+> `workload_report_suspension.sql` region 9, which fails by design once the trigger closes the report
+> at settlement: move it onto the trigger then. Before 3e refuses every move out of Hidden, resume an
+> unfunded ticket too (PRD-G11, #519 (b)): `fn_resume_reported_ticket` leaves a ticket with no held
+> escrow `reported_hidden` after every way out, and today only that move frees it. Steps 1, 3a–3c,
+> 3d's settle-time trigger, 3e, 3f and 4–6 remain.
 
 ```text
 PROMPT PM-WP5a: Workload reporting reaches the product and treats both sides fairly

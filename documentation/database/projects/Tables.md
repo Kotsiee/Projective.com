@@ -757,7 +757,9 @@ held escrow kept, nothing paid (Decision #290) — sets its `hidden_until`, and 
 `workload_report_window_hours` (default 48), and points `tickets.workload_report_id` at the report.
 The report closes `adjusted` when the client raises the ticket's W_i (`trg_adjust_workload_report` on
 `tickets`), `expired_penalized` by the expiry sweep, or `dismissed_bad_faith` by an audit; each
-resumes the work.
+resumes the work. The expiry sweep closes a lapsed report whose ticket was settled meanwhile (it has
+left `reported_hidden`, or carries a later report) `acknowledged` instead, with no penalty and the
+ticket untouched (Decision #519).
 
 ---
 

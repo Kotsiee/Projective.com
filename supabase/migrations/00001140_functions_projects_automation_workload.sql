@@ -130,51 +130,119 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
 
--- 1b. Expiry sweep — the client let the window lapse: the report is resolved, the client penalised,
--- and the suspended work resumes at the W_i it was reported at.
-CREATE OR REPLACE FUNCTION projects.fn_resolve_expired_workload_reports()
+-- 1b. Expiry sweep — the client let the window lapse (Decision #519, OPS3). Candidates are the open
+-- reports whose window ended by p_now, oldest window first, at most p_limit. Each ticket is locked
+-- before its report, both SKIP LOCKED, which is the order a client's W_i raise takes them in (the
+-- ticket UPDATE, then fn_adjust_workload_report): a report someone is answering is skipped rather than
+-- waited on, and the report's status and window are re-checked on the locked row. Under the lock:
+--   • the ticket has left reported_hidden, or carries another report (it was approved, cancelled under
+--     Fair Exit or its freelancer removed while this report was open): the report closes
+--     `acknowledged`, "closed because the ticket was settled; nobody is penalised" (PM-WP5a 3d / W10),
+--     and the ticket is not touched;
+--   • otherwise the report closes `expired_penalized`, the suspended work resumes at the W_i it was
+--     reported at (fn_resume_reported_ticket), and the client is penalised at the
+--     client_no_adjust_penalty dial.
+-- A report that changed under the lock is left alone with a WARNING and an ops.log_entries row
+-- (`changed_under_lock`); one whose close fails is rolled back alone and logged (`resolve_failed`), and
+-- the run goes on. Every argument has a default (the job calls it bare); p_now is injectable for
+-- probes. Returns how many reports it closed, either way; a second run returns 0. Job
+-- `projects-resolve-workload-reports` (00005060). PM-WP5a adds the settle-time close trigger and the
+-- reporter's penalty (W3) on this signature.
+CREATE OR REPLACE FUNCTION projects.fn_resolve_expired_workload_reports(
+    p_now timestamptz DEFAULT now(),
+    p_limit integer DEFAULT 200
+)
 RETURNS integer AS $$
 DECLARE
     r record;
+    v_ticket record;
+    v_report record;
+    v_locked boolean;
     v_sev numeric;
     v_count integer := 0;
     v_subject_type text;
     v_subject_id uuid;
+    v_state text;
+    v_message text;
 BEGIN
     SELECT (value #>> '{}')::numeric INTO v_sev
     FROM security.platform_params WHERE key = 'client_no_adjust_penalty';
     v_sev := COALESCE(v_sev, 0);
 
     FOR r IN
-        SELECT wr.id AS report_id, wr.ticket_id, COALESCE(p.client_user_id, p.owner_user_id) AS owner_user_id, p.client_business_id
+        SELECT wr.id AS report_id, wr.ticket_id, t.project_id,
+               COALESCE(p.client_user_id, p.owner_user_id) AS owner_user_id, p.client_business_id
         FROM projects.ticket_workload_reports wr
         JOIN projects.tickets t ON t.id = wr.ticket_id
         JOIN projects.projects p ON p.id = t.project_id
         WHERE wr.status = 'open'::projects.workload_report_status
             AND wr.hidden_until IS NOT NULL
-            AND wr.hidden_until <= now()
+            AND wr.hidden_until <= p_now
+        ORDER BY wr.hidden_until, wr.id
+        LIMIT GREATEST(COALESCE(p_limit, 200), 1)
+        FOR UPDATE OF t SKIP LOCKED
     LOOP
-        UPDATE projects.ticket_workload_reports
-        SET status = 'expired_penalized'::projects.workload_report_status, resolved_at = now()
-        WHERE id = r.report_id;
+        BEGIN
+            SELECT wr.status, wr.hidden_until INTO v_report
+            FROM projects.ticket_workload_reports wr
+            WHERE wr.id = r.report_id
+            FOR UPDATE SKIP LOCKED;
+            v_locked := FOUND;
+            IF NOT v_locked
+               OR v_report.status IS DISTINCT FROM 'open'::projects.workload_report_status
+               OR v_report.hidden_until IS NULL
+               OR v_report.hidden_until > p_now THEN
+                PERFORM ops.fn_log_scheduler_event(
+                    'projects-resolve-workload-reports', 'changed_under_lock', 'warn',
+                    format('workload report %s was %s under the sweep''s lock; it was left as it is', r.report_id,
+                           CASE WHEN NOT v_locked THEN 'held by another transaction'
+                                ELSE 'no longer a lapsed open report' END),
+                    jsonb_build_object('report_id', r.report_id, 'ticket_id', r.ticket_id,
+                                       'status', v_report.status, 'hidden_until', v_report.hidden_until)
+                );
+                CONTINUE;
+            END IF;
 
-        PERFORM projects.fn_resume_reported_ticket(r.ticket_id, r.report_id);
+            SELECT t.status, t.workload_report_id INTO v_ticket
+            FROM projects.tickets t WHERE t.id = r.ticket_id;
 
-        IF r.client_business_id IS NOT NULL THEN
-            v_subject_type := 'business'; v_subject_id := r.client_business_id;
-        ELSE
-            v_subject_type := 'user'; v_subject_id := r.owner_user_id;
-        END IF;
+            IF v_ticket.status IS DISTINCT FROM 'reported_hidden'::ticket_status
+               OR v_ticket.workload_report_id IS DISTINCT FROM r.report_id THEN
+                UPDATE projects.ticket_workload_reports
+                SET status = 'acknowledged'::projects.workload_report_status, resolved_at = p_now
+                WHERE id = r.report_id;
+            ELSE
+                UPDATE projects.ticket_workload_reports
+                SET status = 'expired_penalized'::projects.workload_report_status, resolved_at = p_now
+                WHERE id = r.report_id;
 
-        INSERT INTO security.penalties (
-            subject_type, subject_id, penalty_type, source_type, source_id, severity, reason
-        )
-        VALUES (
-            v_subject_type, v_subject_id, 'trust_score', 'workload_report', r.report_id, v_sev,
-            'Client failed to adjust workload intensity within the required window.'
-        );
+                PERFORM projects.fn_resume_reported_ticket(r.ticket_id, r.report_id);
 
-        v_count := v_count + 1;
+                IF r.client_business_id IS NOT NULL THEN
+                    v_subject_type := 'business'; v_subject_id := r.client_business_id;
+                ELSE
+                    v_subject_type := 'user'; v_subject_id := r.owner_user_id;
+                END IF;
+
+                INSERT INTO security.penalties (
+                    subject_type, subject_id, penalty_type, source_type, source_id, severity, reason
+                )
+                VALUES (
+                    v_subject_type, v_subject_id, 'trust_score', 'workload_report', r.report_id, v_sev,
+                    'Client failed to adjust workload intensity within the required window.'
+                );
+            END IF;
+
+            v_count := v_count + 1;
+        EXCEPTION WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_message = MESSAGE_TEXT;
+            PERFORM ops.fn_log_scheduler_event(
+                'projects-resolve-workload-reports', 'resolve_failed', 'error',
+                format('workload report %s could not be closed: %s (%s)', r.report_id, v_message, v_state),
+                jsonb_build_object('report_id', r.report_id, 'ticket_id', r.ticket_id,
+                                   'project_id', r.project_id, 'sqlstate', v_state)
+            );
+        END;
     END LOOP;
 
     RETURN v_count;

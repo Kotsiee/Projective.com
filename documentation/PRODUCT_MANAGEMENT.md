@@ -602,8 +602,11 @@ escrow stays **Funded** — and the payee cannot lift the suspension. The suspen
 counts toward the payee's $W_i$ load and caps, so a report cannot free capacity to claim more (audit
 X4). The client raising the ticket's $W_i$, the report window lapsing, or an audit dismissing the
 report returns it to `in_progress`; approval, Fair Exit and the owner's removal of the payee settle
-it as they settle any held ticket. No product surface files a report yet: the filing door, its grant
-and its sweep are **Not built yet** (Decision #338, ruling P3 / DL D5). (8) **A move is not a claim,
+it as they settle any held ticket. The lapse is the expiry sweep's (`projects-resolve-workload-reports`,
+every 15 minutes, Decision #519): it penalises the client, except that a report whose ticket was
+settled while it was open closes `acknowledged` and penalises nobody. No product surface files a
+report yet: the filing door and its grant are **Not built yet** (Decision #338, ruling P3 / DL D5).
+(8) **A move is not a claim,
 a cancellation or a report** (Decision #293). A claimed ticket is moved only by its payee, between
 `todo`, `in_progress` and `in_review`, or by the client, and the client not while it is `claimed` /
 `in_progress` (#94). No move enters `claimed`, `cancelled` or `reported_hidden`. A move into

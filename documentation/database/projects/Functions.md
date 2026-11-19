@@ -1408,16 +1408,35 @@ The client's answer to a report (`PRODUCT_SPEC.md` §Workload Intensity Reportin
 W_i. Only the client side can make that raise — `fn_ticket_immutability_guard` refuses it to the
 reporter. `search_path = public, projects`; `EXECUTE` moot (a trigger).
 
-### `projects.fn_resolve_expired_workload_reports() → integer`
+### `projects.fn_resolve_expired_workload_reports(p_now timestamptz DEFAULT now(), p_limit integer DEFAULT 200) → integer`
 
-`00001140` §1b, the expiry sweep: every `open` report whose `hidden_until` has passed becomes
-`expired_penalized`, the suspended ticket resumes `in_progress` at its reported W_i
-(`fn_resume_reported_ticket`), and a `trust_score` `security.penalties` row (severity
-`client_no_adjust_penalty`) is written against the client business or owner. Returns the count.
-`search_path = public, projects, security`; `EXECUTE`: `service_role` only — no client grant. **No
-caller check** — moot for clients, because no client role holds `EXECUTE`. It takes no arguments and
-only acts on reports that are genuinely expired. **Not scheduled**: no `ops.scheduled_jobs` row runs
-it (Decision #290 (FLAG a)).
+`00001140` §1b, the expiry sweep (Decision #519, OPS3). Candidates are the `open` reports whose
+`hidden_until` ≤ `p_now`, oldest window first, at most `p_limit` (a NULL or non-positive limit means
+200, at least 1). Each ticket is locked before its report, both `SKIP LOCKED` — the order a client's
+W_i raise takes them in (the ticket UPDATE, then `fn_adjust_workload_report`) — so a report someone
+is answering is skipped rather than waited on, and the report is re-checked `open` and lapsed on the
+locked row. Under the lock:
+
+- **The ticket was settled while the report was open** — it has left `reported_hidden`, or its
+  `workload_report_id` names a later report: the report closes `acknowledged` (`resolved_at =
+  p_now`), "closed because the ticket was settled; nobody is penalised" (DL §3 W4 / W10). No penalty
+  is written and the ticket is not touched.
+- **Otherwise** the report closes `expired_penalized` (`resolved_at = p_now`), the suspended ticket
+  resumes `in_progress` at its reported W_i (`fn_resume_reported_ticket`), and one `trust_score`
+  `security.penalties` row (severity `client_no_adjust_penalty`, seeded `0`) is written against the
+  client business or owner.
+
+A report that changed under the lock is left as it is, with a WARNING and an `ops.log_entries` row
+(`scheduler:projects-resolve-workload-reports:changed_under_lock`); a report whose close fails is
+rolled back alone and logged (`…:resolve_failed`, level `error`), and the run goes on. Returns how
+many reports it closed, either way; a second run returns 0. Every argument has a default, so the job
+calls it bare. `search_path = public, projects, security` (the resume writes `projects.tickets`,
+whose triggers name unqualified types); `EXECUTE`: `service_role` only (`00002510`, named; no client
+grant). **No caller check** — moot for clients, because no client role holds `EXECUTE`. **Job:**
+`projects-resolve-workload-reports`, `6,21,36,51 * * * *` (`00005060`). It idles until PM-WP5a
+grants `file_workload_report`, since nothing else files a report. PM-WP5a adds the settle-time close
+trigger and the reporter's penalty (W3) on this signature. Probe:
+`supabase/probes/workload_report_suspension.sql` regions 5 and 9–12.
 
 ### `projects.fn_flag_bad_faith_report(p_report_id uuid) → void`
 

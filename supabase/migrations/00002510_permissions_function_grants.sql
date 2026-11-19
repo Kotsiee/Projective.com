@@ -1440,6 +1440,14 @@ FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_release_expired_claims (timestamptz, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.fn_release_expired_claims (timestamptz, integer) TO service_role;
 
+-- 🚨 The workload-report expiry sweep PENALISES the client of every open report whose window ended
+-- by `p_now`, a caller-supplied argument: with a client grant anybody could pass a far-future instant,
+-- close every open report on the platform and write a penalty against each client. It is a cron job
+-- (Decision #519): service_role only. Named here, although the deny-by-default region at the top
+-- already closes it (SAC1).
+REVOKE ALL ON FUNCTION projects.fn_resolve_expired_workload_reports (timestamptz, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_resolve_expired_workload_reports (timestamptz, integer) TO service_role;
+
 -- Internal to the claim paths (Decision #165): callable directly, anybody could mark any unfunded
 -- ticket Needs funding and notify its owner at will.
 REVOKE ALL ON FUNCTION projects.fn_mark_needs_funding (uuid, jsonb) FROM PUBLIC, anon, authenticated, service_role;

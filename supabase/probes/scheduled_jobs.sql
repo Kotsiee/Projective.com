@@ -39,6 +39,7 @@ DECLARE
         ARRAY['comms-compact-events',             '47 3 * * *'],
         ARRAY['finance-sweep-card-payments',      '13,28,43,58 * * * *'],
         ARRAY['projects-release-expired-claims',  '3,18,33,48 * * * *'],
+        ARRAY['projects-resolve-workload-reports', '6,21,36,51 * * * *'],
         ARRAY['ops-prune-job-history',            '53 4 * * *'],
         ARRAY['search-embeddings-backfill',       '38 * * * *']
     ];

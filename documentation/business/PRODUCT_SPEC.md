@@ -2968,8 +2968,10 @@ If a freelancer is removed from a stage or project while actively holding a clai
 
 A freelancer may report a ticket if they believe its assigned Workload Intensity ($W_i$, see
 "Resource Allocation & Ticketing" §2) does not reflect the actual effort required. **Not built
-yet:** the mechanism exists in the database but nothing in the product reaches it, and its expiry
-sweep is not scheduled. It is being built now rather than marked Planned (Decision #338, ruling P3).
+yet:** the mechanism exists in the database but nothing in the product reaches it, and a lapse
+penalises the client only (step 3's freelancer half). It is being built now rather than marked
+Planned (Decision #338, ruling P3). The expiry sweep that ends a lapsed window runs every 15 minutes
+(Decision #519).
 
 1. **Report Filed:** The ticket enters a 48-hour **"Hidden"** status — it is removed from public
    view and all work on it is suspended. **A report moves no money** (Decision #290): the
@@ -2988,7 +2990,8 @@ sweep is not scheduled. It is being built now rather than marked Planned (Decisi
 
 While a ticket is hidden the client keeps every other settlement: approving its stage pays it,
 ending the stage under Fair Exit splits and cancels it, and removing the freelancer applies
-§Freelancer Removal Mid-Ticket.
+§Freelancer Removal Mid-Ticket. A report whose ticket is settled this way is closed without a penalty
+to anyone, even when its window runs out afterwards (Decision #519).
 
 ---
 

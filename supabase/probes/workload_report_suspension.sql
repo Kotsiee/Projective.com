@@ -20,7 +20,18 @@
 -- nothing credited); the reporter can neither lift the suspension, move the disputed W_i nor file
 -- again; each way out — the client raising W_i, the expiry sweep, a bad-faith dismissal — resumes the
 -- work with the escrow still held; Fair Exit and the owner's member removal settle a suspended ticket
--- as they settle any held one. A clean run prints only PASS notices; the first failed check raises
+-- as they settle any held one.
+--
+-- The expiry sweep (Decision #519, OPS3), regions 9-12. THE DEFECT (DL §3 W4), reproduced on
+-- 2026-11-19 against the seed (rolled back): the client settled the suspended ticket under Fair Exit,
+-- which left the report open, and once its window lapsed the sweep closed it `expired_penalized` and
+-- wrote a penalty against the client for a ticket they had settled. Now a lapsed report whose ticket
+-- has left reported_hidden, or carries a later report, closes `acknowledged` with no penalty and the
+-- ticket untouched; a live lapse is penalised exactly once; p_limit takes the oldest window first; a
+-- second run closes nothing; and only the service role can fire the sweep, whose job runs every 15
+-- minutes. Regions 9-11 pass an injected p_now in 2001, so no real report is ever a candidate.
+--
+-- A clean run prints only PASS notices; the first failed check raises
 -- `FAIL …` and aborts the run. Fixtures are discovered from the seed (deno task db:reset); no ids are
 -- hard-coded. Each way out runs between a SAVEPOINT and a ROLLBACK TO, so none sees another.
 -- =============================================================================================
@@ -297,11 +308,11 @@ BEGIN
     IF v_n < 1 OR v_status <> 'expired_penalized'::projects.workload_report_status THEN
         RAISE EXCEPTION 'FAIL the expiry sweep resolved % report(s); ours is %', v_n, v_status;
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM security.penalties
-                    WHERE source_type = 'workload_report' AND source_id = current_setting('probe.report')::uuid) THEN
-        RAISE EXCEPTION 'FAIL the expiry sweep recorded no penalty for the report';
+    IF (SELECT count(*) FROM security.penalties
+         WHERE source_type = 'workload_report' AND source_id = current_setting('probe.report')::uuid) <> 1 THEN
+        RAISE EXCEPTION 'FAIL the expiry sweep did not record exactly one penalty for the report';
     END IF;
-    RAISE NOTICE 'PASS expiry sweep resolved the report (expired_penalized, penalty recorded)';
+    RAISE NOTICE 'PASS expiry sweep resolved the report (expired_penalized, one penalty recorded)';
 END $$;
 SELECT pg_temp.assert_resumed('window lapsed');
 SELECT pg_temp.assert_no_money_moved('window lapsed');
@@ -394,6 +405,211 @@ BEGIN
     RAISE NOTICE 'PASS owner removal settled the suspended ticket (PRODUCT_SPEC §Freelancer Removal Mid-Ticket)';
 END $$;
 ROLLBACK TO SAVEPOINT suspended;
+-- #endregion
+
+-- #region 9. W4: the client settles the suspended ticket while the report is open — the lapsed report
+-- closes `acknowledged`, nobody is penalised and the settled ticket is left alone (Decision #519)
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.owner'), 'role', 'authenticated')::text, true);
+DO $$
+BEGIN
+    PERFORM projects.cancel_stage_fair_exit(current_setting('probe.project')::uuid, current_setting('probe.stage')::uuid, 50);
+END $$;
+RESET ROLE;
+DO $$
+DECLARE
+    v_now CONSTANT timestamptz := '2001-01-01 00:01:00+00';
+    v_money text;
+    v_n integer;
+    w record;
+    v_ticket_status ticket_status;
+BEGIN
+    SELECT status INTO w FROM projects.ticket_workload_reports WHERE id = current_setting('probe.report')::uuid;
+    IF w.status <> 'open'::projects.workload_report_status THEN
+        RAISE EXCEPTION 'FAIL fixture: settling the ticket closed the report itself (%), so the sweep-time W4 case is gone; move this region onto a report the settle-time trigger cannot reach',
+            w.status;
+    END IF;
+    UPDATE projects.ticket_workload_reports SET hidden_until = v_now - interval '1 minute'
+    WHERE id = current_setting('probe.report')::uuid;
+    v_money := pg_temp.probe_money();
+
+    v_n := projects.fn_resolve_expired_workload_reports(v_now);
+    SELECT status, resolved_at INTO w FROM projects.ticket_workload_reports WHERE id = current_setting('probe.report')::uuid;
+    IF v_n <> 1 OR w.status <> 'acknowledged'::projects.workload_report_status OR w.resolved_at IS DISTINCT FROM v_now THEN
+        RAISE EXCEPTION 'FAIL the sweep closed % report(s) on the settled ticket; ours is % (resolved_at %) — expected acknowledged at %',
+            v_n, w.status, w.resolved_at, v_now;
+    END IF;
+    IF EXISTS (SELECT 1 FROM security.penalties
+                WHERE source_type = 'workload_report' AND source_id = current_setting('probe.report')::uuid) THEN
+        RAISE EXCEPTION 'FAIL the sweep penalised the client for a ticket they had settled (W4)';
+    END IF;
+    SELECT status INTO v_ticket_status FROM projects.tickets WHERE id = current_setting('probe.ticket')::uuid;
+    IF v_ticket_status <> 'cancelled'::ticket_status THEN
+        RAISE EXCEPTION 'FAIL the sweep moved the settled ticket to %', v_ticket_status;
+    END IF;
+    IF pg_temp.probe_money() IS DISTINCT FROM v_money THEN
+        RAISE EXCEPTION 'FAIL the sweep moved money on the settled ticket: before [%] after [%]', v_money, pg_temp.probe_money();
+    END IF;
+    v_n := projects.fn_resolve_expired_workload_reports(v_now);
+    IF v_n <> 0 THEN
+        RAISE EXCEPTION 'FAIL a second run closed % report(s) — expected 0', v_n;
+    END IF;
+    RAISE NOTICE 'PASS a lapsed report on a settled ticket closes acknowledged: no penalty, the ticket and money untouched, a second run closes nothing';
+END $$;
+ROLLBACK TO SAVEPOINT suspended;
+-- #endregion
+
+-- #region 10. A lapsed report whose ticket now carries a later report closes `acknowledged`, and the
+-- later report's suspension stands
+-- The work resumed while the first report stayed open (as a move out of Hidden would leave it), and
+-- the assignee filed again: the ticket is suspended under the second report.
+SELECT projects.fn_resume_reported_ticket(current_setting('probe.ticket')::uuid, current_setting('probe.report')::uuid);
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('probe.assignee'), 'role', 'authenticated')::text, true);
+DO $$
+DECLARE
+    v_report uuid;
+BEGIN
+    INSERT INTO projects.ticket_workload_reports (ticket_id, reporter_user_id, reason)
+    VALUES (current_setting('probe.ticket')::uuid, current_setting('probe.assignee')::uuid, 'probe: a second report')
+    RETURNING id INTO v_report;
+    PERFORM set_config('probe.report2', v_report::text, true);
+END $$;
+RESET ROLE;
+DO $$
+DECLARE
+    v_now CONSTANT timestamptz := '2001-01-01 00:01:00+00';
+    v_n integer;
+    w record;
+    t record;
+BEGIN
+    UPDATE projects.ticket_workload_reports SET hidden_until = v_now - interval '1 minute'
+    WHERE id = current_setting('probe.report')::uuid;
+
+    v_n := projects.fn_resolve_expired_workload_reports(v_now);
+    SELECT status INTO w FROM projects.ticket_workload_reports WHERE id = current_setting('probe.report')::uuid;
+    IF v_n <> 1 OR w.status <> 'acknowledged'::projects.workload_report_status THEN
+        RAISE EXCEPTION 'FAIL the sweep closed % report(s); the superseded report is % — expected acknowledged', v_n, w.status;
+    END IF;
+    IF EXISTS (SELECT 1 FROM security.penalties
+                WHERE source_type = 'workload_report'
+                  AND source_id IN (current_setting('probe.report')::uuid, current_setting('probe.report2')::uuid)) THEN
+        RAISE EXCEPTION 'FAIL the sweep penalised the client for a superseded report';
+    END IF;
+    SELECT status INTO w FROM projects.ticket_workload_reports WHERE id = current_setting('probe.report2')::uuid;
+    SELECT status, workload_report_id, hidden_until INTO t FROM projects.tickets WHERE id = current_setting('probe.ticket')::uuid;
+    IF w.status <> 'open'::projects.workload_report_status
+       OR t.status <> 'reported_hidden'::ticket_status
+       OR t.workload_report_id IS DISTINCT FROM current_setting('probe.report2')::uuid
+       OR t.hidden_until IS NULL THEN
+        RAISE EXCEPTION 'FAIL closing the superseded report touched the live one: report2 % ticket % (report %, hidden_until %)',
+            w.status, t.status, t.workload_report_id, t.hidden_until;
+    END IF;
+    RAISE NOTICE 'PASS a superseded lapsed report closes acknowledged; the later report still suspends the ticket';
+END $$;
+ROLLBACK TO SAVEPOINT suspended;
+-- #endregion
+
+-- #region 11. p_limit is honoured, the oldest window goes first, each lapse is penalised once and a
+-- second run closes nothing
+-- A second lapsed report, filed by the service role against another ticket under way.
+DO $$
+DECLARE
+    v_ticket uuid;
+    v_assignee uuid;
+    v_report uuid;
+BEGIN
+    SELECT t.id, t.current_assignee_id INTO v_ticket, v_assignee
+    FROM projects.tickets t
+    WHERE t.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status)
+        AND t.current_assignee_id IS NOT NULL
+        AND t.id <> current_setting('probe.ticket')::uuid
+    ORDER BY EXISTS (SELECT 1 FROM finance.escrows e WHERE e.ticket_id = t.id AND e.status = 'held') DESC, t.id
+    LIMIT 1;
+    IF v_ticket IS NULL THEN
+        RAISE EXCEPTION 'FAIL no fixture: need a second seeded ticket under way (deno task db:reset)';
+    END IF;
+    INSERT INTO projects.ticket_workload_reports (ticket_id, reporter_user_id, reason)
+    VALUES (v_ticket, v_assignee, 'probe: a second ticket''s report')
+    RETURNING id INTO v_report;
+    PERFORM set_config('probe.report_b', v_report::text, true);
+END $$;
+DO $$
+DECLARE
+    v_now CONSTANT timestamptz := '2001-01-01 00:01:00+00';
+    v_n integer;
+    v_a projects.workload_report_status;
+    v_b projects.workload_report_status;
+    v_pen integer;
+BEGIN
+    UPDATE projects.ticket_workload_reports SET hidden_until = v_now - interval '60 seconds'
+    WHERE id = current_setting('probe.report')::uuid;
+    UPDATE projects.ticket_workload_reports SET hidden_until = v_now - interval '30 seconds'
+    WHERE id = current_setting('probe.report_b')::uuid;
+
+    v_n := projects.fn_resolve_expired_workload_reports(v_now, 1);
+    SELECT status INTO v_a FROM projects.ticket_workload_reports WHERE id = current_setting('probe.report')::uuid;
+    SELECT status INTO v_b FROM projects.ticket_workload_reports WHERE id = current_setting('probe.report_b')::uuid;
+    IF v_n <> 1 OR v_a <> 'expired_penalized'::projects.workload_report_status OR v_b <> 'open'::projects.workload_report_status THEN
+        RAISE EXCEPTION 'FAIL p_limit 1 closed % report(s): the older is %, the newer % — expected the older alone', v_n, v_a, v_b;
+    END IF;
+
+    v_n := projects.fn_resolve_expired_workload_reports(v_now, 1);
+    SELECT status INTO v_b FROM projects.ticket_workload_reports WHERE id = current_setting('probe.report_b')::uuid;
+    IF v_n <> 1 OR v_b <> 'expired_penalized'::projects.workload_report_status THEN
+        RAISE EXCEPTION 'FAIL the next run closed % report(s); the newer is % — expected expired_penalized', v_n, v_b;
+    END IF;
+
+    v_n := projects.fn_resolve_expired_workload_reports(v_now);
+    IF v_n <> 0 THEN
+        RAISE EXCEPTION 'FAIL a run after both lapses closed % report(s) — expected 0', v_n;
+    END IF;
+
+    SELECT count(*) INTO v_pen FROM security.penalties
+    WHERE source_type = 'workload_report' AND source_id = current_setting('probe.report')::uuid;
+    IF v_pen <> 1 THEN
+        RAISE EXCEPTION 'FAIL the older lapse recorded % penalties — expected 1', v_pen;
+    END IF;
+    SELECT count(*) INTO v_pen FROM security.penalties
+    WHERE source_type = 'workload_report' AND source_id = current_setting('probe.report_b')::uuid;
+    IF v_pen <> 1 THEN
+        RAISE EXCEPTION 'FAIL the newer lapse recorded % penalties — expected 1', v_pen;
+    END IF;
+    IF EXISTS (SELECT 1 FROM ops.log_entries WHERE client_id LIKE 'scheduler:projects-resolve-workload-reports:%') THEN
+        RAISE EXCEPTION 'FAIL the sweep logged a skip or a failure: %',
+            (SELECT string_agg(message, ' | ') FROM ops.log_entries WHERE client_id LIKE 'scheduler:projects-resolve-workload-reports:%');
+    END IF;
+    RAISE NOTICE 'PASS p_limit honoured oldest first; each lapse penalised once; a third run closes nothing';
+END $$;
+SELECT pg_temp.assert_resumed('the sweep at p_now, p_limit 1');
+ROLLBACK TO SAVEPOINT suspended;
+-- #endregion
+
+-- #region 12. The sweep is the service role's, has one signature, and its job runs every 15 minutes
+DO $$
+BEGIN
+    IF to_regprocedure('projects.fn_resolve_expired_workload_reports()') IS NOT NULL THEN
+        RAISE EXCEPTION 'FAIL the zero-argument signature still exists beside (p_now, p_limit)';
+    END IF;
+    IF has_function_privilege('anon', 'projects.fn_resolve_expired_workload_reports(timestamp with time zone, integer)', 'EXECUTE')
+       OR has_function_privilege('authenticated', 'projects.fn_resolve_expired_workload_reports(timestamp with time zone, integer)', 'EXECUTE')
+       OR NOT has_function_privilege('service_role', 'projects.fn_resolve_expired_workload_reports(timestamp with time zone, integer)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'FAIL the penalty sweep must be executable by the service role alone';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM ops.scheduled_jobs j
+                    WHERE j.name = 'projects-resolve-workload-reports' AND j.enabled AND j.kind = 'sql'
+                      AND j.command = 'SELECT projects.fn_resolve_expired_workload_reports();') THEN
+        RAISE EXCEPTION 'FAIL the projects-resolve-workload-reports job row is missing or not enabled';
+    END IF;
+    IF to_regclass('cron.job') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM cron.job c
+                        WHERE c.jobname = 'projects-resolve-workload-reports' AND c.schedule = '6,21,36,51 * * * *' AND c.active) THEN
+        RAISE EXCEPTION 'FAIL pg_cron has no projects-resolve-workload-reports job at 6,21,36,51';
+    END IF;
+    RAISE NOTICE 'PASS service_role only, one signature, the job enabled and scheduled every 15 minutes';
+END $$;
 -- #endregion
 
 ROLLBACK;

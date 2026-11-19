@@ -361,3 +361,17 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Embeds up to 50 public discovery items whose stored vector is missing or stale (another text hash or model) through search.fn_set_embedding; a no-op while embeddings are off.')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
+
+-- #region [projects] Workload-report expiry (OPS3, Decision #519)
+-- Ruling Q0.3 (#338) left this job unregistered because the sweep penalised a client for a ticket
+-- they had settled while its report was open. It is safe to run now: it locks each ticket before its
+-- report (SKIP LOCKED), re-checks the report on the locked row, and closes a report whose ticket was
+-- settled `acknowledged`, penalising nobody. Every 15 minutes, on minutes no other job runs every hour
+-- (the 04:36 and 09:21 dailies share two of them). It idles until PM-WP5a makes reports fileable;
+-- PM-WP5a also adds the trigger that closes a report when its ticket is settled.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('projects-resolve-workload-reports', 'sql', '6,21,36,51 * * * *',
+        'SELECT projects.fn_resolve_expired_workload_reports();', NULL, NULL,
+        'Workload-report expiry: each open report past its window closes; the suspended work resumes and the client is penalised at client_no_adjust_penalty, unless the ticket was settled meanwhile, when the report closes acknowledged and nobody is penalised.')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion

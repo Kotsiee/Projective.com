@@ -521,8 +521,9 @@ in [Functions.md](Functions.md)):
   `security.penalties` row against its reporter.
 - ~~🚨 `projects.fn_archive_stale_service_drafts(timestamptz)`~~ — caller-supplied `p_now`; a
   far-future value soft-archives every un-funded instantiated draft platform-wide.
-- ~~`projects.fn_resolve_expired_workload_reports()`~~ — runs the expiry sweep (writes penalties),
-  but only for genuinely expired reports.
+- ~~`projects.fn_resolve_expired_workload_reports(timestamptz, integer)`~~ — runs the expiry sweep
+  (writes penalties). Since OPS3 (Decision #519) its `p_now` is caller-supplied, so a far-future value
+  would close every open report; it is named service-role-only in `00002510`.
 
 ~~**Functions with no caller check that `authenticated` (and `anon`) can call**~~ — resolved
 2026-10-13 for every client role, except `is_protected_phase`, which `authenticated` still holds.
