@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
-| **UAT**          | **70%** |           190 | 96 |  76 | 18 |              26 |
-| **Production**   | **63%** |           247 | 101 | 103 | 43 |              37 |
+| **UAT**          | **71%** |           191 | 96 |  78 | 17 |              26 |
+| **Production**   | **64%** |           248 | 101 | 105 | 42 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -44,14 +44,14 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | Cluster                                          | Flows | ✅ | 🟡 | ❌ |  ⏸ | Score |
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
-| MK — Discovery, marketplace, checkout & sessions |    59 | 25 | 21 | 11 |  2 |   64% |
+| MK — Discovery, marketplace, checkout & sessions |    60 | 25 | 23 | 10 |  2 |   65% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 27 | 36 | 12 |  2 |   61% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
 - **MVP:** ID-31 ❌ · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
-- **UAT:** ID-16, 20 · MK-29 ❌, MK-31 ❌ · PJ-21, 25 ❌, 31 ❌, 39, 43 ❌, 60 ❌ · MW-14, 59
+- **UAT:** ID-16, 20 · MK-29, MK-31 ❌ · PJ-21, 25 ❌, 31 ❌, 39, 43 ❌, 60 ❌ · MW-14, 59
 - **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62
 
 ## What breaks the most flows
@@ -196,7 +196,7 @@ PRODUCTION_READINESS.md.
 | MK-26 | Promo code                                               | Buyer           | `/api/basket/promo`                                        | 🟡     | Normal   | UAT  | No seller can create a code (no `finance.promo_codes` writer); per-account cap open (CO7); no rate limit (CO22)                                |
 | MK-27 | Pay in the buyer's own currency                          | Buyer           | `?pay_in=`                                                 | ⏸      | High     | PROD | Built, switched off pending counsel and a live rate feed (#435; PRD-F18)                                                                       |
 | MK-28 | Browse prices in a display currency                      | Any             | header switcher                                            | 🟡     | Normal   | PROD | Seeded rates only, no live feed (PRD-F21)                                                                                                      |
-| MK-29 | Receive and download a purchased product                 | Buyer           | `/checkout/confirmation`                                   | ❌     | Critical | UAT  | Nothing writes `order_lines.asset_id`, so every download line says the seller has not attached files (`live-orders.ts:376`); #393              |
+| MK-29 | Receive and download a purchased product                 | Buyer           | `/checkout/confirmation` · `/files?source=purchases`       | 🟡     | Critical | UAT  | Built (CK1, #488): each product line writes its entitlement in the purchase's own transaction (`place_on_account_order` too) on a version frozen at publish into the policy-less `originals` bucket; `/api/downloads/[entitlement]/[fileId]` streams after an RLS gate and 404s a refunded, revoked or foreign purchase; the A8 box gates Pay; probes `product_delivery`, `product_delivery_race` green. Left: the live run in the app (wallet and a test-mode card, both files of a two-file bundle, a second buyer's 404, screenshots), not walked because the shared local stack was saturated and rebuilt mid-build; the per-entitlement daily ceiling (ASSET §6 gate 7) is not built |
 | MK-30 | Order confirmation, receipt, `.ics`                      | Buyer           | `/checkout/confirmation`, `/api/checkout/{order,calendar}` | ✅     | High     | UAT  | No standalone order history beyond recent orders; a block's receipt names its first sitting only (#453 (c))                                    |
 | MK-31 | Refund or cancel an order, line by line                  | Buyer, Operator | —                                                          | ❌     | Critical | UAT  | `refunded` and `cancelled` never written; no `refunds.create`; buyer and provider refunds (DB21) and the order lifecycle (DB19) open (PRD-F12) |
 
@@ -214,7 +214,7 @@ PRODUCTION_READINESS.md.
 | :---- | :------------------------------------------------------- | :----------------- | :------------------------------------------------- | :----- | :------- | :--- | :--------------------------------------------------------------------------------------------------------------- |
 | MK-35 | Create a listing (Quick-Init)                            | Seller             | `/catalogue?create=…`, `/api/catalogue/create`     | ✅     | Critical | MVP  | — (#501, SC1: `CatalogueListingRowSchema` pins all 30 columns; the console parses each row at `parseListingRow`) |
 | MK-36 | Item workspace: edit, media, offer, pricing, intake, SEO | Seller             | `/catalogue/:slug`                                 | ✅     | High     | MVP  | —                                                                                                                |
-| MK-37 | Product listing with files and licence                   | Seller             | Offer → AttachmentList                             | 🟡     | High     | UAT  | Attached files never reach a buyer (MK-29); no protection of sold originals (#393)                               |
+| MK-37 | Product listing with files and licence                   | Seller             | Offer → AttachmentList                             | 🟡     | High     | UAT  | Sale originals are private, frozen at publish (A6) and delivered (CK1, #488, probe-proven); ✅ once the publish → copy → download run is walked live. Protection beyond delivery is #393's later phases (MK-47) |
 | MK-38 | Pipeline blueprint, fixed or tiered intensity            | Seller             | Offer, Pricing                                     | ✅     | Critical | MVP  | — (#503, SC2: a bought or added Pipeline's stages carry the listing's CREATE category, `service_instantiation.sql`; North Loop's Realtime MVP build is seeded tiered with the seller's own Low / High) |
 | MK-39 | 1-on-1 session listing: presets, RRULE, session plan     | Seller             | Availability section                               | ✅     | High     | UAT  | — (#503, SC2: Studio Fern's Design mentorship block is seeded with a six-sitting `session_plan`)                   |
 | MK-40 | Open a cohort and schedule group sittings                | Seller             | Availability section, `/api/catalogue/cohorts`     | 🟡     | High     | UAT  | #498 (SC3): a seller opens a cohort — seats, first sitting, weekly, fortnightly or fixed dates, an enrolment close and an optional minimum — and cancels one before it starts with every seat refunded and the queue kept in order; probe `cohort_open.sql` (22 checks). Left: adding or renaming a sitting after opening has no app caller (SCH-WP7 step 5), and the seller's half was not walked live: the local stack refused every scripted sign-in at its Turnstile check (#447) |
@@ -227,6 +227,7 @@ PRODUCTION_READINESS.md.
 | MK-47 | Asset protection, delivery APIs, takedown and report     | Seller, Operator   | proposed `/api/catalogue/files/*`                  | ❌     | High     | PROD | #393 specified, unbuilt, 21 rulings open; no inbound copyright or report path; SC8's mechanism ruled #496, waits for T&S R1 → R2 |
 | MK-57 | Edit a published listing within its locks                | Seller             | `/catalogue/:slug`                                 | 🟡     | High     | PROD | The doors hold the locks, the tables do not (#494 (A) 3–4): a direct write changes a published listing's currency, its questions and delivery model, and points a showcase slot at another person's file, and a seller sets their own `promoted` flag past the plan check (#494 (f)); the doors also let it lose its cover or every stage (#494 (d)) → SC4 (#494 (a)) |
 | MK-59 | Let people join a cohort that has started                | Seller, Buyer      | Offer section toggle                               | ❌     | Normal   | PROD | The toggle (`allow_continuous_enrollment`) renders and does nothing, and every cohort's enrolment closes by its first sitting, as ruled (#498 (b)); `enrollment_window_days` has no reader or writer |
+| MK-60 | Publish a product only with the files it sells          | Seller             | `/catalogue/:slug` publish                         | 🟡     | High     | UAT  | Found by CK1 (#488 (a)): a product whose draft names no library file publishes and sells a licence with nothing to download (its entitlement has no version; the receipt and Purchases say so honestly). The publish gate should refuse it → SC4 (#494); a bare listing UPDATE also publishes past the freeze (#494) |
 
 ### Calls & sessions
 
@@ -543,3 +544,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-18 | MR4 (#507): MW-62 narrowed (`/admin/ledger` gains an Alerts section; an error or a silent nightly check reaches a person); still 🟡 (PRD-F8) | 83% | 70% | 63% |
 | 2026-11-18 | MS2 (#508): PJ-50 ❌ → 🟡 (a project's Private Messages group draws its stamped DMs; only Chat works there, PRD-E17); PJ-49 narrowed (`cht-` addresses, one send door) | 83% | 70% | 63% |
 | 2026-11-19 | SC3 (#498): MK-40 ❌ → 🟡 (a seller opens a cohort and cancels one before it starts, every seat refunded, the queue kept in order; later sittings wait for SCH-WP7 step 5); MK-12 narrowed, still 🟡 (the seed holds a cohort and its terms are disclosed; a live seat checkout was not run); new MK-58 ❌, MK-59 ❌ | 83% | 70% | 63% |
+| 2026-11-19 | CK1 (#488): MK-29 ❌ → 🟡 (a bought product reaches its buyer: an entitlement per product line, versions frozen at publish into the policy-less `originals` bucket, `/api/downloads/[entitlement]/[fileId]`, the A8 box before Pay and `/files?source=purchases`, probe-proven; the live run in the app is left); MK-37 narrowed, still 🟡; new MK-60 🟡 (a product publishes with no file to deliver) | 83% | 71% | 64% |
