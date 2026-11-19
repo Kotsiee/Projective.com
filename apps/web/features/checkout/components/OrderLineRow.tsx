@@ -6,7 +6,7 @@ import { Amount } from "./Amount.tsx";
 import { groupIconName } from "./checkout-glyphs.tsx";
 import { DownloadAction } from "./DownloadAction.tsx";
 import CalendarActions from "../islands/CalendarActions.island.tsx";
-import type { OrderLine } from "../types/checkout-types.ts";
+import type { OrderLine, OrderSitting } from "../types/checkout-types.ts";
 
 /**
  * OrderLineRow — one purchased line and the single thing the buyer can now do with it.
@@ -129,18 +129,21 @@ function Fulfilment({ line, kind }: FulfilmentProps): JSX.Element | null {
 function SessionFulfilment({ line }: { line: OrderLine }): JSX.Element {
 	// Only an http(s) address becomes the Join control; anything else reads as "no room yet".
 	const joinHref = line.joinUrl ? normalizeLink(line.joinUrl) : null;
+	const zone = [
+		line.timezone,
+		line.durationMinutes ? `${line.durationMinutes} minutes` : null,
+		line.seats && line.seats > 1 ? `${line.seats} seats` : null,
+	].filter(Boolean).join(" · ");
 	return (
 		<div class="cko-order__fulfil">
-			<p class="cko-order__slot">
-				<span class="cko-order__slottime">{line.scheduledLabel ?? "Scheduled"}</span>
-				<span class="cko-order__slotzone">
-					{[
-						line.timezone,
-						line.durationMinutes ? `${line.durationMinutes} minutes` : null,
-						line.seats && line.seats > 1 ? `${line.seats} seats` : null,
-					].filter(Boolean).join(" · ")}
-				</span>
-			</p>
+			{line.sittings.length > 1
+				? <SittingList line={line} zone={zone} />
+				: (
+					<p class="cko-order__slot">
+						<span class="cko-order__slottime">{line.scheduledLabel ?? "Scheduled"}</span>
+						<span class="cko-order__slotzone">{zone}</span>
+					</p>
+				)}
 
 			<div class="cko-order__fulfilrow">
 				{joinHref
@@ -176,6 +179,49 @@ function SessionFulfilment({ line }: { line: OrderLine }): JSX.Element {
 			</div>
 
 			{line.calendar ? <CalendarActions links={line.calendar} title={line.title} /> : null}
+
+			{line.sessionHref
+				? (
+					<a class="cko-order__act" href={line.sessionHref} aria-label={`Open ${line.title}`}>
+						<Icon name="arrow-right" optical="right" />
+						<span>Open the session</span>
+					</a>
+				)
+				: null}
+		</div>
+	);
+}
+
+const SITTING_STATE: Record<OrderSitting["state"], string | null> = {
+	scheduled: null,
+	to_agree: "Time to be agreed",
+	completed: "Held",
+	cancelled: "Cancelled",
+};
+
+/**
+ * Every sitting a block or a group seat booked, in time order (Decision #453 flag (c)), each in the
+ * line's zone and stated as it stands — a pencilled-in time says it is still to be agreed — so the
+ * receipt never names a block by its first sitting alone.
+ */
+function SittingList({ line, zone }: { line: OrderLine; zone: string }): JSX.Element {
+	return (
+		<div class="cko-order__slot">
+			<p class="cko-order__slotzone">
+				{`${line.sittings.length} sittings${zone ? ` · ${zone}` : ""}`}
+			</p>
+			<ol class="cko-order__sittings" aria-label={`Sittings of ${line.title}`}>
+				{line.sittings.map((sitting, i) => {
+					const state = SITTING_STATE[sitting.state];
+					return (
+						<li key={sitting.at} class="cko-order__sitting" data-state={sitting.state}>
+							<span class="cko-order__sittingno">{`Session ${i + 1}`}</span>
+							<span class="cko-order__slottime">{sitting.label}</span>
+							{state ? <span class="cko-order__slotzone">{state}</span> : null}
+						</li>
+					);
+				})}
+			</ol>
 		</div>
 	);
 }

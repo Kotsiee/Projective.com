@@ -57,7 +57,40 @@ export function checkoutStepOf(pathname: string): CheckoutStep {
 	if (pathname === "/checkout/confirmation" || pathname.startsWith("/checkout/confirmation/")) {
 		return "confirmation";
 	}
+	// The order history is the confirmation hub's archive, not a fifth step: it takes that step's full
+	// chrome, lane and band (ROUTING.md, MARKETPLACE CK3).
+	if (pathname === ORDERS_PATH || pathname.startsWith(`${ORDERS_PATH}/`)) return "confirmation";
 	return "basket";
+}
+
+/** The acting account's order history (`/checkout/orders`, MARKETPLACE CK3). */
+export const ORDERS_PATH = "/checkout/orders";
+
+/**
+ * The order history's href, keeping the owner scope. `after` / `before` are the opaque page boundaries
+ * the server minted (`OrderHistoryPage.older` / `.newer`); a link carries at most one of them.
+ */
+export function ordersHref(
+	owner?: string | null,
+	boundary: { after?: string | null; before?: string | null } = {},
+): string {
+	const after = boundary.after ?? null;
+	return withParams(ORDERS_PATH, {
+		owner: ownerParamOf(owner),
+		after,
+		before: after ? null : boundary.before ?? null,
+	});
+}
+
+/**
+ * The `?owner=` an order's own account reads under: `personal` for a person (bought as `user` or as
+ * `freelancer`), else `team:` / `business:` / `enterprise:` and its id — so a link to an entity's order
+ * opens it in that entity's scope, whatever the shell is acting as.
+ */
+export function orderOwnerParam(ownerType: string, ownerId: string): string {
+	return ownerType === "team" || ownerType === "business" || ownerType === "enterprise"
+		? `${ownerType}:${ownerId}`
+		: "personal";
 }
 
 /**

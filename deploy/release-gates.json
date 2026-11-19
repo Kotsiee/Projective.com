@@ -1,0 +1,35 @@
+{
+	"$comment": "What each hosted release declares for every live feature gate the app reads (packages/backend/core/env-manifest.ts liveAppGates; OPERATIONS_BUILD_PROMPTS.md OPS6, PRD-G8). `deno task deploy:check` fails when the env file's value differs from this, or when a gate is missing here. The mock switches (USE_MOCKS, VITE_USE_MOCKS) are not declared: a hosted release never turns them on. Change a value here only as a release decision, in the change that ships it, and say why in its commit. EMBEDDINGS_ENABLED stays false until Voyage's DPA and written no-training terms are signed (Decision #340, ruling T5; providers spec §5).",
+	"staging": {
+		"AUTH_BACKEND_LIVE": true,
+		"EXPLORE_BACKEND_LIVE": true,
+		"NEWSLETTER_BACKEND_LIVE": true,
+		"EDITORIAL_BACKEND_LIVE": true,
+		"COMMUNITY_BACKEND_LIVE": true,
+		"CONTACT_BACKEND_LIVE": true,
+		"PROJECTS_BACKEND_LIVE": true,
+		"MESSAGING_BACKEND_LIVE": true,
+		"CATALOGUE_BACKEND_LIVE": true,
+		"LOGGING_BACKEND_LIVE": true,
+		"FINANCE_BACKEND_LIVE": true,
+		"FILES_BACKEND_LIVE": true,
+		"INTEGRATIONS_BACKEND_LIVE": true,
+		"EMBEDDINGS_ENABLED": false
+	},
+	"production": {
+		"AUTH_BACKEND_LIVE": true,
+		"EXPLORE_BACKEND_LIVE": true,
+		"NEWSLETTER_BACKEND_LIVE": true,
+		"EDITORIAL_BACKEND_LIVE": true,
+		"COMMUNITY_BACKEND_LIVE": true,
+		"CONTACT_BACKEND_LIVE": true,
+		"PROJECTS_BACKEND_LIVE": true,
+		"MESSAGING_BACKEND_LIVE": true,
+		"CATALOGUE_BACKEND_LIVE": true,
+		"LOGGING_BACKEND_LIVE": true,
+		"FINANCE_BACKEND_LIVE": true,
+		"FILES_BACKEND_LIVE": true,
+		"INTEGRATIONS_BACKEND_LIVE": true,
+		"EMBEDDINGS_ENABLED": false
+	}
+}

@@ -14,6 +14,7 @@ import type {
 	BuyerDetails,
 	CheckoutBootstrap,
 	MonthlyInvoicing,
+	OrderHistoryPage,
 	OrderPage,
 	SavedCard,
 } from "../types/checkout-types.ts";
@@ -168,6 +169,25 @@ export async function resolveOrder(
 	const res = await OrderBackendService.get({
 		...basketQueryFrom(sp, context),
 		orderId: sp.get("order"),
+	}, actor);
+	return res.ok && res.data ? res.data.page : null;
+}
+
+/**
+ * Resolve one page of the acting account's order history (`/checkout/orders`): `?owner=` as the basket
+ * reads it, and at most one page boundary, `?after=` before `?before=`. `null` when the read failed,
+ * which the page renders as its own unreachable state rather than as an empty history.
+ */
+export async function resolveOrderHistory(
+	context: UserContext,
+	url: URL,
+	actor: ReadActor,
+): Promise<OrderHistoryPage | null> {
+	const sp = url.searchParams;
+	const res = await OrderBackendService.history({
+		...basketQueryFrom(sp, context),
+		after: sp.get("after"),
+		before: sp.get("before"),
 	}, actor);
 	return res.ok && res.data ? res.data.page : null;
 }

@@ -2,16 +2,6 @@
 	"version": "0.0.1",
 	"configurations": [
 		{
-			"name": "web-sc3-wt",
-			"runtimeExecutable": "powershell",
-			"runtimeArgs": [
-				"-NoProfile",
-				"-Command",
-				"Set-Location 'C:\\Users\\Ahmed\\AppData\\Local\\Temp\\claude\\eea579e3c60765c3\\84ea9a42-2870-4c64-87c7-43bc33e3b6d3\\scratchpad\\wt-sc3'; $env:PORT = '13603'; deno task dev --port 13603 --strictPort"
-			],
-			"port": 13603
-		},
-		{
 			"name": "web-sc5-wt",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [
@@ -516,6 +506,17 @@
 				"$env:PORT = '13640'; deno task dev --port 13640 --strictPort"
 			],
 			"port": 13640,
+			"autoPort": false
+		},
+		{
+			"name": "web-ck3",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13471'; deno task dev --port 13471 --strictPort"
+			],
+			"port": 13471,
 			"autoPort": false
 		}
 	]

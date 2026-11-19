@@ -5,6 +5,7 @@ import { PurchasableItemKind, PurchaseOwnerType, reference } from "./basket.ts";
 import { MoneyViewSchema } from "./wallet.ts";
 import { CheckoutTotalsSchema } from "./checkout.ts";
 import { BillingContextKind, PostalAddressSchema } from "./buyer.ts";
+import { ScheduledSittingSchema } from "./sittings.ts";
 import { IntakeAnswersSchema } from "../services/intake.ts";
 
 /**
@@ -110,6 +111,18 @@ export const CalendarLinksSchema = z.object({
 	ics: z.string().max(600),
 });
 export type CalendarLinks = z.infer<typeof CalendarLinksSchema>;
+
+/**
+ * Where one booked sitting stands, as the receipt words it: `scheduled` at a time both sides hold,
+ * `to_agree` while a block's pencilled-in time waits on its scheduling handshake (Decision #211),
+ * `completed`, or `cancelled` by either side.
+ */
+export const OrderSittingState = z.enum(["scheduled", "to_agree", "completed", "cancelled"]);
+export type OrderSittingState = z.infer<typeof OrderSittingState>;
+
+/** One sitting a session line booked: its start, the server's label in the line's zone, and its state. */
+export const OrderSittingSchema = ScheduledSittingSchema.extend({ state: OrderSittingState });
+export type OrderSitting = z.infer<typeof OrderSittingSchema>;
 
 /**
  * One purchased line and everything the buyer can do with it.
@@ -229,6 +242,19 @@ export const OrderLineSchema = z.object({
 	 * kept them (`finance.order_lines.intake_answers`, Decision #453); `{}` on every other line.
 	 */
 	intakeAnswers: IntakeAnswersSchema,
+	/**
+	 * Every sitting the line booked, in time order (Decision #453 flag (c); MARKETPLACE CK3): one for a
+	 * single session, each of a block's, a group seat's whole cohort. Read from the sittings through the
+	 * line's seat (`projects.cohort_memberships.order_line_id`), never copied onto the order line. Empty
+	 * when the seat cannot be read, e.g. another member's seat on an entity order; the row then falls back
+	 * to {@link scheduledLabel}.
+	 */
+	sittings: z.array(OrderSittingSchema).max(52).default([]),
+	/**
+	 * The session's workspace (`/projects/prj-…`), where its sittings, the seat and the join link live;
+	 * `null` when the buyer cannot open it.
+	 */
+	sessionHref: z.string().max(200).nullable().default(null),
 	// #endregion
 });
 export type OrderLine = z.infer<typeof OrderLineSchema>;

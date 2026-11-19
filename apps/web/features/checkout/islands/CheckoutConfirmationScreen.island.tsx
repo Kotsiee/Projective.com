@@ -3,7 +3,7 @@ import { useEffect } from "preact/hooks";
 import "../styles/checkout.css";
 import "../styles/checkout-confirmation.css";
 import { Icon } from "@projective/ui/icons";
-import { basketHref, checkoutStepHref } from "../core/basket-model.ts";
+import { basketHref, checkoutStepHref, orderOwnerParam, ordersHref } from "../core/basket-model.ts";
 import { markReached, orderPage, seedStep } from "../core/checkout-state.ts";
 import { OrderSummaryHeader } from "../components/OrderSummaryHeader.tsx";
 import { OrderLineRow } from "../components/OrderLineRow.tsx";
@@ -67,6 +67,9 @@ export default function CheckoutConfirmationScreen(
 
 	const { order, recent } = initial;
 	const others = recent.filter((entry) => entry.id !== order.id);
+	// Every order in `recent` belongs to the account this one does, so its links keep that account's
+	// scope rather than the shell's acting context.
+	const owner = orderOwnerParam(order.ownerType, order.ownerId);
 	const tickets = order.lines.filter((line) => line.itemType === "project_ticket");
 
 	return (
@@ -115,10 +118,10 @@ export default function CheckoutConfirmationScreen(
 					</p>
 				)}
 
-			{others.length > 0
-				? (
-					<section class="cko-order__section" aria-labelledby="cko-order-recent-head">
-						<h3 class="cko-order__head" id="cko-order-recent-head">Your recent orders</h3>
+			<section class="cko-order__section" aria-labelledby="cko-order-recent-head">
+				<h3 class="cko-order__head" id="cko-order-recent-head">Your recent orders</h3>
+				{others.length > 0
+					? (
 						<ul class="cko-order__recent">
 							{others.map((entry) => (
 								<li key={entry.id} class="cko-order__recentitem">
@@ -127,7 +130,7 @@ export default function CheckoutConfirmationScreen(
 										href={checkoutStepHref(
 											"confirmation",
 											null,
-											null,
+											owner,
 											undefined,
 											entry.id,
 										)}
@@ -139,9 +142,13 @@ export default function CheckoutConfirmationScreen(
 								</li>
 							))}
 						</ul>
-					</section>
-				)
-				: null}
+					)
+					: null}
+				<a class="cko-order__act cko-order__allorders" href={ordersHref(owner)}>
+					<span>All orders</span>
+					<Icon name="arrow-right" optical="right" />
+				</a>
+			</section>
 		</div>
 	);
 }

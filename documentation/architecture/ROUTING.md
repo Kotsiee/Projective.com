@@ -649,6 +649,24 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   | 2    | `(dashboard)/checkout/details.tsx`      | `/checkout/details`      | **`focus`** — the step trail in the top bar, no bands  |
   | 3    | `(dashboard)/checkout/payment.tsx`      | `/checkout/payment`      | **`focus`** — the step trail in the top bar, no bands  |
   | 4    | `(dashboard)/checkout/confirmation.tsx` | `/checkout/confirmation` | `full` — restored, its job is to send the buyer onward |
+  | —    | `(dashboard)/checkout/orders.tsx`       | `/checkout/orders`       | `full` — the confirmation step's chrome; not a step    |
+
+  **`/checkout/orders` is every past order (MARKETPLACE CK3, Decision #517).** The acting account's
+  order history, newest first, 20 to a page, following the basket's owner switch: `?owner=` scopes it
+  exactly as it scopes the basket (a person's own orders, or a team's or business's to a member who may
+  see its finances), and is kept in every link as below. It pages by **keyset, never by offset**:
+  `?after=` lists the page placed before a boundary, `?before=` the page placed after one. The
+  boundary is an opaque token the server mints and alone reads (`order-history.ts`: the order's
+  `placed_at`, verbatim, and its id); a token it did not mint reads as the newest page, so a mangled
+  link lands somewhere true. Both are one-shot and never carried. Each row opens its receipt,
+  `/checkout/confirmation?order=&owner=`, and each line links to its home: a download to the purchases
+  view on its purchase (`purchasesHref(ent-…)`), a session, block or seat to its session workspace
+  (`/projects/prj-…`), an engagement to its project or stage. It is **not a fifth step**:
+  `checkoutStepOf` answers `confirmation` for it, so it runs in that step's full chrome, lane and band,
+  and the trail gains no entry. It lives under `/checkout` because a new top-level segment needs a
+  reserved handle (`org.fn_is_reserved_handle` + `RESERVED_HANDLES`); the confirmation's _Your recent
+  orders_ section links to it (_All orders_). `?order=` carries the order's **raw uuid**, which no
+  prefixed slug yet replaces (no `fn_slug_guard('ord')`): a Decision #88 gap, USER_FLOWS MK-61.
 
   **`/basket` is retired to a `302`, and the file is kept.** `(dashboard)/basket/index.tsx`
   redirects to `/checkout` **preserving the query string** — `?basket=` and `?owner=` are

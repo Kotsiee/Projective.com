@@ -17,6 +17,7 @@ import {
 	fulfilmentKindOf,
 } from "@projective/types/finance";
 import type { ExploreItem } from "@projective/types/explore";
+import type { OrderHistoryLine, OrderHistoryPage, OrderLineHome } from "@projective/types/finance";
 import { downloadHref, purchasesHref } from "@projective/types/catalogue";
 import { IntakeAnswersSchema } from "@projective/types/services";
 import { getUserClient } from "../../core/supabase.ts";
@@ -24,6 +25,7 @@ import { entitlementsForLines, type LineEntitlement } from "../catalogue/deliver
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { ResolvedOwner } from "./commerce-owner.ts";
+import { type HistoryRequest, type KeysetQuery, readHistoryRows } from "./order-history.ts";
 
 /**
  * live-orders — the confirmation hub's read over `finance.orders` + `finance.order_lines`, as the
@@ -211,7 +213,27 @@ interface LineContext {
 	payees: Map<string, string>;
 	/** A product line's entitlement, by order line id (Decision #488) — what its download links name. */
 	entitlements: Map<string, LineEntitlement>;
+	/** A session, block or seat line's seat, by order line id: the cohort it sits on and that cohort's engagement. */
+	seats: Map<string, { cohortId: string; projectId: string | null }>;
+	/** Every sitting of each of those cohorts, in time order (Decision #453 flag (c)). */
+	sittings: Map<string, SittingRow[]>;
 }
+
+/** One sitting as the buyer may read it (`projects.session_events`), with its calendar mirror's state. */
+interface SittingRow {
+	startsAt: string;
+	endsAt: string;
+	status: string;
+	/** The mirror is still `tentative`: a block's pencilled-in time awaiting its handshake (Decision #211). */
+	tentative: boolean;
+}
+
+/** The item kinds whose line is a seat on a cohort: a 1-1 session, a block, a group seat. */
+const SEAT_KINDS = new Set<PurchasableItemKind>([
+	"service_session",
+	"set_session",
+	"course_group_session",
+]);
 
 /** A purchased project as its order lines read it. */
 interface ProjectFace {
@@ -291,6 +313,9 @@ async function lineContext(actor: ReadActor & { accessToken: string }, lines: re
 		}
 	}
 
+	const { seats, sittings } = await seatsOf(actor, lines);
+	for (const seat of seats.values()) if (seat.projectId) projectIds.add(seat.projectId);
+
 	const projects = new Map<string, ProjectFace>();
 	if (projectIds.size > 0) {
 		const { data } = await db.from("projects").select("id, slug, title, source_blueprint_id")
@@ -319,7 +344,75 @@ async function lineContext(actor: ReadActor & { accessToken: string }, lines: re
 		payees: await payeesOf(actor, lines),
 		entitlements: await entitlementsForLines(getUserClient(actor.accessToken), productLines)
 			.catch(() => new Map<string, LineEntitlement>()),
+		seats,
+		sittings,
 	};
+}
+
+/**
+ * Each session, block or seat line's seat and its cohort's sittings, read as the buyer through the
+ * line's own link (`projects.cohort_memberships.order_line_id`) — the sittings are never copied onto the
+ * order line, so a rescheduled or cancelled sitting reads as it stands. A seat the caller cannot read
+ * (another member's, on an entity order) is absent, and its line keeps its first-sitting snapshot.
+ */
+async function seatsOf(
+	actor: ReadActor & { accessToken: string },
+	lines: readonly LineRow[],
+): Promise<Pick<LineContext, "seats" | "sittings">> {
+	const seats = new Map<string, { cohortId: string; projectId: string | null }>();
+	const sittings = new Map<string, SittingRow[]>();
+	const lineIds = lines.filter((l) => SEAT_KINDS.has(l.item_type)).map((l) => l.id);
+	if (lineIds.length === 0) return { seats, sittings };
+	const db = getUserClient(actor.accessToken);
+	const { data: memberships } = await db.schema("projects").from("cohort_memberships")
+		.select("order_line_id, cohort_id").in("order_line_id", lineIds);
+	const held = (memberships ?? []) as { order_line_id: string; cohort_id: string }[];
+	const cohortIds = [...new Set(held.map((m) => m.cohort_id))];
+	if (cohortIds.length === 0) return { seats, sittings };
+
+	const [{ data: cohorts }, { data: events }] = await Promise.all([
+		db.schema("projects").from("cohorts").select("id, project_id").in("id", cohortIds),
+		db.schema("projects").from("session_events")
+			.select("id, cohort_id, start_time, end_time, status")
+			.in("cohort_id", cohortIds)
+			.order("start_time", { ascending: true })
+			.limit(52 * cohortIds.length),
+	]);
+	type CohortRow = { id: string; project_id: string | null };
+	const projectOf = new Map(((cohorts ?? []) as CohortRow[]).map((c) => [c.id, c.project_id]));
+	for (const m of held) {
+		seats.set(m.order_line_id, {
+			cohortId: m.cohort_id,
+			projectId: projectOf.get(m.cohort_id) ?? null,
+		});
+	}
+
+	type EventRow = {
+		id: string;
+		cohort_id: string;
+		start_time: string;
+		end_time: string;
+		status: string;
+	};
+	const rows = (events ?? []) as EventRow[];
+	const tentative = new Set<string>();
+	if (rows.length > 0) {
+		const { data: mirrors } = await db.schema("scheduling").from("events")
+			.select("source_session_event_id, status")
+			.in("source_session_event_id", rows.map((r) => r.id));
+		for (const mirror of (mirrors ?? []) as { source_session_event_id: string; status: string }[]) {
+			if (mirror.status === "tentative") tentative.add(mirror.source_session_event_id);
+		}
+	}
+	for (const row of rows) {
+		sittings.set(row.cohort_id, [...(sittings.get(row.cohort_id) ?? []), {
+			startsAt: row.start_time,
+			endsAt: row.end_time,
+			status: row.status,
+			tentative: tentative.has(row.id),
+		}]);
+	}
+	return { seats, sittings };
 }
 
 /** The display name of each funded ticket's payee, read as the buyer — an unreadable one is absent. */
@@ -447,13 +540,41 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 		}
 		: null;
 
-	const booked = natural === "session" && line.scheduled_at !== null;
-	const duration = line.duration_minutes ?? null;
+	// A seat's sittings are read through its membership, never off the line (Decision #453 flag (c)); a
+	// group seat's line stores no time of its own, so its first standing sitting is what it was booked for.
+	const seat = SEAT_KINDS.has(line.item_type) ? ctx.seats.get(line.id) : undefined;
+	const seatSittings = seat ? ctx.sittings.get(seat.cohortId) ?? [] : [];
+	const zone = line.timezone || (seatSittings.length > 0 ? "UTC" : null);
+	const sittings = seatSittings.slice(0, 52).map((s) => {
+		const span = Date.parse(s.endsAt) - Date.parse(s.startsAt);
+		const minutes = Math.max(1, Math.round(span / 60_000));
+		return {
+			at: new Date(s.startsAt).toISOString(),
+			label: slotLabel(s.startsAt, zone, minutes),
+			state: s.status.startsWith("cancelled")
+				? "cancelled" as const
+				: s.status === "completed"
+				? "completed" as const
+				: s.tentative
+				? "to_agree" as const
+				: "scheduled" as const,
+		};
+	});
+	const firstStanding = seatSittings.find((s) => !s.status.startsWith("cancelled"));
+	const startAt = line.scheduled_at ?? firstStanding?.startsAt ?? null;
+	const seatProject = seat?.projectId ? ctx.projects.get(seat.projectId) : undefined;
+	const sessionProject = seatProject ?? (natural === "session" ? stageProject : undefined);
+
+	const booked = natural === "session" && startAt !== null;
+	const standingMinutes = firstStanding
+		? Math.round((Date.parse(firstStanding.endsAt) - Date.parse(firstStanding.startsAt)) / 60_000)
+		: 0;
+	const duration = line.duration_minutes ?? (standingMinutes > 0 ? standingMinutes : null);
 	const provider = booked && line.conferencing_provider ? line.conferencing_provider : null;
 	const calendar = booked && duration
 		? calendarLinksFor({
 			title: clip(line.title, 160),
-			startIso: new Date(line.scheduled_at!).toISOString(),
+			startIso: new Date(startAt!).toISOString(),
 			durationMinutes: duration,
 			description: `Booked through Projective${face.sellerName ? ` with ${face.sellerName}` : ""}.`,
 			location: provider ? CONFERENCING_LABEL[provider] ?? provider : "Projective",
@@ -492,9 +613,9 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 		licence: line.licence ? clip(line.licence, 80) : null,
 		engagementHref: engagement?.href ?? null,
 		engagementLabel: engagement?.label ?? null,
-		scheduledAt: booked ? new Date(line.scheduled_at!).toISOString() : null,
-		scheduledLabel: booked ? slotLabel(line.scheduled_at!, line.timezone, duration) : null,
-		timezone: booked ? line.timezone : null,
+		scheduledAt: booked ? new Date(startAt!).toISOString() : null,
+		scheduledLabel: booked ? slotLabel(startAt!, zone, duration) : null,
+		timezone: booked ? zone : null,
 		durationMinutes: booked ? duration : null,
 		conferencingProvider: provider ? clip(provider, 40) : null,
 		conferencingLabel: provider ? clip(CONFERENCING_LABEL[provider] ?? provider, 60) : null,
@@ -503,6 +624,8 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 		calendar,
 		seats: line.seats,
 		intakeAnswers: IntakeAnswersSchema.safeParse(line.intake_answers ?? {}).data ?? {},
+		sittings,
+		sessionHref: sessionProject ? clip(`/projects/${sessionProject.slug}`, 200) : null,
 	};
 	// The claimed route and the facts behind it are reconciled ONCE, by the SSOT's own rule.
 	const resolved = fulfilmentKindOf(draft);
@@ -623,6 +746,96 @@ async function findOrder(
 	if (error) throw new Error(`finance.orders read failed: ${error.message}`);
 	return (data as unknown as OrderRow | null) ?? undefined;
 }
+
+// #region History
+/**
+ * Where a past line lives now (MARKETPLACE CK3): a download opens the purchases view on its purchase,
+ * which shows a refunded one as refunded; a session, block or seat opens the session's workspace; an
+ * engagement its project or stage. `null` when there is nowhere the buyer can go.
+ */
+function homeOf(row: LineRow, line: OrderLine, ctx: LineContext): OrderLineHome | null {
+	if (row.fulfilment === "download") {
+		const entitlement = ctx.entitlements.get(row.id);
+		return entitlement
+			? { href: clip(purchasesHref(entitlement.slug), 600), label: "Open in your purchases" }
+			: null;
+	}
+	if (line.sessionHref) return { href: line.sessionHref, label: "Open the session" };
+	if (line.engagementHref) {
+		return {
+			href: line.engagementHref,
+			label: clip(line.engagementLabel ?? "Open the workspace", 120),
+		};
+	}
+	return null;
+}
+
+/** One past line as the history lists it: the receipt's projection, reduced, and its home. */
+function historyLineOf(row: LineRow, order: OrderRow, ctx: LineContext): OrderHistoryLine {
+	const line = toLine(row, order, ctx);
+	return {
+		id: line.id,
+		itemType: line.itemType,
+		title: line.title,
+		lineTotal: line.lineTotal,
+		home: homeOf(row, line, ctx),
+	};
+}
+
+/**
+ * One page of the acting account's order history, newest first (`/checkout/orders`, MARKETPLACE CK3):
+ * keyset-paged on `(placed_at, id)` through {@link readHistoryRows}, scoped by the same owner filter as
+ * the confirmation hub and read under the caller's JWT, so a team's or a business's history lists only
+ * that account's orders and only to someone RLS lets see them. Each order's lines come in one read for
+ * the whole page, each linked to its home. `null` when the caller cannot read live.
+ */
+export async function readOrderHistory(
+	owner: ResolvedOwner,
+	request: HistoryRequest,
+	actor: ReadActor,
+): Promise<OrderHistoryPage | null> {
+	if (!canReadLive(actor)) return null;
+	const scoped = () => ownedOrders(actor, owner) as unknown as KeysetQuery<OrderRow>;
+	const window = await readHistoryRows(scoped(), request, scoped);
+
+	const ids = window.rows.map((o) => o.id);
+	let lines: LineRow[] = [];
+	if (ids.length > 0) {
+		const { data, error } = await getUserClient(actor.accessToken).schema("finance")
+			.from("order_lines")
+			.select(LINE_COLS)
+			.in("order_id", ids)
+			.order("position", { ascending: true });
+		if (error) throw new Error(`finance.order_lines read failed: ${error.message}`);
+		lines = (data ?? []) as unknown as LineRow[];
+	}
+	const ctx = await lineContext(actor, lines);
+	const byOrder = new Map<string, OrderHistoryLine[]>();
+	for (const row of lines) {
+		const order = window.rows.find((o) => o.id === row.order_id);
+		const own = byOrder.get(row.order_id) ?? [];
+		if (!order || own.length >= 200) continue;
+		byOrder.set(row.order_id, [...own, historyLineOf(row, order, ctx)]);
+	}
+
+	return {
+		ownerKey: owner.key,
+		ownerName: clip(owner.name, 120),
+		owners: [],
+		entries: window.rows.map((order) => ({
+			id: order.id,
+			reference: clip(order.reference, 40),
+			status: order.status,
+			placedAt: new Date(order.placed_at).toISOString(),
+			placedAtLabel: stampLabel(order.placed_at),
+			total: receipt(order.total_minor, order.currency),
+			lines: byOrder.get(order.id) ?? [],
+		})),
+		older: window.older,
+		newer: window.newer,
+	};
+}
+// #endregion
 
 /**
  * The `.ics` document for one booked line, and the filename it downloads as. Built by the SSOT's
