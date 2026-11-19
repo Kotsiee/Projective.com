@@ -95,7 +95,7 @@ Each wave keeps the work orders' own file locks (COMMS §0). Cross-track locks:
    Step 5 built 2026-11-18 after NT3 (#502), with one open owner question, #502 flag (d).
 4. **§C's SAC5 · Decision #444 flag (c)**: when you rule which top-level segments to reserve,
    include `newsletter`. CD1's two pages live under it, so CD1 then never edits `00001020`. SAC5
-   landed (`cd6d016f`) without it; ruled 2026-11-18 (#480): CD1 adds it with its routes.
+   landed (`c062b5ab`) without it; ruled 2026-11-18 (#480): CD1 adds it with its routes.
 5. **Hosted (CD2).** A hosted staging Supabase project and a deployed app at a public HTTPS origin
    (the staging slice of PRD-G8). You set every secret and every dashboard setting yourself:
    - Vault: `CRON_APP_URL`, `COMMS_DISPATCH_SECRET` (the PRD-G6 pattern), and the
@@ -341,9 +341,9 @@ ACCEPTANCE:
 
 ### CD2 — The hosted delivery proof: every outbound channel sends for real on staging
 
-> **Status (2026-11-18, re-checked at `b695f326`): deferred again; the owner ruled "wait" twice
+> **Status (2026-11-18, re-checked at `4e5bfc33`): deferred again; the owner ruled "wait" twice
 > (#484).** The first run (`edb447a9`) found none of its dependencies on `main` and declined a
-> PRD-E6-only proof. The second found NT2 (`4dfd07f6`) and CD1 steps 1–4 (`25531b74`) merged, but
+> PRD-E6-only proof. The second found NT2 (`ee275e93`) and CD1 steps 1–4 (`2f0feffd`) merged, but
 > NT3 not yet on `main`, NT4 and NT5 not started, CD1 step 5 waiting for NT3, and no staging
 > deployment (PRD-G8 ❌). Neither run built or ran any of CD2. Re-run CD2 in wave 5, after
 > re-checking every dependency at HEAD; its 🧑 PREREQUISITES stop still comes first. **The `--check`

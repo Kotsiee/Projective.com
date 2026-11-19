@@ -1251,7 +1251,7 @@ ROLE: Full-stack + payments engineer. Queue M (it changes place_wallet_order's m
 DB19 and DB21 (#493 (D)).
 
 CONTEXT (verified at b7280787):
-  - PRODUCT_SPEC.md §Digital Marketplace 3 (:3148-3158 at 7cb49117): a "strict approval gate".
+  - PRODUCT_SPEC.md §Digital Marketplace 3 (:3148-3158 at 693819fd): a "strict approval gate".
     The freelancer triggers Request Marketplace Listing; the client may grant shared IP for the
     whole asset or for parts; the approved asset is minted with "a cryptographic link back to the
     original project". §5 (:3174-3185): Shared Royalty, "a percentage of every sale is
