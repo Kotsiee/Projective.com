@@ -35,8 +35,9 @@
 >
 > - SCH-WP1's app half. Nothing calls the two sitting doors, and a seat-holder cannot see a group
 >   sitting (SCH-WP7, not started).
-> - `scheduling.fn_settle_votes`, so the dormant `scheduling-settle-votes` row is still unregistered
->   (SCH-WP7). The other dormant row, `scheduling-expire-discovery-calls`, registered with SCH-WP2.
+> - ~~`scheduling.fn_settle_votes`~~ — built 2026-11-19 by OPERATIONS OPS2 (SCH-WP7 step 7, carved
+>   out; Decision #513), so `scheduling-settle-votes` registers on reset. Both dormant rows now run
+>   (`scheduling-expire-discovery-calls` registered with SCH-WP2).
 > - Paid consultations (SCH-WP6, not started: `PAID_CALLS_LIVE` is still `false`).
 > - SCH-WP10's two residues: `.ics` import stays undrawn until a door keeps a file's worth of entries
 >   (C7 (a)), and a team's or business's console calendar keeps its view out of the address, because
@@ -1044,6 +1045,10 @@ ACCEPTANCE:
 
 ### SCH-WP7 — Windows: the money window, the grace and the provider's move
 
+> **Status 2026-11-19:** step 7 landed in OPS2 (Decision #513): `scheduling.fn_settle_votes` reads
+> `fn_vote_deadline`, so step 2's money window flows into it with no change there; extend
+> `settle_votes.sql` with one money-bearing round. Steps 1–6 and 8–11 remain.
+>
 > **Status 2026-11-12:** Not started, and runnable (SCH-WP8 is done); the 🧑 at step 6 is still
 > open (#344 (f)). Nothing defines `fn_settle_votes`, `fn_event_is_money_bearing`,
 > `session_late_booking_grace_minutes` or `sessionCancelWindow`, and `cancelSeat` has no caller.

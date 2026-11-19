@@ -372,13 +372,17 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > Calendar). The threshold is strictly more than half of everyone ENTITLED to vote — the roster
 > minus the host, who authored the options, with optional seats counted and guests not (a guest
 > cannot reach a ballot) — never more than half of those who happened to answer. The session
-> workspace counts the same seats (`eligibleVoterCount`; Decision #343, ruling C6 D5). Abstaining is
+> workspace counts the same seats (`eligibleVoterCount`; Decision #343, ruling C6 D5), and only those
+> seats' ballots count towards the majority: a withdrawn seat's, a guest's or the host's does not
+> (`votesOfVoters`, Decision #513). Abstaining is
 > therefore a vote against moving, deliberately: the default outcome of an unanswered question is
 > that nothing changes. A vote that closes without one **lapses** and the original time stands;
 > `lapsed` is a separate state from `resolved` precisely so that "decided" can never be read off a
 > null winner. The transition is applied by one pure function (`settleVote`) on every read and before
-> every action, because there is no cron in this layer and a deadline nothing observes is not a
-> deadline.
+> every action, and on a timer: the TypeScript layer has no cron, so the `scheduling-settle-votes`
+> job runs its SQL twin, `scheduling.fn_settle_votes`, every 15 minutes and closes every vote past its
+> deadline that nobody has read, through the same door (Decision #513). A deadline nothing observes
+> is not a deadline.
 >
 > **On a 1-on-1 the party who did NOT offer a time is the one who accepts it**
 > (`counterpartyAcceptRefusal`): the attendee accepts a host's slot once the host has put it to them

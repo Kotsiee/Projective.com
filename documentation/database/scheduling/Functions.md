@@ -929,10 +929,10 @@ whichever role writes — see [`database/projects/Functions.md`](../projects/Fun
 group sittings for why (a seat's refund is judged against the cohort's first sitting).
 
 `SECURITY INVOKER`; `EXECUTE` to `service_role` only (`00002510`) — there is no client write path
-into coordination. Settlement is **lazy**: the service calls it on the read path when `settleVote`
-finds a decided vote (the deadline has passed, or every eligible voter has answered), and on the
-write path when a ballot or a counterparty's confirmation ends the round. There is no sweep yet (see
-below).
+into coordination. The service calls it on the read path when `settleVote` finds a decided vote (the
+deadline has passed, or every eligible voter has answered), and on the write path when a ballot or a
+counterparty's confirmation ends the round. A vote whose deadline passes with nobody reading it is
+closed through it by the `scheduling-settle-votes` sweep (`fn_settle_votes`, below).
 
 ### `scheduling.fn_cap_reschedule_proposals()` → trigger (`trg_cap_reschedule_proposals`)
 
@@ -1018,6 +1018,57 @@ The READ path re-derives a live vote's deadline from the ballot it read (`voteRe
 than trusting the stamp, so a reader is always shown the deadline the settlement will judge by; a
 closed round keeps its stamp, because the event has since moved and re-deriving against the new
 start would rewrite the instant the decision was taken.
+
+### `scheduling.fn_settle_votes(now = now(), limit = 200) → integer` (`00001510` §6f; audit S-13, Decision #513)
+
+The vote-settlement sweep, registered by name as the `scheduling-settle-votes` job (`00005060`,
+`11,26,41,56 * * * *`). Before it, only a read or a write recorded a decided vote, so a deadline
+nobody read moved nothing and told nobody, and the entry stayed at its old time in every mirror,
+reminder and free/busy answer.
+
+- **What it takes.** `vote` rounds still `voting` whose deadline is at or before `p_now`, by
+  `fn_vote_deadline` (the ballot's own deadline, as the read path re-derives it), or whose ballot is
+  empty, which `settleVote` settles at once. Earliest deadline first, at most `p_limit`, taken
+  `FOR UPDATE SKIP LOCKED` on the round row, the lock the read path, the write guard and the ballot
+  cap take first. Two overlapping runs never take one round, and a round being written waits for
+  the next run.
+- **Under the lock** it re-reads the round and drops it unless it is still a live vote past its
+  deadline, so a round a reader closed first is neither moved nor announced again.
+- **The tally is `settleVote`'s.** The electorate is `eligibleVoterCount`'s: every live seat with an
+  account except the host's, optional seats included, guests not (Decision #343, ruling C6 D5;
+  #391). A ballot counts only from a seat in that electorate (`votesOfVoters`, which the read path
+  applies too): a withdrawn seat's, a guest's or the host's ballot does not count. The leader is the
+  ballot slot (a host's, or an attendee's the host approved) with the most counted ballots, the
+  earlier slot first on a tie. It carries with strictly more than half of the electorate
+  (`v_top * 2 > v_voters`, pinned beside `voteQuorum` by `coordination.contract.test.ts`).
+- **Closing.** A winner closes the round `resolved` through `close_reschedule_round`, which moves the
+  entry and tells everyone with an account on it once (`fn_notify_event_seats`). A guest is mailed
+  by `trg_guest_moved`, and a sitting follows its mirror. No winner closes it `lapsed`, the original
+  time stands, and nobody is told, as on the read path. The sweep sends nothing of its own, so no
+  notice goes out twice. The history line is the read path's wording, by nobody: "Moved to
+  <slot>" with "Carried by a majority of the attendees.", or "Vote closed without a majority" with
+  "The original time stands.". The slot is named by `fn_slot_label` in the entry's schedule zone,
+  else the host's own schedule zone, else `Europe/London`.
+- **Nothing is silent.** A round whose close raises is rolled back alone. It raises a `WARNING` and
+  writes an `ops.log_entries` row (`ops.fn_log_scheduler_event`,
+  `scheduler:scheduling-settle-votes:settle_failed`, with `reschedule_id`, `event_id` and
+  `sqlstate`), the run goes on, and the next run retries it.
+
+Returns how many rounds it closed; a second run returns 0. Every argument has a default, because the
+job calls it bare. `SECURITY DEFINER`, `search_path = ''`; `EXECUTE` revoked from `PUBLIC` · `anon` ·
+`authenticated` and granted to `service_role` (`00002510`), so pg_cron runs it as the owner and
+`deno task cron:run scheduling-settle-votes` through `ops.run_job`. Probe:
+`supabase/probes/settle_votes.sql`, whose contract fixtures `coordination.contract.test.ts` also
+settles with `settleVote`.
+
+### `scheduling.fn_slot_label(at, tz) → text` (`00001510` §6f)
+
+A slot as a persisted history line names it, "Thu 17 Sep, 15:00 BST", in `p_tz`, and in UTC for a
+zone the database does not know. The SQL side of the read path's `slotLabel` (`live-calendar.ts`),
+for a line written with no reader to take a zone from. `to_char` prints a zone's abbreviation only
+for the session's own zone, so the function sets the zone for its own call; its `SET "TimeZone"`
+clause restores the caller's zone on exit. `SECURITY INVOKER`; `EXECUTE` revoked from `PUBLIC` ·
+`anon` · `authenticated`, because only `fn_settle_votes` calls it.
 
 ---
 
@@ -1142,10 +1193,6 @@ edit does not.
 - **Paid-call settlement** — ruled (Decision #343, ruling C1): one hidden Consultations engagement
   per host on the session rail, the fee held at request. **Not built yet**; until then the paid
   flavour is refused (§7). See [Tables.md](Tables.md).
-- **A reschedule-settlement sweep** — a vote whose deadline passes while nobody opens the calendar
-  is settled the next time anybody reads it (`settleVote` on the read path), so the event's position
-  in the database is correct only once somebody has looked. Notifications that should fire at the
-  deadline need a scheduled caller of `close_reschedule_round`; none exists.
 
 ## Scheduling and under-18 accounts (`00001510`, Decision #208)
 

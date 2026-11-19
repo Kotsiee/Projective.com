@@ -415,6 +415,12 @@ bullet on SA §Scheduled jobs.
 
 ### OPS2 — A reschedule vote past its deadline settles with nobody reading it
 
+> **Status 2026-11-19: OPS2 landed (Decision #513; PRD-G4 ✅, USER_FLOWS PJ-73 ✅).** The read path
+> also counted a ballot from outside the electorate (a withdrawn seat's, a guest's, the host's); both
+> sides now count only the electorate's (`votesOfVoters`). The sweep sends no notice of its own: the
+> read path's only notice is the one `close_reschedule_round` sends, so the job sends it through that
+> door, once. SCH-WP7 carries the status note.
+
 SCH-WP7 step 7, carved out. Closes PRD-G4.
 
 ```text

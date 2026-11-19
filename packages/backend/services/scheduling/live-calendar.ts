@@ -36,6 +36,7 @@ import {
 	settleVote,
 	takesReminders,
 	voteResolvesAt,
+	votesOfVoters,
 } from "@projective/types/scheduling";
 import type { AssetItem } from "@projective/types/files";
 import { countsAsOnboarded } from "@projective/types/projects";
@@ -102,11 +103,14 @@ import {
  * ## Settlement happens here
  *
  * A vote whose deadline has passed, or whose electorate has finished answering, has already been
- * decided: {@link settleVote} is a function of (clock, ballot, electorate). There is no sweep job, so
- * the read that first observes a decided vote records it — through `scheduling.close_reschedule_round`,
- * which closes the round, moves the event to the winning slot and writes the log line in one
- * transaction and is a no-op for a round somebody else already closed. The projection shows the
- * settled state either way; persisting it is what makes the next reader see the same thing.
+ * decided: {@link settleVote} is a function of (clock, ballot, electorate), so the read that first
+ * observes a decided vote records it — through `scheduling.close_reschedule_round`, which closes the
+ * round, moves the event to the winning slot and writes the log line in one transaction and is a no-op
+ * for a round somebody else already closed. The projection shows the settled state either way;
+ * persisting it is what makes the next reader see the same thing. A deadline nobody reads is recorded
+ * by the `scheduling-settle-votes` job (`scheduling.fn_settle_votes`, every 15 minutes) through the same
+ * door, with the same history line. Only the ballots of seats that may vote are counted
+ * ({@link votesOfVoters}), here and in that sweep.
  *
  * ## Outcomes
  *
@@ -909,8 +913,9 @@ function toReschedule(
 	}));
 	// A defensive bound only: the planner refuses a slot past the cap and the
 	// `fn_cap_reschedule_proposals` trigger refuses the row, so a round can no longer hold more. It
-	// stays so a round written before the trigger existed still parses.
-	const ballot = proposals.slice(0, RESCHEDULE_PROPOSALS_MAX);
+	// stays so a round written before the trigger existed still parses. A ballot cast from a seat
+	// outside the electorate (withdrawn since, or with no account) is not counted, nor shown.
+	const ballot = votesOfVoters(proposals, roster).slice(0, RESCHEDULE_PROPOSALS_MAX);
 	return {
 		mode: round.mode,
 		status: round.status,

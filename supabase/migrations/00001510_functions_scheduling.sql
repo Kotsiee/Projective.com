@@ -673,6 +673,191 @@ COMMENT ON FUNCTION scheduling.fn_stamp_vote_deadline() IS
 
 -- #endregion
 
+-- #region 6f. Settling a vote nobody reads (audit S-13; OPS2)
+-- A slot's name in a PERSISTED history line, "Thu 17 Sep, 15:00 BST": the SQL side of the read path's
+-- `slotLabel` (live-calendar.ts), which a line written with nobody reading needs. The zone's
+-- abbreviation is part of it, because every party reads the one line in their own zone. `to_char`
+-- prints an abbreviation only for the session's zone, so the zone is set for this call alone: the
+-- function's own SET clause restores it at exit. A zone the database does not know prints in UTC
+-- rather than costing the line.
+CREATE OR REPLACE FUNCTION scheduling.fn_slot_label(p_at timestamptz, p_tz text)
+RETURNS text
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = ''
+SET "TimeZone" = 'UTC'
+AS $$
+BEGIN
+    BEGIN
+        PERFORM pg_catalog.set_config('TimeZone', COALESCE(NULLIF(pg_catalog.btrim(p_tz), ''), 'UTC'), true);
+    EXCEPTION WHEN invalid_parameter_value THEN
+        NULL;
+    END;
+    RETURN pg_catalog.to_char(p_at, 'Dy FMDD Mon, HH24:MI TZ');
+END;
+$$;
+
+COMMENT ON FUNCTION scheduling.fn_slot_label(timestamptz, text) IS
+    'A slot as a persisted history line names it ("Thu 17 Sep, 15:00 BST") in p_tz, UTC for an unknown '
+    'zone. The SQL side of slotLabel; internal to fn_settle_votes.';
+
+-- The vote-settlement sweep. A vote is decided at its deadline whether or not anybody is looking
+-- (`settleVote`), but until now only a read or a write recorded the decision, so a deadline nobody
+-- read moved nothing and told nobody, and the event sat at its old time in every mirror, reminder and
+-- free/busy answer. This records it on a timer, through the same door the read path uses.
+--
+--   * Candidates: `vote` rounds still `voting` whose deadline (`fn_vote_deadline`, the ballot's own,
+--     as the read path re-derives it) is at or before p_now, or whose ballot is empty, which
+--     `settleVote` settles at once. Earliest deadline first, at most p_limit, taken FOR UPDATE SKIP
+--     LOCKED on the round row: the lock the read path, the write guard and the ballot cap take first,
+--     so this queues behind none of them and two overlapping runs never take one round.
+--   * Under the lock the round is re-read, and dropped unless it is still a `voting` vote past its
+--     deadline. A reader that closed it first wins; this run neither moves nor tells anyone again.
+--   * The tally is `settleVote`'s, counted from the table. The electorate is
+--     `eligibleVoterCount`'s: every live seat with an account except the host's, optional seats in,
+--     guests out (Decision #343, ruling C6 D5; #391). A ballot counts only from a seat in that
+--     electorate (`votesOfVoters`): a withdrawn seat's, a guest's or the host's would carry a slot
+--     with no more than half of the people entitled to decide. The leader is the ballot slot (a
+--     host's, or an attendee's the host approved) with the most such votes, the earlier slot first on
+--     a tie, and it carries with STRICTLY more than half of the electorate.
+--   * A winner closes the round `resolved` through `close_reschedule_round`, which moves the event
+--     and tells everyone on it (`fn_notify_event_seats`; a guest's mail follows the move,
+--     `trg_guest_moved`; a sitting follows its mirror, `trg_sitting_follows_calendar`). No winner
+--     closes it `lapsed` and the original time stands, which tells nobody, as on the read path. The
+--     history line is the read path's own wording, the slot named in the entry's schedule zone.
+--   * A round whose close raises is rolled back alone, raises a WARNING and writes an ops.log_entries
+--     row (`ops.fn_log_scheduler_event`, reason `settle_failed`), and the run goes on; it is retried
+--     next run, still `voting`.
+--
+-- Returns how many rounds it closed. A second run finds nothing left and returns 0. Every argument has
+-- a default, because the job calls it bare. Registered by name as `scheduling-settle-votes` (00005060),
+-- every 15 minutes; `deno task cron:run scheduling-settle-votes` runs it by hand.
+CREATE OR REPLACE FUNCTION scheduling.fn_settle_votes(
+    p_now timestamptz DEFAULT pg_catalog.now(),
+    p_limit integer DEFAULT 200
+)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    r record;
+    v_status text;
+    v_mode text;
+    v_deadline timestamptz;
+    v_voters integer;
+    v_winner uuid;
+    v_start timestamptz;
+    v_top integer;
+    v_tz text;
+    v_line uuid;
+    v_state text;
+    v_message text;
+    v_count integer := 0;
+BEGIN
+    FOR r IN
+        SELECT x.id, x.event_id
+          FROM scheduling.event_reschedules x
+         WHERE x.mode = 'vote'
+           AND x.status = 'voting'
+           AND COALESCE(scheduling.fn_vote_deadline(x.id) <= p_now, true)
+         ORDER BY scheduling.fn_vote_deadline(x.id) NULLS FIRST, x.id
+         LIMIT GREATEST(COALESCE(p_limit, 200), 1)
+           FOR UPDATE OF x SKIP LOCKED
+    LOOP
+        BEGIN
+            SELECT x.status, x.mode INTO v_status, v_mode
+              FROM scheduling.event_reschedules x
+             WHERE x.id = r.id;
+            v_deadline := scheduling.fn_vote_deadline(r.id);
+            CONTINUE WHEN v_status IS DISTINCT FROM 'voting' OR v_mode IS DISTINCT FROM 'vote'
+                       OR v_deadline > p_now;
+
+            SELECT count(*)::integer INTO v_voters
+              FROM scheduling.event_attendees a
+             WHERE a.event_id = r.event_id
+               AND a.archived_at IS NULL
+               AND a.user_id IS NOT NULL
+               AND a.role <> 'host'::scheduling.attendee_role;
+
+            v_winner := NULL;
+            v_top := 0;
+            SELECT p.id, p.starts_at, t.votes INTO v_winner, v_start, v_top
+              FROM scheduling.reschedule_proposals p
+             CROSS JOIN LATERAL (
+                 SELECT count(*)::integer AS votes
+                   FROM scheduling.proposal_votes v
+                   JOIN scheduling.event_attendees a ON a.id = v.attendee_id
+                  WHERE v.proposal_id = p.id
+                    AND a.event_id = r.event_id
+                    AND a.archived_at IS NULL
+                    AND a.user_id IS NOT NULL
+                    AND a.role <> 'host'::scheduling.attendee_role
+             ) t
+             WHERE p.reschedule_id = r.id
+               AND (p.proposed_by_role = 'host' OR p.approved)
+             ORDER BY t.votes DESC, p.starts_at, p.id
+             LIMIT 1;
+
+            IF v_winner IS NOT NULL AND v_top * 2 > v_voters THEN
+                SELECT COALESCE(s.timezone, hs.timezone, 'Europe/London') INTO v_tz
+                  FROM scheduling.events e
+                  LEFT JOIN scheduling.schedules s ON s.id = e.schedule_id
+                  LEFT JOIN scheduling.event_attendees h
+                    ON h.event_id = e.id AND h.role = 'host'::scheduling.attendee_role
+                   AND h.archived_at IS NULL AND h.user_id IS NOT NULL
+                  LEFT JOIN scheduling.schedules hs
+                    ON hs.owner_type = 'user'::scheduling.owner_type AND hs.owner_id = h.user_id
+                 WHERE e.id = r.event_id
+                 LIMIT 1;
+                v_line := scheduling.close_reschedule_round(
+                    r.id, 'resolved', v_winner, NULL,
+                    'Moved to ' || scheduling.fn_slot_label(v_start, v_tz),
+                    'Carried by a majority of the attendees.'
+                );
+            ELSE
+                v_line := scheduling.close_reschedule_round(
+                    r.id, 'lapsed', NULL, NULL,
+                    'Vote closed without a majority',
+                    'The original time stands.'
+                );
+            END IF;
+
+            IF v_line IS NULL THEN
+                PERFORM ops.fn_log_scheduler_event(
+                    'scheduling-settle-votes', 'already_closed', 'warn',
+                    pg_catalog.format('round %s closed under the sweep''s own lock; nothing was settled', r.id),
+                    pg_catalog.jsonb_build_object('reschedule_id', r.id, 'event_id', r.event_id)
+                );
+            ELSE
+                v_count := v_count + 1;
+            END IF;
+        EXCEPTION WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_message = MESSAGE_TEXT;
+            PERFORM ops.fn_log_scheduler_event(
+                'scheduling-settle-votes', 'settle_failed', 'error',
+                pg_catalog.format('round %s could not be settled: %s (%s)', r.id, v_message, v_state),
+                pg_catalog.jsonb_build_object('reschedule_id', r.id, 'event_id', r.event_id, 'sqlstate', v_state)
+            );
+        END;
+    END LOOP;
+
+    RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION scheduling.fn_settle_votes(timestamptz, integer) IS
+    'The vote-settlement sweep (audit S-13): closes every vote round still voting past its deadline '
+    '(fn_vote_deadline) through close_reschedule_round — resolved when one ballot slot holds strictly '
+    'more than half of the entitled voters (eligibleVoterCount''s seats, counting only their ballots), '
+    'lapsed otherwise. FOR UPDATE SKIP LOCKED batches of at most p_limit; a failure is logged and the '
+    'run goes on. Returns the rounds closed; idempotent. Service role / pg_cron only.';
+
+-- #endregion
+
 -- #region 2. Timezone-aware primitives
 -- Minutes from LOCAL midnight in the given IANA zone. `AT TIME ZONE` converts the timestamptz to
 -- wall-clock time in that zone, so DST is handled by Postgres rather than by hand.

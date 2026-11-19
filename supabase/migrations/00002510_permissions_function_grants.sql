@@ -1752,6 +1752,15 @@ REVOKE ALL ON FUNCTION scheduling.fn_guard_reschedule_write () FROM public, anon
 REVOKE ALL ON FUNCTION scheduling.fn_stamp_vote_deadline () FROM public, anon, authenticated;
 REVOKE ALL ON FUNCTION scheduling.fn_vote_deadline (uuid, timestamptz) FROM public, anon, authenticated;
 
+-- The vote-settlement sweep (00001510 §6f) settles for nobody in particular, so no client may run it:
+-- pg_cron runs it as the database owner, and `deno task cron:run` through ops.run_job as the service
+-- role. Its slot label is its own internal.
+REVOKE ALL ON FUNCTION scheduling.fn_settle_votes (timestamptz, integer) FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_slot_label (timestamptz, text) FROM public, anon, authenticated;
+
+GRANT
+EXECUTE ON FUNCTION scheduling.fn_settle_votes (timestamptz, integer) TO service_role;
+
 REVOKE ALL ON FUNCTION scheduling.fn_schedule_host (uuid)
 FROM public, anon, authenticated;
 

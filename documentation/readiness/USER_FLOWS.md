@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
-| **UAT**          | **71%** |           191 | 96 |  79 | 16 |              26 |
-| **Production**   | **64%** |           248 | 101 | 106 | 41 |              37 |
+| **UAT**          | **71%** |           191 | 97 |  78 | 16 |              26 |
+| **Production**   | **64%** |           248 | 102 | 105 | 41 |              37 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,7 +45,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    60 | 25 | 24 |  9 |  2 |   66% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 27 | 36 | 12 |  2 |   61% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 28 | 35 | 12 |  2 |   62% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
 **Critical flows not yet ✅, by the tier they gate:**
@@ -373,7 +373,7 @@ Notification preferences are ID-42.
 | PJ-70 | `.ics` import and export                              | Any                | `/calendar`                                                | ✅     | Normal | UAT  | — (import saves native entries, #442)                                   |
 | PJ-71 | Entry invitations and RSVP                            | Any                | `/api/scheduling/{invites,rsvp}`                           | 🟡     | High   | UAT  | Push and email not sent (#390; PRD-E4)                                  |
 | PJ-72 | Guest RSVP by token                                   | Guest              | `/rsvp/:token`                                             | 🟡     | Normal | UAT  | Guest mail needs the Resend key; the POST is origin-checked since #475 (PRD-C12 ✅) |
-| PJ-73 | Reschedule handshake and vote; courtesy no-show marks | Any                | EventModal, `/api/scheduling/{reschedule,calls}`           | 🟡     | High   | UAT  | `fn_settle_votes` missing, so settlement is lazy (PRD-G4, SCH-WP7)      |
+| PJ-73 | Reschedule handshake and vote; courtesy no-show marks | Any                | EventModal, `/api/scheduling/{reschedule,calls}`           | ✅     | High   | UAT  | — (a vote past its deadline settles on a timer, `scheduling-settle-votes`; only the electorate's ballots count; OPS2, #513, PRD-G4 ✅) |
 | PJ-74 | Project calendar                                      | Client, Freelancer | `/projects/:slug/calendar`                                 | ⏸      | Normal | UAT  | Read and RSVP only by ruling (#343 C7 (a), #413)                        |
 | PJ-75 | Connect and disconnect integrations                   | Any                | Settings → Integrations, `/api/integrations/*`             | 🟡     | High   | UAT  | Off unless `INTEGRATIONS_BACKEND_LIVE`; no vault key rotation (PRD-H2)  |
 | PJ-76 | Calendar sync (busy in, mirror out)                   | Any                | jobs `integrations-calendar-sync`, `outbound-sync`         | 🟡     | High   | UAT  | Google proven; Microsoft never run (#386)                               |
@@ -547,3 +547,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-19 | CK1 (#488): MK-29 ❌ → 🟡 (a bought product reaches its buyer: an entitlement per product line, versions frozen at publish into the policy-less `originals` bucket, `/api/downloads/[entitlement]/[fileId]`, the A8 box before Pay and `/files?source=purchases`, probe-proven; the live run in the app is left); MK-37 narrowed, still 🟡; new MK-60 🟡 (a product publishes with no file to deliver) | 83% | 71% | 64% |
 | 2026-11-19 | SR2: MK-02 narrowed (a bounded query at both doors, 422 or a canonical redirect; a per-caller embedding budget); still 🟡 (offset paging, S24) | 83% | 71% |  64% |
 | 2026-11-19 | RV1 (#487): MK-32 ❌ → 🟡 (a client reviews a completed engagement or session through doors only and the provider replies once; product reviews wait on wiring to CK1's entitlement, Report on T&S R2); MK-34's note cleared; the signed-in walk in the app is left | 83% | 71% | 64% |
+| 2026-11-19 | OPS2 (#513): PJ-73 🟡 → ✅ (a reschedule vote past its deadline settles on a timer; PRD-G4 ✅) | 83% | 71% |  64% |

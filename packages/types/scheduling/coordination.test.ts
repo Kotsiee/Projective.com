@@ -11,6 +11,7 @@ import {
 	EventAttendeeSchema,
 	eventLiveStatus,
 	type EventReschedule,
+	isEligibleVoter,
 	isProposalOnBallot,
 	isRescheduleClosed,
 	leadingProposal,
@@ -43,6 +44,7 @@ import {
 	voteQuorum,
 	voteResolvesAt,
 	votesCast,
+	votesOfVoters,
 	voteTally,
 } from "./coordination.ts";
 
@@ -461,6 +463,39 @@ Deno.test("eligibleVoterCount — the one denominator: host out, optional in, a 
 	];
 	assertStrictEquals(eligibleVoterCount(roster), 3);
 	assertStrictEquals(voteQuorum(eligibleVoterCount(roster)), 2);
+});
+
+Deno.test("votesOfVoters — only a ballot from a seat in the electorate counts", () => {
+	// Two voters, so a slot needs both, and alan has not answered. The host's, a guest's and a
+	// withdrawn seat's ballots (its seat has left the roster, its vote row has not) all back h1;
+	// counted, they carried it with one of the two people entitled to decide, and pushed votesCast to
+	// the electorate's size, which closes a vote early.
+	const roster = [
+		host("ada"),
+		attendee("grace", "accepted"),
+		{ ...attendee("alan", "pending"), role: "optional" as const },
+		{ ...attendee("guest", "accepted"), isGuest: true },
+	];
+	const raw = [
+		proposal({
+			id: "h1",
+			start: NOW + 48 * HOUR,
+			votes: [vote("grace"), vote("ada"), vote("guest"), vote("withdrawn")],
+		}),
+		proposal({ id: "h2", start: NOW + 72 * HOUR }),
+	];
+	const voters = eligibleVoterCount(roster);
+	assert(isEligibleVoter(roster[1]) && isEligibleVoter(roster[2]));
+	assertFalse(isEligibleVoter(roster[0]) || isEligibleVoter(roster[3]));
+	assertStrictEquals(majorityProposal(raw, voters)?.id, "h1", "the defect: it carried");
+	assert(voteIsSettleable(NOW, raw, voters, FAR), "the defect: and closed early");
+
+	const counted = votesOfVoters(raw, roster);
+	assertEquals(counted[0].votes.map((v) => v.attendeeId), ["grace"]);
+	assertStrictEquals(counted[1], raw[1], "a slot with nothing to drop is returned as it was");
+	assertStrictEquals(majorityProposal(counted, voters), null);
+	assertStrictEquals(votesCast(counted), 1);
+	assertFalse(voteIsSettleable(NOW, counted, voters, FAR));
 });
 
 Deno.test("voteQuorum — strictly more than half, so a tie never carries", () => {

@@ -746,12 +746,47 @@ export function viewerAttendee(roster: readonly EventAttendee[]): EventAttendee 
  * abstention nobody can avoid into a vote against moving (`scheduling.fn_event_has_voters`).
  *
  * This is the one denominator (Decision #343, ruling C6 D5): the session workspace's `voters` count
- * (`projects.get_session_workspace`) counts the same seats, pinned by `coordination.contract.test.ts`.
+ * (`projects.get_session_workspace`) and the vote sweep (`scheduling.fn_settle_votes`) count the same
+ * seats, pinned by `coordination.contract.test.ts`.
  */
 export function eligibleVoterCount(roster: readonly EventAttendee[]): number {
 	let n = 0;
-	for (const a of roster) if (a.role !== "host" && !a.isGuest) n++;
+	for (const a of roster) if (isEligibleVoter(a)) n++;
 	return n;
+}
+
+/**
+ * May this seat vote? Every seat but the host's, optional seats included, and none without an account
+ * behind it (a guest, or somebody whose account has gone). {@link eligibleVoterCount} counts these
+ * seats and {@link votesOfVoters} keeps only their ballots.
+ */
+export function isEligibleVoter(attendee: EventAttendee): boolean {
+	return attendee.role !== "host" && !attendee.isGuest;
+}
+
+/**
+ * The ballot with only the votes that count: those cast from a seat on `roster` that may vote
+ * ({@link isEligibleVoter}).
+ *
+ * A majority is measured against {@link eligibleVoterCount}, so a ballot from anybody outside that
+ * electorate must not count towards one either: a seat the host has since withdrawn (it leaves the
+ * roster while its vote row stays), a seat whose account has gone, a guest's, or the host's own.
+ * Counted, any of them could carry a slot with no more than half of the people entitled to decide,
+ * and push {@link votesCast} up to the electorate's size and close the vote early. The read applies
+ * this before it settles anything, so the vote it shows is the vote it settles, and
+ * `scheduling.fn_settle_votes` counts the same ballots in SQL.
+ */
+export function votesOfVoters(
+	proposals: readonly RescheduleProposal[],
+	roster: readonly EventAttendee[],
+): RescheduleProposal[] {
+	const voters = new Set<string>();
+	for (const a of roster) if (isEligibleVoter(a)) voters.add(a.id);
+	return proposals.map((p) =>
+		p.votes.every((v) => voters.has(v.attendeeId))
+			? p
+			: { ...p, votes: p.votes.filter((v) => voters.has(v.attendeeId)) }
+	);
 }
 
 /** The head count a round's mode goes by: the seats that can act on one, the host's included. */
@@ -819,9 +854,11 @@ export function voteIsSettleable(
  * **Total and idempotent** — a round that is not a live vote, or one that is a live vote still worth
  * asking, comes back untouched, and settling an already-settled round is a no-op. That is what lets
  * the read path apply it on every read and the write path apply it before every action without
- * either needing to know whether the other already had: there is no cron in this layer, so the
- * transition has to be a function of (clock, ballot, electorate) rather than an event somebody must
- * remember to fire. In the live path the same function backs the sweep that stamps the row.
+ * either needing to know whether the other already had: the transition is a function of (clock,
+ * ballot, electorate) rather than an event somebody must remember to fire. A deadline nobody reads
+ * is recorded on a timer as well: the `scheduling-settle-votes` job runs `scheduling.fn_settle_votes`,
+ * this rule's SQL twin, every 15 minutes, and whichever closes a round first, the other finds it
+ * closed. `proposals` carry only the ballots that count ({@link votesOfVoters}).
  *
  * A vote that closes with a {@link majorityProposal} is `resolved` and names its winner; one that
  * closes without is `lapsed` and the original time stands.

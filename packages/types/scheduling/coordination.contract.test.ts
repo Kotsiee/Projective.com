@@ -11,15 +11,22 @@
  * `slug.contract.test.ts` technique): it has to fail in CI and on a laptop with no database, at the
  * moment somebody edits one side and not the other.
  */
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals, assertNotEquals, assertStringIncludes } from "@std/assert";
 import {
+	eligibleVoterCount,
+	type EventAttendee,
+	type EventReschedule,
 	EventRescheduleSchema,
 	RESCHEDULE_ATTENDEE_PROPOSALS_MAX,
 	RESCHEDULE_LOCKOUT_HOURS,
 	RESCHEDULE_PROPOSALS_MAX,
 	RESCHEDULE_SLOT_MAX_HOURS,
+	type RescheduleProposal,
 	RescheduleRefusalReason,
+	settleVote,
 	VOTE_RESOLUTION_LEAD_HOURS,
+	voteQuorum,
+	votesOfVoters,
 } from "./coordination.ts";
 import { GUEST_ADDRESS_MAILS_DAILY_MAX, GUEST_INVITES_DAILY_MAX } from "./guests.ts";
 import { EVENT_ROSTER_MAX } from "./invitations.ts";
@@ -34,7 +41,9 @@ const TABLE_SQL = "supabase/migrations/00000022_tables_scheduling.sql";
 const SESSIONS_SQL = "supabase/migrations/00001155_functions_projects_sessions.sql";
 const PARAMS_SQL = "supabase/migrations/00005001_seed_platform_params.sql";
 const WRITER_TS = "packages/backend/services/scheduling/live-coordination-writes.ts";
+const READER_TS = "packages/backend/services/scheduling/live-calendar.ts";
 const SEED_TS = "supabase/seeds/gen/emit-scheduling.ts";
+const SETTLE_PROBE = "supabase/probes/settle_votes.sql";
 
 /** The body of one `CREATE OR REPLACE FUNCTION <name>()` … `$$;` block (either spacing before `(`). */
 function functionBody(sql: string, name: string): string {
@@ -287,3 +296,210 @@ Deno.test("a courtesy no-show's dials are seeded and read with the same defaults
 		"scheduling.fn_charge_call_no_show(c, v_uid, v_named, v_opens)",
 	);
 });
+
+// #region The vote sweep (scheduling.fn_settle_votes, audit S-13, OPS2)
+/** One row of `settle_votes.sql`'s contract fixtures, which the probe settles in SQL. */
+interface SettleFixture {
+	name: string;
+	seats: string;
+	expect: string;
+}
+
+/** The rows between the probe's two `@contract-fixtures` markers. */
+function contractFixtures(): SettleFixture[] {
+	const probe = read(SETTLE_PROBE);
+	const start = probe.indexOf("-- @contract-fixtures begin");
+	const end = probe.indexOf("-- @contract-fixtures end");
+	assert(start >= 0 && end > start, `${SETTLE_PROBE} has lost its contract fixtures`);
+	return [...probe.slice(start, end).matchAll(/\(\d+,\s*'([a-z_]+)',\s*'([^']+)',\s*'([^']+)'\)/g)]
+		.map(([, name, seats, expect]) => ({ name, seats, expect }));
+}
+
+const HOUR_MS = 3_600_000;
+/** The fixture entry's start. Its deadline is 12 hours before; the sweep's clock is an hour before. */
+const SITTING = Date.parse("2026-12-01T10:00:00Z");
+const PAST_DEADLINE = SITTING - HOUR_MS;
+const HOST = { name: "Host", avatar: null, handle: null };
+
+/**
+ * A fixture as the read path assembles it: the live roster (a withdrawn seat has left it) and every
+ * vote row on the round, whoever cast it, on the host's two slots A and B.
+ */
+function assemble(fixture: SettleFixture): { roster: EventAttendee[]; round: EventReschedule } {
+	const roster: EventAttendee[] = [];
+	const ballots: { seat: string; slot: string }[] = [];
+	fixture.seats.split(" ").forEach((token, i) => {
+		const [seat, ballot] = token.split(":");
+		const id = `${seat}-${i}`;
+		if (seat !== "withdrawn") {
+			roster.push({
+				name: id,
+				avatar: null,
+				handle: null,
+				id,
+				role: seat === "host" ? "host" : seat === "optional" ? "optional" : "participant",
+				response: "pending",
+				respondedAt: null,
+				isViewer: false,
+				note: null,
+				...(seat === "guest" ? { isGuest: true } : {}),
+			});
+		}
+		if (ballot === "A" || ballot === "B") ballots.push({ seat: id, slot: ballot });
+	});
+	const slot = (id: string, start: number): RescheduleProposal => ({
+		id,
+		start,
+		end: start + HOUR_MS,
+		proposedBy: HOST,
+		proposedByRole: "host",
+		proposedAt: SITTING - 48 * HOUR_MS,
+		approved: true,
+		note: null,
+		votes: ballots.filter((b) => b.slot === id).map((b) => ({
+			name: b.seat,
+			avatar: null,
+			handle: null,
+			attendeeId: b.seat,
+			at: SITTING - 24 * HOUR_MS,
+		})),
+	});
+	return {
+		roster,
+		round: {
+			mode: "vote",
+			status: "voting",
+			openedBy: HOST,
+			openedAt: SITTING - 48 * HOUR_MS,
+			proposals: [slot("A", SITTING + 48 * HOUR_MS), slot("B", SITTING + 72 * HOUR_MS)],
+			resolvesAt: null,
+			resolvedProposalId: null,
+			round: 0,
+		},
+	};
+}
+
+/** How a round came to rest, in the fixtures' vocabulary. */
+const outcome = (r: EventReschedule) =>
+	r.status === "resolved" ? `resolved:${r.resolvedProposalId}` : r.status;
+
+Deno.test("the vote sweep counts the voters eligibleVoterCount counts, and only their ballots", () => {
+	const body = flat(functionBody(read(FN_SQL), "scheduling.fn_settle_votes"));
+	const seat = [
+		"a.event_id = r.event_id",
+		"a.archived_at IS NULL",
+		"a.user_id IS NOT NULL",
+		"a.role <> 'host'::scheduling.attendee_role",
+	];
+	const electorate = body.match(
+		/SELECT count\(\*\)::integer INTO v_voters FROM scheduling\.event_attendees a WHERE (.+?);/,
+	);
+	assert(electorate, "fn_settle_votes no longer counts its electorate");
+	for (const term of seat) assertStringIncludes(electorate[1], term);
+	assert(!electorate[1].includes("'optional'"), "an optional seat is a voter");
+	const ballots = body.match(
+		/FROM scheduling\.proposal_votes v JOIN scheduling\.event_attendees a ON a\.id = v\.attendee_id WHERE (.+?) \) t/,
+	);
+	assert(ballots, "fn_settle_votes no longer counts a ballot by the seat that cast it");
+	for (const term of ["v.proposal_id = p.id", ...seat]) assertStringIncludes(ballots[1], term);
+	// The read path drops the same ballots before it settles, so both count one electorate.
+	assertStringIncludes(read(READER_TS), "votesOfVoters(proposals, roster)");
+});
+
+Deno.test("the vote sweep carries a slot at voteQuorum: strictly more than half", () => {
+	const body = flat(functionBody(read(FN_SQL), "scheduling.fn_settle_votes"));
+	const carry = body.match(/IF v_winner IS NOT NULL AND (\w+) \* (\d+) > (\w+) THEN/);
+	assert(carry, "fn_settle_votes no longer states its majority as `votes * 2 > voters`");
+	const [, votes, factor, voters] = carry;
+	assertEquals([votes, voters], ["v_top", "v_voters"]);
+	// The SQL's arithmetic, run beside the TypeScript threshold over every electorate up to 60.
+	for (let n = 0; n <= 60; n++) {
+		for (let k = 0; k <= n; k++) {
+			assertEquals(k * Number(factor) > n, k >= voteQuorum(n), `${k} of ${n}`);
+		}
+	}
+});
+
+Deno.test("the vote sweep's leader is voteTally's, drawn from the ballot isProposalOnBallot draws", () => {
+	const body = flat(functionBody(read(FN_SQL), "scheduling.fn_settle_votes"));
+	assertStringIncludes(body, "AND (p.proposed_by_role = 'host' OR p.approved)");
+	assertStringIncludes(body, "ORDER BY t.votes DESC, p.starts_at, p.id LIMIT 1;");
+});
+
+Deno.test("the vote sweep takes what settleVote settles, past fn_vote_deadline, under the round lock", () => {
+	const raw = functionBody(read(FN_SQL), "scheduling.fn_settle_votes");
+	const body = flat(raw);
+	// Every argument has a default, because the job calls it bare; the job's row names it exactly.
+	assertStringIncludes(
+		body,
+		"p_now timestamptz DEFAULT pg_catalog.now(), p_limit integer DEFAULT 200 )",
+	);
+	assertStringIncludes(
+		read("supabase/migrations/00005060_seed_scheduled_jobs.sql"),
+		"'SELECT scheduling.fn_settle_votes();'",
+	);
+	assertStringIncludes(body, "SECURITY DEFINER SET search_path = ''");
+	// A live vote only, past the deadline the read path judges by, or on an empty ballot.
+	assertStringIncludes(
+		body,
+		"WHERE x.mode = 'vote' AND x.status = 'voting' AND COALESCE(scheduling.fn_vote_deadline(x.id) <= p_now, true)",
+	);
+	assertStringIncludes(
+		body,
+		"LIMIT GREATEST(COALESCE(p_limit, 200), 1) FOR UPDATE OF x SKIP LOCKED",
+	);
+	// Re-checked under the lock, then closed through the read path's own door.
+	assert(raw.indexOf("FOR UPDATE OF x SKIP LOCKED") < raw.indexOf("INTO v_status, v_mode"));
+	assertStringIncludes(
+		body,
+		"CONTINUE WHEN v_status IS DISTINCT FROM 'voting' OR v_mode IS DISTINCT FROM 'vote' OR v_deadline > p_now;",
+	);
+	assertStringIncludes(
+		body,
+		"scheduling.close_reschedule_round( r.id, 'resolved', v_winner, NULL,",
+	);
+	assertStringIncludes(body, "scheduling.close_reschedule_round( r.id, 'lapsed', NULL, NULL,");
+	// A failure is logged in the scheduler's shape, and the run goes on.
+	assertStringIncludes(body, "'scheduling-settle-votes', 'settle_failed', 'error',");
+});
+
+Deno.test("the vote sweep writes the read path's own history line", () => {
+	const body = functionBody(read(FN_SQL), "scheduling.fn_settle_votes");
+	const reader = read(READER_TS);
+	for (
+		const words of [
+			"Vote closed without a majority",
+			"The original time stands.",
+			"Carried by a majority of the attendees.",
+		]
+	) {
+		assertStringIncludes(reader, `"${words}"`);
+		assertStringIncludes(body, `'${words}'`);
+	}
+	assertStringIncludes(reader, "`Moved to ${slotLabel(winner.start, tz)}`");
+	assertStringIncludes(body, "'Moved to ' || scheduling.fn_slot_label(v_start, v_tz)");
+	const fallback = reader.match(/const FALLBACK_TZ = "([^"]+)";/);
+	assert(fallback, "the read path no longer names its fallback zone");
+	assertStringIncludes(body, `'${fallback[1]}'`);
+});
+
+Deno.test("settleVote settles every settle_votes.sql fixture the way the SQL sweep must", () => {
+	const fixtures = contractFixtures();
+	assert(fixtures.length >= 10, `only ${fixtures.length} contract fixtures`);
+	const discriminating = ["guest_ballots", "withdrawn_ballot", "host_ballot"];
+	for (const name of discriminating) {
+		assert(fixtures.some((f) => f.name === name), `${name} is no longer a fixture`);
+	}
+	for (const f of fixtures) {
+		const { roster, round } = assemble(f);
+		const counted = { ...round, proposals: votesOfVoters(round.proposals, roster) };
+		const settled = settleVote(PAST_DEADLINE, counted, eligibleVoterCount(roster), SITTING);
+		assertEquals(outcome(settled), f.expect, f.name);
+		if (discriminating.includes(f.name)) {
+			// Each of these comes out differently if a ballot from outside the electorate is counted.
+			const naive = settleVote(PAST_DEADLINE, round, eligibleVoterCount(roster), SITTING);
+			assertNotEquals(outcome(naive), f.expect, `${f.name} tells the two countings apart`);
+		}
+	}
+});
+// #endregion
