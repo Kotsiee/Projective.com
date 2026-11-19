@@ -1045,7 +1045,7 @@ ACCEPTANCE:
 
 ### SCH-WP7 — Windows: the money window, the grace and the provider's move
 
-> **Status 2026-11-19:** step 7 landed in OPS2 (Decision #513): `scheduling.fn_settle_votes` reads
+> **Status 2026-11-19:** step 7 landed in OPS2 (`dd1ee9a2`, Decision #513): `scheduling.fn_settle_votes` reads
 > `fn_vote_deadline`, so step 2's money window flows into it with no change there; extend
 > `settle_votes.sql` with one money-bearing round. Steps 1–6 and 8–11 remain.
 >
