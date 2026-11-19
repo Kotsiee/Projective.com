@@ -74,6 +74,7 @@ export type MockDomain =
 	| "profile"
 	| "projects"
 	| "quotes"
+	| "reviews"
 	| "saved"
 	| "scheduling"
 	| "search"
@@ -505,6 +506,22 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		schemas: ["marketplace", "org"],
 		description:
 			"Custom quote requests and the host's priced offers, each a marketplace door run as the caller.",
+	},
+	reviews: {
+		domain: "reviews",
+		label: "Reviews & replies",
+		gate: "EXPLORE_BACKEND_LIVE",
+		liveImplemented: true,
+		fixtureRoad: false,
+		gated: [
+			"what a person may review on a project, and what they may do to a review on a list (off: nothing)",
+			"writing, editing and withdrawing a review, and the target's one reply (off: 503)",
+		],
+		ungated: [],
+		modules: [],
+		schemas: ["reviews"],
+		description:
+			"Two-sided reviews through the reviews.* definers as the signed-in person (Decision #487). Off, the reads answer nothing to review and the writes refuse: there is no fixture world of engagements to anchor a review on.",
 	},
 	saved: {
 		domain: "saved",
