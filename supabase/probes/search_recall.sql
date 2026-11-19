@@ -204,13 +204,16 @@ BEGIN
 END $$;
 -- #endregion
 
--- #region The dead search definers are gone (Q0.2 (f); #340 (E); SEC G11)
+-- #region The dead search functions are gone (Q0.2 (f); #340 (E); SEC G11; RED D-29)
 DO $$
 BEGIN
     PERFORM pg_temp.check('search.fn_search_entities is deleted',
         to_regproc('search.fn_search_entities') IS NULL, 'it still exists');
     PERFORM pg_temp.check('search.fn_search_global is deleted',
         to_regproc('search.fn_search_global') IS NULL, 'it still exists');
+    -- Its only caller was fn_search_entities; the app clamps in ranking.ts.
+    PERFORM pg_temp.check('search.fn_norm is deleted',
+        to_regproc('search.fn_norm') IS NULL, 'it still exists');
 END $$;
 -- #endregion
 

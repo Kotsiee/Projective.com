@@ -112,7 +112,7 @@ export const PRIOR_REVIEWS = 5;
 /** The review count at which volume stops adding (the curve is logarithmic up to it). */
 export const VOLUME_SATURATION = 50;
 
-/** The penalty severity at which the trust penalty bites in full — `search.fn_norm`'s cap for it. */
+/** The penalty severity at which the trust penalty bites in full; the score clamps to it. */
 export const PENALTY_CAP = 10;
 
 /**

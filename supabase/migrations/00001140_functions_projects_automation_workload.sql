@@ -184,8 +184,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, securit
 -- #endregion
 
 -- #region 3. Denormalized workload counter (keeps search ranking + gauge defaults fresh)
--- org.freelancer_profiles.current_workload_intensity is the running counter search.fn_norm reads for
--- workload-aware ranking (0010/0220). Recompute it from the live sum of a freelancer's active-ticket
+-- org.freelancer_profiles.current_workload_intensity is the running counter the discovery ranking's
+-- workload term reads through search.profiles_index (ranking.ts). Recompute it from the live sum of a freelancer's active-ticket
 -- W_i whenever their assignment, status, or a ticket's intensity changes. Rounds to the integer
 -- counter column; the authoritative (numeric) figure for caps/gauges comes from the RPCs below.
 -- The same change re-sums the search row of every team either holder is an active member of

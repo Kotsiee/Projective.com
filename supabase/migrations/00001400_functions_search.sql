@@ -392,11 +392,6 @@ AS $$
   SELECT EXISTS (SELECT 1 FROM ops.admin_users WHERE user_id = p_user_id);
 $$;
 
-CREATE OR REPLACE FUNCTION search.fn_norm(p_val double precision, p_cap double precision)
-RETURNS numeric LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
-  SELECT least(greatest(coalesce(p_val, 0), 0) / nullif(p_cap, 0), 1.0)::numeric;
-$$;
-
 -- -----------------------------------------------------------------------------
 -- fn_log_query — write search execution telemetry (guest-safe). The row is the
 -- caller's: auth.uid(), NULL for a guest. It takes no user id, so nobody can log a

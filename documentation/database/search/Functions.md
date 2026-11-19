@@ -4,8 +4,8 @@
 `PUBLIC`, `anon` and `authenticated` on every function here and `00002500` closes the default for
 functions created later, so a client role holds only what `00002510` grants by name. `anon` may
 execute only `search.fn_log_query`, `search.fn_nearest`, `search.fn_nearest_to_entity`,
-`search.fn_norm`, `search.ranking_weights`, `search.trending_entities`. The full allowlist, one
-reason per line, is in `supabase/probes/function_grants.sql`.
+`search.ranking_weights`, `search.trending_entities`. The full allowlist, one reason per line, is in
+`supabase/probes/function_grants.sql`.
 
 Declared in `00001400_functions_search.sql`; the triggers that fire them are in
 `00001800_triggers_core_search.sql`. Tables: [Tables.md](Tables.md) · Policies:
@@ -14,11 +14,12 @@ Declared in `00001400_functions_search.sql`; the triggers that fire them are in
 Documented here: the **index-sync triggers**, `fn_log_query`, the **discovery-signal** functions
 (`ranking_weights`, `trending_entities`, `record_view`) and the **embedding** functions
 (`fn_set_embedding`, `fn_nearest`, `fn_nearest_to_entity` — Decision #179). The other query and
-admin RPCs (`fn_search_analytics`, `fn_get_weights`, `fn_set_weight`, `fn_norm`, `is_admin`) are not
-yet written up. `fn_mock_embedding` is deleted, and so are `fn_search_entities` and
-`fn_search_global` (Decision #340, Q0.2 (f)): uncalled definers that joined `org.users_public` and
-`projects.projects` past their RLS (SECURITY_MODERATION_AND_AI_GAPS E5, G11). Discovery ranks in the
-app (`ExploreBackendService`); `fn_norm`'s only caller was `fn_search_entities`.
+admin RPCs (`fn_search_analytics`, `fn_get_weights`, `fn_set_weight`, `is_admin`) are not yet
+written up. `fn_mock_embedding` is deleted, and so are `fn_search_entities` and `fn_search_global`
+(Decision #340, Q0.2 (f)): uncalled definers that joined `org.users_public` and `projects.projects`
+past their RLS (SECURITY_MODERATION_AND_AI_GAPS E5, G11). Discovery ranks in the app
+(`ExploreBackendService`). `fn_norm`, whose only caller was `fn_search_entities`, is deleted too
+(COMMS SR1); the app clamps its own factors (`ranking.ts`).
 
 `search.is_admin(p_user_id uuid DEFAULT auth.uid())` answers for any user id it is handed, so no
 client role executes it (Decision #477, PRD-C6). Its callers are the three weight and analytics

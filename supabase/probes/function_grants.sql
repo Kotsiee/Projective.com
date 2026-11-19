@@ -136,7 +136,6 @@ INSERT INTO probe_anon_allow VALUES
     ('search.fn_log_query',                                   'guest /explore search telemetry; logs only as auth.uid() (#462)'),
     ('search.fn_nearest(public.vector,text[],uuid[],integer)', 'explore: ids and scores over public index rows'),
     ('search.fn_nearest_to_entity(text,uuid,text[],uuid[],integer)', 'explore: ids and scores over public index rows'),
-    ('search.fn_norm(double precision,double precision)',     'pure arithmetic over its two arguments; reads nothing'),
     ('search.ranking_weights()',                              'the guest catalogue''s ranking coefficients'),
     ('search.trending_entities(integer,integer)',             'k-anonymous trending aggregates for the guest catalogue'),
     ('security.is_admin()',                                   'about auth.uid() only; storage, scheduling and search policies');
