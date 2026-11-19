@@ -147,8 +147,8 @@ service_role;
 -- Nothing in the application truncates as `authenticated`; truncation is a
 -- maintenance act and belongs to the service role, which is unaffected.
 --
--- SCOPE, unchanged: `public`, `files`, `marketplace` and `reviews` still
--- carry the same `GRANT ALL` pattern and are recorded in
+-- SCOPE, unchanged: `public`, `files` and `marketplace` still
+-- carry the same `GRANT ALL` pattern (`reviews` lost it to Decision #487) and are recorded in
 -- documentation/architecture/READ_API_FINDINGS.md for a human, since a
 -- platform-wide privilege change deserves its own review.
 
@@ -199,11 +199,10 @@ GRANT ALL ON ALL TABLES IN SCHEMA marketplace TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA marketplace TO anon,
 authenticated;
 
+-- Usage only. A review is written through the doors in 00001670 and nothing else (Decision #487,
+-- closing #83's reviews half): 00002520 grants SELECT on reviews.entity_reviews by name, and no
+-- client role holds a write privilege on any table in the schema.
 GRANT USAGE ON SCHEMA reviews TO anon, authenticated;
-
-GRANT ALL ON ALL TABLES IN SCHEMA reviews TO anon, authenticated;
-
-GRANT ALL ON ALL SEQUENCES IN SCHEMA reviews TO anon, authenticated;
 
 
 -- --- from 0205_security.sql ---
@@ -330,10 +329,10 @@ GRANT USAGE ON SCHEMA finance TO anon, authenticated, service_role;
 -- write privilege reaches `anon` here.
 GRANT USAGE ON SCHEMA projects TO anon;
 
--- TRUNCATE is not row-level, so RLS does not bound it (Decision #83). `marketplace` and `reviews` are
--- `GRANT ALL` to both client roles, which included TRUNCATE; exposing both to PostgREST is what makes
--- that worth closing. PostgREST never issues TRUNCATE, so this is defence in depth — but it is the
--- only thing between a leaked session and an empty review table if anything else ever does.
+-- TRUNCATE is not row-level, so RLS does not bound it (Decision #83). `marketplace` is `GRANT ALL` to
+-- both client roles, which included TRUNCATE; exposing it to PostgREST is what makes that worth
+-- closing. PostgREST never issues TRUNCATE, so this is defence in depth. `reviews` grants clients
+-- SELECT alone since Decision #487; its revokes stay so a table added there never acquires TRUNCATE.
 REVOKE TRUNCATE ON ALL TABLES IN SCHEMA marketplace FROM anon, authenticated;
 
 REVOKE TRUNCATE ON ALL TABLES IN SCHEMA reviews FROM anon, authenticated;

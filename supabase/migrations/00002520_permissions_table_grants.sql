@@ -871,6 +871,15 @@ GRANT SELECT ON TABLE files.items TO anon;
 -- them (00002011): the write path is the SECURITY DEFINER trigger and the fat backend, full stop.
 
 
+-- --- reviews: read by anyone, written through the doors only (Decision #487) ---
+--
+-- SELECT on the reviews themselves; the policy (00002018) shows visible rows only. No client role
+-- writes: every write is a definer in 00001670. The reminder ledger is the reminder job's alone.
+GRANT SELECT ON TABLE reviews.entity_reviews TO anon, authenticated;
+
+GRANT ALL ON ALL TABLES IN SCHEMA reviews TO service_role;
+
+
 -- --- catalogue: the seller publication layer (discovery reads it live, 2026-09-22) ---
 --
 -- SELECT to both client roles on every table; row-level visibility is 00002020's job ("published is

@@ -665,6 +665,7 @@ AS $$
                        r.reply_comment, r.replied_at, r.created_at
                   FROM reviews.entity_reviews r
                  WHERE r.target_entity_type IN ('user', 'freelancer') AND r.target_entity_id = p_user
+                   AND r.is_visible
                 UNION ALL
                 SELECT r.id, 'listing', l.title, r.rating, r.title, r.comment, r.reply_comment, r.replied_at, r.created_at
                   FROM catalogue.listings l
@@ -672,6 +673,7 @@ AS $$
                     ON (r.target_entity_type = 'service_blueprint' AND r.target_entity_id = l.service_blueprint_id)
                     OR (r.target_entity_type = 'product' AND r.target_entity_id = l.product_id)
                  WHERE l.owner_user_id = p_user AND l.owner_team_id IS NULL
+                   AND r.is_visible
               ) x));
 $$;
 

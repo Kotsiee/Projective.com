@@ -317,7 +317,7 @@ BEGIN
     v_again := pg_temp.door(pg_temp.s('buyer'), pg_temp.pay_sql(pg_temp.s('line'), 90000, 'probe-ck7-pay'));
     PERFORM pg_temp.check((v_again ->> 'replayed')::boolean AND v_again ->> 'order_id' = current_setting('probe.order')
         AND (SELECT count(*) FROM projects.projects WHERE source_blueprint_id = pg_temp.s('oneoff')
-               AND client_user_id = pg_temp.s('buyer')) = 1,
+               AND client_user_id = pg_temp.s('buyer') AND created_at >= now()) = 1,
         '4 a replayed key returns the same order and no second engagement');
 END $$;
 -- #endregion

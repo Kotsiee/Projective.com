@@ -594,7 +594,9 @@ $$;
 -- Reviews the profile RECEIVED, newest first. An individual is reviewed on two tracks: as a
 -- freelancer (by clients) and as a client (by freelancers), and `author_role` records the AUTHOR's
 -- side so the app can filter by stance. The engagement title is disclosed only when that project is
--- itself public — a review may be public while the work it was about is confidential.
+-- itself public — a review may be public while the work it was about is confidential. The listing
+-- the engagement was bought from is public by definition and always named. Only visible reviews are
+-- read (Decision #487): a withdrawn or hidden one leaves the profile with its reply.
 CREATE OR REPLACE FUNCTION org.get_profile_reviews(p_handle text, p_limit integer DEFAULT 60)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -625,11 +627,19 @@ BEGIN
                 up.username AS author_handle,
                 NULLIF(btrim(concat_ws(' ', up.first_name, up.last_name)), '') AS author_name,
                 files.fn_public_media_ref (up.avatar_file_id) AS author_avatar,
-                CASE WHEN p.visibility = 'public' THEN p.title END AS context_title
+                CASE WHEN p.visibility = 'public' THEN p.title END AS context_title,
+                sb.title AS listing_title,
+                sb.slug AS listing_slug,
+                rv.reply_comment,
+                rv.replied_at,
+                rv.reply_edited_at,
+                rv.edited_at
             FROM reviews.entity_reviews rv
             JOIN org.users_public up ON up.user_id = rv.reviewer_user_id
             LEFT JOIN projects.projects p ON p.id = rv.project_id
+            LEFT JOIN marketplace.service_blueprints sb ON sb.id = rv.service_blueprint_id
             WHERE rv.target_entity_id = v_id
+              AND rv.is_visible
               AND (
                   (v_type = 'user' AND rv.target_entity_type IN ('user', 'freelancer'))
                   OR (v_type = 'team' AND rv.target_entity_type = 'team')

@@ -1,20 +1,30 @@
 /**
- * reviews.ts — the reviews buyers have left on seeded LISTINGS (services and digital products).
+ * reviews.ts — the reviews buyers have left on seeded LISTINGS, each on the purchase that proves it.
  *
- * Seed content, authored. Each row becomes a `reviews.entity_reviews` row targeting the listing's
- * subject — a `service_blueprint` or a `product` — and the rating trigger derives every average and
- * count the cards and listing pages print from these rows, so no rating anywhere is typed by hand.
+ * Seed content, authored. Under Decision #487 a review is written only on an ANCHOR the buyer
+ * completed, so every service review here is emitted by `emit-reviews.ts` together with its anchor:
+ * a completed engagement bought from the listing (a Pipeline, One-Off or Deliverable), or a completed
+ * cohort membership with one completed sitting (a Session or Group session). The review targets the
+ * listing's PROVIDER (the freelancer or the team) and carries the listing it came from, so the rating
+ * trigger derives the provider's average and the listing's average from the same rows.
  *
  * Reviewer keys are `world.ts` persona keys. The generator REFUSES a review written by the listing's
  * owner or by a member of the owning team: a self-review is not a review, and a seed that carries one
  * teaches every screen to render a lie as though it were data.
  *
- * `comment` must clear the table's 100-character floor (`entity_reviews_comment_check`).
+ * `comment` must clear the table's 100-character floor; a reply is 1–1,000 characters.
  */
 
-/** `[reviewer persona key, rating 1–5, title, comment, days ago]`. */
-export type ListingReview = [string, number, string, string, number];
+/** The provider's one public reply, `daysAgo` before the reset. */
+export interface ListingReply {
+	body: string;
+	daysAgo: number;
+}
 
+/** `[reviewer persona key, rating 1–5, title, comment, days ago, the provider's reply?]`. */
+export type ListingReview = [string, number, string, string, number, ListingReply?];
+
+/** Every service listing's reviews, keyed by corpus key. */
 export const LISTING_REVIEWS: Record<string, ListingReview[]> = {
 	// #region Services
 	"sv-brand-identity-sprint": [
@@ -61,6 +71,11 @@ export const LISTING_REVIEWS: Record<string, ListingReview[]> = {
 			"Excellent on tokens, thorough on docs",
 			"The token work is excellent and the documentation is the best we have received from a contractor. The component review stage ran a few days long, but the delay was communicated early and handled well.",
 			66,
+			{
+				body:
+					"Thank you for the patience on the component review stage. Two components needed a second accessibility pass, and I would rather ship a few days late than ship them wrong.",
+				daysAgo: 64,
+			},
 		],
 	],
 	"sv-landing-page-in-a-week": [
@@ -77,6 +92,11 @@ export const LISTING_REVIEWS: Record<string, ListingReview[]> = {
 			"Fast turnaround and a clean build",
 			"The build scored well on performance from day one and the copy pass tightened our messaging considerably. We needed one small layout fix after launch, which was turned around within a day of asking.",
 			44,
+			{
+				body:
+					"Thank you, Miguel. The layout fix was on us: a breakpoint we missed on the pricing table. It is now in the checklist every landing page goes through before it ships.",
+				daysAgo: 43,
+			},
 		],
 	],
 	"sv-realtime-mvp-build": [
@@ -183,8 +203,15 @@ export const LISTING_REVIEWS: Record<string, ListingReview[]> = {
 		],
 	],
 	// #endregion
+};
 
-	// #region Products
+/**
+ * The product reviews, held out of the seed until CK1 records a delivery (Decision #487 ruling 5:
+ * a product review needs an entitlement delivered at least once). CK1's seed anchors each on the
+ * order line that bought it and emits it; until then nothing reads this table.
+ */
+export const PRODUCT_REVIEWS_AWAITING_DELIVERY: Record<string, ListingReview[]> = {
+	// #region Products (held until CK1)
 	"pr-aurora-ui-kit": [
 		[
 			"juno",
@@ -315,3 +342,13 @@ export const LISTING_REVIEWS: Record<string, ListingReview[]> = {
 	],
 	// #endregion
 };
+
+/**
+ * Completed engagements bought from a listing that nobody has reviewed yet: the live path's starting
+ * point (sign in as the client, review it from its Overview, then as the seller reply on `/view`).
+ */
+export const UNREVIEWED_ENGAGEMENTS: Array<
+	{ listing: string; client: string; completedDaysAgo: number }
+> = [
+	{ listing: "sv-landing-page-in-a-week", client: "noor", completedDaysAgo: 2 },
+];

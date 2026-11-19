@@ -46,21 +46,22 @@ WITH
 
 -- --- from 0216_reviews.sql ---
 
-CREATE POLICY "Reviews are globally visible" ON reviews.entity_reviews FOR
-SELECT TO public USING (true);
+-- Every visible review is public: a withdrawn or operator-hidden one is kept but read by no client,
+-- signed in or not (Decision #487). Its author still sees their own through reviews.get_reviewables.
+CREATE POLICY "Visible reviews are public" ON reviews.entity_reviews FOR
+SELECT TO public USING (is_visible);
 
--- NO CLIENT WRITE POLICY, on purpose. A review moves a public rating (the definer trigger
--- `reviews.recalculate_entity_rating` recomputes the target's average on every write), so the only
--- honest write path is one that proves the reviewer had an ENGAGEMENT with what they are reviewing —
--- bought the product, worked the project, was the client — and is not its owner. No table on the
--- platform records a product purchase yet (`finance.orders` is the deferred live path) and no review
--- flow exists in the app, so that check cannot be written today.
---
--- The previous policies allowed any signed-in user to write any number of reviews of anything with
--- `project_id` left NULL (the UNIQUE treats NULLs as distinct). They were dormant while `reviews`
--- was not exposed to the API; exposing it for the discovery reads would have made them live. Reviews
--- are written by the service role and the seed until the engagement-checked review RPC lands, and
--- that RPC adds its own policy (or runs as a definer) with the check inside it.
+-- NO CLIENT WRITE POLICY, and no client write privilege either (00002500 / 00002520): a review moves
+-- a public rating (the definer trigger `reviews.recalculate_entity_rating` recomputes the target's
+-- average on every write), so the only honest write path is one that proves the reviewer had an
+-- ENGAGEMENT with what they are reviewing and is not its owner. That path is the doors in 00001670 —
+-- submit_review, edit_review, withdraw_review, reply_to_review, edit_reply and hide_review — which
+-- check the anchor (a completed project or a released seat on it, a completed sitting or cohort
+-- membership, and, once CK1 records a delivery, the `finance.order_lines` row that bought a product).
+
+-- The one-reminder ledger (00000019) is the reminder job's alone: RLS on with no policy, and no
+-- client privilege (00002520).
+ALTER TABLE reviews.review_reminders ENABLE ROW LEVEL SECURITY;
 
 
 -- --- marketplace.promoted_placements: the paid-placement ledger ---

@@ -311,6 +311,17 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 
+-- #region [reviews] The review reminder (Decision #487, ruling 6)
+-- Once a day, at a minute no other job uses: each client party and attendee is asked once per anchor to
+-- review what they completed, three days after it opened, while its 30-day window is open. The asks
+-- are recorded in reviews.review_reminders, never on the sitting.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('reviews-reminders', 'sql', '21 9 * * *',
+        'SELECT reviews.fn_send_review_reminders();', NULL, NULL,
+        'Asks each client and attendee once per completed engagement or session to review it (review.reminder), three days after it completed and inside its 30-day window.')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
 -- #region [account] Personal data exports (Decision #450)
 -- Building a ZIP and removing an expired one go through the Storage API, so an http job on the
 -- erasure route's secret. Every 15 minutes, on minutes no other job uses; a run builds at most five

@@ -1494,26 +1494,9 @@ export const PROJECTS: ProjectSpec[] = [
 			},
 			{ channel: "s2", from: "miguel", body: "Looking now — thanks Samuel.", daysAgo: 1.8 },
 		],
-		reviews: [
-			{
-				from: "daniel",
-				target: "north",
-				rating: 4.8,
-				title: "Reliable, communicative, and the load test held",
-				comment:
-					"North Loop delivered the ingestion stage a week early and the replay design has already saved us once. Communication was proactive throughout and the handoff notes were the best we have received from an outside team.",
-				daysAgo: 19,
-			},
-			{
-				from: "kwame",
-				target: "atlas",
-				rating: 5.0,
-				title: "A client who reviews on time",
-				comment:
-					"Daniel reviewed every submission within a day, gave specific feedback, and released escrow the moment a stage was accepted. Atlas is exactly the kind of client a small studio wants to keep working with.",
-				daysAgo: 18,
-			},
-		],
+		// A running engagement: its completed stage opens no review (Decision #487 ruling 1), so the
+		// reviews its client and freelancer exchanged wait for the project to complete.
+		reviews: [],
 	},
 	{
 		key: "verdant-brand",
@@ -1864,26 +1847,9 @@ export const PROJECTS: ProjectSpec[] = [
 				daysAgo: 3,
 			},
 		],
-		reviews: [
-			{
-				from: "hannah",
-				target: "maris",
-				rating: 5.0,
-				title: "The token work engineering actually adopted",
-				comment:
-					"Maris delivered a token architecture our engineers adopted the same week, with a theming contract that made dark mode a configuration change rather than a project. Clear communication, on time, and thoughtful about accessibility throughout.",
-				daysAgo: 14,
-			},
-			{
-				from: "maris",
-				target: "helia",
-				rating: 4.7,
-				title: "Well-run, fast reviews",
-				comment:
-					"Helia is a well-run client: the brief was clear, reviews came back within two days, and payment was released promptly once a stage was accepted. Occasional scope creep in the details stage, but always negotiated in the open.",
-				daysAgo: 13,
-			},
-		],
+		// A running engagement: its completed stage opens no review (Decision #487 ruling 1), so the
+		// reviews its client and freelancer exchanged wait for the project to complete.
+		reviews: [],
 	},
 	{
 		key: "noor-site",
@@ -2611,11 +2577,12 @@ export const NOTIFICATIONS: NotificationSpec[] = [
 	{
 		to: "maris",
 		type: "review.received",
-		title: "Hannah Cole left you a 5-star review",
-		body: '"The token work engineering actually adopted"',
+		title: "You received a review",
+		body: "Priya Raman rated you 5 out of 5.",
 		daysAgo: 14,
 		read: true,
-		actor: "hannah",
+		actor: "priya",
+		actionUrl: "/@marisdelacroix/reviews",
 	},
 	{
 		to: "maris",
@@ -2694,15 +2661,6 @@ export const NOTIFICATIONS: NotificationSpec[] = [
 		read: true,
 		actor: "ines",
 		context: ["project", "verdant-brand"],
-	},
-	{
-		to: "priya",
-		type: "review.received",
-		title: "Maris Delacroix reviewed Helia Finance",
-		body: '"Well-run, fast reviews" — 4.7 stars',
-		daysAgo: 13,
-		read: false,
-		actor: "maris",
 	},
 	{
 		to: "juno",
@@ -2823,15 +2781,6 @@ export const NOTIFICATIONS: NotificationSpec[] = [
 	},
 	{
 		to: "daniel",
-		type: "review.received",
-		title: "Kwame Mensah reviewed Atlas Labs",
-		body: '"A client who reviews on time" — 5 stars',
-		daysAgo: 18,
-		read: true,
-		actor: "kwame",
-	},
-	{
-		to: "daniel",
 		type: "invoice.issued",
 		title: "Invoice from North Loop",
 		body: "Ingestion pipeline and warehouse schema — $15,000.00",
@@ -2873,11 +2822,12 @@ export const NOTIFICATIONS: NotificationSpec[] = [
 	{
 		to: "kwame",
 		type: "review.received",
-		title: "Daniel Okafor left North Loop a 4.8-star review",
-		body: '"Reliable, communicative, and the load test held"',
-		daysAgo: 19,
+		title: "You received a review",
+		body: "Daniel Okafor rated you 4.8 out of 5.",
+		daysAgo: 18,
 		read: true,
 		actor: "daniel",
+		actionUrl: "/@northloop/reviews",
 	},
 	{
 		to: "kwame",

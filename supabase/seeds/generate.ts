@@ -51,6 +51,7 @@ import { emitFinance } from "./gen/emit-finance.ts";
 import { emitIdentities } from "./gen/emit-identities.ts";
 import { emitProfiles } from "./gen/emit-profiles.ts";
 import { emitProjects } from "./gen/emit-projects.ts";
+import { emitReviews } from "./gen/emit-reviews.ts";
 import { emitScheduling } from "./gen/emit-scheduling.ts";
 import { buildWorld } from "./gen/resolve.ts";
 
@@ -64,6 +65,7 @@ const files: Array<[string, string]> = [
 	["04_marketplace.sql", emitMarketplace(world)],
 	["05_catalogue.sql", emitCatalogue(world)],
 	["06_projects.sql", emitProjects(world)],
+	["06_reviews.sql", emitReviews(world)],
 	["07_finance.sql", emitFinance(world)],
 	["08_comms.sql", emitComms(world)],
 	["08_scheduling.sql", emitScheduling(world)],

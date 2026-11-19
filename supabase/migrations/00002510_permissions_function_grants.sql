@@ -2493,6 +2493,24 @@ REVOKE ALL ON FUNCTION finance.sweep_disputes (timestamptz) FROM PUBLIC, anon, a
 GRANT EXECUTE ON FUNCTION finance.sweep_disputes (timestamptz) TO service_role;
 -- #endregion
 
+-- #region Reviews (00001670, Decision #487)
+-- The doors and the two reads are the signed-in caller's; each checks the anchor, the party and the
+-- window itself, and hide_review refuses anyone but an operator (42501). Every helper they call
+-- (fn_engagement_targets, fn_session_targets, fn_is_own_target, fn_can_answer, fn_answerers,
+-- fn_notify_received, fn_authored, fn_answerable, fn_target_card, fn_recount_rating) is granted to no
+-- client: it runs as its owner inside a door. The reminder job is the service role's and pg_cron's.
+GRANT EXECUTE ON FUNCTION reviews.submit_review (text, uuid, reviews.review_target_type, uuid, numeric, text, text)
+TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.edit_review (uuid, numeric, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.withdraw_review (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.reply_to_review (uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.edit_reply (uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.hide_review (uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.get_reviewables (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.get_review_actions (uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.fn_send_review_reminders (timestamptz) TO service_role;
+-- #endregion
+
 -- #region ops — the job registry (00001650, Decision #203)
 -- `ops` is exposed to PostgREST for ops.log_entries, so each of these would otherwise be an RPC. Only
 -- the manual-run door is reachable, and only by the service role (`deno task cron:run`); pg_cron runs

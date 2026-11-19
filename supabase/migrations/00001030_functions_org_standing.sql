@@ -511,6 +511,7 @@ BEGIN
         SELECT 1 FROM reviews.entity_reviews r
         WHERE r.target_entity_id = p_subject_id
           AND r.target_entity_type = p_subject_type::text::reviews.review_target_type
+          AND r.is_visible
           AND r.rating < 5
     );
 

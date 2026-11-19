@@ -125,3 +125,10 @@ CREATE OR REPLACE TRIGGER trg_sync_workload_intensity
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_sync_workload_intensity();
 
+
+-- A seat's end is stamped on the move into an ended status (Decision #487): the clock a review of a
+-- provider who left mid-engagement counts 30 days from. Function in 00001670.
+CREATE OR REPLACE TRIGGER trg_stage_assignment_ended_at
+    BEFORE INSERT OR UPDATE ON projects.stage_assignments
+    FOR EACH ROW
+    EXECUTE FUNCTION projects.trg_stage_assignment_ended_at();

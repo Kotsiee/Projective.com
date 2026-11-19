@@ -1453,8 +1453,9 @@ AS $$
                     AND bi.item_type IN ('service_ticket', 'one_off_service', 'single_service_task',
                                          'service_session', 'set_session', 'course_group_session'))
               + (SELECT count(*) FROM reviews.entity_reviews r
-                  WHERE r.target_entity_id = l.service_blueprint_id
-                    AND r.target_entity_type = 'service_blueprint')
+                  WHERE (r.target_entity_id = l.service_blueprint_id
+                         AND r.target_entity_type = 'service_blueprint')
+                     OR r.service_blueprint_id = l.service_blueprint_id)
               + (SELECT count(*) FROM marketplace.promoted_placements pp
                   WHERE pp.entity_type = 'service' AND pp.entity_id = l.service_blueprint_id)
             ELSE

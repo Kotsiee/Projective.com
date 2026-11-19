@@ -15,10 +15,9 @@ import {
 	PRODUCTS,
 	SERVICES,
 } from "./corpus.ts";
-import { LISTING_REVIEWS } from "./reviews.ts";
 import { ago, ahead, arr, HEADER, id, insert, jsonb, num, q, slugFor, uuidFor } from "./sql.ts";
 import type { Asset, Principal, World } from "./resolve.ts";
-import { ENTITIES, SALE_FILES, SKILLS } from "./world.ts";
+import { SALE_FILES, SKILLS } from "./world.ts";
 
 // #region Helpers
 
@@ -32,28 +31,6 @@ function ownerOf(world: World, handle: string): Principal {
 	const principal = world.principals.get(handle);
 	if (!principal) throw new Error(`catalogue: no principal owns "${handle}"`);
 	return principal;
-}
-
-/** Persona keys that may NOT review a listing owned by `handle`: its owner and the owning team. */
-function conflictedReviewers(world: World, handle: string): Set<string> {
-	const owner = ownerOf(world, handle);
-	const out = new Set<string>();
-	for (const p of world.personas.values()) {
-		if (p.userId === owner.accountUserId) out.add(p.key);
-	}
-	if (owner.entityKey) {
-		const entity = ENTITIES.find((e) => e.key === owner.entityKey);
-		for (const m of entity?.members ?? []) out.add(m.persona);
-		if (entity) out.add(entity.owner);
-	}
-	return out;
-}
-
-/** Persona key → user id, refusing an unknown key at generate time rather than at reset time. */
-function reviewerId(world: World, key: string): string {
-	const persona = world.personas.get(key);
-	if (!persona) throw new Error(`catalogue: unknown reviewer persona "${key}"`);
-	return persona.userId;
 }
 
 /** The skill vocabulary seeded into `org.skills` (`world.ts` SKILLS); every listing skill must name one. */
@@ -590,55 +567,7 @@ export function emitCatalogue(world: World): string {
 	out.push(insert("catalogue.listing_tags", ["listing_id", "tag"], tagRows, "(listing_id, tag)"));
 	// #endregion
 
-	// #region Reviews
-	// The rating trigger (`reviews.recalculate_entity_rating`) recomputes each subject's average and
-	// count as these land, so the numbers every card prints are derived from these rows.
-	const reviewRows: string[][] = [];
-	const addReviews = (key: string, handle: string, targetId: string, targetType: string) => {
-		const barred = conflictedReviewers(world, handle);
-		for (const [reviewer, rating, title, comment, daysAgo] of LISTING_REVIEWS[key] ?? []) {
-			if (barred.has(reviewer)) {
-				throw new Error(`catalogue: ${reviewer} may not review ${key} — they own or staff it`);
-			}
-			if (comment.trim().length < 100) {
-				throw new Error(`catalogue: review of ${key} by ${reviewer} is under 100 characters`);
-			}
-			reviewRows.push([
-				id(uuidFor("listing_review", `${key}:${reviewer}`)),
-				id(targetId),
-				q(targetType),
-				id(reviewerId(world, reviewer)),
-				"NULL",
-				rating.toFixed(2),
-				q(title),
-				q(comment),
-				ago(daysAgo),
-				ago(daysAgo),
-			]);
-		}
-	};
-	for (const s of SERVICES) addReviews(s.key, s.owner, world.serviceId(s.key), "service_blueprint");
-	for (const p of PRODUCTS) addReviews(p.key, p.owner, world.productId(p.key), "product");
-
-	out.push(
-		insert(
-			"reviews.entity_reviews",
-			[
-				"id",
-				"target_entity_id",
-				"target_entity_type",
-				"reviewer_user_id",
-				"project_id",
-				"rating",
-				"title",
-				"comment",
-				"created_at",
-				"updated_at",
-			],
-			reviewRows,
-		),
-	);
-	// #endregion
+	// Reviews are emitted with their anchors in 06_reviews.sql (emit-reviews.ts, Decision #487).
 
 	// #region Promoted placements
 	// One live plan-allocated flight per sponsored listing, as marketplace.promote_listing writes it

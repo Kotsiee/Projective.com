@@ -609,46 +609,7 @@ export function emitProjects(world: World): string {
 	);
 	// #endregion
 
-	// #region Reviews (dual-track: a client reviews the freelancer/team, the freelancer reviews the client)
-	const reviewRows: string[][] = [];
-	for (const p of projects) {
-		for (const rv of p.reviews) {
-			const target = party(world, rv.target);
-			const targetType = target.kind === "user" ? "freelancer" : target.kind;
-			const targetId = target.kind === "user" ? target.persona.userId : target.entity.entityId;
-			reviewRows.push([
-				id(uuidFor("review", `${p.key}:${rv.from}:${rv.target}`)),
-				id(targetId),
-				q(targetType),
-				id(persona(world, rv.from).userId),
-				id(p.projectId),
-				rv.rating.toFixed(2),
-				q(rv.title),
-				q(rv.comment),
-				ago(rv.daysAgo),
-				ago(rv.daysAgo),
-			]);
-		}
-	}
-	out.push(
-		insert(
-			"reviews.entity_reviews",
-			[
-				"id",
-				"target_entity_id",
-				"target_entity_type",
-				"reviewer_user_id",
-				"project_id",
-				"rating",
-				"title",
-				"comment",
-				"created_at",
-				"updated_at",
-			],
-			reviewRows,
-		),
-	);
-	// #endregion
+	// A project's reviews are emitted with their anchors in 06_reviews.sql (emit-reviews.ts).
 
 	return out.join("\n");
 }

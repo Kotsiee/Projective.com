@@ -4169,6 +4169,7 @@ BEGIN
                       FROM reviews.entity_reviews r
                       JOIN projects.projects rp ON rp.id = r.project_id
                      WHERE rp.client_business_id = v_business
+                       AND r.is_visible
                        AND r.target_entity_id = g.party_id
                        AND r.target_entity_type::text = ANY (CASE WHEN g.kind = 'team' THEN ARRAY['team']
                                                                 ELSE ARRAY['freelancer', 'user'] END)

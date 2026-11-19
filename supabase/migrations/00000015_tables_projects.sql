@@ -608,6 +608,10 @@ CREATE TABLE projects.stage_assignments (
     assigned_by uuid NOT NULL,
     is_client_managed boolean NOT NULL DEFAULT false,
     status text NOT NULL,
+    -- When the seat ended (`completed`, `released` or `cancelled`), stamped by
+    -- projects.trg_stage_assignment_ended_at (00001850) on the move, never written by a client. A
+    -- review of a provider who left mid-engagement opens here (Decision #487).
+    ended_at timestamptz,
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
