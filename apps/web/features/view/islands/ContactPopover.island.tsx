@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { useComputed, useSignal } from "@preact/signals";
-import { Popover } from "@projective/ui/feedback";
+import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Avatar } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import "../styles/service-booking.css";
@@ -58,10 +58,11 @@ import { Textarea } from "@projective/ui/fields";
 export interface ContactPopoverProps {
 	offer: ServiceBookingOffer;
 	/**
-	 * A compact ghost control in the lane, a full-width one in the mobile buy bar, or an icon-only
-	 * filled button in the condensed header band.
+	 * A compact ghost control in the lane, a full-width one in the mobile buy bar, or the condensed
+	 * header band's small ghost button (glyph + "Contact me"), which sits before the band's primary.
+	 * Every variant opens this same panel.
 	 */
-	variant?: "ghost" | "block" | "icon";
+	variant?: "ghost" | "block" | "band";
 }
 
 export default function ContactPopover(
@@ -172,7 +173,7 @@ export default function ContactPopover(
 	return (
 		<Popover
 			open={open}
-			placement={variant === "icon" ? "bottom-end" : "top-start"}
+			placement={variant === "band" ? "bottom-end" : "top-start"}
 			avoid={[".ui-app-shell__sidebar"]}
 			class="sbk-contact"
 			onOpenChange={(next) => {
@@ -183,140 +184,149 @@ export default function ContactPopover(
 				error.value = null;
 				cta.reset();
 			}}
-			trigger={(api) => (
-				<button
-					type="button"
-					ref={(el: HTMLButtonElement | null) => {
-						api.ref.current = el;
-						trigger.current = el;
-					}}
-					class={variant === "icon"
-						? "ui-button ui-button--secondary ui-button--filled ui-button--size-sm ui-button--rounded ui-button--icon-only evp-stickyhead__message"
-						: variant === "block"
-						? "evp-cta__ghost sbk-contact__trigger--block"
-						: "evp-cta__ghost"}
-					aria-label={variant === "icon" ? `Contact ${contact.value.sellerName}` : undefined}
-					aria-expanded={api.expanded ? "true" : "false"}
-					aria-controls={api.panelId}
-					aria-haspopup="menu"
-					onClick={api.toggle}
-				>
-					{variant === "icon"
-						? (
-							<span class="ui-button__icon">
-								<Icon name="message" size="sm" aria-hidden />
-							</span>
-						)
-						: (
-							<>
-								<Icon name="message" size="sm" aria-hidden />
-								<span>Contact me</span>
-							</>
-						)}
-				</button>
-			)}
+			trigger={(api) => {
+				const button = (
+					<button
+						type="button"
+						ref={(el: HTMLButtonElement | null) => {
+							api.ref.current = el;
+							trigger.current = el;
+						}}
+						class={variant === "band"
+							? "ui-button ui-button--secondary ui-button--text ui-button--size-sm ui-button--rounded evp-stickyhead__contact"
+							: variant === "block"
+							? "evp-cta__ghost sbk-contact__trigger--block"
+							: "evp-cta__ghost"}
+						aria-expanded={api.expanded ? "true" : "false"}
+						aria-controls={api.panelId}
+						aria-haspopup="menu"
+						onClick={api.toggle}
+					>
+						{variant === "band"
+							? (
+								<>
+									<span class="ui-button__icon">
+										<Icon name="message" size="sm" aria-hidden />
+									</span>
+									<span class="ui-button__label">Contact me</span>
+								</>
+							)
+							: (
+								<>
+									<Icon name="message" size="sm" aria-hidden />
+									<span>Contact me</span>
+								</>
+							)}
+					</button>
+				);
+				// Below 768px the band collapses this to its glyph (the label stays as the accessible
+				// name), and only then does the label come back as a tooltip.
+				return variant === "band"
+					? <Tooltip content="Contact me" placement="bottom" whenTruncated>{button}</Tooltip>
+					: button;
+			}}
 		>
 			<div class="sbk-contact__panel">
-					<header class="sbk-contact__head">
-						<Avatar
-							image={contact.value.sellerAvatar ?? undefined}
-							label={contact.value.sellerName}
-							size={28}
-							shape="circle"
-						/>
-						<div class="sbk-contact__who">
-							<span class="sbk-contact__name">{contact.value.sellerName}</span>
-							<span class="sbk-contact__handle">@{contact.value.handle}</span>
-						</div>
-					</header>
+				<header class="sbk-contact__head">
+					<Avatar
+						image={contact.value.sellerAvatar ?? undefined}
+						label={contact.value.sellerName}
+						size={28}
+						shape="circle"
+					/>
+					<div class="sbk-contact__who">
+						<span class="sbk-contact__name">{contact.value.sellerName}</span>
+						<span class="sbk-contact__handle">@{contact.value.handle}</span>
+					</div>
+				</header>
 
-					{composing.value
-						? (
-							<div class="sbk-contact__compose">
-								<p class="sbk-contact__about">
-									About <span class="sbk-contact__subject">{contact.value.subjectTitle}</span>
-								</p>
-								<div ref={composer}>
-									<Textarea
-										id="sbk-contact-msg"
-										aria-label={`Your question for ${contact.value.sellerName}`}
-										value={draft}
-										rows={4}
-										maxRows={10}
-										autoResize
-										placeholder={`Hi ${
-											contact.value.sellerName.split(/\s+/)[0] ?? contact.value.sellerName
-										}, before I buy…`}
-										disabled={cta.busy}
-										fluid
+				{composing.value
+					? (
+						<div class="sbk-contact__compose">
+							<p class="sbk-contact__about">
+								About <span class="sbk-contact__subject">{contact.value.subjectTitle}</span>
+							</p>
+							<div ref={composer}>
+								<Textarea
+									id="sbk-contact-msg"
+									aria-label={`Your question for ${contact.value.sellerName}`}
+									value={draft}
+									rows={4}
+									maxRows={10}
+									autoResize
+									placeholder={`Hi ${
+										contact.value.sellerName.split(/\s+/)[0] ?? contact.value.sellerName
+									}, before I buy…`}
+									disabled={cta.busy}
+									fluid
+								/>
+							</div>
+							<p class="sbk-contact__hint">
+								This starts a conversation, not a project.
+							</p>
+							{error.value && <p class="sbk-contact__error" role="alert">{error.value}</p>}
+							<div class="sbk-contact__actions">
+								<button
+									type="button"
+									class="sbk-contact__back"
+									onClick={() => (composing.value = false)}
+								>
+									Back
+								</button>
+								<button
+									type="button"
+									class="sbk-contact__send"
+									disabled={!draft.value.trim() || cta.busy}
+									aria-busy={cta.busy ? "true" : undefined}
+									data-phase={cta.phase}
+									onClick={() => void cta.run(send)}
+								>
+									{cta.phase === "settled"
+										? <Icon name="check" size="sm" aria-hidden />
+										: <Icon name="send" size="sm" aria-hidden />}
+									<span>
+										{cta.phase === "pending"
+											? "Sending…"
+											: cta.phase === "settled"
+											? simulating.value ? SIMULATED_SETTLED_LABEL : "Sent"
+											: simulating.value
+											? SIMULATED_COMMIT_LABEL
+											: "Send"}
+									</span>
+								</button>
+							</div>
+							{simulating.value && <SimulationOutcome />}
+						</div>
+					)
+					: (
+						<div class="sbk-contact__list" role="menu">
+							{contact.value.actions.map((action) => (
+								<button
+									key={action.kind}
+									type="button"
+									role="menuitem"
+									class="ui-menu-item sbk-contact__item"
+									onClick={() => act(action.kind)}
+								>
+									<Icon
+										name={glyphFor(action.kind)}
+										size="sm"
+										class="ui-menu-item__icon"
+										aria-hidden
 									/>
-								</div>
-								<p class="sbk-contact__hint">
-									This starts a conversation, not a project.
+									<span class="sbk-contact__itemtext">
+										<span class="sbk-contact__itemlabel">{action.label}</span>
+										<span class="sbk-contact__itemhint">{action.description}</span>
+									</span>
+								</button>
+							))}
+							{contact.value.requiresSignIn && (
+								<p class="sbk-contact__signin">
+									You will be asked to sign in first.
 								</p>
-								{error.value && <p class="sbk-contact__error" role="alert">{error.value}</p>}
-								<div class="sbk-contact__actions">
-									<button
-										type="button"
-										class="sbk-contact__back"
-										onClick={() => (composing.value = false)}
-									>
-										Back
-									</button>
-									<button
-										type="button"
-										class="sbk-contact__send"
-										disabled={!draft.value.trim() || cta.busy}
-										aria-busy={cta.busy ? "true" : undefined}
-										data-phase={cta.phase}
-										onClick={() => void cta.run(send)}
-									>
-										{cta.phase === "settled"
-											? <Icon name="check" size="sm" aria-hidden />
-											: <Icon name="send" size="sm" aria-hidden />}
-										<span>
-											{cta.phase === "pending"
-												? "Sending…"
-												: cta.phase === "settled"
-												? simulating.value ? SIMULATED_SETTLED_LABEL : "Sent"
-												: simulating.value
-												? SIMULATED_COMMIT_LABEL
-												: "Send"}
-										</span>
-									</button>
-								</div>
-								{simulating.value && <SimulationOutcome />}
-							</div>
-						)
-						: (
-							<div class="sbk-contact__list" role="menu">
-								{contact.value.actions.map((action) => (
-									<button
-										key={action.kind}
-										type="button"
-										role="menuitem"
-										class="ui-menu-item sbk-contact__item"
-										onClick={() => act(action.kind)}
-									>
-										<Icon
-											name={glyphFor(action.kind)}
-											size="sm"
-											class="ui-menu-item__icon"
-											aria-hidden
-										/>
-										<span class="sbk-contact__itemtext">
-											<span class="sbk-contact__itemlabel">{action.label}</span>
-											<span class="sbk-contact__itemhint">{action.description}</span>
-										</span>
-									</button>
-								))}
-								{contact.value.requiresSignIn && (
-									<p class="sbk-contact__signin">
-										You will be asked to sign in first.
-									</p>
-								)}
-							</div>
-						)}
+							)}
+						</div>
+					)}
 			</div>
 		</Popover>
 	);

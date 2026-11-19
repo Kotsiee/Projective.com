@@ -54,8 +54,6 @@
 	--evp-lane-w: 23.75rem;
 	--evp-frame-gap: var(--space-5);
 	--evp-frame-col-gap: var(--space-7);
-	--evp-measure-wide: 51.25rem;
-	--evp-composition-w: calc(var(--evp-measure-wide) + var(--evp-frame-col-gap) + var(--evp-lane-w));
 	/*
 	* The lead-in above the archetype body — the space between the hero row and the Stages section.
 	*
@@ -282,9 +280,16 @@
  *
  *   the editorial column (back · hero · media · main) · the purchase card
  *
- * Mobile-first: ONE column capped at the editorial measure, in reading order. The card is not
- * rendered below 1024px of content (its duty transfers to `EntityBuyBar`), so the phone layout is
- * the base case and the card track is the addition.
+ * Mobile-first: ONE column in reading order. The card is not rendered below 1024px of content (its
+ * duty transfers to `EntityBuyBar`), so the phone layout is the base case and the card track is the
+ * addition.
+ *
+ * FULL WIDTH (Decision #524). The frame spends the whole content box the shell hands it: the editorial
+ * column is the `1fr` track and the card the fixed one, so nothing is stranded either side of a
+ * centred composition. It used to cap the column at an 820px "wide measure" and centre the pair, which
+ * left ~150px of dead page each side at 1600px. Line length is still held where it matters — every
+ * prose block keeps its own `--evp-measure` cap — so going wide moves the media, ledgers and rails
+ * out to the edges without making a paragraph harder to read.
  * ========================================================================== */
 .evp-frame {
 	display: grid;
@@ -296,9 +301,7 @@
 		"main";
 	gap: var(--evp-frame-gap);
 	inline-size: 100%;
-	max-inline-size: var(--evp-measure-wide);
 	min-inline-size: 0;
-	margin-inline: auto;
 }
 
 .evp-frame > .evp__back {
@@ -328,8 +331,8 @@
 }
 
 /*
- * The reviews block — a sibling of the frame, so it gets the page's full content width, and so the
- * frame's own foot is where the sticky conversion lane comes to rest.
+ * The reviews block — a sibling of the frame, so it gets the page's full content width (the same edges
+ * as the frame above it), and so the frame's own foot is where the sticky conversion lane comes to rest.
  *
  * No margin: `.evp` is a flex column gapped at `--evp-gap-section`, which is the same 48px step this
  * boundary already had as the last child of `.evp-body`. The rhythm is the new context's own, not a
@@ -337,9 +340,7 @@
  */
 .evp-reviewsrow {
 	inline-size: 100%;
-	max-inline-size: var(--evp-composition-w);
 	min-inline-size: 0;
-	margin-inline: auto;
 }
 
 /*
@@ -359,16 +360,14 @@
 
 @container evp-body (min-width: 1024px) {
 	.evp-frame {
-		grid-template-columns: minmax(0, var(--evp-measure-wide)) var(--evp-lane-w);
+		grid-template-columns: minmax(0, 1fr) var(--evp-lane-w);
 		grid-template-areas:
 			"back  lane"
 			"hero  lane"
 			"media lane"
 			"main  lane";
 		column-gap: var(--evp-frame-col-gap);
-		justify-content: center;
 		align-items: start;
-		max-inline-size: none;
 	}
 
 	.evp-frame--nomedia {
@@ -2518,11 +2517,10 @@ a.evp-cta__btn--accent:hover {
  */
 @media (min-width: 1060px) {
 	.guest-shell:has(.evp-laneslot) .guest-shell__subheader {
-		--evp-composition-margin: max(0px, (100vw - 2 * var(--space-5) - var(--evp-composition-w)) / 2);
-		inset-inline-start: calc(var(--space-5) + var(--evp-composition-margin));
-		inset-inline-end: calc(
-			var(--space-5) + var(--evp-composition-margin) + var(--evp-lane-w) + var(--evp-frame-col-gap)
-		);
+		/* The frame is full width (Decision #524), so the band starts at the page gutter and stops one
+		   column gap short of the card — exactly the editorial column's edges. */
+		inset-inline-start: var(--space-5);
+		inset-inline-end: calc(var(--space-5) + var(--evp-lane-w) + var(--evp-frame-col-gap));
 	}
 }
 
@@ -2621,8 +2619,47 @@ a.evp-stickyhead__cta {
 	text-decoration: none;
 }
 
-a.evp-stickyhead__message {
+/*
+ * The band's Contact control — a tier-5 GHOST, always: transparent, the lane ghost's muted ink at rest,
+ * an `--on-surface` tint and full ink on hover, never a fill and never teal. The band's one fill is the
+ * primary beside it, so the region still holds a single `filled` control (§B.8.2), and the two read
+ * contact → commit, left to right, with the commit at the inline end.
+ */
+.ui-button.evp-stickyhead__contact {
+	--btn-accent: var(--on-surface);
+	--btn-ink: var(--text-secondary);
+	--btn-radius: var(--radius-full);
+	font-weight: var(--fw-medium);
 	text-decoration: none;
+}
+
+.ui-button.evp-stickyhead__contact:hover:not(:disabled),
+.ui-button.evp-stickyhead__contact[aria-expanded="true"] {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--on-surface);
+}
+
+/*
+ * On a phone band the label would leave the title a single letter, so the ghost keeps only its
+ * glyph. The label is visually hidden rather than removed: it is still the control's accessible name,
+ * and because it now clips, the wrapping `whenTruncated` Tooltip offers it on hover or focus.
+ */
+@media (max-width: 767px) {
+	.ui-button.evp-stickyhead__contact {
+		--btn-px: 0;
+
+		inline-size: var(--btn-height);
+		padding: 0;
+	}
+
+	.evp-stickyhead__contact .ui-button__label {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
 }
 
 @keyframes evp-stickyhead-actions-in {

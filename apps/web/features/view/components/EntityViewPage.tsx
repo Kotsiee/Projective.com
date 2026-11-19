@@ -69,11 +69,12 @@ import {
  *
  * # One editorial column (Decision #424)
  *
- * The listing reads as one column capped at `--evp-measure-wide` (820px): the category and format
- * line, the display-register title and the byline — the ONLY place the creator is named — then the
- * full-width 16:10 media with its thumbnail strip, then the body sections (What you get · Stages &
- * scope · the reviews and rails). The old media-beside-hero split squeezed the text into a ~450px
- * column on a 1440px screen; stacking gives both the full measure.
+ * The listing reads as one column that fills the frame beside the card (Decision #524): the category
+ * and format line, the display-register title and the byline — the ONLY place the creator is named —
+ * then the full-width 16:10 media with its thumbnail strip, then the body sections (What you get ·
+ * Stages & scope · the reviews and rails), each prose block still capped at the reading measure. The
+ * old media-beside-hero split squeezed the text into a ~450px column on a 1440px screen; stacking
+ * gives both the full width.
  *
  * # The purchase card is IN the page
  *

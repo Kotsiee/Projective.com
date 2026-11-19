@@ -19,9 +19,13 @@ import { CollectionPicker } from "@features/saved/components/CollectionPicker.ts
 import "@features/saved/styles/saved.css";
 import { cardMenu, type CardMenuFacts } from "../core/card-menu.ts";
 
+/** How long a card's outcome line ("Saved.", "Link copied") stays up before it clears itself. */
+const STATUS_MS = 2400;
+
 /**
  * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Save · More**,
- * as one horizontal row of ghost icon buttons that stay muted on hover.
+ * as one horizontal row of tier-5 ghost icon buttons (`severity="secondary" variant="text"`) in muted
+ * ink that never take the brand: a neutral tint and full ink on hover, never teal (Decision #524).
  *
  * Every button is icon-only, so each carries all three things §B.8.5 makes a merge gate: an
  * `aria-label`, a portal `Tooltip` (never a native `title`), and a hit target past the 24px floor —
@@ -50,20 +54,34 @@ export default function CardActions(
 ) {
 	const { title, href, id, type } = facts;
 	const status = useSignal("");
+	const statusTimer = useRef<number | undefined>(undefined);
 	const picking = useSignal(false);
 	const kind = savedTypeOf(type);
 	const saved = authed ? savedFlag(kind, id) : null;
 	const collectable = COLLECTABLE_TYPES.includes(kind);
 
+	/**
+	 * Say what a press did, then let it go. The line is drawn as a small note under the cluster, so one
+	 * that stayed would read as a tooltip stuck to the card; the live region has announced it by the
+	 * time it clears, and the filled bookmark carries the saved state from then on.
+	 */
+	function say(message: string) {
+		clearTimeout(statusTimer.current);
+		status.value = message;
+		statusTimer.current = message
+			? setTimeout(() => (status.value = ""), STATUS_MS) as unknown as number
+			: undefined;
+	}
+
 	/** Open the unified share surface, anchored to the card's Share button when it asked. */
 	function share(event?: Event) {
 		requestShare({ href, title, anchor: shareAnchor(event) });
-		status.value = "";
+		say("");
 	}
 
 	async function save() {
 		const out = await toggleFlag(kind, id);
-		if (out.message) status.value = out.message;
+		if (out.message) say(out.message);
 	}
 
 	const signIn = `/login?redirectTo=${encodeURIComponent(href)}`;
@@ -72,7 +90,7 @@ export default function CardActions(
 	const lists = saved && collectable
 		? saveListRows({
 			lists: savedLists.value,
-			onPick: (list) => void saveToList(kind, id, list).then((msg) => (status.value = msg)),
+			onPick: (list) => void saveToList(kind, id, list).then(say),
 			onNewList: () => (picking.value = true),
 		})
 		: undefined;
@@ -80,9 +98,7 @@ export default function CardActions(
 		authed,
 		onShare: () => share(),
 		save: saved ? { saved: on, onToggle: () => void save(), lists } : undefined,
-		onCopied: (ok) => {
-			status.value = ok ? "Link copied" : "Couldn't copy the link";
-		},
+		onCopied: (ok) => say(ok ? "Link copied" : "Couldn't copy the link"),
 	});
 
 	return (
@@ -90,12 +106,15 @@ export default function CardActions(
 			<Tooltip content="Share">
 				<Button
 					type="button"
+					severity="secondary"
+					variant="text"
+					rounded
+					iconOnly
+					icon={<Icon name="share" />}
 					class="ex-actions__btn ex-actions__btn--share"
 					aria-label={`Share ${title}`}
 					onClick={share}
-				>
-					<Icon name="share" />
-				</Button>
+				/>
 			</Tooltip>
 
 			{saved
@@ -103,20 +122,23 @@ export default function CardActions(
 					<Tooltip content={on ? "Saved" : "Save"}>
 						<Button
 							type="button"
+							severity="secondary"
+							variant="text"
+							rounded
+							iconOnly
+							icon={<Icon name="bookmark" filled={on} />}
 							class="ex-actions__btn ex-actions__btn--save"
 							aria-label={on ? `Remove ${title} from saved` : `Save ${title}`}
 							aria-pressed={on}
 							aria-busy={saved.value === null}
 							onClick={save}
-						>
-							<Icon name="bookmark" filled={on} />
-						</Button>
+						/>
 					</Tooltip>
 				)
 				: (
 					<Tooltip content="Sign in to save">
 						<a
-							class="ex-actions__btn ex-actions__btn--save"
+							class="ui-button ui-button--secondary ui-button--text ui-button--rounded ui-button--icon-only ex-actions__btn ex-actions__btn--save"
 							href={signIn}
 							aria-label="Sign in to save this"
 						>
@@ -136,6 +158,11 @@ export default function CardActions(
 					<Tooltip content="More">
 						<Button
 							type="button"
+							severity="secondary"
+							variant="text"
+							rounded
+							iconOnly
+							icon={<Icon name="kebab-horizontal" />}
 							class="ex-actions__btn ex-actions__btn--more"
 							triggerRef={api.ref}
 							aria-label={`More actions for ${title}`}
@@ -143,9 +170,7 @@ export default function CardActions(
 							aria-expanded={api.expanded}
 							aria-controls={api.expanded ? api.panelId : undefined}
 							onClick={api.toggle}
-						>
-							<Icon name="kebab-horizontal" />
-						</Button>
+						/>
 					</Tooltip>
 				)}
 			/>
@@ -156,7 +181,7 @@ export default function CardActions(
 					target={{ type: kind, ref: id, title }}
 					onDone={(_collectionId, message) => {
 						saved.value = true;
-						status.value = message;
+						say(message);
 					}}
 				/>
 			)}

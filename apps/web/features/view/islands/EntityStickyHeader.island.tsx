@@ -35,14 +35,12 @@ import ContactPopover from "./ContactPopover.island.tsx";
  * **never `block-size`** — the band sits in the frame's grid context, which overrides an explicit
  * height, so only the min/max logical constraints are honoured (verified and recorded in `profile-skeleton.css`).
  *
- * **It carries no control that commits, and now no control that opens a panel either.** The band is
- * identity plus one navigation jump: what you are looking at, who is selling it, and how they rate.
- * `.guest-shell__subheader` is `display: none` at ≤767px while `.ui-middle-nav__header` still renders
- * there, so anything placed here exists for a signed-in phone user and not for a guest one — which is
- * why the purchase control has always been withheld (§D.7.4), and why the Contact trigger has now gone
- * the same way. Contacting the seller lives in the conversion lane and in `EntityBuyBar`, each anchored
- * to the region that owns the offer; a third trigger in a strip half the readers cannot see is a third
- * place for that flow to drift.
+ * **At rest it carries no control that commits or opens a panel.** The band is identity plus one
+ * navigation jump: what you are looking at, who is selling it, and how they rate. Only once the reader
+ * has scrolled past the frame, so the conversion lane is off screen, does it add the rig's own controls
+ * (Decision #521, {@link HeaderActions}): the ghost Contact me, then the primary at the inline end. The
+ * transaction is therefore never on screen twice, and the Contact control it shows is the lane's own
+ * `ContactPopover`, so both open one panel.
  *
  * The band LEADS with the page's one back control — the same {@link BackLink} the frame renders at
  * rest, in its compact band presentation (the shell's `MigratingBack`) — so the way out migrates
@@ -156,9 +154,11 @@ export default function EntityStickyHeader(
 
 /**
  * The band's transaction controls, offered only once the reader has scrolled past the frame and the
- * lane has left the screen (Decision #521, owner ruling): the rig's primary as a small filled button
- * with its glyph and label, and the contact control as a filled icon-only button — the seller's
- * Contact menu on a service, Message client on a brief. Each runs the rig's own handler.
+ * lane has left the screen (Decision #521, owner ruling), in reading order: the contact control as a
+ * small GHOST button with its glyph and label — on a service the lane's own `ContactPopover`, so it
+ * opens the same Contact me panel, and on a brief the rig's Message client link — then the rig's
+ * primary as a small filled pill at the band's inline end (Decision #524). Each runs the rig's own
+ * handler.
  */
 function HeaderActions(
 	{ primary, contact }: { primary: MirroredCta; contact: MirroredCta | null },
@@ -167,6 +167,23 @@ function HeaderActions(
 	const severity = primary.tone === "primary" ? "primary" : "accent";
 	return (
 		<div class="evp-stickyhead__actions" role="group" aria-label="Actions">
+			{offer
+				? <ContactPopover offer={offer} variant="band" />
+				: contact?.href
+				? (
+					<Tooltip content={contact.label} placement="bottom" whenTruncated>
+						<a
+							class="ui-button ui-button--secondary ui-button--text ui-button--size-sm ui-button--rounded evp-stickyhead__contact"
+							href={contact.href}
+						>
+							<span class="ui-button__icon">
+								<Icon name={contact.icon} size="sm" aria-hidden />
+							</span>
+							<span class="ui-button__label">{contact.label}</span>
+						</a>
+					</Tooltip>
+				)
+				: null}
 			{primary.href
 				? (
 					<a
@@ -206,23 +223,6 @@ function HeaderActions(
 						onClick={() => primary.run?.()}
 					/>
 				)}
-			{offer
-				? <ContactPopover offer={offer} variant="icon" />
-				: contact?.href
-				? (
-					<Tooltip content={contact.label} placement="bottom">
-						<a
-							class="ui-button ui-button--secondary ui-button--filled ui-button--size-sm ui-button--rounded ui-button--icon-only evp-stickyhead__message"
-							href={contact.href}
-							aria-label={contact.label}
-						>
-							<span class="ui-button__icon">
-								<Icon name={contact.icon} size="sm" aria-hidden />
-							</span>
-						</a>
-					</Tooltip>
-				)
-				: null}
 		</div>
 	);
 }

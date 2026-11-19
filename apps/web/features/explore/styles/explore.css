@@ -1350,7 +1350,7 @@
 
 /* #endregion */
 
-/* #region Card actions (Share · Save) */
+/* #region Card actions (Share · Save · More) */
 .ex-actions {
 	--ex-actions-step: calc(2rem + var(--space-1));
 	--ex-saved-ink: color-mix(in srgb, var(--warning) 72%, var(--on-surface));
@@ -1384,11 +1384,20 @@
 	transform: translateX(calc(var(--ex-actions-step) * -1));
 }
 
+/*
+ * Back in its own slot, at the button's own resting transform rather than `none`: `none` out-ranks
+ * the Button's `:active` scale, which took the press feedback off the one control a reader presses
+ * most on a saved card. The press is restated after it for the same reason.
+ */
 .ex-card:hover .ex-actions[data-saved="true"] .ex-actions__btn--save,
 .ex-card:focus-within .ex-actions[data-saved="true"] .ex-actions__btn--save,
 .ex-actions[data-saved="true"]:focus-within .ex-actions__btn--save,
 .ex-actions[data-saved="true"]:has([aria-expanded="true"]) .ex-actions__btn--save {
-	transform: none;
+	transform: translateZ(0) scale(1);
+}
+
+.ex-card .ex-actions[data-saved="true"] .ex-actions__btn--save:active:not(:disabled) {
+	transform: translateZ(0) scale(var(--btn-press-scale-icon));
 }
 
 @media (hover: none) {
@@ -1403,26 +1412,35 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.ex-actions__btn {
+	.ui-button.ex-actions__btn {
 		transition: none;
 	}
 }
 
-:root[data-motion="reduced"] .ex-actions__btn {
+:root[data-motion="reduced"] .ui-button.ex-actions__btn {
 	transition: none;
 }
 
 /*
- * ONE control shape for the whole row: Share and Save are peers, two identical affordances, so the row
- * reads as a toolbar rather than as a button plus some chrome.
+ * ONE control shape for the whole row: Share, Save and More are peers, three identical affordances,
+ * so the row reads as a toolbar rather than as a button plus some chrome.
  *
- * They float over uploaded photography, so they take the glass treatment — this
+ * Each is a tier-5 GHOST (`severity="secondary" variant="text"`, Decision #524): no fill of its own,
+ * muted `--text-secondary` ink at rest, and on hover a neutral `--on-surface` tint with full ink —
+ * never the brand. They were `primary` `filled` Buttons whose own hover rule out-ranked this sheet and
+ * painted them teal under the pointer.
+ *
+ * They float over uploaded photography, so the ghost still sits on a glass underlay — this
  * is a CONTROL rather than a label, which is the distinction `--chip-on-media` draws: a control
- * announces itself by shape and position and does not have to be read at a glance, and the border plus
- * the blur hold it apart from any image beneath.
+ * announces itself by shape and position and does not have to be read at a glance, and the blur holds
+ * it apart from any image beneath. The hover tint is drawn on that underlay, not as a second wash over
+ * it.
  */
-.ex-actions__btn {
+.ui-button.ex-actions__btn {
 	--ex-actions-fill: var(--ex-glass);
+	--btn-accent: var(--on-surface);
+	--btn-ink: var(--text-secondary);
+	--btn-height: 2rem;
 
 	position: relative;
 	isolation: isolate;
@@ -1434,8 +1452,8 @@
 	padding: 0;
 	border: 1px solid transparent;
 	border-radius: 50%;
-	background: none;
-	color: var(--on-surface);
+	background: transparent;
+	color: var(--btn-ink);
 	cursor: pointer;
 	text-decoration: none;
 	transition:
@@ -1461,8 +1479,11 @@
 	block-size: var(--icon-sm);
 }
 
-.ex-actions__btn:hover {
+.ui-button.ex-actions__btn:hover:not(:disabled),
+.ui-button.ex-actions__btn[aria-expanded="true"] {
 	--ex-actions-fill: color-mix(in srgb, var(--on-surface) 10%, var(--ex-glass));
+	background: transparent;
+	color: var(--on-surface);
 }
 
 .ex-actions__btn[aria-pressed="true"] svg {
@@ -1488,14 +1509,20 @@
 	animation: none;
 }
 
-.ex-actions__btn[aria-pressed="true"] {
+/* Saved: the amber bookmark on the opaque media chip. Out-ranks the text variant's own engaged
+   `--surface-2` plate, which would box the glyph. */
+.ex-actions .ui-button.ex-actions__btn[aria-pressed="true"] {
 	--ex-actions-fill: var(--ex-chip-on-media);
 
+	background: transparent;
 	color: var(--ex-saved-ink);
 }
 
-.ex-actions__btn[aria-pressed="true"]:hover {
+.ex-actions .ui-button.ex-actions__btn[aria-pressed="true"]:hover {
 	--ex-actions-fill: color-mix(in srgb, var(--on-surface) 6%, var(--ex-chip-on-media));
+
+	background: transparent;
+	color: var(--ex-saved-ink);
 }
 
 .ex-actions__btn:focus-visible {
