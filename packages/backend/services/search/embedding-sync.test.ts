@@ -1,11 +1,17 @@
 import { assert, assertEquals } from "@std/assert";
+import { EMBEDDING_MODEL } from "@projective/types/explore";
 import {
 	type EmbeddingSyncReport,
+	type EmbeddingTarget,
 	flushReembedsForTesting,
 	REEMBED_SETTLE_MS,
 	reembedInBackground,
+	runScheduledBackfill,
+	setBackfillDepsForTesting,
+	setEmbeddingSyncDepsForTesting,
 	setReembedDepsForTesting,
 } from "./embedding-sync.ts";
+import { entityKey } from "../explore/live-catalog.ts";
 
 // #region Harness
 function report(considered: number): EmbeddingSyncReport {
@@ -157,6 +163,95 @@ Deno.test("reembedInBackground — a run that throws is logged once and never re
 	} finally {
 		console.warn = warn;
 		setReembedDepsForTesting(null);
+	}
+});
+// #endregion
+
+// #region Scheduled backfill (COMMS SR2, CAS S14)
+function backfillTarget(n: number): EmbeddingTarget {
+	return {
+		itemId: `item-${n}`,
+		entity: { kind: "product", id: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}` },
+		text: `listing ${n}`,
+		hash: `hash-${n}`,
+		tokens: 3,
+	};
+}
+
+Deno.test("scheduled backfill — with embeddings off it reads, embeds and stores nothing", async () => {
+	let loaded = 0;
+	let synced = 0;
+	setBackfillDepsForTesting({
+		isLive: () => false,
+		targets: () => {
+			loaded++;
+			return Promise.resolve([]);
+		},
+		sync: () => {
+			synced++;
+			return Promise.resolve(report(0));
+		},
+	});
+	try {
+		const res = await runScheduledBackfill(50);
+		assert(res.ok);
+		assertEquals(res.data?.live, false);
+		assertEquals(res.data?.embedded, 0);
+		assertEquals([loaded, synced], [0, 0], "no catalogue read, no Voyage call");
+	} finally {
+		setBackfillDepsForTesting(null);
+	}
+});
+
+Deno.test("scheduled backfill — embeds at most `limit` stale items and skips the current ones", async () => {
+	const targets = Array.from({ length: 8 }, (_, n) => backfillTarget(n));
+	const current = new Map(
+		[0, 1, 2].map((n) => [
+			entityKey(targets[n].entity.kind, targets[n].entity.id),
+			{ model: EMBEDDING_MODEL, hash: targets[n].hash, embedded: true },
+		]),
+	);
+	const handed: string[][] = [];
+	setEmbeddingSyncDepsForTesting({ readEmbeddingStates: () => Promise.resolve(current) });
+	setBackfillDepsForTesting({
+		isLive: () => true,
+		targets: () => Promise.resolve(targets),
+		sync: (batch) => {
+			handed.push(batch.map((t) => t.itemId));
+			return Promise.resolve(report(batch.length));
+		},
+	});
+	try {
+		const res = await runScheduledBackfill(2);
+		assert(res.ok);
+		assertEquals(handed, [["item-3", "item-4"]]);
+		assertEquals(res.data?.live, true);
+		assertEquals(res.data?.considered, 8);
+		assertEquals(res.data?.skipped, 3);
+		assertEquals(res.data?.embedded, 2);
+		assertEquals(res.data?.remaining, 3);
+	} finally {
+		setBackfillDepsForTesting(null);
+		setEmbeddingSyncDepsForTesting(null);
+	}
+});
+
+Deno.test("scheduled backfill — a refusal that waiting cannot fix is a 502; a rate limit is not", async () => {
+	setEmbeddingSyncDepsForTesting({ readEmbeddingStates: () => Promise.resolve(new Map()) });
+	try {
+		for (const [retryable, status] of [[false, 502], [true, 200]] as const) {
+			setBackfillDepsForTesting({
+				isLive: () => true,
+				targets: () => Promise.resolve([backfillTarget(1)]),
+				sync: () =>
+					Promise.resolve({ ...report(1), embedded: 0, failed: 1, error: "boom", retryable }),
+			});
+			const res = await runScheduledBackfill(50);
+			assertEquals(res.status, status);
+		}
+	} finally {
+		setBackfillDepsForTesting(null);
+		setEmbeddingSyncDepsForTesting(null);
 	}
 });
 // #endregion

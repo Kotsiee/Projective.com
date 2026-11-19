@@ -38,7 +38,8 @@ DECLARE
         ARRAY['comms-reap-devices',               '32 3 * * *'],
         ARRAY['comms-compact-events',             '47 3 * * *'],
         ARRAY['finance-sweep-card-payments',      '13,28,43,58 * * * *'],
-        ARRAY['ops-prune-job-history',            '53 4 * * *']
+        ARRAY['ops-prune-job-history',            '53 4 * * *'],
+        ARRAY['search-embeddings-backfill',       '38 * * * *']
     ];
     v_by_name text[][] := ARRAY[
         ARRAY['scheduling.fn_expire_discovery_calls', 'scheduling-expire-discovery-calls', '1,16,31,46 * * * *'],

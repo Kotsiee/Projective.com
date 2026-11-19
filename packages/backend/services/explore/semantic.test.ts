@@ -533,3 +533,49 @@ Deno.test("SimilarityCache — bounded LRU: reading refreshes recency, the oldes
 	assertEquals(cache.get("a")?.vector, [0.1], "a caller cannot mutate a cached vector");
 });
 // #endregion
+
+// #region The caller's query-embedding budget (COMMS SR2, CAS S30)
+Deno.test("client budget — the 31st embedded search in a minute ranks heuristically, with its reason", async () => {
+	primeServices();
+	const clock = { t: 0 };
+	const vector = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, i) => (i === 0 ? 1 : 0));
+	setEmbeddingDepsForTesting({
+		fetch: () =>
+			Promise.resolve(
+				Response.json({ data: [{ embedding: vector, index: 0 }], usage: { total_tokens: 1 } }),
+			),
+		apiKey: () => "pa-test",
+		now: () => clock.t,
+	});
+	countingNearest({ now: 0 });
+	try {
+		const client = "ip:198.51.100.4";
+		for (let n = 0; n < 30; n++) {
+			const res = await ExploreBackendService.search({
+				params: params(`logo design ${n}`),
+				semantic: true,
+				client,
+			});
+			assertEquals(res.ranking, "semantic", `search ${n}`);
+			// A second apart, so the isolate's own query bucket never runs dry.
+			clock.t += 1_000;
+		}
+		const spent = await ExploreBackendService.search({
+			params: params("logo design 30"),
+			semantic: true,
+			client,
+		});
+		assert(spent.ok && spent.data, "the search still answers");
+		assertEquals(spent.ranking, "heuristic");
+		assertEquals(spent.reason, "client_budget");
+		const other = await ExploreBackendService.search({
+			params: params("logo design 31"),
+			semantic: true,
+			client: "user:someone-else",
+		});
+		assertEquals([other.ranking, other.reason], ["semantic", undefined]);
+	} finally {
+		resetSimilarityTest();
+	}
+});
+// #endregion

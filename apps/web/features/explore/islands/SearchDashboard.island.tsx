@@ -34,6 +34,7 @@ import {
 	serializeExploreParams,
 	withFilter,
 	withQuery,
+	withSort,
 } from "../core/explore-state.ts";
 import type { HrefContext } from "../core/routing.ts";
 import { recordSearch } from "../core/search-history.ts";
@@ -276,7 +277,7 @@ function SearchDashboardView(
 		commit({ ...params.value, filters: {} });
 	}
 	function setSort(value: string) {
-		commit({ ...params.value, sort: value });
+		commit(withSort(params.value, value));
 	}
 	// #endregion
 

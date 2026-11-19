@@ -865,6 +865,41 @@ Deno.test("query breaker — a refusal, a malformed answer or a missing key neve
 	}
 });
 
+Deno.test("client budget — 30 query embeddings a minute per caller; the 31st is refused, others are not", async () => {
+	const clock = { t: 0 };
+	const { fetch, calls } = scripted([(c) => okResponse(c.body.input)]);
+	setEmbeddingDepsForTesting(deps(fetch, [], clock));
+	try {
+		const me = { client: "ip:203.0.113.7" };
+		for (let n = 0; n < 30; n++) {
+			// A second apart, so the isolate's own bucket (5 a second) never runs dry.
+			assert((await EmbeddingBackendService.embedQuery(`client query ${n}`, me)).ok, `query ${n}`);
+			clock.t += 1_000;
+		}
+		const refused = await EmbeddingBackendService.embedQuery("client query 30", me);
+		assertFalse(refused.ok);
+		assertEquals(refused.status, 429);
+		assertEquals(refused.details?.reason, "client_budget");
+		assertEquals(calls.length, 30, "the 31st never reached Voyage");
+
+		assert((await EmbeddingBackendService.embedQuery("client query 3", me)).ok, "a hit is free");
+		assert(
+			(await EmbeddingBackendService.embedQuery("someone else", { client: "user:u-2" })).ok,
+			"another caller has its own minute",
+		);
+		assertEquals(calls.length, 31);
+
+		clock.t = 60_001;
+		assert(
+			(await EmbeddingBackendService.embedQuery("client query 30", me)).ok,
+			"the first one left the window",
+		);
+		assertEquals(embeddingBreakerState(), CLOSED, "a spent client budget is not a Voyage failure");
+	} finally {
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
 Deno.test("query budget — a burst of 20 cache misses per isolate, then 5 a second", async () => {
 	const clock = { t: 0 };
 	const { fetch, calls } = scripted([(c) => okResponse(c.body.input)]);

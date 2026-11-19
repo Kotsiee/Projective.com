@@ -4,6 +4,9 @@ import {
 	estimateEmbeddingTokens,
 } from "../../core/embedding-text.ts";
 import { isEmbeddingsLive } from "../../core/supabase.ts";
+import { isBearerAuthorised } from "../../core/bearer.ts";
+import { serverEnv } from "../../core/env.ts";
+import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import {
 	type Catalog,
 	type CatalogEntity,
@@ -320,5 +323,97 @@ export function resetReembedQueueForTesting(): void {
 export function setReembedDepsForTesting(next: Partial<ReembedDeps> | null): void {
 	resetReembedQueueForTesting();
 	reembedDeps = next ? { ...DEFAULT_REEMBED_DEPS, ...next } : DEFAULT_REEMBED_DEPS;
+}
+// #endregion
+
+// #region Scheduled backfill (COMMS SR2, CAS S14)
+/** The most stale items one scheduled run embeds when the job names no `limit`. */
+export const BACKFILL_RUN_DEFAULT = 50;
+/** The ceiling on one run's `limit`. */
+export const BACKFILL_RUN_MAX = 200;
+
+/** What one scheduled run did. `live: false`: embeddings are off, so nothing was read or embedded. */
+export interface ScheduledBackfillReport extends EmbeddingSyncReport {
+	live: boolean;
+	/** Stale items this run did not store, for the next run. */
+	remaining: number;
+}
+
+/** What the scheduled run needs from the outside — injectable, so tests never load or embed. */
+export interface BackfillDeps {
+	isLive: () => boolean;
+	targets: () => Promise<EmbeddingTarget[]>;
+	sync: typeof syncEmbeddings;
+}
+
+const DEFAULT_BACKFILL_DEPS: BackfillDeps = {
+	isLive: () => isEmbeddingsLive(),
+	targets: async () => embeddingTargets(await loadCatalog()),
+	sync: syncEmbeddings,
+};
+
+let backfillDeps: BackfillDeps = DEFAULT_BACKFILL_DEPS;
+
+/** Swap the scheduled run's gate, targets and sync for stubs; `null` restores the real ones. */
+export function setBackfillDepsForTesting(next: Partial<BackfillDeps> | null): void {
+	backfillDeps = next ? { ...DEFAULT_BACKFILL_DEPS, ...next } : DEFAULT_BACKFILL_DEPS;
+}
+
+/**
+ * Whether a request carries the scheduler's bearer for `POST /api/search/cron/embeddings`
+ * (`SEARCH_CRON_SECRET`, at least 32 characters, compared in constant time).
+ */
+export function isSearchCronAuthorised(authorization: string | null): boolean {
+	return isBearerAuthorised(authorization, serverEnv().searchCronSecret);
+}
+
+/**
+ * The `search-embeddings-backfill` job's run: the work of `deno task embeddings:backfill` for at most
+ * `limit` stale items (no vector, another text hash or another model). The post-commit re-embeds are
+ * queued in the process that made the write and lost with it; this catches up on whatever they
+ * missed. A no-op that reads nothing and calls Voyage never while `isEmbeddingsLive()` is false.
+ *
+ * A run that stopped on a rate limit or an outage answers `ok` with the report (the next run
+ * continues); one that stopped on anything else answers 502, so the job's history shows it.
+ */
+export async function runScheduledBackfill(
+	limit: number = BACKFILL_RUN_DEFAULT,
+): Promise<ServiceResult<ScheduledBackfillReport>> {
+	const max = Math.min(Math.max(Math.trunc(limit) || BACKFILL_RUN_DEFAULT, 1), BACKFILL_RUN_MAX);
+	const idle: ScheduledBackfillReport = {
+		live: false,
+		remaining: 0,
+		considered: 0,
+		skipped: 0,
+		embedded: 0,
+		missing: 0,
+		rejected: 0,
+		failed: 0,
+		tokens: 0,
+	};
+	if (!backfillDeps.isLive()) return ok(idle);
+	try {
+		const targets = await backfillDeps.targets();
+		const stale = staleTargets(targets, await syncDeps.readEmbeddingStates());
+		const batch = stale.slice(0, max);
+		const report = await backfillDeps.sync(batch, { force: true });
+		const run: ScheduledBackfillReport = {
+			...report,
+			live: true,
+			considered: targets.length,
+			skipped: targets.length - stale.length,
+			remaining: stale.length - report.embedded,
+		};
+		if (report.error && !report.retryable) {
+			return fail(502, {
+				message: `The embedding backfill stopped: ${report.error}`,
+				details: { embedded: run.embedded, failed: run.failed, remaining: run.remaining },
+			});
+		}
+		return ok(run);
+	} catch (error) {
+		console.error("[embeddings] scheduled backfill failed", error);
+		return fail(503, { message: "The embedding backfill could not read the catalogue." });
+	}
 }
 // #endregion

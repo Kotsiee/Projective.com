@@ -146,9 +146,17 @@ Deno.test("readEmbeddingsOverride — reads only its own cookie and only its own
 	);
 });
 
-Deno.test("hasVoyageKey — blank and the placeholder are absent", () => {
+Deno.test("hasVoyageKey — blank, the placeholder and a key of another shape are absent", () => {
 	assertFalse(hasVoyageKey(undefined));
 	assertFalse(hasVoyageKey("   "));
 	assertFalse(hasVoyageKey("XXXX-XXXX"));
+	assertFalse(hasVoyageKey("al-abc123"), "an Atlas-shaped key is not a Voyage platform key");
 	assert(hasVoyageKey("pa-abc123"));
+});
+
+Deno.test("an Atlas-shaped key leaves the gate off, like no key at all", () => {
+	withEnv({ ...CONFIGURED, VOYAGE_API_KEY: "al-test-key-not-real" }, () => {
+		assertFalse(isEmbeddingsLive(requestWith("pj.dev.embeddings=on")));
+		assertFalse(embeddingsStatus().keyPresent);
+	});
 });

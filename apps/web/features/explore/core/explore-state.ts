@@ -1,8 +1,21 @@
 import type { ExploreCategory, ExploreParams, Facet } from "../types/explore-types.ts";
 import { facetIsDefault } from "../types/explore-types.ts";
-import { defaultExploreSort, resolveExploreSort } from "@projective/types/explore";
+import {
+	defaultExploreSort,
+	EXPLORE_FACET_VALUE_MAX,
+	EXPLORE_FACET_VALUES_MAX,
+	EXPLORE_LIMIT_MAX,
+	EXPLORE_OFFSET_MAX,
+	EXPLORE_QUERY_MAX,
+	ExploreParamsSchema,
+	isExploreFacetKey,
+	isExploreSort,
+	resolveExploreSort,
+} from "@projective/types/explore";
 
 export type { ExploreParams };
+/** The facet whitelist both doors parse against (the SSOT lives in `@projective/types/explore`). */
+export { EXPLORE_FACET_KEYS } from "@projective/types/explore";
 
 /**
  * Explore URL state — the single source of truth for which layout renders and how results are
@@ -11,11 +24,40 @@ export type { ExploreParams };
  */
 
 // #region Types
+/** Which door a discovery query came through: the `/explore` page, or `GET /api/explore/search`. */
+export type ExploreDoor = "page" | "api";
+
+/** The keys the parser reads itself; every other key it reads is a facet (`EXPLORE_FACET_KEYS`). */
+const QUERY_KEYS = new Set(["q", "category", "type", "sort"]);
+
 /**
- * Reserved keys owned by the parser; everything else is treated as an adaptive filter facet. `item`
- * addresses the open detail drawer (`detail-nav.ts`), not the result set.
+ * Keys `/explore` carries for other owners and never reads as facets: the open detail drawer
+ * (`item`, `detail-nav.ts`), the settings and feedback overlays (`settings`, `feedback`, ROUTING.md),
+ * and campaign tags (`utm_*`). The canonical redirect keeps them.
  */
-const RESERVED = new Set(["q", "category", "type", "sort", "item"]);
+const PAGE_KEYS = new Set(["item", "settings", "feedback"]);
+
+/** The paging keys only `GET /api/explore/search` takes. */
+const API_KEYS = new Set(["offset", "limit"]);
+
+/** Whether `key` belongs to another owner on `door` (see {@link PAGE_KEYS} and {@link API_KEYS}). */
+function isForeignKey(key: string, door: ExploreDoor): boolean {
+	return door === "page" ? PAGE_KEYS.has(key) || key.startsWith("utm_") : API_KEYS.has(key);
+}
+
+/** A query parsed at a door: the bounded params, the API's paging, and what had to be corrected. */
+export interface ExploreQuery {
+	params: ExploreParams;
+	/** The feed page's first item (the API only; `0` on the page). */
+	offset: number;
+	/** The feed page's size (the API only); `undefined` for the service's default. */
+	limit: number | undefined;
+	/**
+	 * What the request held that the canonical query does not, by query key. Empty for a canonical
+	 * query. The page redirects to the canonical query when it is not empty; the API answers 422.
+	 */
+	problems: Record<string, string>;
+}
 
 const CATEGORIES = new Set<ExploreCategory>([
 	"all",
@@ -37,29 +79,114 @@ function toCategory(raw: string | null): ExploreCategory {
 	return CATEGORIES.has(v) ? v : "all";
 }
 
+/** A paging value: a whole number in `min..max`, `null` when absent, `undefined` when out of bounds. */
+function pagingValue(raw: string | null, min: number, max: number): number | null | undefined {
+	if (raw === null) return null;
+	const n = Number(raw);
+	return raw.trim() !== "" && Number.isInteger(n) && n >= min && n <= max ? n : undefined;
+}
+
 /**
- * Parse a query string (or `URLSearchParams`) into normalised {@link ExploreParams}. Accepts both the
- * canonical `?category=` and the legacy `?type=` the hero search historically emitted. Filter facets
- * accept repeated keys (`?stage=hiring&stage=live`) or comma lists (`?roles=ios,android`). With no
- * `?sort=`, a search with a query takes Best match and one without takes Recommended.
+ * Parse a discovery query at a door (CAS S37) into bounded {@link ExploreParams} that
+ * `ExploreParamsSchema` accepts, recording everything it had to correct:
+ *
+ * - `q` longer than `EXPLORE_QUERY_MAX` characters is cut to that length;
+ * - an unknown `sort` or `category` falls back to the default;
+ * - a key that is neither the parser's, another owner's on that door, nor one of `EXPLORE_FACET_KEYS`
+ *   is dropped, so it never reaches the search or `search.query_logs`;
+ * - a facet value over `EXPLORE_FACET_VALUE_MAX` characters is dropped, and a facet keeps at most
+ *   `EXPLORE_FACET_VALUES_MAX` values;
+ * - on the API, `offset` and `limit` must be whole numbers inside their bounds.
+ *
+ * Accepts both the canonical `?category=` and the legacy `?type=` the hero search historically
+ * emitted. Facets accept repeated keys (`?stage=hiring&stage=live`) or comma lists
+ * (`?roles=ios,android`). With no `?sort=`, a search with a query takes Best match and one without
+ * takes Recommended.
  */
-export function parseExploreParams(search: string | URLSearchParams): ExploreParams {
+export function inspectExploreQuery(
+	search: string | URLSearchParams,
+	door: ExploreDoor = "page",
+): ExploreQuery {
 	const sp = typeof search === "string" ? new URLSearchParams(search) : search;
+	const problems: Record<string, string> = {};
 	const filters: Record<string, string[]> = {};
 	for (const key of new Set(sp.keys())) {
-		if (RESERVED.has(key)) continue;
-		const values = sp.getAll(key).flatMap((v) => v.split(",")).map((v) => v.trim()).filter(
-			Boolean,
-		);
+		if (QUERY_KEYS.has(key) || isForeignKey(key, door)) continue;
+		if (!isExploreFacetKey(key)) {
+			problems[key] = "Not a filter of this search.";
+			continue;
+		}
+		const given = sp.getAll(key).flatMap((v) => v.split(",")).map((v) => v.trim()).filter(Boolean);
+		let values = given.filter((v) => v.length <= EXPLORE_FACET_VALUE_MAX);
+		if (values.length < given.length) {
+			problems[key] = `A value is longer than ${EXPLORE_FACET_VALUE_MAX} characters.`;
+		}
+		if (values.length > EXPLORE_FACET_VALUES_MAX) {
+			problems[key] = `At most ${EXPLORE_FACET_VALUES_MAX} values.`;
+			values = values.slice(0, EXPLORE_FACET_VALUES_MAX);
+		}
 		if (values.length) filters[key] = values;
 	}
-	const q = (sp.get("q") ?? "").trim();
-	return {
-		q,
-		category: toCategory(sp.get("category") ?? sp.get("type")),
-		sort: resolveExploreSort(sp.get("sort"), q),
-		filters,
-	};
+
+	let q = (sp.get("q") ?? "").trim();
+	if (q.length > EXPLORE_QUERY_MAX) {
+		problems.q = `At most ${EXPLORE_QUERY_MAX} characters.`;
+		q = q.slice(0, EXPLORE_QUERY_MAX).trim();
+	}
+	const categoryRaw = sp.get("category") ?? sp.get("type");
+	const category = toCategory(categoryRaw);
+	if (categoryRaw && category === "all" && categoryRaw.toLowerCase() !== "all") {
+		problems.category = "Not a category.";
+	}
+	const sortRaw = sp.get("sort");
+	if (sortRaw && !isExploreSort(sortRaw)) problems.sort = "Not an order.";
+
+	let offset = 0;
+	let limit: number | undefined;
+	if (door === "api") {
+		const o = pagingValue(sp.get("offset"), 0, EXPLORE_OFFSET_MAX);
+		if (o === undefined) problems.offset = `A whole number from 0 to ${EXPLORE_OFFSET_MAX}.`;
+		else if (o !== null) offset = o;
+		const l = pagingValue(sp.get("limit"), 1, EXPLORE_LIMIT_MAX);
+		if (l === undefined) problems.limit = `A whole number from 1 to ${EXPLORE_LIMIT_MAX}.`;
+		else if (l !== null) limit = l;
+	}
+
+	const params: ExploreParams = { q, category, sort: resolveExploreSort(sortRaw, q), filters };
+	// The SSOT has the last word: whatever the corrections above miss, the schema still refuses.
+	const checked = ExploreParamsSchema.safeParse(params);
+	if (!checked.success) {
+		for (const issue of checked.error.issues) {
+			const key = String(issue.path.at(-1) ?? "query");
+			problems[key] ??= issue.message;
+		}
+	}
+	return { params, offset, limit, problems };
+}
+
+/**
+ * Parse a query string (or `URLSearchParams`) into normalised, bounded {@link ExploreParams}: the
+ * page door of {@link inspectExploreQuery}, for callers that only need the params (islands reading
+ * the URL, the related-terms route).
+ */
+export function parseExploreParams(search: string | URLSearchParams): ExploreParams {
+	return inspectExploreQuery(search, "page").params;
+}
+
+/**
+ * The canonical `/explore?…` address of a page query: {@link serializeExploreParams} of its corrected
+ * params, then every key another owner carries on the page (`item`, `settings`, `feedback`, `utm_*`)
+ * as it arrived. Where the page redirects a query that needed correcting.
+ */
+export function canonicalExploreHref(params: ExploreParams, arrived: URLSearchParams): string {
+	const path = serializeExploreParams(params);
+	const at = path.indexOf("?");
+	const sp = new URLSearchParams(at === -1 ? "" : path.slice(at + 1));
+	for (const [key, value] of arrived) {
+		if (isForeignKey(key, "page")) sp.append(key, value);
+	}
+	const qs = sp.toString();
+	return qs ? `/explore?${qs}` : "/explore";
 }
 // #endregion
 
@@ -89,6 +216,11 @@ export function withQuery(p: ExploreParams, q: string): ExploreParams {
 	const next = q.trim();
 	const sort = p.sort === defaultExploreSort(p.q) ? defaultExploreSort(next) : p.sort;
 	return { ...p, q: next, sort: resolveExploreSort(sort, next) };
+}
+
+/** Immutably set the order; a value that names no order resolves to the query's default. */
+export function withSort(p: ExploreParams, sort: string): ExploreParams {
+	return { ...p, sort: resolveExploreSort(sort, p.q) };
 }
 
 /**

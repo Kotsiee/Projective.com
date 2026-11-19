@@ -93,6 +93,19 @@ export type DiscoveryRanking = z.infer<typeof DiscoveryRanking>;
 /** The development-only response header that reports {@link DiscoveryRanking} on `/explore` and `/api/explore/*`. */
 export const DISCOVERY_RANKING_HEADER = "x-discovery-ranking";
 
+/**
+ * Why a search that could have ranked semantically ranked heuristically. `client_budget`: the caller
+ * spent its query embeddings for the minute (COMMS SR2, CAS S30).
+ */
+export const DiscoveryRankingReason = z.enum(["client_budget"]);
+export type DiscoveryRankingReason = z.infer<typeof DiscoveryRankingReason>;
+
+/** The development-only header that carries a {@link DiscoveryRankingReason} beside the ranking. */
+export const DISCOVERY_RANKING_REASON_HEADER = "x-discovery-ranking-reason";
+
+/** Query embeddings one caller may cause in a minute (a signed-in user, else a client address). */
+export const CLIENT_QUERY_EMBEDDINGS_PER_MINUTE = 30;
+
 /** The Dev Context Switcher's override of `EMBEDDINGS_ENABLED`. Absent = follow the environment. */
 export const EmbeddingsOverride = z.enum(["on", "off"]);
 export type EmbeddingsOverride = z.infer<typeof EmbeddingsOverride>;

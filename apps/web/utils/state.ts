@@ -2,7 +2,7 @@ import { createDefine } from "fresh";
 import type { UserContext } from "@projective/types/auth";
 import type { FxRateTable } from "@projective/types/finance";
 import type { ProfileEditModel, ProfileView } from "@projective/types/profile";
-import type { DiscoveryRanking } from "@projective/types/explore";
+import type { DiscoveryRanking, DiscoveryRankingReason } from "@projective/types/explore";
 import type { A11yOverlays } from "@web/utils/a11y-context.ts";
 import type { PageMeta } from "@features/marketing/core/seo.ts";
 import type {
@@ -137,6 +137,8 @@ export interface State {
 	 * `routes/api/explore/_middleware.ts` to report in development. Absent = heuristic.
 	 */
 	discoveryRanking?: DiscoveryRanking;
+	/** Why that handler's search ranked heuristically when it could have ranked semantically (SR2). */
+	discoveryRankingReason?: DiscoveryRankingReason;
 }
 
 /** The typed `define` helper (`define.page` · `define.handlers` · `define.middleware`). */

@@ -346,3 +346,16 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Syncs the newsletter list to the Resend segment: creates or updates the contact of each confirmed, unsuppressed address the provider is behind on, deletes the contact of each address that left (NewsletterProviderSync.run). Does nothing while newsletter.provider_sync is off.')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
+
+-- #region [search] The embedding backfill (COMMS SR2, CAS S14)
+-- A save re-embeds its item in the process that made it, and that queue is lost with the process;
+-- nothing else caught up on a text whose stored hash or model no longer matches. Hourly, on a minute
+-- no other job uses, a run embeds at most 50 stale public items through search.fn_set_embedding. An
+-- http job on its own secret, because it calls Voyage. It does nothing while EMBEDDINGS_ENABLED is
+-- false, which it is in every environment until Voyage's written no-training terms are on file.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('search-embeddings-backfill', 'http', '38 * * * *',
+        NULL, '/api/search/cron/embeddings?limit=50', 'SEARCH_CRON_SECRET',
+        'Embeds up to 50 public discovery items whose stored vector is missing or stale (another text hash or model) through search.fn_set_embedding; a no-op while embeddings are off.')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion

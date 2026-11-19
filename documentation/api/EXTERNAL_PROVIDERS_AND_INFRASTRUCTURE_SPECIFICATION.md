@@ -569,6 +569,8 @@ heuristic ranking (`SEMANTIC_BLEND_WEIGHT`) and serves the `/view` "Similar" rai
 | Text to embed                   | `packages/backend/core/embedding-text.ts`                                                                 |
 | Post-commit re-embed            | `services/search/embedding-sync.ts` (30 s settle, `REEMBED_SETTLE_MS`)                                    |
 | Backfill                        | `scripts/embeddings-backfill.ts` (`deno task embeddings:backfill`)                                        |
+| Scheduled backfill              | `services/search/embedding-sync.ts` `runScheduledBackfill` (job `search-embeddings-backfill`)             |
+| Per-caller query budget         | `services/search/EmbeddingBackendService.ts` (30 a minute per caller, `client` from the route)            |
 | Re-rank                         | `services/explore/semantic.ts` · `similarity-cache.ts`                                                    |
 
 ### 5.2 Data contract
@@ -598,13 +600,17 @@ heuristic ranking (`SEMANTIC_BLEND_WEIGHT`) and serves the `/view` "Similar" rai
 ### 5.3 Setup runbook
 
 1. **The host is Voyage AI.** Every call goes to `https://api.voyageai.com` with a Voyage platform
-   key (`pa-…`), whatever the key looks like (Decision #340, ruling T5; #339 (d)). MongoDB Atlas is
-   not a processor. Set `VOYAGE_API_BASE` only to point the client at a mock.
+   key (`pa-…`) (Decision #340, ruling T5; #339 (d)). A key of any other shape, an Atlas key
+   included, counts as absent, so discovery ranks heuristically and nothing is sent (Decision #412
+   (d)). MongoDB Atlas is not a processor. Set `VOYAGE_API_BASE` only to point the client at a mock.
 2. Put `VOYAGE_API_KEY` in the host's secret store. It is server-only and never logged.
 3. Run `deno task db:reset` (local) or apply the migrations (hosted) so that pgvector and the HNSW
    indexes exist.
 4. Run **`deno task embeddings:backfill`**: once per environment, and again after every `db:reset`,
-   which empties every vector.
+   which empties every vector. After that, the hourly `search-embeddings-backfill` job catches up on
+   any item whose text changed while its re-embed was lost: put `SEARCH_CRON_SECRET` (at least 32
+   characters) in the host's secret store and in Vault under the same name, beside `CRON_APP_URL`.
+   It embeds at most 50 items a run and does nothing while `EMBEDDINGS_ENABLED` is false.
 5. Optional: run the server with `--unstable-kv` to share the query cache across isolates. Without
    it, `openSharedKv` answers `null` and only the memory layer runs.
 6. Once Voyage's written no-training and retention terms are on file (ruling T5), set
@@ -2124,7 +2130,7 @@ removed.
 | `ZOOM_WEBHOOK_SECRET`                                                                                          | In contract                       | `presence/zoom.ts`                                            | secret                 |
 | `S3_ACCESS_KEY_ID` · `S3_SECRET_ACCESS_KEY`                                                                    | In contract                       | `adapters/aws.ts`                                             | secret                 |
 | `ENCRYPTION_KEY`                                                                                               | In contract                       | `token-vault.ts`                                              | secret                 |
-| `*_CRON_SECRET` (finance, account, scheduling, contact, integrations)                                          | In contract                       | cron routes                                                   | secret                 |
+| `*_CRON_SECRET` (finance, account, scheduling, contact, integrations, search)                                  | In contract                       | cron routes                                                   | secret                 |
 | `COMMS_DISPATCH_SECRET`                                                                                        | In contract (NT2, #344 (a))       | `NotificationDispatchService` (both dispatch routes) + Vault  | secret                 |
 | `INTEGRATIONS_BACKEND_LIVE` · `FILES_BACKEND_LIVE` · `FINANCE_BACKEND_LIVE` · …                                | In contract                       | `core/supabase.ts`                                            | gate                   |
 | `MODERATION_BACKEND_LIVE` · `MALWARE_SCAN_LIVE`                                                                | **Proposed**                      | the moderation and upload services                            | gate                   |

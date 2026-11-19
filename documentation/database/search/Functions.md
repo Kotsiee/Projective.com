@@ -218,10 +218,11 @@ and `embedded_at = now()` on the entity's index row (`service_blueprint` → `se
 (`22023`) a vector that is not 1024 wide, a blank model or hash, and an unknown entity type. Refuses
 (`PV422`, `EMBEDDING_SQLSTATE.notUnitLength`) a vector whose L2 norm is not 1 ± 1e-3
 (`EMBEDDING_NORM_TOLERANCE`), because inner product ranks as cosine only on unit vectors (CAS S3);
-the row keeps the vector it had. Callers: `deno task embeddings:backfill` and the post-commit
-re-embed (`packages/backend/services/search/embedding-sync.ts`), both with the service-role key. On
-`PV422` the sync logs the entity by kind and id, counts it `rejected` and goes on with the rest; any
-other refusal stops the sync.
+the row keeps the vector it had. Callers: `deno task embeddings:backfill`, the post-commit re-embed
+and the hourly `search-embeddings-backfill` job (`runScheduledBackfill`, at most 50 stale items a
+run, COMMS SR2); the last two live in `packages/backend/services/search/embedding-sync.ts`. All
+three use the service-role key. On `PV422` the sync logs the entity by kind and id, counts it
+`rejected` and goes on with the rest; any other refusal stops the sync.
 
 ### `search.fn_nearest(p_embedding vector(1024), p_types text[] DEFAULT NULL, p_exclude uuid[] DEFAULT '{}', p_limit integer DEFAULT 24)`
 

@@ -59,8 +59,16 @@ export function readEmbeddingsOverride(cookieHeader: string | null): EmbeddingsO
 	return null;
 }
 
-/** Whether a configured key is a key at all: blank and the `XXXX-XXXX` placeholder count as absent. */
+/** A Voyage AI platform key: `pa-` and the rest of the key, no whitespace. */
+const VOYAGE_KEY_SHAPE = /^pa-\S+$/;
+
+/**
+ * Whether a configured key is a Voyage key at all. Blank, the `XXXX-XXXX` placeholder and any key
+ * that is not a Voyage platform key (`pa-…`), such as an Atlas key, count as absent (EPI §3.2;
+ * Decision #412 flag (d), ruled 2026-11-19), so discovery ranks heuristically rather than sending
+ * every query to Voyage to be refused.
+ */
 export function hasVoyageKey(key: string | undefined): boolean {
 	const value = key?.trim() ?? "";
-	return value.length > 0 && !/^X{4}-X{4}$/i.test(value);
+	return VOYAGE_KEY_SHAPE.test(value);
 }

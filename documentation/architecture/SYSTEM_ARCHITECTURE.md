@@ -828,7 +828,8 @@ so the table has one door. Live only: without Supabase a save answers 503 and ro
 Dev Context Switcher's `saved` axis simulates the set client-side.
 **Semantic ranking (Decision #179).** Discovery can rank with Voyage AI `voyage-4` vectors (1024
 dimensions, unit length — inner product ranks as cosine) behind one switch, `isEmbeddingsLive(req?)`
-(`core/supabase.ts`): not mocked, Supabase configured, `VOYAGE_API_KEY` present, and
+(`core/supabase.ts`): not mocked, Supabase configured, `VOYAGE_API_KEY` present (a Voyage platform
+key, `pa-…`; any other shape counts as absent, Decision #412 (d)), and
 `EMBEDDINGS_ENABLED` — or, in development only, the Dev Context Switcher's `pj.dev.embeddings` cookie
 (`on` | `off`), which the routes forward only under `IS_DEV` and the gate honours only under
 `DENO_ENV=development`. Off, discovery is byte-for-byte the heuristic path and nothing calls Voyage.
@@ -854,7 +855,12 @@ neighbours are kept per isolate for 60 s (an LRU of 256 keyed by normalised quer
 candidate scan and a narrow category would otherwise starve. Any Voyage or database failure
 falls back to the heuristic for that request with one `[embeddings]` server-log line. A query that,
 once normalised, is shorter than 3 characters or has no letter ranks heuristically and never calls
-Voyage. A cache-miss query call is guarded twice per isolate. A query 429 is not retried; it is
+Voyage. A cache-miss query call is guarded per caller first (COMMS SR2, CAS S30): a caller — the
+signed-in user, else the client address `utils/client-key.ts` resolves — may cause 30 query
+embeddings a minute (`CLIENT_QUERY_EMBEDDINGS_PER_MINUTE`, a `SlidingWindowLimiter`), and past it the
+search ranks heuristically with `reason: client_budget` (the development header
+`x-discovery-ranking-reason`), never a 429; a memory or KV hit is not counted. It is then guarded
+twice per isolate. A query 429 is not retried; it is
 returned at once with its `Retry-After`. A circuit breaker opens after 3 consecutive transient
 failures (anything but a refusal, a malformed answer or a missing key) for 30 s, or for the tripping
 429's `Retry-After` when longer (at most 5 minutes), then lets one trial call through: success closes
@@ -870,7 +876,10 @@ autosaving edit session embeds its final text once; a queue lost with its isolat
 hash check and the backfill. Both skip an item whose
 stored text hash and model still match, and both write through the service-role-only
 `search.fn_set_embedding`, which refuses a vector off unit length (`PV422`); the sync logs that item
-and skips it. Each sync chunk is one Voyage request (planned under `DOCUMENT_BATCH`'s
+and skips it. The re-embed queue lives in the process that made the write, so the hourly
+`search-embeddings-backfill` job (`POST /api/search/cron/embeddings`, `SEARCH_CRON_SECRET`) catches
+up on whatever a lost queue missed: at most 50 stale items a run, and a no-op while
+`isEmbeddingsLive()` is false (COMMS SR2, CAS S14). Each sync chunk is one Voyage request (planned under `DOCUMENT_BATCH`'s
 input and token ceilings), so a refused request never discards vectors already billed. In development
 `/explore`, the `/view` pages and every `/api/explore/*` response carry
 `x-discovery-ranking: semantic | heuristic`, and the switcher shows the effective state
@@ -2604,6 +2613,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `integrations-calendar-sync`        | every 5 min                       | `POST /api/integrations/cron/sync?limit=50` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.syncDue` (#383 R3) | Claims each calendar a push marked due or an hour unread, under a 10-minute lease (`SKIP LOCKED`); a read lands in one call and only while its claim is held, so a repeat changes nothing.
 | `comms-dispatch-sweep`              | every minute                      | `POST /api/comms/cron/dispatch?limit=200` · `COMMS_DISPATCH_SECRET` | Comms — `NotificationDispatchService.dispatch` (Decision #344 (a)) | Claims through `comms.fn_claim_deliveries` (`SKIP LOCKED`, a 15-minute lease on a queued row, results recorded forward only), so an overlapping run sends nothing twice; claims nothing while `comms.dispatch_webhook` is off.
 | `ops-deliver-alerts`                | every 5 min                       | `POST /api/ops/cron/alerts?limit=50` · `OPS_CRON_SECRET` | Ops — `OpsAlertService.deliver` (MR4, Decision #461) | Folds under an advisory lock and records each fold (`ops.alert_seen`), leases a due alert for 5 minutes and records each send forward only, so an overlapping run sends nothing twice; a failed send stays pending and backs off. |
+| `search-embeddings-backfill`        | hourly :38                        | `POST /api/search/cron/embeddings?limit=50` · `SEARCH_CRON_SECRET` | Search — `runScheduledBackfill` (COMMS SR2, CAS S14) | Embeds up to 50 public items whose stored vector is missing or stale; a stored vector is skipped by its text hash and model, so a repeated run embeds nothing twice. A no-op while embeddings are off. |
 | `newsletter-provider-sync`          | every 5 min, from :02             | `POST /api/newsletter/cron/sync?limit=50` · `COMMS_DISPATCH_SECRET` | Newsletter — `NewsletterProviderSync.run` (CD1 step 5, Decision #480 Q1 A) | Reads `community.newsletter_sync_batch` (no rows while `newsletter.provider_sync` is off) and stamps each provider call against the row version it read (`record_newsletter_sync`), so a re-run, or a change made during one, converges; the provider calls are idempotent by shape (a create of an existing address is answered by a lookup). Ends a pass at a 429 or after 60 s. |
 | `integrations-outbound-sync`        | every 5 min, from :02             | `POST /api/integrations/cron/sync?task=outbound&limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.pushDue` (#383 R3) | Claims each dirty copy under a 10-minute lease (`SKIP LOCKED`); writes are idempotent at the provider, and a copy changed during a write stays dirty.
 | `integrations-consent-sweep`        | daily 03:25                       | `integrations.fn_sweep_consent_states()`                                 | Integrations — the consent handshake (`00001500`)                 | Deletes consents a day past their window; repeat-safe.
@@ -4499,6 +4509,9 @@ COMMS_DISPATCH_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) of the alert sweep (MR4, Decision #461): the ops-deliver-alerts job calls
 # POST /api/ops/cron/alerts with it; 404 otherwise.
 OPS_CRON_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) of the embedding backfill (COMMS SR2): the search-embeddings-backfill job
+# calls POST /api/search/cron/embeddings with it hourly; 404 otherwise. A no-op while embeddings are off.
+SEARCH_CRON_SECRET=XXXX-XXXX
 # Where money and job alerts go (Decision #461 (A)): an incoming-webhook URL taking Slack-compatible JSON
 # ({ "text": … }; https://, or a localhost receiver in development) and one address for the email digest
 # (through RESEND_API_KEY + MAIL_FROM). Unset, that channel is off and its alerts wait pending. Figures,
@@ -4518,6 +4531,7 @@ OPS_ALERT_EMAIL=XXXX-XXXX
 #   INTEGRATIONS_CRON_SECRET  the same value as the env key above
 #   COMMS_DISPATCH_SECRET  the same value as the env key above (read by the dispatch trigger too)
 #   OPS_CRON_SECRET  the same value as the env key above
+#   SEARCH_CRON_SECRET  the same value as the env key above
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 

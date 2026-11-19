@@ -202,9 +202,10 @@ export interface ServerEnv {
 	/**
 	 * The Voyage AI key, from `VOYAGE_API_KEY`. Server-only: it is sent only as the `Authorization`
 	 * header of `POST {host}/v1/embeddings` and is never logged, echoed in an error or sent to a client.
-	 * The `XXXX-XXXX` placeholder counts as absent. It is a Voyage platform key (`pa-…`): every call
-	 * goes to `https://api.voyageai.com` whatever the key looks like (Decision #340, ruling T5), unless
-	 * {@link voyageApiBase} points the client at a mock.
+	 * It is a Voyage platform key (`pa-…`); the `XXXX-XXXX` placeholder and any key of another shape
+	 * count as absent (EPI §3.2; Decision #412 flag (d), ruled 2026-11-19). Every call goes to
+	 * `https://api.voyageai.com` (Decision #340, ruling T5), unless {@link voyageApiBase} points the
+	 * client at a mock.
 	 */
 	voyageApiKey: string | undefined;
 	/**
@@ -327,6 +328,14 @@ export interface ServerEnv {
 	 * unset, the `XXXX-XXXX` placeholder or shorter than 32 characters.
 	 */
 	opsCronSecret: string | undefined;
+	/**
+	 * The bearer token the scheduler presents to `POST /api/search/cron/embeddings`, the
+	 * `search-embeddings-backfill` job (COMMS SR2, CAS S14), from `SEARCH_CRON_SECRET`. Vault holds the
+	 * same value under the same name. Like the other cron routes it answers 404 to anything else,
+	 * including every request while this is unset, the `XXXX-XXXX` placeholder or shorter than 32
+	 * characters.
+	 */
+	searchCronSecret: string | undefined;
 	/**
 	 * Where money and job alerts are posted, from `OPS_ALERT_WEBHOOK_URL` (Decision #461 (A)): an
 	 * incoming-webhook URL that takes Slack-compatible JSON (`{ text }`). Server-only; an `https://` URL
@@ -486,6 +495,7 @@ export function serverEnv(): ServerEnv {
 		integrationsCronSecret: firstEnv("INTEGRATIONS_CRON_SECRET"),
 		commsDispatchSecret: firstEnv("COMMS_DISPATCH_SECRET"),
 		opsCronSecret: firstEnv("OPS_CRON_SECRET"),
+		searchCronSecret: firstEnv("SEARCH_CRON_SECRET"),
 		opsAlertWebhookUrl: firstEnv("OPS_ALERT_WEBHOOK_URL"),
 		opsAlertEmail: firstEnv("OPS_ALERT_EMAIL"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),

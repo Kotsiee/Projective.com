@@ -36,6 +36,7 @@ import { HelpBackendService } from "../editorial/HelpBackendService.ts";
 import type { HelpCentreLibrary } from "../editorial/help-library.ts";
 import {
 	type DiscoveryRanking,
+	type DiscoveryRankingReason,
 	type DiscoverySim,
 	NO_DISCOVERY_SIM,
 } from "@projective/types/explore";
@@ -117,18 +118,33 @@ const CTA_TEAM: CtaPromo = {
 /**
  * A result that also says how its discovery content was ordered (Decision #179). Transport metadata on
  * the envelope, like `session`: the route turns it into the development-only `x-discovery-ranking`
- * header and it never reaches the JSON body.
+ * header and it never reaches the JSON body. `reason` says why a search that could have ranked
+ * semantically did not (`x-discovery-ranking-reason`).
  */
-export type RankedResult<T> = ServiceResult<T> & { ranking: DiscoveryRanking };
+export type RankedResult<T> = ServiceResult<T> & {
+	ranking: DiscoveryRanking;
+	reason?: DiscoveryRankingReason;
+};
 
-function ranked<T>(result: ServiceResult<T>, ranking: DiscoveryRanking): RankedResult<T> {
-	return { ...result, ranking };
+function ranked<T>(
+	result: ServiceResult<T>,
+	ranking: DiscoveryRanking,
+	reason?: DiscoveryRankingReason,
+): RankedResult<T> {
+	return reason ? { ...result, ranking, reason } : { ...result, ranking };
 }
+
+/** A search's semantic half: its neighbours and query vector, or why it ranks heuristically. */
+type QuerySimilarity =
+	| { similarity: SemanticSimilarity; vector: number[] }
+	| { reason: DiscoveryRankingReason }
+	| null;
 
 async function querySimilarity(
 	catalog: Catalog,
 	params: ExploreParams,
-): Promise<{ similarity: SemanticSimilarity; vector: number[] } | null> {
+	client: string | undefined,
+): Promise<QuerySimilarity> {
 	// Too short or letterless to mean anything to a vector: heuristic by design, not a fallback.
 	if (!isEmbeddableQuery(normaliseQuery(params.q))) return null;
 	// A later page of the same search reuses the first page's neighbours (see ./similarity-cache.ts).
@@ -136,10 +152,12 @@ async function querySimilarity(
 	const cached = similarityCache.get(cacheKey);
 	if (cached) return cached;
 	try {
-		const embedded = await EmbeddingBackendService.embedQuery(params.q);
+		const embedded = await EmbeddingBackendService.embedQuery(params.q, { client });
 		if (!embedded.ok || !embedded.data) {
-			// An open breaker or a spent budget already logged its transition; one line per request is noise.
 			const reason = embedded.details?.reason;
+			// The caller spent its own budget: the expected answer to a burst, not a failure to log.
+			if (reason === "client_budget") return { reason: "client_budget" };
+			// An open breaker or a spent budget already logged its transition; one line per request is noise.
 			if (reason !== "circuit_open" && reason !== "budget") {
 				reportEmbeddingFallback("search", embedded.message ?? "no query vector");
 			}
@@ -319,6 +337,9 @@ export class ExploreBackendService {
 	 *
 	 * `showPromoted` is the caller's statement that the viewer may see promoted slots — never a 13–17
 	 * account (Decision #454). A caller that does not say gets none.
+	 *
+	 * `client` keys the caller's query-embedding budget (`user:<id>` or `ip:<address>`, CAS S30): past
+	 * it the search ranks heuristically with `reason: "client_budget"`.
 	 */
 	static async search(
 		input: {
@@ -326,6 +347,7 @@ export class ExploreBackendService {
 			offset?: number;
 			limit?: number;
 			actor?: ReadActor;
+			client?: string;
 			semantic?: boolean;
 			showPromoted?: boolean;
 		},
@@ -335,9 +357,11 @@ export class ExploreBackendService {
 		const started = performance.now();
 		try {
 			const catalog = await loadCatalog();
-			const semantic = input.semantic && input.params.q.trim()
-				? await querySimilarity(catalog, input.params)
+			const found = input.semantic && input.params.q.trim()
+				? await querySimilarity(catalog, input.params, input.client)
 				: null;
+			const reason = found && "reason" in found ? found.reason : undefined;
+			const semantic = found && "similarity" in found ? found : null;
 			const payload = searchFrom(
 				catalog,
 				input.params,
@@ -359,7 +383,7 @@ export class ExploreBackendService {
 					queryEmbedding: semantic?.vector,
 				}).catch((error) => console.error("[explore] search.fn_log_query failed", error));
 			}
-			return ranked(ok(payload), semantic ? "semantic" : "heuristic");
+			return ranked(ok(payload), semantic ? "semantic" : "heuristic", reason);
 		} catch (error) {
 			return ranked(unavailable(error), "heuristic");
 		}

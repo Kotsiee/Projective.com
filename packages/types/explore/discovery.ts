@@ -37,25 +37,85 @@ export function defaultExploreSort(q: string): ExploreSort {
 	return q.trim() ? "best_match" : "recommended";
 }
 
+/** Whether `value` names one of the {@link ExploreSort} orders. */
+export function isExploreSort(value: string | null | undefined): value is ExploreSort {
+	return ExploreSort.safeParse(value).success;
+}
+
 /**
- * The order a requested `sort` resolves to for `q`: absent → {@link defaultExploreSort}, and
- * `best_match` without a query → `recommended`. Any other value passes through.
+ * The order a requested `sort` resolves to for `q`: absent or unknown → {@link defaultExploreSort},
+ * and `best_match` without a query → `recommended`. Any other order passes through.
  */
-export function resolveExploreSort(sort: string | null | undefined, q: string): string {
-	if (!sort) return defaultExploreSort(q);
+export function resolveExploreSort(sort: string | null | undefined, q: string): ExploreSort {
+	if (!isExploreSort(sort)) return defaultExploreSort(q);
 	return sort === "best_match" && !q.trim() ? "recommended" : sort;
 }
 
-/** The parsed, normalised query state behind `/explore`. */
+// #region Query bounds (COMMS SR2, CAS S37)
+/** The longest free-text query a door accepts. A longer one is corrected to its first 512 characters. */
+export const EXPLORE_QUERY_MAX = 512;
+/** The most values one facet carries. */
+export const EXPLORE_FACET_VALUES_MAX = 20;
+/** The longest single facet value. */
+export const EXPLORE_FACET_VALUE_MAX = 64;
+/** The deepest offset a feed page of `GET /api/explore/search` may start at. */
+export const EXPLORE_OFFSET_MAX = 10_000;
+/** The largest page `GET /api/explore/search` serves (the service's own feed ceiling). */
+export const EXPLORE_LIMIT_MAX = 60;
+
+/**
+ * Every adaptive facet a discovery query may carry: the ids the sidebar's facet lists declare
+ * (`apps/web/features/explore/core/filter-config.ts`, held equal by `explore-state.test.ts`), which
+ * are also the keys the service filters on. Any other key is not a facet, so it never reaches the
+ * search or `search.query_logs.filters_applied`.
+ */
+export const EXPLORE_FACET_KEYS = [
+	"budget",
+	"cat",
+	"delivery",
+	"industry",
+	"members",
+	"model",
+	"price",
+	"rating",
+	"readMinutes",
+	"roles",
+	"skill",
+	"stage",
+	"topic",
+	"verified",
+] as const;
+export const ExploreFacetKey = z.enum(EXPLORE_FACET_KEYS);
+export type ExploreFacetKey = z.infer<typeof ExploreFacetKey>;
+
+/** Whether `key` is one of the {@link EXPLORE_FACET_KEYS}. */
+export function isExploreFacetKey(key: string): key is ExploreFacetKey {
+	return (EXPLORE_FACET_KEYS as readonly string[]).includes(key);
+}
+// #endregion
+
+/** One facet's selected values: 1–20 of them, each 1–64 characters. */
+const FacetValuesSchema = z
+	.array(z.string().min(1).max(EXPLORE_FACET_VALUE_MAX))
+	.min(1)
+	.max(EXPLORE_FACET_VALUES_MAX);
+
+/**
+ * The parsed, normalised query state behind `/explore`, bounded (CAS S37): both doors — the page and
+ * `GET /api/explore/search` — produce only values this accepts (`explore-state.ts`).
+ */
 export const ExploreParamsSchema = z.object({
-	/** Free-text query (`?q=`). */
-	q: z.string(),
+	/** Free-text query (`?q=`), at most {@link EXPLORE_QUERY_MAX} characters. */
+	q: z.string().max(EXPLORE_QUERY_MAX),
 	/** Selected top-level category (`?category=` / legacy `?type=`); `all` when none. */
 	category: ExploreCategory,
-	/** Sort key ({@link ExploreSort}); {@link defaultExploreSort} when the URL names none. */
-	sort: z.string(),
-	/** Adaptive filter selections — one entry per active facet, each a list of values. */
-	filters: z.record(z.string(), z.array(z.string())),
+	/** The order ({@link ExploreSort}); {@link defaultExploreSort} when the URL names none. */
+	sort: ExploreSort,
+	/** Adaptive filter selections, keyed by {@link EXPLORE_FACET_KEYS} only. */
+	filters: z.record(z.string(), FacetValuesSchema).refine(
+		(filters) => Object.keys(filters).every(isExploreFacetKey),
+		{ message: "Not a facet of this search." },
+	),
 });
 export type ExploreParams = z.infer<typeof ExploreParamsSchema>;
 // #endregion

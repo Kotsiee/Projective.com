@@ -41,6 +41,21 @@ Parenthesized folders group routes **without** adding a URL segment:
   reader navigates to — `/view/[entity]`, `/[handle]/view/[item]`, `/[handle]` — records itself
   server-side instead. `/explore` renews a lapsed session in its handler (the `[handle]` model) because
   its Home feed is personalised. See SYSTEM_ARCHITECTURE §Discovery (Explore) services, Decision #178.
+- **The discovery query contract (COMMS SR2, CAS S37).** `/explore` and `GET /api/explore/search`
+  read their query through one door (`features/explore/core/explore-state.ts`
+  `inspectExploreQuery`) into `ExploreParamsSchema`: `q` at most 512 characters; `sort` one of
+  `best_match` · `recommended` · `rating` · `price_asc` · `newest`; `category` a discovery category
+  (`?type=` is its legacy alias); facets only under `EXPLORE_FACET_KEYS` (the ids the sidebar's
+  facet lists declare), at most 20 values of at most 64 characters each, as repeated keys or comma
+  lists; on the API only, `offset` 0–10,000 and `limit` 1–60. The page also carries `item` (the
+  results drawer), `settings`, `feedback` and `utm_*` for their own owners. Anything else, and any
+  value out of bounds, is corrected: `/explore` answers **308** to the canonical address (those
+  carried keys kept), and the API answers **422** naming each key. The front page `/` still hands a
+  search to `/explore` with its query (303, `front-page.ts`), and renders its Home in place for
+  anything else, so a campaign link to it keeps its address. No other key reaches the search or `search.query_logs.filters_applied`.
+  A search embeds its query within the caller's budget (30 query embeddings a minute, keyed by the
+  signed-in user or the client address); past it the search ranks heuristically (development
+  header `x-discovery-ranking-reason: client_budget`) and is never a 429.
 - `routes/_middleware.ts` — stamps `isAuthenticated` / `userContext` on every request from the
   `sb-access-token` cookie only once it **verifies** (`session.ts` `resolveRequestViewer` →
   `AuthBackendService.verifyAccessToken`: signature against the project JWKS or the HS256
@@ -1003,6 +1018,7 @@ expired live session), and answering the flat `serviceResponse` envelope. Live b
 | `/api/comms/dispatch`             | `POST` `{ notification_id }` | The notification dispatcher's entry point (Decision #344 (a)): the `comms.notifications` trigger posts here through pg_net. `DispatchRequestSchema` (the id alone) → `NotificationDispatchService.dispatch` → `{ claimed, sent, failed, skipped, suppressed }`. Bearer `COMMS_DISPATCH_SECRET` (≥ 32 chars, constant-time), checked before the body is read; anything else **404**; 422 any other body. A named server-to-server door in the `/api` origin guard (`utils/csrf.ts`), since the database sends no `Origin`. |
 | `/api/comms/cron/dispatch`        | `POST` (`?limit=`, 1–500, default 200) | The dispatcher's retry sweep (job `comms-dispatch-sweep`, every minute): one pass over every due delivery. Bearer `COMMS_DISPATCH_SECRET`; anything else **404**. |
 | `/api/ops/cron/alerts`            | `POST` (`?limit=`, 1–500, default 50) | The alert sweep (job `ops-deliver-alerts`, every 5 minutes; MR4, Decision #461): `OpsAlertService.deliver` claims, sends by webhook and email digest, records. Bearer `OPS_CRON_SECRET`; anything else **404**. |
+| `/api/search/cron/embeddings`     | `POST` (`?limit=`, 1–200, default 50) | The embedding backfill (job `search-embeddings-backfill`, hourly at :38; COMMS SR2, CAS S14): `runScheduledBackfill` embeds up to `limit` public discovery items whose stored vector is missing or stale. A no-op `200` while embeddings are off; `502` when a run stops on a refusal a later run cannot fix. Bearer `SEARCH_CRON_SECRET`; anything else **404**. |
 | `/api/comms/webhooks/resend`      | `POST` (raw body, ≤ 256 KiB) | The email provider's delivery webhook (COMMS NT3): `DeliveryEventService.handleResend` checks the Svix signature (`RESEND_WEBHOOK_SECRET`, 300 s tolerance, constant time) before parsing, then `comms.fn_record_delivery_event` claims `(resend, svix-id)` with the effect in one transaction: delivered, a hard bounce (the address suppressed for every category and its owner told), a complaint (Marketing only). The newsletter's share follows the claim, replays included (CD1 step 5): Resend's `contact.*` events and a complaint go to `community.record_newsletter_provider_event`, which can take an address or a topic off the newsletter but never add one. **200** for handled, replayed and ignored events; **400** forged, stale or unreadable (and every delivery while the secret is unset); **413** oversized; **503** asks for a redelivery. No session; a server-to-server door. |
 | `/api/comms/unsubscribe`          | `GET` · `POST` (`?token=`) | An account's one-click marketing unsubscribe (COMMS NT3, RFC 8058), beside the newsletter's `/api/newsletter/unsubscribe`. `GET` writes nothing and **303→** `/settings/notifications`. `POST` (`List-Unsubscribe=One-Click`, or any form post) verifies the signed token (the person, never an address) and suppresses their primary verified address for Marketing only (`comms.fn_unsubscribe_marketing`), answering plain text: 200, or **404** for a link this server did not sign. Cross-site and without `Origin` from the mail provider's servers, so the `/api` origin guard stands aside for this path (a form body or none). `no-store`, `no-referrer`. |
 

@@ -40,7 +40,7 @@ search and is not logged. Gated by `EXPLORE_BACKEND_LIVE` (off ⇒ nothing is wr
 | `user_id`         | `auth.uid()` of the caller, NULL for a guest (the RPC resolves it; the app never passes it). |
 | `search_query`    | The trimmed `?q=`; `''` for a category browse.                                               |
 | `query_embedding` | The `voyage-4` query vector (1024) when semantic ranking ran, NULL otherwise (Decision #179). Not selectable by `anon`/`authenticated`. |
-| `filters_applied` | The rest of `ExploreParams` (`category`, `sort`, `filters`).                                 |
+| `filters_applied` | The rest of `ExploreParams` (`category`, `sort`, `filters`), the facets under `EXPLORE_FACET_KEYS` only (COMMS SR2, CAS S37; `query-log.ts` `filtersApplied`). |
 | `entity_type`     | The searched category (`all`, `services`, `freelancers`, …).                                 |
 | `duration_ms`     | Catalogue load + filter + rank, measured in the fat service.                                 |
 | `result_count`    | Matching items (`SearchPayload.count`).                                                      |

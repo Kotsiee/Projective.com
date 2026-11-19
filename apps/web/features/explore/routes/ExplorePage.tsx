@@ -6,9 +6,17 @@ import { IS_DEV } from "@web/utils/dev.ts";
 import { ensureSession, type SessionState } from "@web/utils/session.ts";
 import { resolveTokenContext } from "@web/utils/user-context.ts";
 import { ExploreScreen } from "@features/explore/components/ExploreScreen.tsx";
-import { isResultsMode, parseExploreParams } from "@features/explore/core/explore-state.ts";
+import {
+	canonicalExploreHref,
+	inspectExploreQuery,
+	isResultsMode,
+} from "@features/explore/core/explore-state.ts";
 import { DISCOVERY_SIM_COOKIE, parseDiscoverySim } from "@features/explore/core/discovery-sim.ts";
-import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
+import {
+	discoveryClientFor,
+	rankingHeaders,
+	semanticRankingFor,
+} from "@features/explore/core/discovery-ranking.ts";
 import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
 import { NO_DISCOVERY_SIM } from "@projective/types/explore";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
@@ -32,8 +40,25 @@ export function sessionCookieHeaders(session: SessionState): [string, string][] 
  * — the same move `[handle]/_middleware.ts` makes — and passes the result in, rather than serving a
  * returning reader a guest's page. The Dev Context Switcher's cold-start simulation rides in on its
  * cookie, in development only.
+ *
+ * The query is read at the page door (CAS S37). On `/explore`, a query the door had to correct is
+ * redirected (308) to its canonical address, keeping the keys other owners carry. The front page `/`
+ * sends a search on to `/explore` before this runs (`front-page.ts`), and renders its Home with
+ * whatever else it carries ignored, so a campaign link to it keeps its address. A search embeds its
+ * query within the caller's budget (CAS S30): past it the page ranks heuristically, never a 429.
  */
 export async function exploreResponse(ctx: Context<State>, session: SessionState) {
+	const query = inspectExploreQuery(ctx.url.searchParams, "page");
+	if (ctx.url.pathname === "/explore" && Object.keys(query.problems).length > 0) {
+		const location = canonicalExploreHref(query.params, ctx.url.searchParams);
+		if (location !== `${ctx.url.pathname}${ctx.url.search}`) {
+			return new Response(null, {
+				status: 308,
+				headers: [...sessionCookieHeaders(session), ["location", location]],
+			});
+		}
+	}
+
 	if (session.authenticated && session.accessToken) {
 		ctx.state.accessToken = session.accessToken;
 		if (session.refreshed) {
@@ -43,7 +68,7 @@ export async function exploreResponse(ctx: Context<State>, session: SessionState
 	}
 	const headers = sessionCookieHeaders(session);
 
-	const params = parseExploreParams(ctx.url.searchParams);
+	const params = query.params;
 	const authed = ctx.state.isAuthenticated ?? false;
 	const viewerFreelancer = ctx.state.userContext?.isFreelancer ?? false;
 	const viewerRestricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
@@ -52,9 +77,11 @@ export async function exploreResponse(ctx: Context<State>, session: SessionState
 		const label = params.q || params.category;
 		ctx.state.title = `${label} · Explore · Projective`;
 		ctx.state.description = `Search results for ${label} on Projective.`;
+		const actor = readActor(ctx);
 		const res = await ExploreBackendService.search({
 			params,
-			actor: readActor(ctx),
+			actor,
+			client: discoveryClientFor(ctx.info.remoteAddr, ctx.req, actor.userId),
 			semantic: semanticRankingFor(ctx.req),
 			showPromoted: !viewerRestricted,
 		});
@@ -65,7 +92,7 @@ export async function exploreResponse(ctx: Context<State>, session: SessionState
 			authed,
 			viewerFreelancer,
 			viewerRestricted,
-		}, { headers: [...headers, ...rankingHeaders(res.ranking)] });
+		}, { headers: [...headers, ...rankingHeaders(res.ranking, res.reason)] });
 	}
 
 	// The guest front page `/` prints this same Home, so `/` is its one canonical address.

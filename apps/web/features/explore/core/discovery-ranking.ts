@@ -1,8 +1,11 @@
 import { IS_DEV } from "@web/utils/dev.ts";
+import { clientKey } from "@web/utils/client-key.ts";
 import { embeddingsStatus, isEmbeddingsLive } from "@projective/backend/core/supabase.ts";
 import {
 	DISCOVERY_RANKING_HEADER,
+	DISCOVERY_RANKING_REASON_HEADER,
 	type DiscoveryRanking,
+	type DiscoveryRankingReason,
 	type EmbeddingsStatus,
 } from "@projective/types/explore";
 
@@ -25,7 +28,28 @@ export function embeddingsStatusFor(req: Request): EmbeddingsStatus {
 	return embeddingsStatus(IS_DEV ? req : undefined);
 }
 
-/** The development-only `x-discovery-ranking` header, as `page()` / `Response` header pairs. */
-export function rankingHeaders(ranking: DiscoveryRanking): Array<[string, string]> {
-	return IS_DEV ? [[DISCOVERY_RANKING_HEADER, ranking]] : [];
+/**
+ * The key a caller's query embeddings are counted under (COMMS SR2, CAS S30): the signed-in user,
+ * else the client address `client-key.ts` resolves for the request.
+ */
+export function discoveryClientFor(
+	remote: Deno.Addr,
+	req: Request,
+	userId: string | null | undefined,
+): string {
+	return userId ? `user:${userId}` : `ip:${clientKey(remote, req.headers)}`;
+}
+
+/**
+ * The development-only `x-discovery-ranking` header, and `x-discovery-ranking-reason` when a search
+ * fell back for a reason, as `page()` / `Response` header pairs.
+ */
+export function rankingHeaders(
+	ranking: DiscoveryRanking,
+	reason?: DiscoveryRankingReason,
+): Array<[string, string]> {
+	if (!IS_DEV) return [];
+	const headers: Array<[string, string]> = [[DISCOVERY_RANKING_HEADER, ranking]];
+	if (reason) headers.push([DISCOVERY_RANKING_REASON_HEADER, reason]);
+	return headers;
 }

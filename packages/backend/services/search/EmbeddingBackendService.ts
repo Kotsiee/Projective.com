@@ -1,6 +1,11 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL } from "@projective/types/explore";
+import {
+	CLIENT_QUERY_EMBEDDINGS_PER_MINUTE,
+	EMBEDDING_DIMENSIONS,
+	EMBEDDING_MODEL,
+} from "@projective/types/explore";
 import { serverEnv } from "../../core/env.ts";
+import { SlidingWindowLimiter } from "../../core/rate-limit.ts";
 import { embeddingHashOf, estimateEmbeddingTokens } from "../../core/embedding-text.ts";
 import { openSharedKv } from "../../core/kv.ts";
 import {
@@ -261,6 +266,7 @@ export function setEmbeddingDepsForTesting(
 	tokensUsed = 0;
 	breaker = { failures: 0, openUntil: null, trialInFlight: false };
 	bucket = { tokens: QUERY_BUCKET.capacity, at: null };
+	clientBudget.reset();
 }
 
 function failure<T>(outcome: Extract<VoyageOutcome, { ok: false }>): ServiceResult<T> {
@@ -298,6 +304,7 @@ async function readStored(store: QueryVectorStore, key: Deno.KvKey): Promise<num
 async function resolveQuery(
 	key: string,
 	store: QueryVectorStore | null,
+	client: string | undefined,
 ): Promise<ServiceResult<number[]>> {
 	const storeKey = store ? await queryCacheKey(key).catch(() => null) : null;
 	if (store && storeKey) {
@@ -307,8 +314,16 @@ async function resolveQuery(
 			return ok(stored);
 		}
 	}
+	// The caller's own budget first, so a refused caller spends nothing of the isolate's.
+	if (client && !clientBudget.peek(client, deps.now()).allowed) {
+		return fail(429, {
+			message: "This caller's query embeddings for the minute are spent.",
+			details: { reason: "client_budget" },
+		});
+	}
 	const admitted = admitQueryCall();
 	if ("refusal" in admitted) return admitted.refusal;
+	if (client) clientBudget.take(client, deps.now());
 	const outcome = await voyageEmbed([key], "query", QUERY_POLICY, deps);
 	settleQueryCall(outcome, admitted.trial);
 	if (!outcome.ok) return failure<number[]>(outcome);
@@ -328,6 +343,15 @@ const BREAKER_COOLDOWN_MS = 30_000;
 const BREAKER_MAX_COOLDOWN_MS = 5 * 60 * 1000;
 /** Cache-miss query calls per isolate: a burst of `capacity`, refilled at `refillPerSec`. */
 const QUERY_BUCKET = { capacity: 20, refillPerSec: 5 };
+/**
+ * Cache-miss query calls per caller (COMMS SR2, CAS S30), keyed by the route's `user:<id>` or
+ * `ip:<address>`: 30 in any minute, so one client cannot drain the isolate's bucket for everyone. A
+ * memory or KV hit costs nothing and is not counted.
+ */
+const clientBudget = new SlidingWindowLimiter({
+	max: CLIENT_QUERY_EMBEDDINGS_PER_MINUTE,
+	windowMs: 60_000,
+});
 /** Failures that say nothing about Voyage's health — they neither count toward nor reset the breaker. */
 const NON_TRANSIENT: ReadonlySet<VoyageFailureReason> = new Set([
 	"rejected",
@@ -459,11 +483,15 @@ export class EmbeddingBackendService {
 	 * when it can be. Concurrent requests for the same normalised query share one store read and one
 	 * call; a failure is never cached in either layer. A query that
 	 * fails {@link isEmbeddableQuery} is refused with a 422 (`reason: "not_embeddable"`) before any call.
-	 * A cache miss then passes the query breaker and the per-isolate budget (`#region Query breaker`);
-	 * either refuses with a 503 (`reason: "circuit_open"` / `"budget"`) without calling Voyage, while
-	 * cache hits are served regardless.
+	 * A cache miss then passes the caller's budget (`client`, 30 a minute: a 429 with
+	 * `reason: "client_budget"`), the query breaker and the per-isolate budget (`#region Query
+	 * breaker`); those refuse with a 503 (`reason: "circuit_open"` / `"budget"`). None of them calls
+	 * Voyage, and cache hits are served regardless.
 	 */
-	static embedQuery(text: string): Promise<ServiceResult<number[]>> {
+	static embedQuery(
+		text: string,
+		options: { client?: string } = {},
+	): Promise<ServiceResult<number[]>> {
 		const key = normaliseQuery(text);
 		if (!isEmbeddableQuery(key)) {
 			return Promise.resolve(fail(422, {
@@ -475,7 +503,7 @@ export class EmbeddingBackendService {
 		if (cached) return Promise.resolve(ok(cached));
 		const pending = inflight.get(key);
 		if (pending) return pending;
-		const call = resolveQuery(key, queryStore).finally(() => inflight.delete(key));
+		const call = resolveQuery(key, queryStore, options.client).finally(() => inflight.delete(key));
 		inflight.set(key, call);
 		return call;
 	}
