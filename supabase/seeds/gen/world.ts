@@ -1539,7 +1539,9 @@ export const PROJECTS: ProjectSpec[] = [
 			title: "Verdant brand refresh — full delivery",
 			brief: "Positioning, identity system, and launch assets. One ticket, one delivery.",
 			stage: "s1",
-			status: "claimed",
+			// Started the day after the claim (the workshop is done): a claim left only `claimed` for
+			// 11 days is parked, and the claim TTL would hand it back (Decision #516).
+			status: "in_progress",
 			priority: "high",
 			intensity: 2.0,
 			assignee: "ines",

@@ -194,15 +194,17 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 
--- #region [projects] Claim-TTL auto-release (Q0.3: #338 D1)
--- Registered PAUSED: as written the sweep takes no row lock and never re-checks `claimed`, so it can
--- reset a ticket whose work has started (#338 flag (a)). PM-WP1 hardens it (SKIP LOCKED, a `claimed`
--- re-check, a ticket_history row, notices to both sides) and turns it on here.
-INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description, enabled) VALUES
+-- #region [projects] Claim-TTL auto-release (Q0.3: #338 D1; Decision #516)
+-- Runs every 15 minutes. It was registered paused while the sweep took no row lock and never
+-- re-checked `claimed`, so it could reset a ticket whose work had started (#338 flag (a)). PM-WP1 made
+-- it safe to run twice and to overlap itself: candidates are locked FOR UPDATE SKIP LOCKED (a ticket
+-- being started is skipped, not waited on), `claimed` is re-checked on the locked row, at most 200 a
+-- run, each release writes one ticket_history row and tells both sides, and a ticket whose release
+-- fails is rolled back alone and logged.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
     ('projects-release-expired-claims', 'sql', '3,18,33,48 * * * *',
         'SELECT projects.fn_release_expired_claims();', NULL, NULL,
-        'Claim-TTL auto-release ("Ticket Parking"): a ticket claimed for longer than claim_ttl_minutes goes back to the backlog and its escrow is refunded to the client.',
-        false)
+        'Claim-TTL auto-release ("Ticket Parking"): a ticket still only claimed after claim_ttl_minutes goes back to the pool and its claimant is paid nothing. An escrow held at the claim is refunded to the client; a prepaid one is re-armed on the prepaid TTL, the ticket back in Ready, still funded (Decision #516).')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 

@@ -429,8 +429,14 @@ BEGIN
         PERFORM finance.fn_release_ticket_escrow(NEW.id);
     END IF;
 
-    -- Freelancer removed mid-work -> release held escrow to the removed freelancer.
-    IF OLD.current_assignee_id IS NOT NULL AND NEW.current_assignee_id IS NULL THEN
+    -- Freelancer removed mid-work -> release held escrow to the removed freelancer. An escrow the
+    -- removing door left unbound is prepaid again and stays held for the next claim, on its prepaid
+    -- clock: the claim TTL re-arms a lapsed claim on a prepaid escrow that way (Decision #516). Every
+    -- other door settles before it clears the assignee, and an assigned ticket's escrow is always bound
+    -- (finance.fn_ticket_payee), so only a re-arm reaches here with an unbound one.
+    IF OLD.current_assignee_id IS NOT NULL AND NEW.current_assignee_id IS NULL
+        AND EXISTS (SELECT 1 FROM finance.escrows e
+                     WHERE e.ticket_id = NEW.id AND e.status = 'held' AND e.payee_id IS NOT NULL) THEN
         PERFORM finance.fn_release_ticket_escrow(NEW.id);
     END IF;
 

@@ -2594,13 +2594,22 @@ and ensure accountability.
 - **In Progress (The Commitment):** The freelancer moves the ticket to "Doing."
 - **Claim Expiry (TTL):** To prevent "Ticket Parking," claimed tickets have a Time-To-Live
   (`claim_ttl_minutes`, default 24h). If no commitment is detected before the TTL expires, the
-  `projects.fn_release_expired_claims` sweep auto-releases the ticket back to the backlog. A parked
-  claim earns nothing: any escrow held at claim is **refunded to the client in full** and the
-  freelancer is paid $0 — deliberately distinct from a mid-work removal (see "Freelancer Removal
-  Mid-Ticket"), where the freelancer is compensated. **Not built yet:** the sweep is registered but
-  paused until it takes a row lock, re-checks that the ticket is still only claimed, writes a
-  ticket-history row and tells both sides; then it runs every 15 minutes (Decision #338, ruling
-  Q0.3).
+  `projects.fn_release_expired_claims` sweep, which runs every 15 minutes, releases the ticket back
+  to the pool. A parked claim earns nothing: the freelancer is paid $0 — deliberately distinct from
+  a mid-work removal (see "Freelancer Removal Mid-Ticket"), where the freelancer is compensated.
+  What happens to the money depends on when the client paid it (Decision #516):
+  - An escrow **held at the claim** is **refunded to the client in full**, with any later stage
+    they prepaid, and the ticket goes back to the backlog (New), unfunded.
+  - An escrow the client **prepaid before anyone claimed the ticket** (Decision #428) is not
+    refunded: it stays held, bound to nobody again, and the ticket goes back to Ready, still funded,
+    for the next freelancer to claim. Its prepaid refund window starts again from the lapse, so if
+    nobody claims it in time it comes back to the client as any unclaimed prepaid escrow does; the
+    stages they prepaid beyond it stay prepaid.
+
+  A ticket whose work has started, or that a workload report suspended, is never touched. The lapsed
+  claimant is told the claim expired, and the client is told the escrow came back or that the ticket
+  is back in Ready, still funded; one ticket-history entry records whose claim lapsed (Decision
+  #338, ruling Q0.3).
 
 #### 2. The Weighting Engine (Workload Intensity)
 
@@ -2816,8 +2825,9 @@ window on a productised service — the seller's own engagement, which they are 
 once — and a longer one on a client's own project, where hiring takes longer (5 and 7 days today;
 `finance-model.md` §8 holds the figures). The
 window is the hold's: it runs for the stage the ticket is in, from the moment it is held, and stops
-for good at the claim or assignment, after which an unstarted claim is the Claim Expiry rule's
-(§Resource Allocation). A later stage's hold, made by the Chain Reaction when the ticket arrives,
+at the claim or assignment, after which an unstarted claim is the Claim Expiry rule's (§Resource
+Allocation). A claim that lapses there hands the escrow back to the pool still prepaid, with a fresh
+window from the lapse (Decision #516). A later stage's hold, made by the Chain Reaction when the ticket arrives,
 starts its own window only if it too has nobody to pay. The client sees the window before paying
 ("Held in escrow · Auto-refunded to your wallet if unclaimed after 7 days"). The ticket stays where
 it is, unpaid, ready to be funded again.

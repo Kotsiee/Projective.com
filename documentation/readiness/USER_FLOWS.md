@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
-| **UAT**          | **71%** |           191 | 97 |  78 | 16 |              26 |
-| **Production**   | **64%** |           248 | 102 | 105 | 41 |              37 |
+| **UAT**          | **72%** |           191 | 98 |  78 | 15 |              25 |
+| **Production**   | **65%** |           248 | 103 | 105 | 40 |              36 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,13 +45,13 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    60 | 25 | 24 |  9 |  2 |   66% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 28 | 35 | 12 |  2 |   62% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 29 | 35 | 11 |  2 |   64% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
 - **MVP:** ID-31 ❌ · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
-- **UAT:** ID-16, 20 · MK-29, MK-31 ❌ · PJ-21, 25 ❌, 31 ❌, 39, 43 ❌, 60 ❌ · MW-14, 59
+- **UAT:** ID-16, 20 · MK-29, MK-31 ❌ · PJ-21, 31 ❌, 39, 43 ❌, 60 ❌ · MW-14, 59
 - **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62
 
 ## What breaks the most flows
@@ -68,7 +68,7 @@ PRODUCTION_READINESS.md.
 | No malware scan; the link scan fails open                        | PRD-D3, D4             | ID-50 · PJ-54, 56, 63, 64 · MK-37                                             |
 | No MFA or step-up before money and ownership moves               | PRD-C17                | ID-24 · MW-12, 15, 39                                                         |
 | Plans enforced but nothing can be bought                         | PRD-F14                | MW-20, 25, 27, 38 · MK-07, 24                                                 |
-| Escrow can strand (claim TTL paused, no ghosting timer, archive) | PRD-G2, F22, F23       | PJ-21, 25, 31, 41, 42                                                         |
+| Escrow can strand (no ghosting timer, archive)                   | F22, F23               | PJ-21, 31, 41, 42                                                             |
 
 ---
 
@@ -291,7 +291,7 @@ PRODUCTION_READINESS.md.
 | PJ-22 | Create or edit a ticket (stages, intensity, dates)  | Client             | board, `/api/projects/board/ticket`          | ✅     | Critical | MVP  | Ticket-versus-stage price contradiction (PM-P6, 🧑)                                                                 |
 | PJ-23 | Fund a ticket stage by stage (wallet or card)       | Client             | funding line → basket or Buy now             | 🟡     | Critical | MVP  | Live path not browser-driven (#430 (a)); payees cannot see prepaid stages (b)                                       |
 | PJ-24 | Claim a ticket                                      | Freelancer         | `/api/projects/ticket/claim`                 | ✅     | Critical | MVP  | — (seat, Ready, held escrow and capacity checked in SQL)                                                            |
-| PJ-25 | An expired claim releases and refunds               | System             | job `projects-release-expired-claims`        | ❌     | Critical | UAT  | Seeded paused; the sweep has no lock, re-check, history or notice (PRD-G2, PM-WP1)                                  |
+| PJ-25 | An expired claim releases and refunds               | System             | job `projects-release-expired-claims`        | ✅     | Critical | UAT  | PM-WP1 (#516, PRD-G2 ✅): every 15 minutes, a claim still only `claimed` after 24 hours goes back to the pool, skipped if its work is starting; the claimant and the client are told and one history row is written. An escrow held at the claim is refunded; a prepaid one is re-armed, the ticket back in Ready, still funded. Probes `claim_ttl_sweep.sql`, `claim_ttl_sweep_race.sql` |
 | PJ-26 | Move a ticket (drag, menus, drop refusals)          | Client, Freelancer | `/api/projects/ticket/move`                  | 🟡     | Critical | MVP  | Any participant moves unclaimed tickets; `canDrag` is not a server rule (PM-WP6)                                    |
 | PJ-27 | Submit a deliverable or a draft                     | Freelancer         | `/api/projects/submissions/create`           | 🟡     | Critical | MVP  | Reviewers see drafts; a submitter can insert an `accepted` or foreign-ticket row; draft + files not atomic (PM-WP9) |
 | PJ-28 | Request a revision or a paid revision               | Client             | `…/submissions/:sid/review`, `paid-revision` | ✅     | Critical | MVP  | —                                                                                                                   |
@@ -549,3 +549,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-19 | RV1 (#487): MK-32 ❌ → 🟡 (a client reviews a completed engagement or session through doors only and the provider replies once; product reviews wait on wiring to CK1's entitlement, Report on T&S R2); MK-34's note cleared; the signed-in walk in the app is left | 83% | 71% | 64% |
 | 2026-11-19 | OPS2 (#513): PJ-73 🟡 → ✅ (a reschedule vote past its deadline settles on a timer; PRD-G4 ✅) | 83% | 71% |  64% |
 | 2026-11-19 | DB19 (#511): no row flips; MK-31 narrowed, still ❌ (lines and orders reach `refunded` and `cancelled` from escrow refunds; nobody can start a refund until DB21 and MR3) | 83% | 71% | 64% |
+| 2026-11-19 | PM-WP1 (#516): PJ-25 ❌ → ✅ (the claim sweep runs every 15 minutes, locked and re-checked; a lapsed prepaid claim is re-armed, not refunded; PRD-G2 ✅) | 83% | 72% | 65% |

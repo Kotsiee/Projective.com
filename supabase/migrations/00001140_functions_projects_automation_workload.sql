@@ -683,37 +683,187 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 -- #endregion
 
 -- #region 7. Claim-TTL auto-release sweep ("Ticket Parking", spec §1)
--- Registered PAUSED in 00005060 (projects-release-expired-claims) until PM-WP1 hardens it (#338 (a)).
--- p_now is injectable for deterministic tests. A parked ticket's escrow is REFUNDED to the client:
--- we flip held -> refunded BEFORE clearing the assignee, so the AFTER-clear escrow-sync trigger's
--- release-to-freelancer path finds nothing 'held' and is a no-op. The freelancer earns nothing.
-CREATE OR REPLACE FUNCTION projects.fn_release_expired_claims(p_now timestamptz DEFAULT now())
+-- A claim still only `claimed` after `claim_ttl_minutes` (default 1440) was parked: it earned nothing,
+-- and the ticket goes back to the pool (Decision #516, PM-WP1). Candidates are locked FOR UPDATE SKIP
+-- LOCKED, oldest claim first, at most p_limit: a ticket another transaction holds (its assignee is
+-- starting it, a claim or a second sweep) is skipped rather than waited on, and Postgres re-checks
+-- `status = 'claimed'` on every row it locks, so a ticket started first is never touched (DL S2). The
+-- ticket's escrow decides what the release does:
+--   • held AT the claim (the claim's own hold, created in the claim's transaction, so created_at =
+--     claimed_at): REFUNDED to the payer in full, with every stage prepaid beyond it (Decision #430),
+--     and the ticket goes back to New, unpaid. The client is told (`escrow.refunded`).
+--   • PREPAID (held before the claim, so created_at < claimed_at; Decision #428): RE-ARMED. It is
+--     unbound again (payee NULL) on a fresh prepaid clock from p_now (finance.fn_prepaid_escrow_ttl_hours),
+--     its reservations stay reserved, and the ticket goes back to Ready (`todo`), still funded, for the
+--     next claim; the prepaid sweep refunds it if nobody claims it. The client is told
+--     (`ticket.claim_expired`).
+-- The escrow is settled BEFORE the assignee is cleared: clearing it fires fn_ticket_escrow_sync's
+-- removal branch, which releases a still-bound held escrow to the departing assignee and leaves an
+-- unbound one alone. The lapsed claimant is told (`ticket.claim_expired`) and one `claim_expired`
+-- ticket_history row records whose claim lapsed. A ticket whose release fails is rolled back alone,
+-- raises a WARNING and writes an ops.log_entries row (`release_failed`); the run goes on. Every
+-- argument has a default (the job calls it bare); p_now is injectable for probes. Returns how many
+-- tickets it released; a second run returns 0. Job `projects-release-expired-claims` (00005060).
+CREATE OR REPLACE FUNCTION projects.fn_release_expired_claims(
+    p_now timestamptz DEFAULT now(),
+    p_limit integer DEFAULT 200
+)
 RETURNS integer AS $$
 DECLARE
-    v_minutes integer;
-    v_count   integer := 0;
-    r         record;
+    v_minutes      integer;
+    v_count        integer := 0;
+    r              record;
+    v_t            record;
+    v_escrow       record;
+    v_prepaid      boolean;
+    v_held_before  bigint;
+    v_refunded     bigint;
+    v_reservations integer;
+    v_ttl_hours    integer;
+    v_expires      timestamptz;
+    v_new_status   ticket_status;
+    v_href         text;
+    v_state        text;
+    v_message      text;
 BEGIN
     SELECT (value #>> '{}')::integer INTO v_minutes
     FROM security.platform_params WHERE key = 'claim_ttl_minutes';
-    v_minutes := COALESCE(v_minutes, 1440);
+    v_minutes := GREATEST(COALESCE(v_minutes, 1440), 1);
 
     FOR r IN
-        SELECT id FROM projects.tickets
-        WHERE status = 'claimed'::ticket_status
-          AND claimed_at IS NOT NULL
-          AND claimed_at < p_now - make_interval(mins => v_minutes)
+        SELECT t.id, t.title, t.slug AS ticket_slug, t.current_stage_id AS stage_id,
+               p.id AS project_id, p.slug AS project_slug,
+               COALESCE(p.client_user_id, p.owner_user_id) AS client_person
+          FROM projects.tickets t
+          JOIN projects.projects p ON p.id = t.project_id
+         WHERE t.status = 'claimed'::ticket_status
+           AND t.claimed_at IS NOT NULL
+           AND t.claimed_at < p_now - make_interval(mins => v_minutes)
+         ORDER BY t.claimed_at, t.id
+         LIMIT GREATEST(COALESCE(p_limit, 200), 1)
+           FOR UPDATE OF t SKIP LOCKED
     LOOP
-        PERFORM finance.fn_refund_ticket_escrow(r.id);
+        BEGIN
+            v_ttl_hours := NULL;
+            v_expires := NULL;
+            SELECT t.status, t.current_assignee_id AS claimant, t.claimed_at INTO v_t
+              FROM projects.tickets t WHERE t.id = r.id;
+            IF v_t.status IS DISTINCT FROM 'claimed'::ticket_status OR v_t.claimed_at IS NULL
+               OR v_t.claimed_at >= p_now - make_interval(mins => v_minutes) THEN
+                PERFORM ops.fn_log_scheduler_event(
+                    'projects-release-expired-claims', 'changed_under_lock', 'warn',
+                    format('ticket %s was no longer a lapsed claim under the sweep''s lock; nothing was released', r.id),
+                    jsonb_build_object('ticket_id', r.id, 'status', v_t.status)
+                );
+                CONTINUE;
+            END IF;
 
-        UPDATE projects.tickets
-        SET current_assignee_id = NULL,
-            status = 'backlog'::ticket_status,
-            claimed_at = NULL,
-            updated_at = now()
-        WHERE id = r.id;
+            SELECT e.id, e.amount_cents, e.currency, e.created_at INTO v_escrow
+              FROM finance.escrows e
+             WHERE e.ticket_id = r.id AND e.status = 'held' AND e.revision_id IS NULL
+               AND e.cohort_membership_id IS NULL
+             ORDER BY e.created_at, e.id
+             LIMIT 1
+               FOR UPDATE;
+            v_prepaid := v_escrow.id IS NOT NULL AND v_escrow.created_at < v_t.claimed_at;
+            v_href := '/projects/' || r.project_slug || '/board?tkv=' || r.ticket_slug;
 
-        v_count := v_count + 1;
+            IF v_prepaid THEN
+                v_ttl_hours := finance.fn_prepaid_escrow_ttl_hours(r.project_id);
+                v_expires := p_now + make_interval(hours => v_ttl_hours);
+                UPDATE finance.escrows
+                   SET payee_type = NULL, payee_id = NULL, expires_at = v_expires
+                 WHERE id = v_escrow.id AND status = 'held';
+                v_refunded := 0;
+                v_reservations := 0;
+                v_new_status := 'todo'::ticket_status;
+            ELSE
+                SELECT COALESCE(SUM(e.amount_cents), 0) INTO v_held_before
+                  FROM finance.escrows e WHERE e.ticket_id = r.id AND e.status = 'held';
+                PERFORM finance.fn_refund_ticket_escrow(r.id);
+                SELECT v_held_before - COALESCE(SUM(e.amount_cents), 0) INTO v_refunded
+                  FROM finance.escrows e WHERE e.ticket_id = r.id AND e.status = 'held';
+                v_reservations := finance.fn_refund_ticket_reservations(r.id, NULL, 'claim_ttl_expired');
+                v_new_status := 'backlog'::ticket_status;
+            END IF;
+
+            -- trg_ticket_claim_before sends a ticket whose assignee leaves to New; a re-armed one is
+            -- still funded, so it then goes on to Ready.
+            UPDATE projects.tickets
+               SET current_assignee_id = NULL,
+                   status = 'backlog'::ticket_status,
+                   claimed_at = NULL,
+                   updated_at = now()
+             WHERE id = r.id AND status = 'claimed'::ticket_status;
+            IF v_new_status = 'todo'::ticket_status THEN
+                UPDATE projects.tickets
+                   SET status = 'todo'::ticket_status, updated_at = now()
+                 WHERE id = r.id AND status = 'backlog'::ticket_status;
+            END IF;
+
+            INSERT INTO projects.ticket_history
+                (ticket_id, actor_id, action_type, previous_stage_id, new_stage_id, previous_status, new_status, changes)
+            VALUES (
+                r.id, COALESCE(v_t.claimant, r.client_person), 'claim_expired', r.stage_id, r.stage_id,
+                'claimed'::ticket_status, v_new_status,
+                jsonb_build_object(
+                    'claimed_at', v_t.claimed_at, 'ttl_minutes', v_minutes,
+                    'escrow_id', v_escrow.id, 'prepaid', v_prepaid,
+                    'refunded_cents', v_refunded, 'prepaid_stages_refunded', v_reservations,
+                    'currency', v_escrow.currency, 'expires_at', v_expires, 'ttl_hours', v_ttl_hours
+                )
+            );
+
+            IF v_t.claimant IS NOT NULL THEN
+                PERFORM comms.fn_notify(
+                    v_t.claimant, 'ticket.claim_expired', 'Your claim expired',
+                    format('Work on "%s" didn''t start within %s of your claim, so it is back on the board for another freelancer. Nothing was paid for it.',
+                           r.title,
+                           CASE WHEN v_minutes % 1440 = 0 THEN (v_minutes / 1440) || CASE WHEN v_minutes = 1440 THEN ' day' ELSE ' days' END
+                                WHEN v_minutes % 60 = 0 THEN (v_minutes / 60) || ' hours'
+                                ELSE v_minutes || ' minutes' END),
+                    'projects.tickets', r.id,
+                    jsonb_build_object('reason', 'claim_ttl_expired', 'prepaid', v_prepaid),
+                    NULL, 'project', r.project_id, NULL, v_href
+                );
+            END IF;
+            IF r.client_person IS NOT NULL AND r.client_person IS DISTINCT FROM v_t.claimant THEN
+                IF v_prepaid THEN
+                    PERFORM comms.fn_notify(
+                        r.client_person, 'ticket.claim_expired', 'A claim expired — still funded',
+                        format('The claim on "%s" expired before work started. It is back in Ready, still funded, for the next freelancer to claim; if nobody claims it within %s, its escrow comes back to your wallet.',
+                               r.title,
+                               CASE WHEN v_ttl_hours % 24 = 0 THEN (v_ttl_hours / 24) || ' days' ELSE v_ttl_hours || ' hours' END),
+                        'projects.tickets', r.id,
+                        jsonb_build_object('escrow_id', v_escrow.id, 'amount_minor', v_escrow.amount_cents,
+                                           'currency', v_escrow.currency, 'expires_at', v_expires,
+                                           'reason', 'claim_ttl_expired'),
+                        NULL, 'project', r.project_id, NULL, v_href
+                    );
+                ELSIF v_refunded > 0 THEN
+                    PERFORM comms.fn_notify(
+                        r.client_person, 'escrow.refunded', 'Escrow returned',
+                        format(CASE WHEN v_reservations > 0
+                                    THEN 'The claim on "%s" expired before work started, so its escrow and the later stages you prepaid are back in your wallet. The ticket is back in New.'
+                                    ELSE 'The claim on "%s" expired before work started, so its escrow is back in your wallet. The ticket is back in New.' END,
+                               r.title),
+                        'projects.tickets', r.id,
+                        jsonb_build_object('escrow_id', v_escrow.id, 'amount_minor', v_refunded,
+                                           'currency', v_escrow.currency, 'reason', 'claim_ttl_expired'),
+                        NULL, 'project', r.project_id, NULL, v_href
+                    );
+                END IF;
+            END IF;
+
+            v_count := v_count + 1;
+        EXCEPTION WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_message = MESSAGE_TEXT;
+            PERFORM ops.fn_log_scheduler_event(
+                'projects-release-expired-claims', 'release_failed', 'error',
+                format('ticket %s could not be released: %s (%s)', r.id, v_message, v_state),
+                jsonb_build_object('ticket_id', r.id, 'project_id', r.project_id, 'sqlstate', v_state)
+            );
+        END;
     END LOOP;
 
     RETURN v_count;

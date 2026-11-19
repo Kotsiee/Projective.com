@@ -70,6 +70,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"ticket.revision_requested",
 	"ticket.completed",
 	"ticket.awaiting_funding",
+	"ticket.claim_expired",
 	"submission.received",
 	"submission.accepted",
 	"submission.revision_requested",

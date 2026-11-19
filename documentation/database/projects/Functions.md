@@ -864,7 +864,8 @@ never sees, and by `fn_ticket_immutability_guard` for a statement PostgREST runs
 | Review authority | any move except from `claimed` / `in_progress`: status or stage (#94) | "A freelancer is working this ticket — it can be moved once the work is handed back." |
 
 Why `claimed` is closed: a move into it restamps `claimed_at` (`fn_ticket_claim_before`), and
-`fn_release_expired_claims` refunds an expired claim to the client in full. Verified by execution
+`fn_release_expired_claims` refunds an expired claim's escrow to the client in full when the claim
+held it (a prepaid one is re-armed, Decision #516). Verified by execution
 against the earlier definitions: the client moved a ticket handed back for review to `claimed`, and the
 sweep refunded the whole 800,000 hold to the client, so the freelancer was paid nothing for delivered work.
 
@@ -1004,8 +1005,10 @@ claim (assignee set from `NULL`, or status into `claimed`); on an assignee being
 
 `trg_ticket_escrow_sync` — `AFTER UPDATE OF current_assignee_id, status`. Claim with an assignee →
 `finance.fn_hold_ticket_escrow`, whose refusal (`PF402`) aborts the claim; status into `completed` →
-`finance.fn_release_ticket_escrow`; assignee cleared → `fn_release_ticket_escrow` (paid to the removed
-freelancer). **The work-start gate (Decision #165):** entering `claimed` / `in_progress` / `in_review`
+`finance.fn_release_ticket_escrow`; assignee cleared while a bound escrow is held →
+`fn_release_ticket_escrow` (paid to the removed freelancer). An escrow the removing door left unbound
+stays held on its prepaid clock: the claim TTL re-arms a lapsed claim on a prepaid escrow that way
+(Decision #516), and every other door settles before it clears the assignee. **The work-start gate (Decision #165):** entering `claimed` / `in_progress` / `in_review`
 from any other status without a `held` escrow raises `PF402` "Needs funding — …" (`DETAIL`
 `{state: 'needs_funding', reason: 'not_held'}`). **The claim gate (Decision #466):** the same entry
 with no assignee raises `PF402` "A freelancer starts this ticket by claiming it." (`DETAIL`
@@ -1075,7 +1078,33 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | `authenticated`, `service_role`  | signed in + `can_review_project` (Decision #163)             |
 | `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`, `service_role`  | project owner                                                |
 | `projects.release_ticket_to_backlog(p_ticket_id uuid) → void`                    | `00001120` | Releases a ticket's escrow, resets it to New                   | **none** (owner-only, internal)  | none — reachable only through `remove_project_member`        |
-| `projects.fn_release_expired_claims(p_now timestamptz DEFAULT now()) → integer`  | `00001140` | **Refunds** every claim older than the TTL                     | **`service_role`** only          | none — a cron job                                            |
+| `projects.fn_release_expired_claims(p_now timestamptz DEFAULT now(), p_limit integer DEFAULT 200) → integer` | `00001140` | **Refunds** or **re-arms** every claim older than the TTL | **`service_role`** only | none — a cron job |
+
+**The claim TTL (Decision #516, PM-WP1).** `fn_release_expired_claims` releases every ticket still
+`claimed` after `claim_ttl_minutes` (`security.platform_params`, default 1440; never below 1) measured
+from `p_now`, oldest claim first, at most `p_limit` a run. Candidates are locked `FOR UPDATE OF t SKIP
+LOCKED`: a ticket another transaction holds (its assignee starting it, a claim, a second sweep) is
+skipped rather than waited on, and the `claimed` predicate is re-checked on the locked row, so a
+started ticket is never touched (DL S2; a re-read under the lock that no longer matches is logged
+`changed_under_lock`). The ticket's base held escrow decides the release. **Prepaid** — created before
+the claim's own transaction, `escrows.created_at < tickets.claimed_at` (a hold the claim made shares its
+transaction's `now()`): re-armed — `payee_type` / `payee_id` set NULL and `expires_at = p_now +
+finance.fn_prepaid_escrow_ttl_hours(project)` (120h service, 168h client project), its `reserved`
+later stages kept, the ticket back to `todo`, still `escrow_funded`, for the next claim, and the
+client told (`ticket.claim_expired`). **Otherwise**: `finance.fn_refund_ticket_escrow` then
+`finance.fn_refund_ticket_reservations(ticket, NULL, 'claim_ttl_expired')`, the ticket back to
+`backlog` / `unpaid`, and the client told (`escrow.refunded`). The escrow is settled before the
+assignee is cleared (`fn_ticket_escrow_sync`'s removal branch releases only a still-bound escrow).
+Each release writes one `ticket_history` row — `action_type` `claim_expired`, `previous_status`
+`claimed`, `new_status` `backlog` or `todo`, the stage on both sides, `actor_id` the lapsed claimant,
+`changes` `{claimed_at, ttl_minutes, escrow_id, prepaid, refunded_cents, prepaid_stages_refunded,
+currency, expires_at, ttl_hours}` — and tells the claimant (`ticket.claim_expired`). A ticket whose
+release raises is rolled back alone, raises a WARNING and writes an `ops.log_entries` row
+(`ops.fn_log_scheduler_event`, `scheduler:projects-release-expired-claims:release_failed`, with the
+ticket and the SQLSTATE); the run goes on. Returns how many tickets it released; a second run returns
+0. Job `projects-release-expired-claims`, `3,18,33,48 * * * *` (`00005060`). `SECURITY DEFINER`,
+`search_path = public, projects, finance, security, org, auth`. Probes:
+`supabase/probes/claim_ttl_sweep.sql`, `claim_ttl_sweep_race.sql` (committing).
 
 **Fair Exit — the quote, the preview and the door (Decision #198).**
 `projects.fn_fair_exit_quote(p_stage_id uuid, p_tier integer) → jsonb` (`00001150`, internal, no

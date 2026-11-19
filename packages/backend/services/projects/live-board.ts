@@ -960,6 +960,7 @@ function toHistoryKind(raw: string | null | undefined): TicketHistoryKind {
 		case "chain_needs_funding":
 		case "chain_off":
 		case "prepaid_ttl_expired":
+		case "claim_expired":
 		case "stage_prepaid":
 		case "prepaid_stage_held":
 		case "prepaid_stage_refunded":
@@ -1020,8 +1021,10 @@ export function chainSummary(action: string | null, stageName: string | null): s
 }
 
 /**
- * A funding row: the Chain Reaction, written by `projects.force_complete_stage` as the approver; the
- * rest by `finance.fn_auto_fund_on_needs_funding` / `fn_auto_fund_drain` as the project owner.
+ * A funding row: the Chain Reaction, written by `projects.force_complete_stage` as the approver; a
+ * lapsed claim (`claim_expired`), written by `projects.fn_release_expired_claims` as the claimant whose
+ * claim lapsed (Decision #516); the rest by `finance.fn_auto_fund_on_needs_funding` /
+ * `fn_auto_fund_drain` as the project owner.
  */
 function fundingSummary(action: string | null, stageName: string | null): string {
 	switch (action) {
@@ -1039,6 +1042,8 @@ function fundingSummary(action: string | null, stageName: string | null): string
 			return "asked for approval to auto-fund this ticket";
 		case "prepaid_ttl_expired":
 			return "got this ticket's prepaid escrow back, as nobody claimed it in time";
+		case "claim_expired":
+			return "let the claim lapse before starting, so the ticket went back on the board";
 		case "stage_prepaid":
 			return stageName ? clamp(`prepaid ${stageName}`, 200) : "prepaid a later stage";
 		case "prepaid_stage_held":

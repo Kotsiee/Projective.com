@@ -16,7 +16,7 @@ BEGIN;
 -- The contract, by name and cadence. Before #203 the two HTTP sweeps had no job at all, and a
 -- registration that failed left only a NOTICE in the migration output. The M3 / M4 sweeps, and the Wave 1
 -- rows the seed registers by function name, are expected wherever their function exists. The claim-TTL
--- sweep is registered PAUSED until PM-WP1 hardens it; PM-WP1 moves it into the list below.
+-- sweep was registered paused until PM-WP1 hardened it, and runs since (Decision #516).
 DO $$
 DECLARE
     v_expected text[][] := ARRAY[
@@ -38,6 +38,7 @@ DECLARE
         ARRAY['comms-reap-devices',               '32 3 * * *'],
         ARRAY['comms-compact-events',             '47 3 * * *'],
         ARRAY['finance-sweep-card-payments',      '13,28,43,58 * * * *'],
+        ARRAY['projects-release-expired-claims',  '3,18,33,48 * * * *'],
         ARRAY['ops-prune-job-history',            '53 4 * * *'],
         ARRAY['search-embeddings-backfill',       '38 * * * *']
     ];
@@ -82,11 +83,6 @@ BEGIN
     END LOOP;
     IF pg_catalog.to_regnamespace('cron') IS NULL THEN
         RAISE EXCEPTION 'FAIL 1: pg_cron is not installed in this database';
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM ops.scheduled_jobs s
-                    WHERE s.name = 'projects-release-expired-claims' AND NOT s.enabled)
-       OR EXISTS (SELECT 1 FROM cron.job j WHERE j.jobname = 'projects-release-expired-claims') THEN
-        RAISE EXCEPTION 'FAIL 1: the claim-TTL sweep must stay registered and paused until PM-WP1 hardens it';
     END IF;
     FOR i IN 1 .. pg_catalog.array_length(v_expected, 1) LOOP
         IF NOT EXISTS (

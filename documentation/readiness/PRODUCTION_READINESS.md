@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
-| **UAT**          | **67%** |           67 | 39 |  9 | 19 |           5 |
-| **Production**   | **46%** |          148 | 51 | 26 | 71 |          15 |
+| **UAT**          | **69%** |           67 | 40 |  9 | 18 |           4 |
+| **Production**   | **47%** |          148 | 52 | 26 | 70 |          14 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -57,7 +57,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   17 |  3 |  6 |  8 |   40% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  5 | 11 |   43% |
-| G. Scheduled jobs & operations     |    8 |  3 |  2 |  3 |   42% |
+| G. Scheduled jobs & operations     |    8 |  4 |  2 |  2 |   58% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
 | J. Routing, URLs & SEO             |    5 |  3 |  1 |  1 |   75% |
@@ -69,7 +69,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
 - **MVP:** PRD-E3 (chat live refresh; the send door landed, #508) → PRD-A1 (`/home`).
 - **UAT:** PRD-D3 (malware scan) → PRD-E4 + PRD-E5 + PRD-E6 (dispatcher, notification email, auth
-  SMTP: built, a hosted send to prove) → PRD-G2 + PRD-F23 (claim sweep, ghosting timer) → PRD-G6
+  SMTP: built, a hosted send to prove) → PRD-F23 (ghosting timer; the claim sweep runs, #516) → PRD-G6
   (hosted cron secrets: the tool and check are built, #514, and OPS7 runs them) → PRD-F5 (dispute
   freeze).
 - **PROD:** PRD-C17 (MFA + step-up) · PRD-C19 (erasure) · PRD-D9 / D10 / D14 (moderation loop,
@@ -222,7 +222,7 @@ Work orders for every open row, with the run order:
 | PRD-F20 | A multi-currency total never drops a currency                                 | ❌     | High     | UAT  | Totals across currencies silently skip a currency with no rate (FINANCE C13, P0; `wallet-scope.ts:324`)                                                                                                                          | SV5, UI5         |
 | PRD-F21 | A live FX rate feed with a staleness mark                                     | ❌     | High     | PROD | Rates come from the seed only; no staleness mark (C6)                                                                                                                                                                            | DB17             |
 | PRD-F22 | Cancelling or archiving a project settles its escrow first                    | ✅     | Critical | UAT  | #479 (MR2, ruling #467): every kind cancels through one settle-first door (`projects.cancel_project` → `fn_settle_project_escrow`; an open dispute refuses, PD409) and `set_project_status` refuses Cancelled or Archived while anything is held (PF409); `brief_cancel.sql` + `service_cancel.sql`; live at 1440 and 390 px | MR2 |
-| PRD-F23 | Held escrow cannot strand: a silent client's delivery auto-approves           | ❌     | Critical | UAT  | No `submitted_at` or timer (PRODUCT_SPEC §Escrow 5, "No Forever-Escrow"); with the claim TTL paused (PRD-G2), funded work can sit held indefinitely                                                                              | PM-GH1           |
+| PRD-F23 | Held escrow cannot strand: a silent client's delivery auto-approves           | ❌     | Critical | UAT  | No `submitted_at` or timer (PRODUCT_SPEC §Escrow 5, "No Forever-Escrow"): delivered work a client never answers can sit held indefinitely                                                                                         | PM-GH1           |
 | PRD-F24 | A bought service's unclaimed escrow is refunded, never paid out               | ✅     | Critical | UAT  | #474 (MR1, ruling #466): no payee binds until somebody holds the ticket, on every kind of project (`fn_ticket_payee`), so the prepaid TTL, `approve_stage` and a stage Fair Exit refund an unclaimed escrow whole; an unclaimed ticket can't enter work (`PF402` `unclaimed`). `service_unclaimed_escrow.sql` + a live run | MR1 (#466)       |
 
 ## G. Scheduled jobs & operations
@@ -230,7 +230,7 @@ Work orders for every open row, with the run order:
 | ID     | Requirement                                                                           | Status | Crit     | Gate | Evidence / what's missing                                                                                                                         | Track  |
 | :----- | :------------------------------------------------------------------------------------ | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------------ | :----- |
 | PRD-G1 | One job registry; every job registered loudly                                         | ✅     | High     | UAT  | `ops.scheduled_jobs` + `00001650` (Decision #203); 40 of 42 rows register                                                                         | #203   |
-| PRD-G2 | The claim-TTL sweep is hardened and running                                           | ❌     | Critical | UAT  | `projects-release-expired-claims` seeded paused; the sweep has no lock, re-check, history row or notice (`00001140:689-720`)                      | PM-WP1 |
+| PRD-G2 | The claim-TTL sweep is hardened and running                                           | ✅     | Critical | UAT  | PM-WP1 (#516): `projects.fn_release_expired_claims(p_now, p_limit)` locks lapsed claims `FOR UPDATE SKIP LOCKED` (a ticket being started is skipped, not waited on), re-checks `claimed` on the locked row, takes at most 200 a run, writes one `claim_expired` history row and tells the claimant (`ticket.claim_expired`) and the client; a failed release is rolled back alone and logged (`release_failed`). An escrow held at the claim is refunded; a prepaid one is re-armed on the prepaid TTL, the ticket back in Ready (owner ruling D3 A). `projects-release-expired-claims` runs at :03/:18/:33/:48 and `cron:run` runs it. Probes `claim_ttl_sweep.sql`, `claim_ttl_sweep_race.sql` (S2 reproduced at HEAD, fixed) | PM-WP1 ✅ |
 | PRD-G3 | Workload-report expiry is scheduled                                                   | ❌     | High     | UAT  | `fn_resolve_expired_workload_reports` (`00001140:135`) has no job row                                                                             | PM     |
 | PRD-G4 | Reschedule ballots settle                                                             | ✅     | High     | UAT  | OPS2 (#513, `dd1ee9a2`): `scheduling.fn_settle_votes` closes every vote past its deadline through `close_reschedule_round` (SKIP LOCKED, re-checked under the lock, a failure logged as `settle_failed`), and `scheduling-settle-votes` registers at :11/:26/:41/:56. Only the electorate's ballots count, on the read path too (`votesOfVoters`). Probe `settle_votes.sql`, its fixtures settled by `settleVote` in `coordination.contract.test.ts` | OPS2 ✅ |
 | PRD-G5 | Search query-log retention                                                            | ✅     | Normal   | PROD | OPS4 (#515, `4a73588e`): `search.fn_prune_query_logs` (`00001060` §7) deletes `search.query_logs` past `retention_search_query_log_days` (90 days, ⚖️ pending counsel), oldest first in SKIP LOCKED batches, at most 20 a run; an invalid dial keeps 90 days and logs `search.retention`. `search-query-log-retention` registers at 04:36, and `cron:run` runs it. Probe `query_log_retention.sql` | OPS4 ✅ |
@@ -344,9 +344,15 @@ Work orders for every open row, with the run order:
   table lacks `finance-expire-spend-approvals` and `finance-sweep-idempotency-keys`.~~ Fixed (OPS1,
   #514): both rows are in the table, and the dormant-rows paragraph names what has registered.
 - PRD-G1's evidence reads "40 of 42 rows register"; a fresh build of the migrations on 2026-11-19
-  seeded 48 rows and scheduled 47 (the claim sweep is paused). EPI §8.1 and COMMS_DELIVERY CD2
-  still show the hosted Vault secrets set by hand with `vault.create_secret`, which
-  `cron:vault --env-file` does now (#514 (g)).
+  seeded 48 rows and scheduled 47 (the claim sweep was paused; #516 switched it on). EPI §8.1 and
+  COMMS_DELIVERY CD2 still show the hosted Vault secrets set by hand with `vault.create_secret`,
+  which `cron:vault --env-file` does now (#514 (g)).
+- The Escrow Terms 2.0 "Refunds and card disputes" clause
+  (`apps/web/features/legal/core/content/escrow-terms.ts`, `REFUNDS`) says a lapsed claim's escrow
+  "is refunded to the payer in full". Since #516 an escrow the client prepaid before anyone claimed
+  is re-armed instead, the ticket back in Ready. An effective legal version is not rewritten in
+  place (Decision #270): the fix is a 2.1 with a change summary, ideally in PRD-M1's counsel pass
+  (#516 (d)).
 - ~~DB3 landed in `44382c08`, yet `FINANCE_BUILD_PROMPTS.md` §0 calls it uncommitted;
   `FINANCE_AUDIT.md` §5 lists A14, A16, K4, L9, V4 and S4 (and H3) as open though they are closed in
   code.~~ Fixed (MR0): FBP's header and §0 re-verified at `b7280787`; FA §5 marks A14, A16, K4, L9, V4
@@ -420,3 +426,4 @@ Work orders for every open row, with the run order:
 | 2026-11-19 | OPS4 (#515): PRD-G5 ❌ → ✅ (query logs past their 90-day dial are deleted daily; the dormant `search-query-log-retention` job registers) | 76% | 66% |  45% |
 | 2026-11-19 | OPS1 (#514): PRD-G6 ❌ → 🟡 (`cron:vault --env-file` provisions every registry bearer to any Vault, and `--check` proves each equals the file; the hosted run is OPS7's) | 76% | 67% |  46% |
 | 2026-11-19 | DB19 (#511): no row flips; PRD-F12 narrowed (the order lifecycle and one redemption per account are built; DB21's buyer and provider refunds and MR3's card refunds left) | 76% | 67% |  46% |
+| 2026-11-19 | PM-WP1 (#516): PRD-G2 ❌ → ✅ (the claim sweep locks, re-checks, logs and tells both sides, and runs every 15 minutes; a lapsed claim on a prepaid escrow is re-armed, not refunded) | 76% | 69% |  47% |

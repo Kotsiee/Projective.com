@@ -231,7 +231,8 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   :04 / :19 / :34 / :49). Every `held` escrow with no payee and `expires_at <= p_now`, earliest first:
   its ticket row is locked `FOR UPDATE SKIP LOCKED` (the claim's and the refund's own lock order, so a
   claim binding it concurrently either wins or is skipped this run), the escrow is re-read under the
-  lock, a ticket somebody holds is left to the claim TTL, and `fn_refund_ticket_escrow` returns it
+  lock, a ticket somebody holds is left to the claim TTL (which re-arms a lapsed claim on a prepaid
+  escrow with a fresh `expires_at`, Decision #516), and `fn_refund_ticket_escrow` returns it
   whole to the payer's wallet (no fee; `payment_status = 'unpaid'`; the ticket keeps its column). One
   `ticket_history` row `prepaid_ttl_expired` (actor the client person,
   `COALESCE(client_user_id, owner_user_id)`; `changes` = escrow, stage, amount, currency, the deadline,

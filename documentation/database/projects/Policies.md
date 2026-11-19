@@ -191,7 +191,7 @@ column may not move to this value", so the rule lives in `trg_ticket_authority_g
 cron) is not gated. The assignee cannot clear their own `current_assignee_id` either — the policy's
 `WITH CHECK` refuses the post-image (verified by execution) — so the unassign-release arm of
 `trg_ticket_escrow_sync` is reachable only through definer paths: the owner's removal of a member
-pays through it, and the claim-TTL sweep refunds first so it finds nothing held. A workload report took it too until Decision #290: the assignee's own INSERT under
+pays through it, and the claim-TTL sweep refunds or unbinds first, so it finds nothing bound held (Decision #516). A workload report took it too until Decision #290: the assignee's own INSERT under
 _File workload report_ cleared the assignee and paid them the held escrow; filing now suspends the
 ticket instead (`supabase/probes/workload_report_suspension.sql`).
 

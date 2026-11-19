@@ -533,6 +533,36 @@ Deno.test("fetchBoardPage: Chain Reaction history rows read as funding entries n
 	});
 });
 
+Deno.test("fetchBoardPage: a lapsed claim's history row reads as the claimant's, never as an edit", async () => {
+	const lapsed = (id: string, next: string, prepaid: boolean, at: string) => ({
+		id,
+		ticket_id: T1,
+		actor_id: FREELANCER_ID,
+		action_type: "claim_expired",
+		previous_stage_id: S1,
+		new_stage_id: S1,
+		previous_status: "claimed",
+		new_status: next,
+		changes: { prepaid, ttl_minutes: 1440, refunded_cents: prepaid ? 0 : 10_000 },
+		created_at: at,
+	});
+	const routes = boardRoutes({
+		"projects.ticket_history": [
+			lapsed("x2", "todo", true, "2026-10-06T10:00:00.000Z"),
+			lapsed("x1", "backlog", false, "2026-10-05T10:00:00.000Z"),
+		],
+	});
+	await withPostgrest(routes, async () => {
+		const page = await fetchBoardPage(OWNER, { projectId: SLUG });
+		const card = page?.cards.find((c) => c.id === T1);
+		assert(card);
+		assertEquals(card.history.map((h) => [h.kind, h.summary]), [
+			["funding", "let the claim lapse before starting, so the ticket went back on the board"],
+			["funding", "let the claim lapse before starting, so the ticket went back on the board"],
+		]);
+	});
+});
+
 Deno.test("fetchBoardPage card mapping: stages, funding, freeze, checklist, history and contributors", async () => {
 	await withPostgrest(boardRoutes(), async () => {
 		const page = await fetchBoardPage(OWNER, { projectId: SLUG });

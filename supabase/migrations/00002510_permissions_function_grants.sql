@@ -1433,11 +1433,12 @@ REVOKE ALL ON FUNCTION projects.fn_settle_ticket_stage (uuid, uuid, text) FROM P
 REVOKE ALL ON FUNCTION projects.fn_notify_payees (uuid[], uuid[], text, text, text, text, uuid, uuid, text)
 FROM PUBLIC, anon, authenticated, service_role;
 
--- 🚨 The claim-TTL sweep REFUNDS every claimed ticket older than the TTL measured from `p_now` — a
--- caller-supplied argument. With PUBLIC EXECUTE anybody could pass a far-future instant and refund and
--- evict every claimed ticket on the platform in one call. It is a cron job: service_role only.
-REVOKE ALL ON FUNCTION projects.fn_release_expired_claims (timestamptz) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION projects.fn_release_expired_claims (timestamptz) TO service_role;
+-- 🚨 The claim-TTL sweep REFUNDS or re-arms every claimed ticket older than the TTL measured from
+-- `p_now` — a caller-supplied argument. With PUBLIC EXECUTE anybody could pass a far-future instant and
+-- evict every claimed ticket on the platform in one call. It is a cron job (Decision #516): service_role
+-- only.
+REVOKE ALL ON FUNCTION projects.fn_release_expired_claims (timestamptz, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_release_expired_claims (timestamptz, integer) TO service_role;
 
 -- Internal to the claim paths (Decision #165): callable directly, anybody could mark any unfunded
 -- ticket Needs funding and notify its owner at will.

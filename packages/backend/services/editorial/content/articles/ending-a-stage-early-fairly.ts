@@ -124,7 +124,7 @@ export const ENDING_A_STAGE_EARLY_FAIRLY: EditorialArticleRecord = {
 						{
 							term: "A parked claim",
 							definition:
-								"A ticket claimed but never started expires after its time limit (24 hours by default). It returns to the backlog, any escrow held is refunded to the client in full, and the freelancer is paid nothing.",
+								"A ticket claimed but never started expires after its time limit (24 hours by default), and the freelancer is paid nothing. Escrow held when it was claimed is refunded to the client in full and the ticket returns to the backlog. Escrow the client paid before anyone claimed it stays held, and the ticket goes back on the board, still funded, for the next freelancer.",
 						},
 						{
 							term: "Removal mid-ticket",
