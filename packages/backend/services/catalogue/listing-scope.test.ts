@@ -1,5 +1,12 @@
-import { assertEquals } from "@std/assert";
-import { filterByScope, type ScopedListing, sellsSessions } from "./listing-scope.ts";
+import { assertEquals, assertRejects } from "@std/assert";
+import { FIXTURE_LISTINGS } from "./catalogue-fixtures.ts";
+import { stubCatalogueClient } from "./catalogue-stub-client.ts";
+import {
+	filterByScope,
+	loadScopedListings,
+	type ScopedListing,
+	sellsSessions,
+} from "./listing-scope.ts";
 
 /** listing-scope_test — how a console scope selects the seller's listings. */
 
@@ -48,4 +55,28 @@ Deno.test("collection:<slug> selects the collection's members, and an unknown on
 Deno.test("only booked-time models count as selling sessions", () => {
 	assertEquals(sellsSessions([PIPE, KIT]), false);
 	assertEquals(sellsSessions([COHORT]), true);
+});
+
+Deno.test("loadScopedListings parses each row it reads, and names a row the table would refuse", async () => {
+	const pipeline = FIXTURE_LISTINGS[0];
+	const actor = {
+		userId: pipeline.listing.owner_user_id,
+		contextType: "personal" as const,
+		contextId: "",
+	};
+	const client = (listing: unknown) =>
+		stubCatalogueClient({
+			tables: { listings: [listing], service_blueprints: [pipeline.blueprint], products: [] },
+		}).client;
+	const [scoped] = await loadScopedListings(client(pipeline.listing), actor);
+	assertEquals([scoped.slug, scoped.currency, scoped.createCategory], [
+		"svc-brandpipe01",
+		"USD",
+		"create",
+	]);
+	await assertRejects(
+		() => loadScopedListings(client({ ...pipeline.listing, currency: "usd" }), actor),
+		Error,
+		"currency:",
+	);
 });

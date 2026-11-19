@@ -1,8 +1,13 @@
 import { assert, assertEquals } from "@std/assert";
-import { FIXTURE_LISTINGS, FIXTURE_PROFILES, FIXTURE_SKILLS } from "../catalogue/catalogue-fixtures.ts";
+import { DISCOVERY_LISTING_COLUMNS } from "@projective/types/catalogue";
+import {
+	FIXTURE_LISTINGS,
+	FIXTURE_PROFILES,
+	FIXTURE_SKILLS,
+} from "../catalogue/catalogue-fixtures.ts";
 import { stubCatalogueClient } from "../catalogue/catalogue-stub-client.ts";
 import { resolveListing } from "./listing-source.ts";
-import { assemble, primeCatalogForTesting } from "./live-catalog.ts";
+import { assemble, discoveryListings, primeCatalogForTesting } from "./live-catalog.ts";
 
 /**
  * Discovery's `catalogue.listings` reads parse each row by its row schema before anything maps it
@@ -94,5 +99,23 @@ Deno.test("a well-formed listing row still resolves", async () => {
 	} finally {
 		primeCatalogForTesting(null);
 	}
+});
+// #endregion
+
+// #region The catalogue load's rows
+Deno.test("the catalogue load keeps every well-formed row in order and drops only the refused one", async () => {
+	const [a, b, c] = FIXTURE_LISTINGS.map((f) => f.listing);
+	const refused = { ...b, seo_description: "x".repeat(161) };
+	const { value, warnings } = await withWarnings(() =>
+		Promise.resolve(discoveryListings([a, refused, c]))
+	);
+	assertEquals(value.map((l) => l.id), [a.id, c.id]);
+	assertEquals(warnings.length, 1);
+	assert(warnings[0].includes(b.id) && warnings[0].includes("seo_description"), warnings[0]);
+});
+
+Deno.test("a discovery row carries exactly the columns discovery selects", () => {
+	const [row] = discoveryListings([PIPELINE.listing]);
+	assertEquals(Object.keys(row).sort(), DISCOVERY_LISTING_COLUMNS.split(", ").sort());
 });
 // #endregion

@@ -42,6 +42,7 @@ import {
 	listingMediaSlots,
 	mediaRowsByListing,
 } from "./listing-media.ts";
+import { parseListingRowWith } from "./listing-rows.ts";
 import {
 	type OfferBlueprintColumns,
 	offerFromBlueprint,
@@ -156,15 +157,7 @@ function editedLabel(iso: string, now = Date.now()): string {
  * `bigint` / `numeric` sent as a string arrives as its number.
  */
 export function parseListingRow(row: unknown): CatalogueListingRow {
-	const parsed = CatalogueListingRowSchema.safeParse(row);
-	if (parsed.success) return parsed.data;
-	const id = (row as { id?: unknown } | null)?.id;
-	const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "row"}: ${i.message}`);
-	throw new Error(
-		`catalogue.listings row ${typeof id === "string" ? id : "?"} does not match its schema — ${
-			issues.join("; ")
-		}`,
-	);
+	return parseListingRowWith(CatalogueListingRowSchema, row);
 }
 // #endregion
 

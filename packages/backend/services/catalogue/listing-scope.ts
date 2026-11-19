@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "supabaseClient";
-import type { ConsoleScope } from "@projective/types/catalogue";
+import {
+	type ConsoleScope,
+	SCOPED_LISTING_COLUMNS,
+	type ScopedListingRow,
+	ScopedListingRowSchema,
+} from "@projective/types/catalogue";
 import type { ReadActor } from "../read-actor.ts";
+import { parseListingRowWith } from "./listing-rows.ts";
 
 /**
  * listing-scope — which of the acting seller's listings an Analytics or Clients read covers.
@@ -26,16 +32,6 @@ export interface ScopedListing {
 	createCategory: string | null;
 	blueprintId: string | null;
 	productId: string | null;
-}
-
-interface ListingRow {
-	id: string;
-	kind: "product" | "service";
-	title: string;
-	currency: string | null;
-	create_category: string | null;
-	service_blueprint_id: string | null;
-	product_id: string | null;
 }
 
 /** What a Clients read covers: one listing (the workspace) or a console scope. */
@@ -114,15 +110,15 @@ export async function loadScopedListings(
 	actor: Pick<ReadActor, "userId" | "contextType" | "contextId">,
 ): Promise<ScopedListing[]> {
 	const team = actingTeam(actor);
-	let q = db.schema("catalogue").from("listings").select(
-		"id, kind, title, currency, create_category, service_blueprint_id, product_id",
-	);
+	let q = db.schema("catalogue").from("listings").select(SCOPED_LISTING_COLUMNS);
 	q = team
 		? q.eq("owner_team_id", team)
 		: q.eq("owner_user_id", actor.userId).is("owner_team_id", null);
 	const { data, error } = await q.order("updated_at", { ascending: false }).limit(SCOPE_WINDOW);
 	if (error) throw new Error(`catalogue.listings read failed: ${error.message}`);
-	const rows = (data ?? []) as ListingRow[];
+	const rows: ScopedListingRow[] = ((data ?? []) as unknown[]).map((row) =>
+		parseListingRowWith(ScopedListingRowSchema, row)
+	);
 
 	const bpIds = rows.flatMap((r) => r.service_blueprint_id ? [r.service_blueprint_id] : []);
 	const prodIds = rows.flatMap((r) => r.product_id ? [r.product_id] : []);
@@ -156,7 +152,7 @@ export async function loadScopedListings(
 			title: r.title,
 			kind: r.kind,
 			model: bp?.delivery_model ?? null,
-			currency: (r.currency ?? "USD").toUpperCase(),
+			currency: r.currency,
 			createCategory: r.create_category,
 			blueprintId: r.service_blueprint_id,
 			productId: r.product_id,

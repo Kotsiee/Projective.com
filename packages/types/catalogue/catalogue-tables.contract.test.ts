@@ -14,7 +14,12 @@ import { CatalogueKind, ListingStatus } from "./catalogue.ts";
 import {
 	type CatalogueListingRow,
 	CatalogueListingRowSchema,
+	DISCOVERY_LISTING_COLUMNS,
+	DiscoveryListingRowSchema,
 	LISTING_DERIVED_COLUMNS,
+	LISTING_ROW_COLUMNS,
+	SCOPED_LISTING_COLUMNS,
+	ScopedListingRowSchema,
 } from "./rows.ts";
 
 // #region Sources
@@ -54,6 +59,20 @@ Deno.test("a column added to catalogue.listings with no Zod key fails the contra
 		Object.keys(CatalogueListingRowSchema.shape),
 	);
 	assertEquals(drift.missingKeys, ["added_column"]);
+});
+
+Deno.test("every listing reader selects table columns, and exactly its schema's keys", () => {
+	const columns = new Set(tableColumns(TABLES_SQL, "catalogue.listings"));
+	const readers = [
+		[CatalogueListingRowSchema, LISTING_ROW_COLUMNS],
+		[DiscoveryListingRowSchema, DISCOVERY_LISTING_COLUMNS],
+		[ScopedListingRowSchema, SCOPED_LISTING_COLUMNS],
+	] as const;
+	for (const [schema, select] of readers) {
+		const keys = Object.keys(schema.shape);
+		assertEquals(select.split(", "), keys);
+		assertEquals(keys.filter((key) => !columns.has(key)), []);
+	}
 });
 
 Deno.test("the derived listing columns are the ones trg_listings_derived guards", () => {

@@ -31,6 +31,11 @@ import {
 	type SkillRef,
 	type TrendingEntityRow,
 } from "@projective/types/explore";
+import {
+	DISCOVERY_LISTING_COLUMNS,
+	type DiscoveryListingRow,
+	DiscoveryListingRowSchema,
+} from "@projective/types/catalogue";
 import type { ImagePlaceholder, MediaRef } from "@projective/types/files";
 import { toMajorUnits } from "@projective/types/finance";
 import { type VerificationStamp, VerificationStampSchema } from "@projective/types/org";
@@ -42,6 +47,7 @@ import {
 	listingMediaSlots,
 	mediaRowsByListing,
 } from "../catalogue/listing-media.ts";
+import { checkListingRow } from "../catalogue/listing-rows.ts";
 
 export { displayPrice } from "@projective/types/explore";
 
@@ -176,32 +182,11 @@ export interface ProfileRow {
 	contact_name?: string | null;
 }
 
-/** One `catalogue.listings` row, as the discovery load selects it. */
-export interface ListingRow {
-	id: string;
-	owner_user_id: string;
-	owner_team_id: string | null;
-	kind: "service" | "product";
-	service_blueprint_id: string | null;
-	product_id: string | null;
-	title: string;
-	description_text: string;
-	category: string;
-	delivery_label: string;
-	amount_cents: number;
-	currency: string;
-	ticket_price_cents: number | null;
-	session_price_cents: number | null;
-	seats_per_session: number | null;
-	free_revisions: number | null;
-	extra_revision_price_cents: number | null;
-	promoted: boolean;
-	seo_description: string | null;
-	status: "draft" | "published" | "paused" | "archived";
-	published_at: string | null;
-	created_at: string;
-	updated_at: string;
-}
+/**
+ * One `catalogue.listings` row, as the discovery load selects it: `DiscoveryListingRowSchema`
+ * (`@projective/types/catalogue`), a pick of the table's pinned row schema.
+ */
+export type ListingRow = DiscoveryListingRow;
 
 /**
  * A single-listing read made AS ITS OWNER: their token, so RLS shows them their own draft or paused
@@ -674,13 +659,28 @@ const OPEN_SEAT_COLUMNS =
  * single-listing read ({@link readListing}) map a listing through one {@link assemble}, so they must
  * select the same columns.
  */
-const LISTING_COLUMNS =
-	"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, seo_description, status, published_at, created_at, updated_at";
+const LISTING_COLUMNS = DISCOVERY_LISTING_COLUMNS;
 const BLUEPRINT_COLUMNS =
 	"id, slug, owner_type, owner_team_id, freelancer_profile_id, delivery_model, price_cents, ticket_price_cents, session_price_cents, currency, free_revisions, extra_revision_price_cents, max_seats_per_cohort, intake_fields, stage_template, team_roles, deliverables, session_minutes, session_count, session_plan, session_rolling, allow_tiered_intensity, rating_average, rating_count";
 const PRODUCT_COLUMNS =
 	"id, slug, owner_user_id, owner_team_id, format, category, price_cents, currency, licence, attribution_required, file_manifest, compatibility, specs, span, rating_average, rating_count";
 const FILE_COLUMNS = "id, bucket_id, storage_path, metadata";
+
+/**
+ * The listing rows a discovery read returned, each parsed by `DiscoveryListingRowSchema`. A row the
+ * schema refuses is dropped and named in a warning rather than failing the read: the catalogue load is
+ * every seller's storefront, and one malformed row must not take it down. The contract test
+ * (`catalogue-tables.contract.test.ts`) keeps the schema and the table in step, so a drop is drift
+ * that reached a database before the test, never a routine event.
+ */
+export function discoveryListings(rows: readonly unknown[]): ListingRow[] {
+	return rows.flatMap((row) => {
+		const checked = checkListingRow(DiscoveryListingRowSchema, row);
+		if (checked.ok) return [checked.row];
+		console.warn(`[explore] listing dropped from discovery: ${checked.message}`);
+		return [];
+	});
+}
 
 /** Throw a load failure with the table named, so a broken policy is diagnosable from the log. */
 function fail(table: string, message: string): never {
@@ -787,12 +787,12 @@ async function readCatalog(): Promise<Catalog> {
 						"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label, discovery_weight_bp, workload_cap, verification_stamp, contact_handle, contact_name",
 					),
 			),
-			readTable<ListingRow>(
+			readTable<{ id: string }>(
 				"catalogue.listings",
 				"id",
 				() =>
 					db.schema("catalogue").from("listings").select(LISTING_COLUMNS).eq("status", "published"),
-			),
+			).then(discoveryListings),
 			// No `body`: no card renders it, and the view page reads its one article's (`readArticleBody`).
 			readTable<ArticleRow>(
 				"catalogue.articles",
@@ -816,12 +816,19 @@ async function readCatalog(): Promise<Catalog> {
 					db.schema("marketplace").from("promoted_placements")
 						.select("id, entity_type, entity_id, surface, starts_at"),
 			),
-			readTable<{ id: string; slug: string; label: string }>("org.skills", "id", () =>
-				db.schema("org").from("skills").select("id, slug, label")),
+			readTable<{ id: string; slug: string; label: string }>(
+				"org.skills",
+				"id",
+				() => db.schema("org").from("skills").select("id, slug, label"),
+			),
 			// The trust penalty's denormalised cache (security.fn_recalc_penalty_aggregates keeps it).
-			readTable<PenaltyRow>("search.profiles_index", "entity_id", () =>
-				db.schema("search").from("profiles_index").select("entity_id, discovery_penalty")
-					.gt("discovery_penalty", 0)),
+			readTable<PenaltyRow>(
+				"search.profiles_index",
+				"entity_id",
+				() =>
+					db.schema("search").from("profiles_index").select("entity_id, discovery_penalty")
+						.gt("discovery_penalty", 0),
+			),
 			db.schema("search").rpc("ranking_weights"),
 			db.schema("search").rpc("trending_entities", {
 				p_days: TRENDING_WINDOW_DAYS,
@@ -1099,7 +1106,7 @@ export async function readListing(
 	if (!asOwner) listingQuery = listingQuery.eq("status", "published");
 	const { data: listingData, error: listingError } = await listingQuery.limit(1);
 	if (listingError) fail("catalogue.listings", listingError.message);
-	const listing = ((listingData ?? []) as ListingRow[])[0];
+	const listing = discoveryListings((listingData ?? []) as unknown[])[0];
 	if (!listing) return null;
 	if (asOwner && (listing.status === "archived" || !asOwner.owns(listing))) return null;
 

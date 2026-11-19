@@ -37,7 +37,7 @@ function listing(n: number, fields: Partial<ScopedListing> = {}): ScopedListing 
 		model: "one_off",
 		currency: "USD",
 		createCategory: null,
-		blueprintId: `bp-${n}`,
+		blueprintId: `00000000-0000-4000-8000-0000000b000${n}`,
 		productId: null,
 		...fields,
 	};
@@ -49,7 +49,7 @@ const PRODUCT = listing(2, {
 	kind: "product",
 	model: null,
 	blueprintId: null,
-	productId: "prod-2",
+	productId: "00000000-0000-4000-8000-0000000d0002",
 });
 
 function rollup(

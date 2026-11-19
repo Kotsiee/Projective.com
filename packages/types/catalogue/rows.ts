@@ -130,3 +130,59 @@ export const LISTING_DERIVED_COLUMNS = [
 	"order_count",
 ] as const satisfies readonly (keyof CatalogueListingRow)[];
 // #endregion
+
+// #region Narrower listing reads
+/**
+ * A listing as discovery reads it (`services/explore/live-catalog.ts`: the published catalogue load,
+ * the view page and the owner's preview): what a card or a public page prints, without the rich body,
+ * the SEO title, the CREATE category or the derived counters. Picked from
+ * {@link CatalogueListingRowSchema}, so every column it reads keeps that column's type and CHECK.
+ */
+export const DiscoveryListingRowSchema = CatalogueListingRowSchema.pick({
+	id: true,
+	owner_user_id: true,
+	owner_team_id: true,
+	kind: true,
+	status: true,
+	service_blueprint_id: true,
+	product_id: true,
+	title: true,
+	description_text: true,
+	category: true,
+	delivery_label: true,
+	seo_description: true,
+	amount_cents: true,
+	ticket_price_cents: true,
+	session_price_cents: true,
+	seats_per_session: true,
+	currency: true,
+	free_revisions: true,
+	extra_revision_price_cents: true,
+	promoted: true,
+	published_at: true,
+	created_at: true,
+	updated_at: true,
+});
+export type DiscoveryListingRow = z.infer<typeof DiscoveryListingRowSchema>;
+
+/** The select list a {@link DiscoveryListingRow} is read with: its schema's keys. */
+export const DISCOVERY_LISTING_COLUMNS = Object.keys(DiscoveryListingRowSchema.shape).join(", ");
+
+/**
+ * A listing as the console's Analytics and Clients reads scope it (`catalogue/listing-scope.ts`):
+ * enough to name it, price it and group it. Picked from {@link CatalogueListingRowSchema}.
+ */
+export const ScopedListingRowSchema = CatalogueListingRowSchema.pick({
+	id: true,
+	kind: true,
+	title: true,
+	currency: true,
+	create_category: true,
+	service_blueprint_id: true,
+	product_id: true,
+});
+export type ScopedListingRow = z.infer<typeof ScopedListingRowSchema>;
+
+/** The select list a {@link ScopedListingRow} is read with: its schema's keys. */
+export const SCOPED_LISTING_COLUMNS = Object.keys(ScopedListingRowSchema.shape).join(", ");
+// #endregion

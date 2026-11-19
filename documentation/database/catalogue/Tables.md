@@ -72,11 +72,15 @@ carrying a product id (or neither) unrepresentable.
 **Row schema:** `CatalogueListingRowSchema` (`@projective/types/catalogue`, `rows.ts`), every column
 keyed by its own name, with each column's CHECK and `kind` / `status` / `create_category` from their
 Zod enums. The seller console selects exactly its keys and parses each row once, at
-`parseListingRow` (`packages/backend/services/catalogue/live-catalogue.ts`).
-`catalogue-tables.contract.test.ts` fails on a column without a key (or a key without a column), on
+`parseListingRow` (`packages/backend/services/catalogue/live-catalogue.ts`). Discovery reads
+`DiscoveryListingRowSchema` and the console's Analytics and Clients scope reads
+`ScopedListingRowSchema`, both picks of it, each selecting its own keys and parsing at its own read
+(`listing-rows.ts`): discovery drops a row its schema refuses, with a warning, so one seller's row
+never takes the storefront down; the console throws. `catalogue-tables.contract.test.ts` fails on a
+column without a key (or a key without a column), on a reader selecting a column the table lacks, on
 an enum out of step with its Postgres type, and on a derived column missing from
-`LISTING_DERIVED_COLUMNS`. The two cross-column CHECKs stay the database's (MARKETPLACE SC1,
-PRD-I3).
+`LISTING_DERIVED_COLUMNS`. The two cross-column CHECKs stay the database's (MARKETPLACE SC1, PRD-I3,
+#501).
 
 | Column                                         | Notes                                                                              |
 | :--------------------------------------------- | :--------------------------------------------------------------------------------- |
