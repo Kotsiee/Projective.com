@@ -19,7 +19,10 @@ RLS enabled in `00002001`; policies in `00002019_policies_security_ops.sql`; gra
 | Admins read log entries             | SELECT  | `authenticated`         | `security.is_admin()`                       |
 
 No UPDATE or DELETE policy. A writer can attribute a row to themselves or to nobody, never to
-someone else, and only an admin can read diagnostics back.
+someone else, and only an admin can read diagnostics back. The server rows the scheduler, the
+webhook record and the alert passes write (`ops.scheduler`, `webhook.<provider>`, `ops.webhooks`,
+`test`; OPS5) come only from definers the service role runs, so no client can forge or raise one;
+`ops_alerts.sql` §16 proves a member and `anon` read none of them.
 
 ## `ops.scheduled_jobs` · `ops.http_job_dispatches` (Decision #203)
 
@@ -59,5 +62,9 @@ sent is nobody's but its uploader's. Probe: [`supabase/probes/contact_requests.s
 RLS enabled in `00002001` (region `[alerts]`), **no policy**: no client role reads or writes them.
 Grants in `00002520`: everything revoked from `PUBLIC`, `anon` and `authenticated`; `service_role` may
 `SELECT`, `INSERT` and `UPDATE` rules (a migration or an operator by hand adds or pauses one) and
-`SELECT` the deliveries and the cursor. Deliveries move only through `ops.fn_claim_alerts` and
-`ops.fn_record_alert_delivery` (definers); operators read through `ops.read_alert_deliveries`.
+`SELECT` the deliveries and the cursor. Deliveries move only through `ops.fn_claim_alerts`,
+`ops.fn_record_alert_delivery` and `ops.fn_deliver_alert_in_app` (definers, OPS5); operators read
+through `ops.read_alert_deliveries`. Every OPS5 function (the staleness and webhook passes, the
+webhook failure record, the heartbeat, the in-app delivery, the drill, the cadence helpers) is
+revoked from `PUBLIC`, `anon` and `authenticated` and granted to `service_role` only (`00002510`,
+region "Job, webhook and heartbeat alerts").

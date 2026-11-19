@@ -2550,11 +2550,19 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
   - `pg_net_unavailable`, `vault_unavailable`, `app_url_missing`, `secret_missing` — at
     dispatch, at most one row a day per job and reason;
   - `dispatch_failed`, `http_failed` (non-2xx, transport error or timeout), `no_response`;
-  - `run_failed` — a sql job that raised (read from `cron.job_run_details`, once per run).
+  - `run_failed` — a sql job that raised (read from `cron.job_run_details`, once per run);
+  - `stale` (error) — an enabled job with no success for `job_stale_factor` (3) × its cadence, at
+    most one row a day while it lasts; `cadence_unknown` (warn) — a schedule that check cannot read,
+    once (OPS5, `ops.fn_report_stale_jobs`). A skipped http run still reads "succeeded" in
+    `cron.job_run_details`, so an http job's success is a settled 2xx dispatch.
   pg_net answers asynchronously and keeps a response for 6 hours, so every dispatch is recorded in
   `ops.http_job_dispatches`, and `ops-watch-jobs` copies each outcome there and logs the failures
-  together with the failed pg_cron runs. `00000002` also warns when it cannot create pg_cron or pg_net, but the `ops` tables
-  do not exist yet at that point, so that skip is logged per job by the seed.
+  together with the failed pg_cron runs, the stale jobs and the webhook bursts. `00000002` also warns
+  when it cannot create pg_cron or pg_net, but the `ops` tables do not exist yet at that point, so that
+  skip is logged per job by the seed. **Every one of these rows alerts** (warn and above, again after an
+  hour; the once-a-day skips at most daily) by incoming webhook, email digest and an in-app notice to
+  every operator, through the `ops-deliver-alerts` job (§Alerting & health). A dead scheduler writes
+  nothing at all, so only the outside heartbeat (`GET /api/ops/health`) sees that.
 - **Run any job by hand:** `deno task cron:run <job>` (`--list` prints the registry). A sql job runs
   through `ops.run_job` (service role only). An http job is POSTed to `APP_URL` + its path with the
   bearer from `.env.local`, exactly as the scheduler sends it, so the app must be running. This is
@@ -2625,7 +2633,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `contact-attachment-sweep`          | hourly :25                        | `POST /api/contact/cron/attachments?limit=100` · `CONTACT_CRON_SECRET`   | Contact — `ContactBackendService.sweepAttachments` (#276)         | Each unsent contact upload older than 6 h is claimed once (`ops.fn_claim_stale_contact_attachments` soft-deletes it, `SKIP LOCKED`, so a file a submission or a Remove holds is skipped) and its object deleted through the Storage API; an object that fails to delete is logged — its row is already gone from every reader.                                                                                                                                                                         |
 | `account-erasures`                  | daily 04:10                       | `POST /api/user/cron/erasures?limit=100` · `ACCOUNT_CRON_SECRET`         | Account — `AccountLifecycleBackendService.sweepDue` (#156)        | A request completes once; one whose blockers came back is deferred, not forced.                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `account-data-exports`              | :09, :24, :39, :54                | `POST /api/user/cron/data-exports?limit=5` · `ACCOUNT_CRON_SECRET`       | Account — `DataExportBackendService.sweep` (#450)                 | Claims with `SKIP LOCKED`; a build that throws goes back to pending (failing on its third attempt), an archive is settled once, and an expired one is marked only after its object is removed. Registered only where `security.claim_data_exports` exists.                                                                                                                                                                                                                                              |
-| `ops-watch-jobs`                    | every 10 min                      | `ops.fn_watch_jobs()`                                                    | Ops — the registry itself                                         | `SKIP LOCKED`; a dispatch is settled (and reported) once, a failed run is reported once (keyed by run id).                                                                                                                                                                                                                                                                                                                                                                                             |
+| `ops-watch-jobs`                    | every 10 min                      | `ops.fn_watch_jobs()`                                                    | Ops — the registry itself; the staleness and webhook passes (OPS5) | `SKIP LOCKED`; a dispatch is settled (and reported) once, a failed run is reported once (keyed by run id); a stale job is reported at most daily and a webhook burst at most hourly (signature bursts daily), each re-checked under its lock, and a pass that raises is logged while the others run.                                                                                                                                                                                                                                                                                                                                                                                             |
 | `comms-process-queue`               | every minute                      | `comms.fn_process_queue(500)`                                            | Comms — the notification engine (`00001310`)                      | Overlapping ticks skip each other's rows (`SKIP LOCKED`); a promise that fails three times is parked as failed.                                                                                                                                                                                                                                                                                                                                                                                        |
 | `comms-escalate-unread`             | every 5 min from :04              | `comms.fn_escalate_unread(500)`                                          | Comms — the notification engine                                   | Falls back to email once per notification.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `comms-digest-daily`                | hourly :02                        | `comms.fn_build_digests('daily')`                                        | Comms — digests                                                   | Gated on each user's local `digest_hour`; a second run in the hour adds nothing.                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -2645,7 +2653,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `integrations-renew-channels`       | hourly :35                        | `POST /api/integrations/cron/channels?limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `IntegrationsBackendService.renewChannels` (#343 C4) | Claims each channel within 24 h of lapsing once (`expiring`, `SKIP LOCKED`); a third failure degrades its connection.
 | `integrations-calendar-sync`        | every 5 min                       | `POST /api/integrations/cron/sync?limit=50` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.syncDue` (#383 R3) | Claims each calendar a push marked due or an hour unread, under a 10-minute lease (`SKIP LOCKED`); a read lands in one call and only while its claim is held, so a repeat changes nothing.
 | `comms-dispatch-sweep`              | every minute                      | `POST /api/comms/cron/dispatch?limit=200` · `COMMS_DISPATCH_SECRET` | Comms — `NotificationDispatchService.dispatch` (Decision #344 (a)) | Claims through `comms.fn_claim_deliveries` (`SKIP LOCKED`, a 15-minute lease on a queued row, results recorded forward only), so an overlapping run sends nothing twice; claims nothing while `comms.dispatch_webhook` is off.
-| `ops-deliver-alerts`                | every 5 min                       | `POST /api/ops/cron/alerts?limit=50` · `OPS_CRON_SECRET` | Ops — `OpsAlertService.deliver` (MR4, Decision #461) | Folds under an advisory lock and records each fold (`ops.alert_seen`), leases a due alert for 5 minutes and records each send forward only, so an overlapping run sends nothing twice; a failed send stays pending and backs off. |
+| `ops-deliver-alerts`                | every 5 min                       | `POST /api/ops/cron/alerts?limit=50` · `OPS_CRON_SECRET` | Ops — `OpsAlertService.deliver` (MR4, Decision #461; OPS5) | Folds under an advisory lock and records each fold (`ops.alert_seen`), leases a due alert for 5 minutes and records each send forward only, so an overlapping run sends nothing twice; a failed send stays pending and backs off. Three channels that fail apart (webhook, email digest, in-app notice to every operator); the in-app notices and their record are one transaction. |
 | `search-embeddings-backfill`        | hourly :38                        | `POST /api/search/cron/embeddings?limit=50` · `SEARCH_CRON_SECRET` | Search — `runScheduledBackfill` (COMMS SR2, CAS S14) | Embeds up to 50 public items whose stored vector is missing or stale; a stored vector is skipped by its text hash and model, so a repeated run embeds nothing twice. A no-op while embeddings are off. |
 | `newsletter-provider-sync`          | every 5 min, from :02             | `POST /api/newsletter/cron/sync?limit=50` · `COMMS_DISPATCH_SECRET` | Newsletter — `NewsletterProviderSync.run` (CD1 step 5, Decision #480 Q1 A) | Reads `community.newsletter_sync_batch` (no rows while `newsletter.provider_sync` is off) and stamps each provider call against the row version it read (`record_newsletter_sync`), so a re-run, or a change made during one, converges; the provider calls are idempotent by shape (a create of an existing address is answered by a lookup). Ends a pass at a 429 or after 60 s. |
 | `integrations-outbound-sync`        | every 5 min, from :02             | `POST /api/integrations/cron/sync?task=outbound&limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.pushDue` (#383 R3) | Claims each dirty copy under a 10-minute lease (`SKIP LOCKED`); writes are idempotent at the provider, and a copy changed during a write stays dirty.
@@ -2670,6 +2678,37 @@ is not registered, and PM-WP5 adds it with its fixes. Five more rows register th
 first reset after their function exists, and all five have: discovery-call expiry, spend-approval
 expiry and the idempotency-key sweep, then vote settlement (`scheduling.fn_settle_votes`, OPS2) and
 query-log retention (`search.fn_prune_query_logs`, OPS4). Each has its row in the table above.
+
+### Alerting & health (MR4, Decision #461; OPS5)
+
+One pipeline turns a server `ops.log_entries` row into a message a person reads; there is no second
+alert table. Schema and functions: [database/ops](../database/ops/Functions.md).
+
+- **Sources.** Money: every `finance.*` error (the reconciliation, the conservation check, card
+  settlement, refunds, disputes, payout schedules, deposit rules) and the two nightly checks' dead-man
+  switches (MR4). Jobs: every `ops.scheduler` row — a failed schedule, dispatch, response or run, a
+  stale job, a configuration skip (OPS5). Webhooks: each webhook service reports every non-2xx through
+  `OpsHealthService.recordWebhookFailure` (one `webhook.<provider>` row per provider, class and minute,
+  facts only); `ops-watch-jobs` turns `webhook_failure_threshold` (5) 5xx failures in 15 minutes into
+  one `ops.webhooks` error, and as many signature refusals into one warn. A drill:
+  `ops.fn_raise_alert('test')` (OPS7).
+- **Rules** (`ops.alert_rules`, seeded in `00005065`; a new scope is a row, not code): a `level` rule
+  takes a scope's rows at its level or above and folds them into one alert per scope and fingerprint
+  per window (a job, a provider, a wallet). `finance.%` at error, 36 h; `ops.scheduler` at warn, 1 h;
+  `ops.webhooks` at warn by webhook and at error by email and in-app, 1 h; `test`, 5 minutes. No rule
+  matches the raw `webhook.<provider>` rows, so one failure never alerts by itself.
+- **Channels.** Every rule names one; each scope above is seeded on all three. An incoming webhook
+  (`OPS_ALERT_WEBHOOK_URL`, Slack-compatible JSON) and an email digest (`OPS_ALERT_EMAIL`, Resend), two
+  channels outside the database that fail apart (#461 (A)), plus an `ops.alert` in-app notice to every
+  operator (OPS5). Messages name the scope, the group (job or provider and reason), the count, the
+  first and last seen times and their figures, and link `/admin/ledger`, where operators read every
+  delivery. Never a name, an email, a bank detail, a payload or a secret.
+- **The heartbeat.** The database cannot report its own death. `GET /api/ops/health` (bearer
+  `OPS_HEALTH_TOKEN`, 404 otherwise, never cached) answers 200 `{ok: true}` only while the database
+  answers, `ops-watch-jobs` is enabled and succeeded within `heartbeat_watch_minutes` (30), and no
+  alert has waited undelivered for 15 minutes; else 503 `{ok: false}`. An outside uptime monitor polls
+  it every 5 minutes and alerts on its own channel (OPS6's runbook). Locally an unset channel keeps
+  alerts pending, so the heartbeat reads 503 there; that is the honest answer.
 
 ### Edge Functions & Webhooks
 
@@ -3779,9 +3818,9 @@ It is a satellite of this section: where they differ, this section wins, and its
   (`POST /api/ops/cron/alerts`, `OPS_CRON_SECRET`) sends each by an incoming webhook
   (`OPS_ALERT_WEBHOOK_URL`) and in one Resend digest (`OPS_ALERT_EMAIL`), two channels that fail
   apart, and records every outcome; a failure stays pending and backs off. A payload carries figures,
-  short ids and a `/admin/ledger` link, never a name, an email or a bank detail. Stripe webhook errors
-  write no `ops.log_entries` row yet, so they do not alert (PRD-G7). Proven by
-  `supabase/probes/ops_alerts.sql`.
+  short ids and a `/admin/ledger` link, never a name, an email or a bank detail. OPS5 adds a third
+  channel (an in-app notice to every operator), Stripe and provider webhook bursts, stale jobs and the
+  outside heartbeat: §Alerting & health. Proven by `supabase/probes/ops_alerts.sql`.
 - **The pending window (Decision #191):** earned credits (escrow releases and their team splits,
   fair-exit and seat payouts, product sales) go through `finance.fn_wallet_credit_pending`, which
   writes a `finance.pending_releases` row and no ledger line; `finance.fn_mature_pending_releases()`
@@ -4547,12 +4586,17 @@ OPS_CRON_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) of the embedding backfill (COMMS SR2): the search-embeddings-backfill job
 # calls POST /api/search/cron/embeddings with it hourly; 404 otherwise. A no-op while embeddings are off.
 SEARCH_CRON_SECRET=XXXX-XXXX
-# Where money and job alerts go (Decision #461 (A)): an incoming-webhook URL taking Slack-compatible JSON
-# ({ "text": … }; https://, or a localhost receiver in development) and one address for the email digest
-# (through RESEND_API_KEY + MAIL_FROM). Unset, that channel is off and its alerts wait pending. Figures,
-# short ids and a /admin/ledger link only; the receiver's data-processing terms are the owner's (#461 (d)).
+# Where money, job and webhook alerts go (Decision #461 (A); OPS5): an incoming-webhook URL taking
+# Slack-compatible JSON ({ "text": … }; https://, or a localhost receiver in development) and one address
+# for the email digest (through RESEND_API_KEY + MAIL_FROM); the in-app operator notice needs no key.
+# Unset, that channel is off and its alerts wait pending. Figures, short ids and a /admin/ledger link
+# only; the receiver's data-processing terms are the owner's (#461 (d)). Required in production.
 OPS_ALERT_WEBHOOK_URL=XXXX-XXXX
 OPS_ALERT_EMAIL=XXXX-XXXX
+# Bearer token (≥ 32 characters) an outside uptime monitor sends to GET /api/ops/health every 5 minutes
+# (OPS5, §Alerting & health): 200 {ok:true} or 503 {ok:false}; 404 otherwise. App-only, NOT a Vault
+# secret (nothing in the database reads it). Required in production, optional elsewhere.
+OPS_HEALTH_TOKEN=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
 # pg_net reads them inside the database to call the routes above. `deno task cron:vault` sets them per
 # environment, taking the names from the job registry: `--env-file .env.<name>` writes a hosted

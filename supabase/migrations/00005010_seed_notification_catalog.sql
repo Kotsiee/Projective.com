@@ -247,3 +247,16 @@ VALUES
 ('session.review_requested', '{}',                'schedule',  'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              NULL,                                        NULL, 'A session with no attendance record is waiting for the attendee to say whether it happened.')
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
+
+-- #region [ops] Alerts to the operators (OPS5)
+-- Sent by ops.fn_deliver_alert_in_app to every ops.admin_users row: the in-app channel of the alert
+-- sweep, beside the webhook and the email digest. Mandatory, so an operator cannot mute a money or job
+-- alert; not digestible, because an alert waits for nobody. A repeat of the same alert group within a
+-- day refreshes the operator's notice (`group_key` = `ops.alert:<group>`) instead of adding another.
+-- The body is figures, short ids and codes only.
+INSERT INTO comms.notification_types
+    (key, aliases, category, urgency, default_channels, mandatory, overrides_quiet_hours, digestible, audit, group_window, action_url_template, default_lead_time, description)
+VALUES
+('ops.alert',                '{}',                'system',    'high',     ARRAY['in_app']::comms.notification_channel[],                true,  false, false, true,  '1 day',           '/admin/ledger',                             NULL, 'Operators only: a money error, a failed or stalled job, a failing webhook, a silent nightly check or a drill, from the alert sweep.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion

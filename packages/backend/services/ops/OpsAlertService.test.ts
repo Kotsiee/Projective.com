@@ -3,6 +3,7 @@ import { AlertsReadSchema } from "@projective/types/ops";
 import {
 	type AlertDb,
 	type AlertDeps,
+	alertNotice,
 	alertText,
 	deliverAlerts,
 	digestMessage,
@@ -37,39 +38,61 @@ function claimOf(...rows: Array<Record<string, unknown>>) {
 	return { folded: 0, opened: rows.length, silent: 0, deliveries: rows };
 }
 
-function row(id: string, channel: "webhook" | "email", extra: Record<string, unknown> = {}) {
+function row(
+	id: string,
+	channel: "webhook" | "email" | "in_app",
+	extra: Record<string, unknown> = {},
+) {
 	return { ...DRIFT, id, channel, ...extra };
 }
 
 const W1 = "11111111-1111-4111-8111-111111111111";
 const E1 = "22222222-2222-4222-8222-222222222222";
 const E2 = "33333333-3333-4333-8333-333333333333";
+const I1 = "44444444-4444-4444-8444-444444444444";
 
 interface Harness {
 	deps: AlertDeps;
 	posts: string[];
 	mails: MailMessage[];
 	records: Array<{ id: string; ok: boolean; error: string | null }>;
+	notices: Array<{ id: string; title: string; body: string }>;
 }
 
 function harness(
 	claim: unknown,
-	opts: { webhookFails?: string; mailFails?: boolean; noWebhook?: boolean; noMail?: boolean } = {},
+	opts: {
+		webhookFails?: string;
+		mailFails?: boolean;
+		noWebhook?: boolean;
+		noMail?: boolean;
+		inAppFails?: boolean;
+		noOperators?: boolean;
+	} = {},
 ): Harness {
 	const posts: string[] = [];
 	const mails: MailMessage[] = [];
 	const records: Harness["records"] = [];
+	const notices: Harness["notices"] = [];
 	const db: AlertDb = {
 		claim: () => Promise.resolve(claim),
 		record: (id, ok, error) => {
 			records.push({ id, ok, error });
 			return Promise.resolve();
 		},
+		deliverInApp: (id, title, body) => {
+			if (opts.inAppFails) {
+				return Promise.reject(new Error("ops.fn_deliver_alert_in_app failed (08006)"));
+			}
+			notices.push({ id, title, body });
+			return Promise.resolve({ sent: !opts.noOperators });
+		},
 	};
 	return {
 		posts,
 		mails,
 		records,
+		notices,
 		deps: {
 			live: true,
 			db,
@@ -299,3 +322,85 @@ Deno.test("toAlertsRead maps the operator read and parses", () => {
 	assertEquals(read.deliveries[0].lastError, "503");
 	assertEquals(toAlertsRead(null).deliveries, []);
 });
+
+// #region The in-app channel, and channels failing apart (OPS5)
+Deno.test("an in-app alert is one notice through the door, its own record, and no link line", async () => {
+	const h = harness(claimOf(row(I1, "in_app", {
+		scope: "ops.webhooks",
+		fingerprint: "stripe:failing",
+		sample: { provider: "stripe", reason: "failing", failures: 6, threshold: 5 },
+	})));
+	const res = await deliverAlerts(50, h.deps);
+	assertEquals(res.data?.sent, 1);
+	assertEquals(h.records, [], "the in-app door records its own send");
+	assertEquals(h.notices.length, 1);
+	assertEquals(h.notices[0].id, I1);
+	assertEquals(h.notices[0].title, "ops.webhooks · error · 1 row");
+	assertStringIncludes(h.notices[0].body, "Group stripe:failing");
+	assertStringIncludes(h.notices[0].body, "provider stripe");
+	assertStringIncludes(h.notices[0].body, "failures 6");
+	assertEquals(h.notices[0].body.includes("/admin/ledger"), false);
+});
+
+Deno.test("no operator to tell counts as failed, and the database has already recorded it", async () => {
+	const h = harness(claimOf(row(I1, "in_app")), { noOperators: true });
+	const res = await deliverAlerts(50, h.deps);
+	assertEquals([res.data?.sent, res.data?.failed], [0, 1]);
+	assertEquals(h.records, []);
+});
+
+Deno.test("a webhook that is down does not stop the digest or the in-app notice", async () => {
+	const h = harness(claimOf(row(W1, "webhook"), row(E1, "email"), row(I1, "in_app")), {
+		webhookFails: "webhook answered 502",
+	});
+	const res = await deliverAlerts(50, h.deps);
+	assertEquals([res.data?.sent, res.data?.failed], [2, 1]);
+	assertEquals(h.records, [{ id: W1, ok: false, error: "502" }, { id: E1, ok: true, error: null }]);
+	assertEquals(h.mails.length, 1);
+	assertEquals(h.notices.map((n) => n.id), [I1]);
+});
+
+Deno.test("mail that is down, or an in-app door that raises, does not stop the webhook", async () => {
+	const h = harness(claimOf(row(W1, "webhook"), row(E1, "email"), row(I1, "in_app")), {
+		mailFails: true,
+		inAppFails: true,
+	});
+	const res = await deliverAlerts(50, h.deps);
+	assertEquals([res.data?.sent, res.data?.failed], [1, 2]);
+	assertEquals(h.posts.length, 1);
+	assertEquals(h.records, [
+		{ id: W1, ok: true, error: null },
+		{ id: E1, ok: false, error: "500" },
+		{ id: I1, ok: false, error: "error" },
+	]);
+});
+
+Deno.test("a stale job and a webhook burst read with their job, provider and reason", () => {
+	const claim = toAlertClaim(claimOf(
+		row(W1, "webhook", {
+			scope: "ops.scheduler",
+			fingerprint: "finance-recurring-deposits:stale",
+			sample: {
+				job: "finance-recurring-deposits",
+				reason: "stale",
+				cadence_minutes: 60,
+				stale_minutes: 200,
+			},
+		}),
+		row(E1, "email", {
+			scope: "ops.webhooks",
+			fingerprint: "stripe-v2:signature",
+			level: "warn",
+			sample: { provider: "stripe-v2", reason: "signature", failures: 5 },
+		}),
+	));
+	const stale = alertText(claim.deliveries[0], "https://a.test");
+	assertStringIncludes(stale, "job finance-recurring-deposits");
+	assertStringIncludes(stale, "reason stale");
+	assertStringIncludes(stale, "stale_minutes 200");
+	const burst = alertNotice(claim.deliveries[1], "https://a.test");
+	assertEquals(burst.title, "ops.webhooks · warn · 1 row");
+	assertStringIncludes(burst.body, "provider stripe-v2");
+	assertEquals(safeSample({ provider: "Ada Lovelace <a@b.c>" }), {});
+});
+// #endregion

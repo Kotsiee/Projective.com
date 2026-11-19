@@ -28,6 +28,7 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { mayFileInto } from "../files/live-library.ts";
 import { PRESENCE_ADAPTERS, type PresenceAdapter } from "../sessions/presence/mod.ts";
 import { SessionBackendService } from "../sessions/SessionBackendService.ts";
+import { recordWebhookFailure } from "../ops/OpsHealthService.ts";
 import { CALENDAR_ADAPTERS } from "./calendar-adapters.ts";
 import { type ChannelRow, renewChannel, type RenewedChannel, stopChannel } from "./channels.ts";
 import {
@@ -615,6 +616,88 @@ async function calendarPush(
 	return verified ? ok({ received: true, outcomes: [] }) : fail(400, { message: FORGED });
 }
 
+/** A webhook answer, and the reason code a non-2xx one is reported under (OPS5). */
+interface WebhookAnswer {
+	result: ServiceResult<WebhookReceipt>;
+	reason?: string;
+}
+
+function refusedWebhook(status: number, message: string, reason: string): WebhookAnswer {
+	return { result: fail(status, { message }), reason };
+}
+
+/** {@link IntegrationsBackendService.handleWebhook}'s work; each refusal names its reason. */
+async function answerProviderWebhook(
+	provider: string,
+	raw: string,
+	headers: Headers,
+	url: URL,
+	nowMs: number,
+): Promise<WebhookAnswer> {
+	if (!Object.hasOwn(PRESENCE_ADAPTERS, provider)) {
+		return refusedWebhook(404, "Unknown provider.", "unknown_provider");
+	}
+	const adapter = PRESENCE_ADAPTERS[provider];
+	const handshake = adapter.handshake?.(url);
+	if (handshake) return { result: ok({ received: true, handshake, outcomes: [] }) };
+	try {
+		if (adapter.channelOf) {
+			const pushed = await calendarPush(provider, adapter, raw, headers, nowMs);
+			return { result: pushed, reason: pushed.ok ? undefined : "signature_invalid" };
+		}
+		const secret = adapter.secret();
+		if (!secret) {
+			return refusedWebhook(503, "Webhooks for this provider aren't configured.", "not_configured");
+		}
+		if (!(await adapter.verify(raw, headers, secret, nowMs))) {
+			return refusedWebhook(400, FORGED, "signature_invalid");
+		}
+
+		let body: unknown;
+		try {
+			body = JSON.parse(raw);
+		} catch {
+			return refusedWebhook(400, "The delivery isn't JSON.", "not_json");
+		}
+		const challenge = await adapter.challenge(body, secret);
+		if (challenge) return { result: ok({ received: true, challenge, outcomes: [] }) };
+
+		const deauthorized = adapter.deauthorization?.(body);
+		if (deauthorized) {
+			const { error } = await integrationsDb().rpc("fn_deauthorize_connection", {
+				p_provider_slug: provider,
+				p_external_account_id: deauthorized.externalAccountId,
+				p_delivery_id: deauthorized.deliveryId,
+			});
+			if (error) throw new Error(`integrations.fn_deauthorize_connection failed: ${error.message}`);
+			return { result: ok({ received: true, outcomes: [] }) };
+		}
+
+		const events = adapter.parse(body);
+		if (events.length === 0) return { result: ok({ received: true, outcomes: [] }) };
+		const recorded = await SessionBackendService.handlePresenceWebhook(events);
+		if (!recorded.ok) {
+			return refusedWebhook(
+				recorded.status,
+				recorded.message ?? "The delivery couldn't be handled.",
+				recorded.status >= 500 ? "handler_failed" : "presence_refused",
+			);
+		}
+		return { result: ok({ received: true, outcomes: recorded.data!.outcomes }) };
+	} catch (error) {
+		console.error(
+			"[integrations:webhook]",
+			provider,
+			error instanceof Error ? error.message : error,
+		);
+		return refusedWebhook(
+			503,
+			"The delivery couldn't be handled. It will be redelivered.",
+			"handler_failed",
+		);
+	}
+}
+
 // #endregion
 
 async function signedIn<T>(label: string, actor: ReadActor, run: (a: Actor) => Promise<ServiceResult<T>>) {
@@ -951,7 +1034,9 @@ export class IntegrationsBackendService {
 	 * Each presence or removal effect claims its `webhook_deliveries` row in its own SQL call, so a replay
 	 * is a 2xx no-op, and a replayed push only marks the same calendar due again.
 	 * The status is the provider's contract: 2xx acknowledges (an ignored event too), 400 refuses a
-	 * forged or stale delivery, 404 an unknown provider, 503 asks for a redelivery.
+	 * forged or stale delivery, 404 an unknown provider, 503 asks for a redelivery. Every non-2xx is
+	 * reported to the ops record as facts only (OPS5): the provider's code (`unknown` for a path that
+	 * names none, so a stranger cannot mint scopes), the status and a reason code.
 	 */
 	static async handleWebhook(
 		provider: string,
@@ -960,47 +1045,15 @@ export class IntegrationsBackendService {
 		url: URL,
 		nowMs = Date.now(),
 	): Promise<ServiceResult<WebhookReceipt>> {
-		if (!Object.hasOwn(PRESENCE_ADAPTERS, provider)) {
-			return fail(404, { message: "Unknown provider." });
+		const { result, reason } = await answerProviderWebhook(provider, raw, headers, url, nowMs);
+		if (!result.ok && reason) {
+			await recordWebhookFailure({
+				provider: Object.hasOwn(PRESENCE_ADAPTERS, provider) ? provider : "unknown",
+				status: result.status,
+				reason,
+			});
 		}
-		const adapter = PRESENCE_ADAPTERS[provider];
-		const handshake = adapter.handshake?.(url);
-		if (handshake) return ok({ received: true, handshake, outcomes: [] });
-		try {
-			if (adapter.channelOf) return await calendarPush(provider, adapter, raw, headers, nowMs);
-			const secret = adapter.secret();
-			if (!secret) return fail(503, { message: "Webhooks for this provider aren't configured." });
-			if (!(await adapter.verify(raw, headers, secret, nowMs))) return fail(400, { message: FORGED });
-
-			let body: unknown;
-			try {
-				body = JSON.parse(raw);
-			} catch {
-				return fail(400, { message: "The delivery isn't JSON." });
-			}
-			const challenge = await adapter.challenge(body, secret);
-			if (challenge) return ok({ received: true, challenge, outcomes: [] });
-
-			const deauthorized = adapter.deauthorization?.(body);
-			if (deauthorized) {
-				const { error } = await integrationsDb().rpc("fn_deauthorize_connection", {
-					p_provider_slug: provider,
-					p_external_account_id: deauthorized.externalAccountId,
-					p_delivery_id: deauthorized.deliveryId,
-				});
-				if (error) throw new Error(`integrations.fn_deauthorize_connection failed: ${error.message}`);
-				return ok({ received: true, outcomes: [] });
-			}
-
-			const events = adapter.parse(body);
-			if (events.length === 0) return ok({ received: true, outcomes: [] });
-			const recorded = await SessionBackendService.handlePresenceWebhook(events);
-			if (!recorded.ok) return fail(recorded.status, { message: recorded.message });
-			return ok({ received: true, outcomes: recorded.data!.outcomes });
-		} catch (error) {
-			console.error("[integrations:webhook]", provider, error instanceof Error ? error.message : error);
-			return fail(503, { message: "The delivery couldn't be handled. It will be redelivered." });
-		}
+		return result;
 	}
 
 	// #endregion

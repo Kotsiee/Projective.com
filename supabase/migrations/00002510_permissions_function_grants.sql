@@ -2730,3 +2730,26 @@ REVOKE ALL ON FUNCTION ops.fn_alert_sample (jsonb) FROM PUBLIC, anon, authentica
 REVOKE ALL ON FUNCTION ops.fn_alert_short (text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION ops.fn_alert_keep () FROM PUBLIC, anon, authenticated;
 -- #endregion
+
+-- #region Job, webhook and heartbeat alerts (00001650, 00001660; OPS5)
+-- The staleness and webhook passes, the webhook failure record, the heartbeat, the in-app delivery and
+-- the drill: the service role only (the webhook services, /api/ops/health, the alert sweep, an
+-- operator's drill), and pg_cron runs the passes as their owner inside ops.fn_watch_jobs. The cadence
+-- helpers are pure and internal.
+REVOKE ALL ON FUNCTION ops.fn_cron_field_values (text, integer, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_cron_field_values (text, integer, integer) TO service_role;
+REVOKE ALL ON FUNCTION ops.fn_cron_max_gap (text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_cron_max_gap (text) TO service_role;
+REVOKE ALL ON FUNCTION ops.fn_report_stale_jobs (timestamptz, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_report_stale_jobs (timestamptz, integer) TO service_role;
+REVOKE ALL ON FUNCTION ops.fn_record_webhook_failure (text, text, integer, text, integer, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_record_webhook_failure (text, text, integer, text, integer, text, text) TO service_role;
+REVOKE ALL ON FUNCTION ops.fn_watch_webhooks (timestamptz, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_watch_webhooks (timestamptz, integer) TO service_role;
+REVOKE ALL ON FUNCTION ops.fn_heartbeat (timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_heartbeat (timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION ops.fn_deliver_alert_in_app (uuid, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_deliver_alert_in_app (uuid, text, text) TO service_role;
+REVOKE ALL ON FUNCTION ops.fn_raise_alert (text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_raise_alert (text, text) TO service_role;
+-- #endregion

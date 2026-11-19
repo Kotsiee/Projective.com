@@ -4,7 +4,10 @@
 -- pg_cron job, dispatch the HTTP sweeps through pg_net with a bearer read from Vault, settle their
 -- responses, and let the service role run any job by hand (`deno task cron:run <job>`). A skip or a
 -- failure is never silent: it raises a WARNING and writes an `ops.log_entries` row
--- (`scope = 'ops.scheduler'`, `client_id = 'scheduler:<job>:<reason>'`).
+-- (`scope = 'ops.scheduler'`, `client_id = 'scheduler:<job>:<reason>'`). The watcher also reports a
+-- job that has stopped succeeding, and a burst of failed webhook deliveries (`scope = 'ops.webhooks'`),
+-- and the heartbeat says whether the watcher itself is running (OPS5); the alert rules in 00005065
+-- route those rows to a person.
 -- Triggers in 00001897, grants in 00002510, the jobs themselves in 00005060.
 -- =============================================================================================
 
@@ -337,7 +340,7 @@ response for 6), as an error row. Returns the number of failures. Run by ops-wat
 LOCKED, so overlapping runs never double-report.';
 -- #endregion
 
--- #region 4. Failed runs and the watcher
+-- #region 4. Failed runs
 -- A sql job that raises leaves its error only in `cron.job_run_details`, which nobody reads. Each failed
 -- run of the last day is reported once (keyed by its run id).
 CREATE OR REPLACE FUNCTION ops.fn_report_failed_runs ()
@@ -384,20 +387,531 @@ $$;
 COMMENT ON FUNCTION ops.fn_report_failed_runs() IS
 'Reports every failed pg_cron run of the last day (cron.job_run_details) as one ops error row, keyed
 by run id so a run is reported once. Returns the number newly reported.';
+-- #endregion
 
-CREATE OR REPLACE FUNCTION ops.fn_watch_jobs ()
+-- #region 4a. Cadence and staleness (OPS5)
+-- A job that stops running writes nothing: a skipped http run still reads "succeeded" in
+-- cron.job_run_details, and a job pg_cron never fires has no run at all. So a job is judged by its
+-- last SUCCESS (a 2xx in ops.http_job_dispatches for an http job, a succeeded run in
+-- cron.job_run_details for a sql job) against its cadence, read conservatively from the expression:
+-- the largest gap between two fire times in a day.
+
+-- The values one cron field names, ascending, or NULL when the field is not one this check reads.
+-- Comma lists of `*`, `n`, `a-b`, `*/s` and `a-b/s`, within [p_min, p_max]. Internal.
+CREATE OR REPLACE FUNCTION ops.fn_cron_field_values (p_field text, p_min integer, p_max integer)
+RETURNS integer[]
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+    v_part text;
+    v_range text;
+    v_step integer;
+    v_lo integer;
+    v_hi integer;
+    v_out integer[] := '{}';
+    m text[];
+BEGIN
+    IF p_field IS NULL OR p_field = '' THEN
+        RETURN NULL;
+    END IF;
+    FOREACH v_part IN ARRAY pg_catalog.string_to_array(p_field, ',') LOOP
+        m := pg_catalog.regexp_match(v_part, '^(\*|[0-9]{1,2}(?:-[0-9]{1,2})?)(?:/([0-9]{1,2}))?$');
+        IF m IS NULL THEN
+            RETURN NULL;
+        END IF;
+        v_range := m[1];
+        v_step := COALESCE(m[2]::integer, 1);
+        IF v_step < 1 THEN
+            RETURN NULL;
+        END IF;
+        IF v_range = '*' THEN
+            v_lo := p_min;
+            v_hi := p_max;
+        ELSIF pg_catalog.strpos(v_range, '-') > 0 THEN
+            v_lo := pg_catalog.split_part(v_range, '-', 1)::integer;
+            v_hi := pg_catalog.split_part(v_range, '-', 2)::integer;
+        ELSE
+            v_lo := v_range::integer;
+            -- `n/s` is not standard cron: refuse it rather than guess.
+            IF m[2] IS NOT NULL THEN
+                RETURN NULL;
+            END IF;
+            v_hi := v_lo;
+        END IF;
+        IF v_lo < p_min OR v_hi > p_max OR v_lo > v_hi THEN
+            RETURN NULL;
+        END IF;
+        v_out := v_out || ARRAY(SELECT pg_catalog.generate_series(v_lo, v_hi, v_step));
+    END LOOP;
+    RETURN ARRAY(SELECT DISTINCT v FROM pg_catalog.unnest(v_out) v ORDER BY v);
+END;
+$$;
+
+COMMENT ON FUNCTION ops.fn_cron_field_values(text, integer, integer) IS
+'The values one five-field cron field names, ascending (comma lists of *, n, a-b, */s, a-b/s within
+[p_min, p_max]), or NULL for anything else. Internal to ops.fn_cron_max_gap.';
+
+-- The largest gap between two consecutive fire times of a schedule over one UTC day, wrapping past
+-- midnight: '*/10 * * * *' is 10 minutes, '4,19,34,49 * * * *' 15, '20 2 * * *' a day. NULL for an
+-- expression this check does not read: anything but five fields, a day-of-month, month or weekday
+-- other than '*', or pg_cron's interval form ('30 seconds'). Every cadence it returns is at most a
+-- day, so three of them fit inside the 7 days of run history ops-prune-job-history keeps.
+CREATE OR REPLACE FUNCTION ops.fn_cron_max_gap (p_schedule text)
+RETURNS interval
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+    v_fields text[] := pg_catalog.regexp_split_to_array(pg_catalog.btrim(COALESCE(p_schedule, '')), '\s+');
+    v_minutes integer[];
+    v_hours integer[];
+    v_times integer[];
+    v_gap integer := 0;
+    i integer;
+BEGIN
+    IF pg_catalog.array_length(v_fields, 1) IS DISTINCT FROM 5
+       OR v_fields[3] <> '*' OR v_fields[4] <> '*' OR v_fields[5] <> '*' THEN
+        RETURN NULL;
+    END IF;
+    v_minutes := ops.fn_cron_field_values(v_fields[1], 0, 59);
+    v_hours := ops.fn_cron_field_values(v_fields[2], 0, 23);
+    IF v_minutes IS NULL OR v_hours IS NULL THEN
+        RETURN NULL;
+    END IF;
+    v_times := ARRAY(
+        SELECT h * 60 + mi
+          FROM pg_catalog.unnest(v_hours) h, pg_catalog.unnest(v_minutes) mi
+         ORDER BY 1
+    );
+    FOR i IN 2 .. pg_catalog.array_length(v_times, 1) LOOP
+        v_gap := GREATEST(v_gap, v_times[i] - v_times[i - 1]);
+    END LOOP;
+    v_gap := GREATEST(v_gap, v_times[1] + 1440 - v_times[pg_catalog.array_length(v_times, 1)]);
+    RETURN pg_catalog.make_interval(mins => v_gap);
+END;
+$$;
+
+COMMENT ON FUNCTION ops.fn_cron_max_gap(text) IS
+'A five-field cron schedule''s largest gap between two consecutive fire times over one UTC day,
+wrapping past midnight (the staleness check''s conservative cadence). NULL for an expression it does
+not read: not five fields, a day-of-month, month or weekday other than *, or pg_cron''s interval form.';
+
+-- One staleness pass over the enabled registry rows (at most p_limit, by name):
+--   - a schedule ops.fn_cron_max_gap cannot read is warned about once per job and schedule
+--     (`scheduler:<job>:cadence_unknown`), never silently skipped;
+--   - a job with no success for job_stale_factor × its cadence (security.platform_params, default 3)
+--     writes one `scheduler:<job>:stale` error, at most once a day while it lasts. The cadence is never
+--     taken as finer than the watcher's own (ops-watch-jobs), which is as often as a success can be
+--     seen; the clock starts at the row's last change when the job has no later success.
+-- Each row is locked FOR NO KEY UPDATE SKIP LOCKED (a dispatch's FK check still passes) and its
+-- once-a-day check reads after the lock, so an overlapping pass writes nothing twice. Without pg_cron
+-- nothing runs on its own and every registration has already said so: returns 0. Returns the number
+-- of rows written.
+CREATE OR REPLACE FUNCTION ops.fn_report_stale_jobs (
+    p_now timestamptz DEFAULT pg_catalog.now(),
+    p_limit integer DEFAULT 200
+)
 RETURNS integer
-LANGUAGE sql
+LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-    SELECT ops.fn_settle_http_dispatches() + ops.fn_report_failed_runs();
+DECLARE
+    v_factor numeric;
+    v_watch interval;
+    v_job record;
+    v_cadence interval;
+    v_after interval;
+    v_since timestamptz;
+    v_count integer := 0;
+BEGIN
+    IF pg_catalog.to_regclass('cron.job_run_details') IS NULL THEN
+        RETURN 0;
+    END IF;
+
+    SELECT CASE WHEN pg_catalog.jsonb_typeof(pp.value) = 'number' AND (pp.value #>> '{}')::numeric >= 1
+                THEN (pp.value #>> '{}')::numeric END
+      INTO v_factor
+      FROM security.platform_params pp
+     WHERE pp.key = 'job_stale_factor';
+    v_factor := COALESCE(v_factor, 3);
+    v_watch := COALESCE(
+        (SELECT ops.fn_cron_max_gap(w.schedule) FROM ops.scheduled_jobs w WHERE w.name = 'ops-watch-jobs'),
+        interval '10 minutes'
+    );
+
+    FOR v_job IN
+        SELECT j.name, j.kind, j.schedule, j.updated_at,
+               CASE j.kind WHEN 'http' THEN h.dispatched_at ELSE s.succeeded_at END AS last_success
+          FROM ops.scheduled_jobs j
+          LEFT JOIN LATERAL (
+                SELECT d.dispatched_at
+                  FROM ops.http_job_dispatches d
+                 WHERE d.job_name = j.name
+                   AND d.settled_at IS NOT NULL
+                   AND d.status_code BETWEEN 200 AND 299
+                   AND d.error IS NULL
+                 ORDER BY d.dispatched_at DESC
+                 LIMIT 1
+          ) h ON j.kind = 'http'
+          LEFT JOIN (
+                SELECT c.jobname, pg_catalog.max(r.end_time) AS succeeded_at
+                  FROM cron.job_run_details r
+                  JOIN cron.job c ON c.jobid = r.jobid
+                 WHERE r.status = 'succeeded'
+                 GROUP BY c.jobname
+          ) s ON s.jobname = j.name
+         WHERE j.enabled
+         ORDER BY j.name
+         LIMIT GREATEST(LEAST(COALESCE(p_limit, 200), 1000), 1)
+           FOR NO KEY UPDATE OF j SKIP LOCKED
+    LOOP
+        v_cadence := ops.fn_cron_max_gap(v_job.schedule);
+        IF v_cadence IS NULL THEN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM ops.log_entries l
+                 WHERE l.source = 'server'
+                   AND l.scope = 'ops.scheduler'
+                   AND l.client_id = pg_catalog.format('scheduler:%s:cadence_unknown', v_job.name)
+                   AND l.data ->> 'schedule' = v_job.schedule
+            ) THEN
+                PERFORM ops.fn_log_scheduler_event(v_job.name, 'cadence_unknown', 'warn',
+                    pg_catalog.format('%s runs on "%s", which the staleness check cannot read, so a missed run of it is not detected.',
+                        v_job.name, v_job.schedule),
+                    pg_catalog.jsonb_build_object('schedule', v_job.schedule));
+                v_count := v_count + 1;
+            END IF;
+            CONTINUE;
+        END IF;
+
+        v_after := GREATEST(v_cadence, v_watch) * v_factor;
+        v_since := GREATEST(COALESCE(v_job.last_success, v_job.updated_at), v_job.updated_at);
+        CONTINUE WHEN p_now - v_since <= v_after;
+        CONTINUE WHEN EXISTS (
+            SELECT 1
+              FROM ops.log_entries l
+             WHERE l.source = 'server'
+               AND l.scope = 'ops.scheduler'
+               AND l.client_id = pg_catalog.format('scheduler:%s:stale', v_job.name)
+               AND l.created_at > p_now - interval '1 day'
+        );
+        PERFORM ops.fn_log_scheduler_event(v_job.name, 'stale', 'error',
+            pg_catalog.format('%s has not succeeded since %s: %s minutes, past %s × its %s-minute cadence.',
+                v_job.name,
+                COALESCE(pg_catalog.to_char(v_job.last_success AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI "UTC"'), 'it was registered'),
+                pg_catalog.floor(pg_catalog.date_part('epoch', p_now - v_since) / 60)::bigint,
+                v_factor,
+                (pg_catalog.date_part('epoch', GREATEST(v_cadence, v_watch)) / 60)::bigint),
+            pg_catalog.jsonb_build_object(
+                'cadence_minutes', (pg_catalog.date_part('epoch', GREATEST(v_cadence, v_watch)) / 60)::bigint,
+                'stale_minutes', pg_catalog.floor(pg_catalog.date_part('epoch', p_now - v_since) / 60)::bigint,
+                'last_success_at', v_job.last_success
+            ));
+        v_count := v_count + 1;
+    END LOOP;
+
+    RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION ops.fn_report_stale_jobs(timestamptz, integer) IS
+'The staleness pass of ops-watch-jobs (OPS5): an enabled job with no success (an http 2xx, a
+succeeded sql run) for job_stale_factor × its cadence (ops.fn_cron_max_gap, never finer than the
+watcher''s) writes one scheduler:<job>:stale error a day while it lasts; a schedule it cannot read is
+warned about once (scheduler:<job>:cadence_unknown). SKIP LOCKED per row. Returns the rows written.';
+-- #endregion
+
+-- #region 4b. Webhook failures (OPS5)
+-- A webhook endpoint that keeps failing loses events quietly: Stripe retries a 5xx for days and then
+-- disables the endpoint. Each webhook service records a non-2xx through
+-- `ops.fn_record_webhook_failure` (OpsHealthService.recordWebhookFailure): one `warn` row per
+-- provider, outcome class and minute (scope `webhook.<provider>`), its count in `data`, so a flood of
+-- forged posts adds a row a minute, not a row a post. No alert rule matches those raw scopes: a single
+-- failure never alerts. `ops.fn_watch_webhooks` turns a burst into one summary row (scope
+-- `ops.webhooks`) that the seeded rules route.
+
+-- One failure, or `p_count` of them, folded into the provider's row for this minute. `p_class` is
+-- `failure` (a 5xx: the provider redelivers), `signature` (a missing or forged signature) or `refused`
+-- (any other 4xx). Facts only: the status, a reason code, and the event's id and type when it had
+-- one; anything that is not a short code is dropped. Service role only.
+CREATE OR REPLACE FUNCTION ops.fn_record_webhook_failure (
+    p_provider text,
+    p_class text,
+    p_status integer,
+    p_reason text,
+    p_count integer DEFAULT 1,
+    p_event_id text DEFAULT NULL,
+    p_event_type text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_client text;
+    v_scope text;
+    v_reason text;
+    v_event_id text;
+    v_event_type text;
+    v_id uuid;
+    v_count bigint;
+BEGIN
+    IF p_provider IS NULL OR p_provider !~ '^[a-z0-9][a-z0-9_-]{0,31}$' THEN
+        RAISE EXCEPTION 'ops: % is not a webhook provider code', p_provider USING ERRCODE = '22023';
+    END IF;
+    IF p_class IS NULL OR p_class <> ALL (ARRAY['failure', 'signature', 'refused']) THEN
+        RAISE EXCEPTION 'ops: % is not a webhook outcome class', p_class USING ERRCODE = '22023';
+    END IF;
+    IF p_status IS NULL OR p_status NOT BETWEEN 300 AND 599 THEN
+        RAISE EXCEPTION 'ops: % is not a failed webhook status', p_status USING ERRCODE = '22023';
+    END IF;
+    IF p_count IS NULL OR p_count NOT BETWEEN 1 AND 1000000 THEN
+        RAISE EXCEPTION 'ops: a webhook failure count is 1 to 1000000' USING ERRCODE = '22023';
+    END IF;
+    v_reason := CASE WHEN p_reason ~ '^[a-z0-9_]{1,40}$' THEN p_reason ELSE 'other' END;
+    v_event_id := CASE WHEN p_event_id ~ '^[A-Za-z0-9_.:-]{1,128}$' THEN p_event_id END;
+    v_event_type := CASE WHEN p_event_type ~ '^[A-Za-z0-9_.:-]{1,128}$' THEN p_event_type END;
+    v_client := pg_catalog.format('webhook:%s:%s:minute', p_provider, p_class);
+    v_scope := 'webhook.' || p_provider;
+
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_client, 0));
+    SELECT l.id INTO v_id
+      FROM ops.log_entries l
+     WHERE l.source = 'server'
+       AND l.scope = v_scope
+       AND l.client_id = v_client
+       AND l.created_at >= pg_catalog.date_trunc('minute', pg_catalog.now())
+     ORDER BY l.created_at DESC
+     LIMIT 1;
+
+    IF v_id IS NOT NULL THEN
+        UPDATE ops.log_entries l
+           SET data = l.data || pg_catalog.jsonb_build_object(
+                   'count', COALESCE((l.data ->> 'count')::bigint, 0) + p_count,
+                   'status', p_status,
+                   'reason', v_reason,
+                   'event_id', COALESCE(v_event_id, l.data ->> 'event_id'),
+                   'event_type', COALESCE(v_event_type, l.data ->> 'event_type')
+               ),
+               message = pg_catalog.format('%s webhook: %s %s (%s) this minute.', p_provider,
+                   COALESCE((l.data ->> 'count')::bigint, 0) + p_count, p_class, v_reason)
+         WHERE l.id = v_id
+        RETURNING (l.data ->> 'count')::bigint INTO v_count;
+    ELSE
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            v_client, 'warn',
+            pg_catalog.format('%s webhook: %s %s (%s) this minute.', p_provider, p_count, p_class, v_reason),
+            pg_catalog.now(), 'server', v_scope,
+            pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
+                'provider', p_provider, 'class', p_class, 'status', p_status, 'reason', v_reason,
+                'count', p_count, 'event_id', v_event_id, 'event_type', v_event_type
+            ))
+        )
+        RETURNING id INTO v_id;
+        v_count := p_count;
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object('id', v_id, 'count', v_count);
+END;
+$$;
+
+COMMENT ON FUNCTION ops.fn_record_webhook_failure(text, text, integer, text, integer, text, text) IS
+'Folds p_count webhook failures of one provider and outcome class (failure · signature · refused)
+into that minute''s ops.log_entries row (scope webhook.<provider>, level warn, client_id
+webhook:<provider>:<class>:minute), its count in data: at most one row per provider, class and minute.
+Facts only (status, reason code, event id and type). Service role only.';
+
+-- One pass over the last 15 minutes of raw webhook rows (as of p_now): a provider whose `failure`
+-- rows count webhook_failure_threshold or more (security.platform_params, default 5) writes one
+-- `webhook:<provider>:failing` error, at most once an hour while it lasts; the same count of
+-- `signature` refusals (a rotated secret, or someone probing) writes one `webhook:<provider>:signature`
+-- warn, at most once a day. Scope `ops.webhooks`. The pass holds one advisory lock and re-checks each
+-- summary after taking it, so an overlapping pass writes nothing twice. At most p_limit summaries.
+-- Returns the number written.
+CREATE OR REPLACE FUNCTION ops.fn_watch_webhooks (
+    p_now timestamptz DEFAULT pg_catalog.now(),
+    p_limit integer DEFAULT 50
+)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_threshold integer;
+    r record;
+    v_reason text;
+    v_client text;
+    v_count integer := 0;
+BEGIN
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('ops.fn_watch_webhooks', 0));
+
+    SELECT CASE WHEN pg_catalog.jsonb_typeof(pp.value) = 'number' AND (pp.value #>> '{}')::numeric >= 1
+                THEN pg_catalog.floor((pp.value #>> '{}')::numeric)::integer END
+      INTO v_threshold
+      FROM security.platform_params pp
+     WHERE pp.key = 'webhook_failure_threshold';
+    v_threshold := COALESCE(v_threshold, 5);
+
+    FOR r IN
+        SELECT l.data ->> 'provider' AS provider,
+               l.data ->> 'class' AS class,
+               pg_catalog.sum(CASE WHEN pg_catalog.jsonb_typeof(l.data -> 'count') = 'number'
+                                   THEN (l.data ->> 'count')::bigint ELSE 1 END) AS failures,
+               pg_catalog.max(CASE WHEN pg_catalog.jsonb_typeof(l.data -> 'status') = 'number'
+                                   THEN (l.data ->> 'status')::integer END) AS status
+          FROM ops.log_entries l
+         WHERE l.source = 'server'
+           AND l.scope LIKE 'webhook.%'
+           AND l.created_at > p_now - interval '15 minutes'
+           AND l.created_at <= p_now
+           AND l.data ->> 'class' IN ('failure', 'signature')
+           AND l.data ->> 'provider' ~ '^[a-z0-9][a-z0-9_-]{0,31}$'
+         GROUP BY 1, 2
+        HAVING pg_catalog.sum(CASE WHEN pg_catalog.jsonb_typeof(l.data -> 'count') = 'number'
+                                   THEN (l.data ->> 'count')::bigint ELSE 1 END) >= v_threshold
+         ORDER BY 1, 2
+         LIMIT GREATEST(LEAST(COALESCE(p_limit, 50), 500), 1)
+    LOOP
+        v_reason := CASE r.class WHEN 'failure' THEN 'failing' ELSE 'signature' END;
+        v_client := pg_catalog.format('webhook:%s:%s', r.provider, v_reason);
+        CONTINUE WHEN EXISTS (
+            SELECT 1
+              FROM ops.log_entries l
+             WHERE l.source = 'server'
+               AND l.scope = 'ops.webhooks'
+               AND l.client_id = v_client
+               AND l.created_at > p_now - CASE r.class WHEN 'failure' THEN interval '1 hour' ELSE interval '1 day' END
+        );
+        RAISE WARNING '[ops.webhooks] %: % % in 15 minutes (threshold %)', r.provider, r.failures,
+            CASE r.class WHEN 'failure' THEN 'failed deliveries' ELSE 'signature refusals' END, v_threshold;
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            v_client,
+            CASE r.class WHEN 'failure' THEN 'error' ELSE 'warn' END,
+            pg_catalog.format(CASE r.class
+                    WHEN 'failure' THEN '%s webhook deliveries failed %s times in 15 minutes; the provider will retry, then may disable the endpoint.'
+                    ELSE '%s webhook deliveries were refused for their signature %s times in 15 minutes: a rotated secret, or someone probing the endpoint.'
+                END, r.provider, r.failures),
+            pg_catalog.now(), 'server', 'ops.webhooks',
+            pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
+                'provider', r.provider, 'reason', v_reason, 'failures', r.failures,
+                'threshold', v_threshold, 'window_minutes', 15, 'last_status', r.status
+            ))
+        );
+        v_count := v_count + 1;
+    END LOOP;
+
+    RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION ops.fn_watch_webhooks(timestamptz, integer) IS
+'The webhook pass of ops-watch-jobs (OPS5): webhook_failure_threshold 5xx failures of one provider
+within 15 minutes write one webhook:<provider>:failing error (scope ops.webhooks) at most hourly; the
+same count of signature refusals one webhook:<provider>:signature warn at most daily. One advisory
+lock per pass. Returns the summaries written.';
+-- #endregion
+
+-- #region 4c. The watcher, the heartbeat and run history
+-- Each pass runs in its own subtransaction, so a pass that raises is logged and the others still run;
+-- settling comes first, so the staleness pass sees every answered dispatch.
+CREATE OR REPLACE FUNCTION ops.fn_watch_jobs ()
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_count integer := 0;
+BEGIN
+    v_count := v_count + ops.fn_settle_http_dispatches();
+    v_count := v_count + ops.fn_report_failed_runs();
+    BEGIN
+        v_count := v_count + ops.fn_report_stale_jobs();
+    EXCEPTION WHEN OTHERS THEN
+        PERFORM ops.fn_log_scheduler_event('ops-watch-jobs', 'stale_check_failed', 'error',
+            pg_catalog.format('The staleness pass raised %s (SQLSTATE %s).', SQLERRM, SQLSTATE),
+            pg_catalog.jsonb_build_object('sqlstate', SQLSTATE));
+    END;
+    BEGIN
+        v_count := v_count + ops.fn_watch_webhooks();
+    EXCEPTION WHEN OTHERS THEN
+        PERFORM ops.fn_log_scheduler_event('ops-watch-jobs', 'webhook_check_failed', 'error',
+            pg_catalog.format('The webhook pass raised %s (SQLSTATE %s).', SQLERRM, SQLSTATE),
+            pg_catalog.jsonb_build_object('sqlstate', SQLSTATE));
+    END;
+    RETURN v_count;
+END;
 $$;
 
 COMMENT ON FUNCTION ops.fn_watch_jobs() IS
-'The ops-watch-jobs job: settles HTTP dispatches and reports failed pg_cron runs. Returns the number
-of failures reported this run.';
+'The ops-watch-jobs job: settles HTTP dispatches, reports failed pg_cron runs, reports stale jobs
+(ops.fn_report_stale_jobs) and webhook bursts (ops.fn_watch_webhooks). A pass that raises is logged
+and the rest still run. Returns the number of rows reported this run.';
+
+-- The heartbeat behind GET /api/ops/health (OPS5 step 5), as of p_now. `watch`: ops-watch-jobs is
+-- enabled and a run of it succeeded within heartbeat_watch_minutes (security.platform_params, default
+-- 30); false without pg_cron. `alerts`: no alert delivery opened 15 minutes ago or earlier is still
+-- pending. The database answering at all is the third condition, which only the caller can see.
+-- Booleans only. Service role only.
+CREATE OR REPLACE FUNCTION ops.fn_heartbeat (p_now timestamptz DEFAULT pg_catalog.now())
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_minutes integer;
+    v_watch boolean := false;
+BEGIN
+    SELECT CASE WHEN pg_catalog.jsonb_typeof(pp.value) = 'number' AND (pp.value #>> '{}')::numeric >= 1
+                THEN pg_catalog.floor((pp.value #>> '{}')::numeric)::integer END
+      INTO v_minutes
+      FROM security.platform_params pp
+     WHERE pp.key = 'heartbeat_watch_minutes';
+    v_minutes := COALESCE(v_minutes, 30);
+
+    IF pg_catalog.to_regclass('cron.job_run_details') IS NOT NULL THEN
+        SELECT EXISTS (
+            SELECT 1
+              FROM ops.scheduled_jobs j
+              JOIN cron.job c ON c.jobname = j.name
+              JOIN cron.job_run_details r ON r.jobid = c.jobid
+             WHERE j.name = 'ops-watch-jobs'
+               AND j.enabled
+               AND r.status = 'succeeded'
+               AND r.end_time > p_now - pg_catalog.make_interval(mins => v_minutes)
+        ) INTO v_watch;
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'watch', v_watch,
+        'alerts', NOT EXISTS (
+            SELECT 1
+              FROM ops.alert_deliveries d
+             WHERE d.status = 'pending'
+               AND d.created_at <= p_now - interval '15 minutes'
+        )
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION ops.fn_heartbeat(timestamptz) IS
+'The heartbeat behind GET /api/ops/health (OPS5): {watch, alerts}. watch = ops-watch-jobs is enabled
+and succeeded within heartbeat_watch_minutes (default 30; false without pg_cron); alerts = no alert
+delivery opened 15 or more minutes ago is still pending. Booleans only. Service role only.';
 
 -- pg_cron writes one cron.job_run_details row per run and never prunes it: comms-process-queue alone
 -- adds 1,440 a day. fn_report_failed_runs reads only the last day, so a week of history is plenty.

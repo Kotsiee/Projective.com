@@ -36,7 +36,10 @@ Three writers, one table:
 | `WebVitalsBridge` (shell island), production only           | `POST /api/logs/vitals` | `metric`         | `client` | `web-vitals` |
 | `routes/_error.tsx` on a 5xx                                | (none: server-side)     | `error`          | `server` | `ssr`        |
 | `finance.fn_reconcile_wallets` (pg_cron, nightly — Decision #186) | (none: in-database) | `error`          | `server` | `finance.reconcile_wallets` |
-| The job registry's functions (`ops.fn_log_scheduler_event` — Decision #203) | (none: in-database) | `warn` · `error` | `server` | `ops.scheduler` |
+| The job registry's functions (`ops.fn_log_scheduler_event` — Decision #203), including the staleness pass's `stale` (error) and `cadence_unknown` (warn) rows (OPS5) | (none: in-database) | `warn` · `error` | `server` | `ops.scheduler` |
+| The webhook services, through `ops.fn_record_webhook_failure` (OPS5): one row per provider, outcome class and minute, `client_id = 'webhook:<provider>:<class>:minute'`, `data` = `{provider, class, status, reason, count, event_id?, event_type?}`. No alert rule matches these | the four webhook routes | `warn` | `server` | `webhook.<provider>` |
+| `ops.fn_watch_webhooks` (OPS5): a provider's burst, `client_id = 'webhook:<provider>:failing'` (error) or `'webhook:<provider>:signature'` (warn), `data` = `{provider, reason, failures, threshold, window_minutes, last_status}` | (none: in-database) | `warn` · `error` | `server` | `ops.webhooks` |
+| `ops.fn_raise_alert` — the alert drill (OPS5, OPS7), `client_id = 'alert:drill'` | (none: in-database) | `warn` | `server` | `test` |
 | `finance.settle_card_payment` — a settlement whose amount / currency cannot match its payment, held for reconciliation (one row per Stripe event, `client_id = 'stripe:<evt_id>'`) | (none: in-database) | `error` | `server` | `finance.settle_card_payment` |
 | `finance.claim_due_deposit_rules` — an unbound scheduled-deposit run closed without being re-sent (`client_id = 'deposit:<payment id>'`; `data.reason` = `unbound_expired` / `unbound_canceled`) | (none: in-database) | `error` · `warn` | `server` | `finance.claim_due_deposit_rules` |
 
@@ -56,8 +59,10 @@ A retention sweep may remove old rows; a drift that persists is re-reported by t
 | `user_id`                                                      | The signed-in writer, NULL when anonymous (the normal case). `ON DELETE SET NULL`.                                                       |
 | `created_at`                                                   | Server receipt time: the only column retention and ordering may key on.                                                                  |
 
-Append-only; the one legitimate hard delete is a retention sweep run as the service role (none is
-scheduled yet).
+Append-only, with one exception: within its minute, `ops.fn_record_webhook_failure` raises a
+`webhook.<provider>` row's `data.count` (and its message) instead of adding a row, so a flood of
+forged posts costs a row a minute (OPS5). The one legitimate hard delete is a retention sweep run as
+the service role (none is scheduled yet).
 
 ## `ops.scheduled_jobs` — the job registry (Decision #203)
 
@@ -139,7 +144,7 @@ deleted. A link is what lets operators read a file (`files.fn_can_read`, the `co
 policy): an unsent contact upload has none, and is taken back by Remove
 (`ops.discard_contact_attachment`) or the hourly sweep (`ops.fn_claim_stale_contact_attachments`).
 
-## `ops.alert_rules` · `ops.alert_deliveries` · `ops.alert_seen` — money and job alerts (MR4, Decision #461)
+## `ops.alert_rules` · `ops.alert_deliveries` · `ops.alert_seen` — money, job and webhook alerts (MR4, Decision #461; OPS5)
 
 Migration `00000013` (region `[alerts]`); functions `00001660`; triggers `00001897`; the rules seeded
 in `00005065`. RLS on, no client policy, no client grant: the claim and the record are service-role
@@ -148,6 +153,6 @@ Zod: `@projective/types/ops` (`alerts.ts`).
 
 | Table | Purpose & key columns |
 | :---- | :-------------------- |
-| `ops.alert_rules` | What the sweep watches, one channel per row. `kind` `level` (every server row whose `scope` is LIKE `scope_pattern` at `min_level` `warn` / `error` or above; a `metric` row never alerts) or `silence` (a dead-man switch: no server row of the scope for `max_silence`, counted from the rule's `created_at` while the scope never wrote one). `channel` `webhook` / `email`; `dedupe_window` (≥ 5 minutes); `enabled`; `description`. Unique on (`kind`, `scope_pattern`, `channel`). Seeded: `finance.%` at `error` (36 h window) and `ops.scheduler` at `error` (24 h), each on both channels; `finance.reconcile_wallets` and `finance.conservation` silent for 26 h, on both. |
-| `ops.alert_deliveries` | One alert on one channel: a group (`group_key` = `scope` + `:` + `fingerprint`) inside one dedupe window, however many rows it folded (`count`, `first_seen` … `last_seen`, `window_ends_at`). `sample` holds the newest row's figures and 8-character ids only (`ops.fn_alert_sample`), never its message. `status` `pending` → `sent` (`sent_at` exactly when sent); a failed send stays `pending` with `attempts`, `last_error` (a status or class, ≤ 120 characters) and a backed-off `next_attempt_at`; `lease_until` keeps two sweeps from sending one alert twice. Never deleted (`trg_alert_deliveries_keep`, `trg_alert_deliveries_no_truncate`). |
+| `ops.alert_rules` | What the sweep watches, one channel per row. `kind` `level` (every server row whose `scope` is LIKE `scope_pattern` at `min_level` `warn` / `error` or above; a `metric` row never alerts) or `silence` (a dead-man switch: no server row of the scope for `max_silence`, counted from the rule's `created_at` while the scope never wrote one). `channel` `webhook` / `email` / `in_app` (a notice to every operator, OPS5); `dedupe_window` (≥ 5 minutes); `enabled`; `description`. Unique on (`kind`, `scope_pattern`, `channel`), so a scope's levels share one window per channel and a writer that must repeat less often throttles itself. Seeded in `00005065`, each on all three channels unless named: `finance.%` at `error` (36 h window); `ops.scheduler` at `warn` (1 h: every failure, stale job and configuration skip; the skips and stale rows are written at most daily); `ops.webhooks` at `warn` by webhook and at `error` by email and in-app (1 h: a failing provider everywhere, a signature burst by webhook only); `finance.reconcile_wallets` and `finance.conservation` silent for 26 h; `test` at `warn` (5 minutes, the drill). No rule matches `webhook.<provider>`. |
+| `ops.alert_deliveries` | One alert on one channel (`webhook` / `email` / `in_app`): a group (`group_key` = `scope` + `:` + `fingerprint`) inside one dedupe window, however many rows it folded (`count`, `first_seen` … `last_seen`, `window_ends_at`). `sample` holds the newest row's figures and 8-character ids only (`ops.fn_alert_sample`), never its message. `status` `pending` → `sent` (`sent_at` exactly when sent); a failed send stays `pending` with `attempts`, `last_error` (a status or class, ≤ 120 characters) and a backed-off `next_attempt_at`; `lease_until` keeps two sweeps from sending one alert twice. Never deleted (`trg_alert_deliveries_keep`, `trg_alert_deliveries_no_truncate`). |
 | `ops.alert_seen` | The claim's cursor: (`log_entry_id`, `rule_id`) → `delivery_id`, one row per log row each rule folded, so a re-run folds nothing twice. Never deleted. |

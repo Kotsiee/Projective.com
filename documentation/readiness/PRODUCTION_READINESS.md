@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
 | **UAT**          | **69%** |           67 | 40 |  9 | 18 |           4 |
-| **Production**   | **47%** |          148 | 52 | 26 | 70 |          14 |
+| **Production**   | **47%** |          149 | 52 | 26 | 71 |          14 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -57,7 +57,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   17 |  3 |  6 |  8 |   40% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  5 | 11 |   43% |
-| G. Scheduled jobs & operations     |    8 |  4 |  2 |  2 |   58% |
+| G. Scheduled jobs & operations     |    9 |  4 |  2 |  3 |   55% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
 | J. Routing, URLs & SEO             |    5 |  3 |  1 |  1 |   75% |
@@ -235,8 +235,9 @@ Work orders for every open row, with the run order:
 | PRD-G4 | Reschedule ballots settle                                                             | ✅     | High     | UAT  | OPS2 (#513, `dd1ee9a2`): `scheduling.fn_settle_votes` closes every vote past its deadline through `close_reschedule_round` (SKIP LOCKED, re-checked under the lock, a failure logged as `settle_failed`), and `scheduling-settle-votes` registers at :11/:26/:41/:56. Only the electorate's ballots count, on the read path too (`votesOfVoters`). Probe `settle_votes.sql`, its fixtures settled by `settleVote` in `coordination.contract.test.ts` | OPS2 ✅ |
 | PRD-G5 | Search query-log retention                                                            | ✅     | Normal   | PROD | OPS4 (#515, `4a73588e`): `search.fn_prune_query_logs` (`00001060` §7) deletes `search.query_logs` past `retention_search_query_log_days` (90 days, ⚖️ pending counsel), oldest first in SKIP LOCKED batches, at most 20 a run; an invalid dial keeps 90 days and logs `search.retention`. `search-query-log-retention` registers at 04:36, and `cron:run` runs it. Probe `query_log_retention.sql` | OPS4 ✅ |
 | PRD-G6 | Every HTTP job's bearer and `CRON_APP_URL` are in the hosted Vault                    | 🟡     | Critical | UAT  | Tool and check built (OPS1, `10454e87`, #514). `deno task cron:vault --env-file <file>` writes `CRON_APP_URL` and every bearer the registry names (read from `ops.scheduled_jobs`, so a new job needs no edit) to any database, in one transaction after every value is vetted. `--check` proves each is present, at least 32 characters, digest-equal to the file and scheduled, and exits 1 if not. Proved on a throwaway: 18 of 18 ready, and a deleted secret or a changed value each exits 1. Left: the check green against the hosted project (OPS7); its output is this row's evidence | OPS1 ✅; OPS7 |
-| PRD-G7 | Alerting on job failures, ledger drift and webhook errors                             | 🟡     | High     | PROD | Job failures (`ops.scheduler` at `error`) and ledger drift (every `finance.*` error, a dead-man switch on the two nightly checks) alert by webhook and email digest (#507). Left: webhook errors write no `ops.log_entries` row, so they cannot alert; a hosted send | MR4 ✅; webhook errors |
+| PRD-G7 | Alerting on job failures, ledger drift and webhook errors                             | 🟡     | High     | PROD | Built and proven locally (#507, #518). Ledger drift (every `finance.*` error, a dead-man switch on the two nightly checks), job failures, stale jobs and configuration skips (`ops.scheduler`, warn and above), and webhook bursts (every non-2xx of the Stripe, Stripe v2 and provider doors recorded a row a minute; 5 failures in 15 minutes, or 5 signature refusals, alert under `ops.webhooks`) reach a person by webhook, email digest and an in-app notice to every operator. A dead scheduler trips `GET /api/ops/health` (`OPS_HEALTH_TOKEN`, 503 when the watcher is stale or an alert waits 15 minutes). `ops_alerts.sql` (93 checks), `OpsHealthService.test.ts`, the webhook doors' tests. Left: a hosted drill (`ops.fn_raise_alert('test')`) reaching every channel and the heartbeat drill tripping an outside monitor (OPS7); a route's 413 is not recorded (#518 (b)) | MR4 ✅; OPS5 ✅; OPS7 |
 | PRD-G8 | Deployment config and runbook (hosting, Supabase project, domains, backups, rollback) | ❌     | Critical | PROD | No deployment config in the repo; `deno task share` (Cloudflare tunnels) is the only hosting path                                                 | —      |
+| PRD-G10 | An alert says when its condition has cleared                                         | ❌     | Normal   | PROD | Found by OPS5 (#518 (a)): an alert repeats while its condition lasts and then goes quiet, but no channel ever says "resolved", so a person cannot tell a fixed problem from a silent sweep. OPS7 step 6 expects "one resolved message" after a drill; neither MR4 nor OPS5 has a resolve state. (PRD-G9 is reserved for OPS6's hosted staging row) | —      |
 
 ## H. Secrets & configuration
 
@@ -427,3 +428,4 @@ Work orders for every open row, with the run order:
 | 2026-11-19 | OPS1 (#514): PRD-G6 ❌ → 🟡 (`cron:vault --env-file` provisions every registry bearer to any Vault, and `--check` proves each equals the file; the hosted run is OPS7's) | 76% | 67% |  46% |
 | 2026-11-19 | DB19 (#511): no row flips; PRD-F12 narrowed (the order lifecycle and one redemption per account are built; DB21's buyer and provider refunds and MR3's card refunds left) | 76% | 67% |  46% |
 | 2026-11-19 | PM-WP1 (#516): PRD-G2 ❌ → ✅ (the claim sweep locks, re-checks, logs and tells both sides, and runs every 15 minutes; a lapsed claim on a prepaid escrow is re-armed, not refunded) | 76% | 69% |  47% |
+| 2026-11-19 | OPS5 (#518): no row flips; PRD-G7 narrowed (stale jobs, configuration skips and webhook bursts alert on three channels, and the heartbeat reports a dead scheduler; the hosted drills are OPS7's); new PRD-G10 ❌ (no "resolved" message) | 76% | 69% |  47% |

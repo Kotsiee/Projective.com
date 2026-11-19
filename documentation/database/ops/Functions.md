@@ -9,11 +9,14 @@ execute only `ops.submit_contact_request`. The full allowlist, one reason per li
 ## The job registry (Decision #203)
 
 Migration [`00001650_functions_ops_scheduler.sql`](../../../supabase/migrations/00001650_functions_ops_scheduler.sql);
-triggers `00001897`; grants at the end of `00002510`. Every function is `SECURITY DEFINER` with
-`search_path = ''` and owned by `postgres`, the pg_cron owner. Only `ops.run_job` is executable by a
-role (`service_role`); `ops` is exposed to PostgREST, so every other one is revoked from `PUBLIC`,
-`anon`, `authenticated` and `service_role`. Every skip or failure raises a `WARNING` and writes an
-`ops.log_entries` row (`scope = 'ops.scheduler'`, `client_id = 'scheduler:<job>:<reason>'`).
+triggers `00001897`; grants in `00002510` (region "ops — the job registry", and OPS5's region "Job,
+webhook and heartbeat alerts"). Every function is `SECURITY DEFINER` with `search_path = ''` and owned
+by `postgres`, the pg_cron owner, except the two IMMUTABLE cadence helpers. `ops.run_job` and OPS5's
+functions are executable by `service_role` only; `ops` is exposed to PostgREST, so every other one is
+revoked from `PUBLIC`, `anon`, `authenticated` and `service_role`. Every skip or failure raises a
+`WARNING` and writes an `ops.log_entries` row (`scope = 'ops.scheduler'`,
+`client_id = 'scheduler:<job>:<reason>'`; a webhook burst `scope = 'ops.webhooks'`,
+`client_id = 'webhook:<provider>:<reason>'`), which the alert rules route to a person (below).
 
 | Function                                                     | Returns   | What it does                                                                                                                                                                                                                                                             |
 | :----------------------------------------------------------- | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -25,13 +28,19 @@ role (`service_role`); `ops` is exposed to PostgREST, so every other one is revo
 | `fn_dispatch_http_job(name)`                                 | `bigint`  | Reads `CRON_APP_URL` and the row's `secret_name` from `vault.decrypted_secrets`, queues `net.http_post(<origin><path>, '{}', Authorization: Bearer …, 120 s timeout)` and records it in `http_job_dispatches`; returns the request id. Missing pg_net, Vault, origin or a bearer under 32 characters → `NULL` and a once-a-day `warn` row; a pg_net refusal → an `error` row. |
 | `fn_settle_http_dispatches()`                                | `integer` | Settles pending dispatches from `net._http_response` (`FOR UPDATE SKIP LOCKED`), logs every non-2xx, error or timeout (`http_failed`) and every dispatch unanswered after 7 hours (`no_response`) as `error`; returns the failure count. |
 | `fn_report_failed_runs()`                                    | `integer` | Reports every failed pg_cron run of the last day (`cron.job_run_details`) as one `run_failed` error row, keyed by run id so it is reported once; returns the number newly reported. |
-| `fn_watch_jobs()`                                            | `integer` | `fn_settle_http_dispatches() + fn_report_failed_runs()` — the `ops-watch-jobs` job, every 10 minutes. |
+| `fn_cron_field_values(field, min, max)` · `fn_cron_max_gap(schedule)` — **`service_role`** | `integer[]` · `interval` | IMMUTABLE, not definers (OPS5). A five-field schedule's cadence read conservatively: the largest gap between two consecutive fire times over one UTC day, wrapping midnight (`*/10 * * * *` 10 minutes, `20 2 * * *` a day). Fields of `*`, `n`, `a-b`, `*/s`, `a-b/s` and lists of them; `NULL` for anything else (a day-of-month, month or weekday other than `*`, `n/s`, pg_cron's `30 seconds`). Every seeded schedule reads. |
+| `fn_report_stale_jobs(now = now(), limit = 200)` — **`service_role`** | `integer` | The staleness pass (OPS5). Each enabled job (`FOR NO KEY UPDATE OF j SKIP LOCKED`, so a dispatch's FK check still passes) is judged by its last success — a settled 2xx in `http_job_dispatches` (http), a `succeeded` run in `cron.job_run_details` (sql) — or, with none since, its row's last change. No success for `job_stale_factor` (3) × its cadence, never finer than `ops-watch-jobs`' own: one `stale` error a day while it lasts (`data`: `cadence_minutes`, `stale_minutes`, `last_success_at`). A schedule it cannot read: one `cadence_unknown` warn per job and schedule. A paused job is not watched; without pg_cron it returns 0. Returns the rows written. |
+| `fn_record_webhook_failure(provider, class, status, reason, count = 1, event_id, event_type)` — **`service_role`** | `jsonb` | The webhook services' record (OPS5, `OpsHealthService.recordWebhookFailure`): folds `count` failures of one provider (`^[a-z0-9][a-z0-9_-]{0,31}$`) and class (`failure` 5xx · `signature` · `refused`) into that minute's `warn` row (scope `webhook.<provider>`, `client_id = 'webhook:<provider>:<class>:minute'`), under an advisory lock: at most one row per provider, class and minute. Facts only: status (300–599), a reason code, the event's id and type when they are short codes. `{id, count}`; a bad argument is `22023`. |
+| `fn_watch_webhooks(now = now(), limit = 50)` — **`service_role`** | `integer` | The webhook pass (OPS5), under one advisory lock: over the raw rows of the last 15 minutes, `webhook_failure_threshold` (5) or more `failure`s of a provider write one `webhook:<provider>:failing` error at most hourly; as many `signature` refusals one `webhook:<provider>:signature` warn at most daily (scope `ops.webhooks`; `data`: `provider`, `reason`, `failures`, `threshold`, `window_minutes`, `last_status`). `refused` never counts. Returns the summaries written. |
+| `fn_watch_jobs()`                                            | `integer` | The `ops-watch-jobs` job, every 10 minutes: `fn_settle_http_dispatches()`, then `fn_report_failed_runs()`, then `fn_report_stale_jobs()` and `fn_watch_webhooks()`, each of the last two in its own subtransaction, so one that raises is logged (`stale_check_failed` / `webhook_check_failed`, error) and the rest still run. Returns the rows reported. |
+| `fn_heartbeat(now = now())` — **`service_role`**             | `jsonb`   | STABLE (OPS5). `{watch, alerts}`: `ops-watch-jobs` is enabled and succeeded within `heartbeat_watch_minutes` (30; false without pg_cron), and no alert delivery opened 15 or more minutes ago is still `pending`. Behind `GET /api/ops/health` (`OpsHealthService.heartbeat`), which adds the third condition, the database answering. Booleans only. |
 | `fn_prune_job_history(keep)`                                 | `integer` | Deletes pg_cron run history (`cron.job_run_details`) that ended more than `keep` ago (default 7 days; `fn_report_failed_runs` has reported every failure by then); a run in progress is kept — the `ops-prune-job-history` job, daily 04:53. |
 | `run_job(name)` — **`service_role`**                         | `jsonb`   | Runs one job now, enabled or not: a sql job's `SELECT` (`{job, kind, result}`, the result as jsonb) or an http job's dispatch (`{job, kind, request_id}`). Unknown name: `PJ404`. Behind `deno task cron:run` (`ScheduledJobsBackendService`).                                   |
 
 Probe: [`supabase/probes/scheduled_jobs.sql`](../../../supabase/probes/scheduled_jobs.sql) (registration,
 registry ↔ `cron.job` agreement, reschedule/disable, loud skips, the queued request and its bearer,
-settlement, grants, history pruning).
+settlement, grants, history pruning); the staleness and webhook passes and the heartbeat are proven
+in [`supabase/probes/ops_alerts.sql`](../../../supabase/probes/ops_alerts.sql) §8–§13.
 
 ## The contact intake (Decision #276)
 
@@ -57,24 +66,30 @@ only sent — attachments and objects, moves, the guard, Remove, the sweep, the 
 guest ceilings and the sweep's job row) — 81 PASS in a rolled-back run on the shared database with
 the on-disk definitions spliced in.
 
-## Money and job alerts (MR4, Decision #461)
+## Money, job and webhook alerts (MR4, Decision #461; OPS5)
 
 Migration [`00001660_functions_ops_alerts.sql`](../../../supabase/migrations/00001660_functions_ops_alerts.sql);
-triggers `00001897`; grants in `00002510` (region "Money and job alerts"). Every function has
-`search_path = ''`. The `ops-deliver-alerts` http job (every 5 minutes, `OPS_CRON_SECRET`) runs the
-sweep through `POST /api/ops/cron/alerts` (`OpsAlertService.deliver`), which sends each claimed alert
-(an incoming-webhook post per alert, one Resend email digest per sweep) and records the outcome.
+triggers `00001897`; grants in `00002510` (regions "Money and job alerts" and "Job, webhook and
+heartbeat alerts"). Every function has `search_path = ''`. The `ops-deliver-alerts` http job (every 5
+minutes, `OPS_CRON_SECRET`) runs the sweep through `POST /api/ops/cron/alerts`
+(`OpsAlertService.deliver`), which sends each claimed alert (an incoming-webhook post per alert, one
+Resend email digest per sweep, an `ops.alert` notice to every operator through
+`fn_deliver_alert_in_app`) and records the outcome; one channel failing never stops the others.
 
 | Function | Returns | What it does |
 | :------- | :------ | :----------- |
 | `fn_claim_alerts(limit)` — **`service_role`** | `jsonb` | One pass, under an advisory lock: folds every new server row a `level` rule matches (written since the rule existed, not yet in `ops.alert_seen`) into the delivery its group opened inside the rule's window, or opens one; opens a dead-man delivery once per window for each silent `silence` scope; leases up to `limit` (1–500) due pending deliveries for 5 minutes. `{folded, opened, silent, deliveries: [{id, channel, scope, fingerprint, level, count, first_seen, last_seen, attempts, sample}]}`, fingerprints cut to 8 characters. |
 | `fn_record_alert_delivery(delivery, ok, error)` — **`service_role`** | `jsonb` | A success marks it `sent`; a failure keeps it `pending`, counts the attempt and backs the next one off 2, 4, 8 … minutes, at most 6 hours. Releases the lease. A delivery already `sent` answers `replayed` and changes nothing. |
 | `read_alert_deliveries()` — **operators** (`authenticated`, gated) | `jsonb` | `/admin/ledger`'s Alerts section: `security.is_admin()` only, else `42501` (the page answers 404). `{as_of, pending, rules, silence, deliveries}`: the rules, each dead-man scope's newest server row, the 50 newest deliveries. No message; short ids only. STABLE. |
-| `fn_alert_fingerprint(scope, data)` | `text` | The group: the row's wallet, payment, conversion, escrow or chargeback id, else a scheduler row's `job:reason`, else its currency, else `''`. Never a run id. Internal. |
-| `fn_alert_sample(data)` | `jsonb` | What a delivery may carry: every number, ids cut to 8 characters, and a code under `currency`, `job`, `reason`, `kind`, `problem`, `owner_type`, `status` or `outcome`. Internal. |
+| `fn_deliver_alert_in_app(delivery, title, body)` — **`service_role`** | `jsonb` | The in-app channel (OPS5): one `comms.fn_notify('ops.alert')` per `ops.admin_users` operator (entity `ops.alert_deliveries`, link `/admin/ledger`, `group_key = 'ops.alert:<group>'`, so a repeat within a day refreshes the notice), then `fn_record_alert_delivery` in the same transaction. No operator is a failed send (`no_operators`), kept pending. Title ≤ 120 and body ≤ 2,000 characters, both required; a delivery on another channel is `22023`; one already `sent` answers `replayed`. `{id, status, attempts, notified, replayed}`. |
+| `fn_raise_alert(scope = 'test', reason = 'drill')` — **`service_role`** | `jsonb` | The drill (OPS5, OPS7 step 6): one `warn` server row at `test` (any other scope `22023`), which the seeded `test` rules route to every channel on the next sweep. `{id, scope, rules}`. |
+| `fn_alert_fingerprint(scope, data)` | `text` | The group: the row's wallet, payment, conversion, escrow or chargeback id, else a scheduler row's `job:reason`, else a webhook summary's `provider:reason`, else its currency, else `''`. Never a run id. Internal. |
+| `fn_alert_sample(data)` | `jsonb` | What a delivery may carry: every number, ids cut to 8 characters, and a code under `currency`, `job`, `provider`, `reason`, `kind`, `problem`, `owner_type`, `status` or `outcome`. Internal. |
 | `fn_alert_short(value)` · `fn_alert_keep()` | `text` · trigger | An id cut to 8 characters for display; the keep-every-row trigger (`PL403`). Internal. |
 
 `finance.fn_reconcile_wallets` writes one `metric` row per run as its heartbeat (#461 flag (a)), so
 the dead-man switch can tell a clean night from no run. Probe: [`supabase/probes/ops_alerts.sql`](../../../supabase/probes/ops_alerts.sql)
 (grants, an idempotent claim, dedupe inside and after the window, the dead-man switch, retry with
-backoff, the operator gate, the kept record).
+backoff, the operator gate, the kept record; OPS5's §8–§16: the cadence parser, a scheduler failure
+and a skip on every channel, a stale job, a webhook burst and a signature burst, the heartbeat, the
+in-app notice, the drill, and no client reading or running any of it).

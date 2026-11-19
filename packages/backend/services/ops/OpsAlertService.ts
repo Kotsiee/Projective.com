@@ -21,25 +21,34 @@ import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
 
 /**
- * OpsAlertService — money and job alerts reach a person (MR4, Decision #461). The `ops-deliver-alerts`
- * job (every 5 minutes) calls {@link OpsAlertService.deliver} through `POST /api/ops/cron/alerts`: the
- * database groups every new money or scheduler error into one alert per scope and fingerprint per
- * dedupe window, raises the dead-man switch for a silent nightly check and leases what is due
- * (`ops.fn_claim_alerts`); this sends each alert on its channel and records the outcome
- * (`ops.fn_record_alert_delivery`). Two channels that fail apart (#461 (A)): an incoming webhook
- * (Slack-compatible JSON) per alert, and one email digest per sweep through the Resend transport. A
- * failed or unconfigured channel leaves its alerts pending; the database backs the retry off.
+ * OpsAlertService — money, job and webhook alerts reach a person (MR4, Decision #461; OPS5). The
+ * `ops-deliver-alerts` job (every 5 minutes) calls {@link OpsAlertService.deliver} through
+ * `POST /api/ops/cron/alerts`: the database groups every new row a rule matches (a money error, a
+ * scheduler failure or skip, a stale job, a webhook burst, a drill) into one alert per scope and
+ * fingerprint per dedupe window, raises the dead-man switch for a silent nightly check and leases what
+ * is due (`ops.fn_claim_alerts`); this sends each alert on its channel and records the outcome
+ * (`ops.fn_record_alert_delivery`). Three channels that fail apart: an incoming webhook
+ * (Slack-compatible JSON) per alert and one email digest per sweep through the Resend transport
+ * (#461 (A)), and an in-app notice to every operator (`ops.fn_deliver_alert_in_app`, OPS5). A failed or
+ * unconfigured channel leaves its alerts pending, the database backs the retry off, and the other
+ * channels still send.
  *
- * What leaves carries figures, short ids and a link to `/admin/ledger`, never a name, an email or a
- * bank detail: the database keeps only those in a delivery's sample, and {@link safeSample} checks
- * again here (MR4 step 5, #461 flag (d)).
+ * What leaves carries figures, short ids, codes and a link to `/admin/ledger`, never a name, an email
+ * or a bank detail: the database keeps only those in a delivery's sample, and {@link safeSample}
+ * checks again here (MR4 step 5, #461 flag (d)).
  */
 
 // #region Ports
-/** The two definer doors the sweep drives. */
+/** The definer doors the sweep drives. */
 export interface AlertDb {
 	claim(limit: number): Promise<unknown>;
 	record(deliveryId: string, ok: boolean, error: string | null): Promise<void>;
+	/**
+	 * Send one in-app alert to every operator and record it, in one step
+	 * (`ops.fn_deliver_alert_in_app`). `sent: false` when there was no operator to tell (the database has
+	 * already recorded that failure).
+	 */
+	deliverInApp(deliveryId: string, title: string, body: string): Promise<{ sent: boolean }>;
 }
 
 /** Where a webhook alert is posted. Throws (naming a status or `timeout`) when it was not accepted. */
@@ -80,6 +89,15 @@ export const liveAlertDb: AlertDb = {
 			p_error: err,
 		});
 		if (error) throw new Error(`ops.fn_record_alert_delivery failed (${error.code ?? "no code"})`);
+	},
+	async deliverInApp(deliveryId, title, body) {
+		const { data, error } = await opsDb().rpc("fn_deliver_alert_in_app", {
+			p_delivery: deliveryId,
+			p_title: title,
+			p_body: body,
+		});
+		if (error) throw new Error(`ops.fn_deliver_alert_in_app failed (${error.code ?? "no code"})`);
+		return { sent: (data as { status?: string } | null)?.status === "sent" };
 	},
 };
 
@@ -153,6 +171,7 @@ const SHORT_ID = /^[0-9a-f]{8}$/i;
 const LABEL_KEYS = new Set([
 	"currency",
 	"job",
+	"provider",
 	"reason",
 	"kind",
 	"problem",
@@ -250,6 +269,19 @@ export function alertText(alert: ClaimedAlert, appUrl: string): string {
 	].join("\n");
 }
 
+/**
+ * One alert as an operator's in-app notice: the first line of {@link alertText} as the title, the rest
+ * as the body. The notice itself links to `/admin/ledger`, so the body leaves the link out. Pure.
+ */
+export function alertNotice(alert: ClaimedAlert, appUrl: string): { title: string; body: string } {
+	const link = `${appUrl.replace(/\/$/, "")}/admin/ledger`;
+	const [title, ...rest] = alertText(alert, appUrl).split("\n");
+	return {
+		title: title.replace(/^\[Projective\] /, ""),
+		body: rest.filter((line) => line !== link).join("\n") || title,
+	};
+}
+
 /** The sweep's email: every email alert it leased, in one message. Pure. */
 export function digestMessage(
 	alerts: readonly ClaimedAlert[],
@@ -260,7 +292,7 @@ export function digestMessage(
 		to,
 		subject: `Projective alerts: ${alerts.length} ${alerts.length === 1 ? "alert" : "alerts"}`,
 		text: [
-			"These money and job checks need a look. Nothing was corrected automatically.",
+			"These money, job and webhook checks need a look. Nothing was corrected automatically.",
 			"",
 			...alerts.map((a) => alertText(a, appUrl)).join("\n\n").split("\n"),
 		].join("\n"),
@@ -352,6 +384,20 @@ export async function deliverAlerts(
 			}
 		}
 		for (const alert of emails) await record(alert, outcome.sent, outcome.error);
+	}
+
+	// The in-app door records its own send in the same transaction as the notices; only a door that
+	// could not run is recorded here, so it backs off like any other failed send.
+	for (const alert of claim.deliveries.filter((a) => a.channel === "in_app")) {
+		const notice = alertNotice(alert, deps.appUrl);
+		try {
+			const outcome = await deps.db.deliverInApp(alert.id, notice.title, notice.body);
+			if (outcome.sent) tally.sent += 1;
+			else tally.failed += 1;
+		} catch (error) {
+			console.error("[ops:alerts]", error instanceof Error ? error.message : error);
+			await record(alert, false, failureCode(error));
+		}
 	}
 	return ok(tally);
 }

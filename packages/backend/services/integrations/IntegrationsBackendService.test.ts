@@ -11,6 +11,7 @@ import type {
 } from "@projective/types/integrations";
 import type { ReadActor } from "../read-actor.ts";
 import { hmacSha256Hex } from "../sessions/presence/adapter.ts";
+import { useWebhookFailureDoor } from "../ops/OpsHealthService.ts";
 import { IntegrationsBackendService as Service } from "./IntegrationsBackendService.ts";
 import { seal, unseal } from "./token-vault.ts";
 
@@ -191,10 +192,14 @@ async function world(
 		}
 		return json(answer);
 	};
+	// A refused webhook is reported to the ops record (OPS5); the test that proves it installs its own
+	// door, so every other test sees only the calls its own code makes.
+	const restoreFailureDoor = useWebhookFailureDoor(() => Promise.resolve());
 
 	try {
 		await body(calls);
 	} finally {
+		restoreFailureDoor();
 		globalThis.fetch = realFetch;
 		for (const [name, value] of saved) apply(name, value);
 	}
@@ -1198,6 +1203,44 @@ Deno.test("webhook: an event nobody handles is acknowledged, a failed write asks
 		assertEquals(ignored.status, 200);
 		assertEquals(ignored.data?.outcomes, []);
 		assertEquals((await zoomCall(await zoomDelivery(JOINED))).status, 503);
+	}));
+
+Deno.test("webhook: every refusal reaches the ops record as facts only, an unknown path as `unknown` (OPS5)", () =>
+	world({
+		db: {
+			"integrations.rpc.fn_record_presence_delivery": () => new DbError("connection reset"),
+		},
+	}, async () => {
+		const seen: Array<{ provider: string; outcome: string; status: number; reason: string }> = [];
+		const restore = useWebhookFailureDoor((failure, outcome) => {
+			seen.push({
+				provider: failure.provider,
+				outcome,
+				status: failure.status,
+				reason: failure.reason,
+			});
+			return Promise.resolve();
+		});
+		try {
+			assertEquals((await zoomCall(await zoomDelivery(JOINED, "not-the-secret"))).status, 400);
+			assertEquals((await zoomCall(await zoomDelivery(JOINED))).status, 503);
+			assertEquals((await zoomCall(await zoomDelivery({ event: "meeting.created" }))).status, 200);
+			const stranger = await Service.handleWebhook(
+				"x-attacker-scope",
+				"{}",
+				new Headers(),
+				WEBHOOK_URL,
+				NOW_MS,
+			);
+			assertEquals(stranger.status, 404);
+		} finally {
+			restore();
+		}
+		assertEquals(seen, [
+			{ provider: "zoom", outcome: "signature", status: 400, reason: "signature_invalid" },
+			{ provider: "zoom", outcome: "failure", status: 503, reason: "handler_failed" },
+			{ provider: "unknown", outcome: "refused", status: 404, reason: "unknown_provider" },
+		]);
 	}));
 
 Deno.test("webhook: an unset secret refuses everything, and an unknown provider is a 404", () =>

@@ -13,8 +13,9 @@
 -- #region 1. Grouping and the payload's figures
 -- The fingerprint that groups a scope's rows into one alert: the most specific id the row names (a
 -- wallet, a card payment, a conversion, an escrow, a chargeback), else a scheduler row's job and
--- reason, else the currency, else nothing (every row of the scope is one group). Never a run id, so
--- the same drift on two nights is one group. Internal.
+-- reason, else a webhook summary's provider and reason (OPS5), else the currency, else nothing (every
+-- row of the scope is one group). Never a run id, so the same drift on two nights is one group.
+-- Internal.
 CREATE OR REPLACE FUNCTION ops.fn_alert_fingerprint (p_scope text, p_data jsonb)
 RETURNS text
 LANGUAGE sql
@@ -28,16 +29,17 @@ AS $$
         p_data ->> 'escrow_id',
         p_data ->> 'chargeback_id',
         CASE WHEN p_data ? 'job' THEN (p_data ->> 'job') || ':' || COALESCE(p_data ->> 'reason', '') END,
+        CASE WHEN p_data ? 'provider' THEN (p_data ->> 'provider') || ':' || COALESCE(p_data ->> 'reason', '') END,
         p_data ->> 'currency',
         ''
     );
 $$;
 
 -- What a delivery may carry of a row: its figures (every number), its ids cut to 8 characters, and
--- the few labels that are vocabulary rather than content (currency, job, reason, kind, problem,
--- owner_type, status, outcome) when they look like a code. The message, and any other string, is left
--- behind, so a name, an email or a bank detail can never reach the webhook or the digest (MR4 step 5).
--- Internal.
+-- the few labels that are vocabulary rather than content (currency, job, provider, reason, kind,
+-- problem, owner_type, status, outcome) when they look like a code. The message, and any other
+-- string, is left behind, so a name, an email or a bank detail can never reach the webhook, the digest
+-- or an operator's notice (MR4 step 5). Internal.
 CREATE OR REPLACE FUNCTION ops.fn_alert_sample (p_data jsonb)
 RETURNS jsonb
 LANGUAGE sql
@@ -54,7 +56,7 @@ AS $$
      WHERE pg_catalog.jsonb_typeof(e.value) = 'number'
         OR (pg_catalog.jsonb_typeof(e.value) = 'string'
             AND ((e.value #>> '{}') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-                 OR (e.key = ANY (ARRAY['currency', 'job', 'reason', 'kind', 'problem', 'owner_type', 'status', 'outcome'])
+                 OR (e.key = ANY (ARRAY['currency', 'job', 'provider', 'reason', 'kind', 'problem', 'owner_type', 'status', 'outcome'])
                      AND (e.value #>> '{}') ~ '^[A-Za-z0-9_.:-]{1,64}$')));
 $$;
 
@@ -277,6 +279,103 @@ BEGIN
         'next_attempt_at', d.next_attempt_at, 'replayed', false);
 END;
 $$;
+-- #endregion
+
+-- #region 3b. The in-app channel and the drill (OPS5)
+-- An `in_app` delivery is one `ops.alert` notice to every platform operator (ops.admin_users), the
+-- third channel beside the webhook and the digest (OPS5 step 6). The notices and the record are one
+-- transaction, so a send is never repeated by a lapsed lease and never recorded without its notices.
+-- The service composes the text from the claimed alert (figures and short ids only); a repeat of the
+-- same group within a day refreshes the operator's notice instead of adding another
+-- (`group_key` = `ops.alert:<group>`, the type's one-day window). No operator to tell is a failed
+-- send (`no_operators`): the alert stays pending and backs off, and the heartbeat turns red.
+-- Service role only.
+CREATE OR REPLACE FUNCTION ops.fn_deliver_alert_in_app (p_delivery uuid, p_title text, p_body text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    d ops.alert_deliveries;
+    v_title text := pg_catalog.left(pg_catalog.btrim(COALESCE(p_title, '')), 120);
+    v_body text := pg_catalog.left(pg_catalog.btrim(COALESCE(p_body, '')), 2000);
+    v_op record;
+    v_notified integer := 0;
+    v_record jsonb;
+BEGIN
+    SELECT * INTO d FROM ops.alert_deliveries x WHERE x.id = p_delivery FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'ops: alert delivery % does not exist', p_delivery USING ERRCODE = 'P0002';
+    END IF;
+    IF d.channel <> 'in_app' THEN
+        RAISE EXCEPTION 'ops: alert delivery % is on the % channel, not in_app', p_delivery, d.channel
+            USING ERRCODE = '22023';
+    END IF;
+    IF d.status = 'sent' THEN
+        RETURN pg_catalog.jsonb_build_object('id', d.id, 'status', d.status, 'notified', 0, 'replayed', true);
+    END IF;
+    IF v_title = '' OR v_body = '' THEN
+        RAISE EXCEPTION 'ops: an in-app alert needs a title and a body' USING ERRCODE = '22023';
+    END IF;
+
+    FOR v_op IN SELECT au.user_id FROM ops.admin_users au ORDER BY au.user_id LOOP
+        PERFORM comms.fn_notify(
+            v_op.user_id, 'ops.alert', v_title, v_body, 'ops.alert_deliveries', d.id,
+            pg_catalog.jsonb_build_object('scope', d.scope, 'level', d.level, 'count', d.count),
+            NULL, NULL, NULL, 'ops.alert:' || d.group_key, '/admin/ledger'
+        );
+        v_notified := v_notified + 1;
+    END LOOP;
+
+    v_record := ops.fn_record_alert_delivery(p_delivery, v_notified > 0,
+        CASE WHEN v_notified = 0 THEN 'no_operators' END);
+    RETURN v_record || pg_catalog.jsonb_build_object('notified', v_notified);
+END;
+$$;
+
+COMMENT ON FUNCTION ops.fn_deliver_alert_in_app(uuid, text, text) IS
+'Sends one in_app alert delivery (OPS5): an ops.alert notice to every ops.admin_users operator, then
+records the send in the same transaction (ops.fn_record_alert_delivery). No operator is a failed send
+(no_operators), kept pending with backoff. A delivery already sent is answered as it is. Service role
+only.';
+
+-- The drill (OPS7 step 6): one server row at `p_scope`, which the seeded `test` rules route to every
+-- channel; the next sweep sends it. Only the `test` scope, so a drill can never pose as a money or job
+-- alert; a second drill inside the rules' 5-minute window folds into the first. Returns the row's id
+-- and how many enabled rules match it. Service role only.
+CREATE OR REPLACE FUNCTION ops.fn_raise_alert (p_scope text DEFAULT 'test', p_reason text DEFAULT 'drill')
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_id uuid;
+    v_reason text := CASE WHEN p_reason ~ '^[a-z0-9_]{1,40}$' THEN p_reason ELSE 'drill' END;
+BEGIN
+    IF p_scope IS DISTINCT FROM 'test' THEN
+        RAISE EXCEPTION 'ops: a raised alert''s scope is test, not %', p_scope USING ERRCODE = '22023';
+    END IF;
+    RAISE WARNING '[ops.alerts] drill raised at scope %', p_scope;
+    INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+    VALUES ('alert:drill', 'warn', 'An alert drill: nothing is wrong.', pg_catalog.now(), 'server', p_scope,
+            pg_catalog.jsonb_build_object('reason', v_reason))
+    RETURNING id INTO v_id;
+    RETURN pg_catalog.jsonb_build_object(
+        'id', v_id,
+        'scope', p_scope,
+        'rules', (SELECT pg_catalog.count(*) FROM ops.alert_rules x
+                   WHERE x.enabled AND x.kind = 'level' AND p_scope LIKE x.scope_pattern)
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION ops.fn_raise_alert(text, text) IS
+'An alert drill (OPS7): writes one warn row at scope test, which the seeded test rules route to every
+channel on the next sweep. Returns {id, scope, rules}. Service role only.';
 -- #endregion
 
 -- #region 4. The operator read

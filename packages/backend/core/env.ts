@@ -350,6 +350,14 @@ export interface ServerEnv {
 	 */
 	opsAlertEmail: string | undefined;
 	/**
+	 * The bearer token an outside monitor presents to `GET /api/ops/health` (OPS5), from
+	 * `OPS_HEALTH_TOKEN`. Not a Vault secret: nothing in the database reads it. The route answers 404 to
+	 * anything else, including every request while this is unset, the `XXXX-XXXX` placeholder or
+	 * shorter than 32 characters; required in production (the heartbeat is what reports a dead
+	 * scheduler), optional elsewhere.
+	 */
+	opsHealthToken: string | undefined;
+	/**
 	 * The Google Web Risk API key a link's reputation is checked against (Decision #340, ruling T5),
 	 * from `LINK_SAFETY_API_KEY`. Server-only, sent only in the `x-goog-api-key` header. The
 	 * `XXXX-XXXX` placeholder counts as absent (`files/link-reputation.ts`), and an absent key skips
@@ -498,6 +506,7 @@ export function serverEnv(): ServerEnv {
 		searchCronSecret: firstEnv("SEARCH_CRON_SECRET"),
 		opsAlertWebhookUrl: firstEnv("OPS_ALERT_WEBHOOK_URL"),
 		opsAlertEmail: firstEnv("OPS_ALERT_EMAIL"),
+		opsHealthToken: firstEnv("OPS_HEALTH_TOKEN"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 		zoomWebhookSecret: firstEnv("ZOOM_WEBHOOK_SECRET"),
 		encryptionKey: firstEnv("ENCRYPTION_KEY"),

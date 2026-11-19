@@ -15,6 +15,7 @@ import { type DataColumn, DataTable, MetaLine } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import { Message } from "@projective/ui/feedback";
 import {
+	alertChannelLabel,
 	alertGroup,
 	alertStatus,
 	conservationGroups,
@@ -222,7 +223,7 @@ const ALERT_COLUMNS: readonly DataColumn<AlertDeliveryView>[] = [
 		fill: true,
 		minWidth: 200,
 		value: (r) => r.scope,
-		secondary: (r) => `${alertGroup(r)} · ${r.channel} · ${r.level}`,
+		secondary: (r) => `${alertGroup(r)} · ${alertChannelLabel(r.channel)} · ${r.level}`,
 	},
 	{ id: "status", header: "Status", type: "status", width: 120, value: (r) => alertStatus(r) },
 	figure("count", "Rows", (r) => String(r.count), 72),

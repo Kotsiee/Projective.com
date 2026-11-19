@@ -51,6 +51,7 @@ export { assertStripeKeyAllowed } from "../../core/stripe.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { moneyWritesLive, moneyWritesOff } from "./money-gate.ts";
+import { recordWebhookFailure } from "../ops/OpsHealthService.ts";
 import {
 	abandonCardPayment,
 	abandonIdentityVerification,
@@ -318,6 +319,21 @@ function signedOut<T>(message = "Sign in to continue."): Result<T> {
  */
 function notConnected<T>(message = NOT_CONNECTED): Result<T> {
 	return moneyWritesLive() ? fail(503, { message }) : moneyWritesOff<T>();
+}
+
+/**
+ * A Stripe webhook delivery this endpoint refused or could not handle: reported to the ops record as
+ * facts only (the endpoint, the status, a reason code, and the event's id and type once it was
+ * verified; OPS5), then answered as it is. A burst of them alerts (`ops.fn_watch_webhooks`).
+ */
+async function webhookRefused<T>(
+	provider: "stripe" | "stripe-v2",
+	reason: string,
+	result: Result<T>,
+	event: { eventId?: string; eventType?: string } = {},
+): Promise<Result<T>> {
+	await recordWebhookFailure({ provider, status: result.status, reason, ...event });
+	return result;
 }
 
 function refused<T>(refusal: DbRefusal): Result<T> {
@@ -1324,8 +1340,20 @@ export class PaymentBackendService {
 		signature: string | null,
 	): Promise<Result<StripeWebhookReceipt>> {
 		const settings = liveSettings();
-		if (!settings?.webhookSecret) return notConnected("Stripe webhooks aren't configured here.");
-		if (!signature) return fail(400, { message: "Missing Stripe-Signature header." });
+		if (!settings?.webhookSecret) {
+			return webhookRefused(
+				"stripe",
+				"not_configured",
+				notConnected("Stripe webhooks aren't configured here."),
+			);
+		}
+		if (!signature) {
+			return webhookRefused(
+				"stripe",
+				"signature_missing",
+				fail(400, { message: "Missing Stripe-Signature header." }),
+			);
+		}
 
 		let event;
 		try {
@@ -1336,7 +1364,11 @@ export class PaymentBackendService {
 		} catch (error) {
 			const reason = error instanceof Error ? error.message.split("\n")[0] : String(error);
 			console.warn("[payments:webhook] rejected delivery:", reason);
-			return fail(400, { message: "Invalid Stripe signature." });
+			return webhookRefused(
+				"stripe",
+				"signature_invalid",
+				fail(400, { message: "Invalid Stripe signature." }),
+			);
 		}
 
 		const receipt = (
@@ -1367,7 +1399,12 @@ export class PaymentBackendService {
 				event.type,
 				error instanceof Error ? error.message : error,
 			);
-			return fail(500, { message: "The event could not be recorded; Stripe will retry it." });
+			return webhookRefused(
+				"stripe",
+				"handler_failed",
+				fail(500, { message: "The event could not be recorded; Stripe will retry it." }),
+				{ eventId: event.id, eventType: event.type },
+			);
 		}
 	}
 
@@ -1382,8 +1419,20 @@ export class PaymentBackendService {
 		signature: string | null,
 	): Promise<Result<StripeWebhookReceipt>> {
 		const settings = liveSettings();
-		if (!settings?.thinWebhookSecret) return notConnected("Stripe v2 webhooks aren't configured here.");
-		if (!signature) return fail(400, { message: "Missing Stripe-Signature header." });
+		if (!settings?.thinWebhookSecret) {
+			return webhookRefused(
+				"stripe-v2",
+				"not_configured",
+				notConnected("Stripe v2 webhooks aren't configured here."),
+			);
+		}
+		if (!signature) {
+			return webhookRefused(
+				"stripe-v2",
+				"signature_missing",
+				fail(400, { message: "Missing Stripe-Signature header." }),
+			);
+		}
 
 		let notification;
 		try {
@@ -1391,7 +1440,11 @@ export class PaymentBackendService {
 		} catch (error) {
 			const reason = error instanceof Error ? error.message.split("\n")[0] : String(error);
 			console.warn("[payments:webhook-v2] rejected delivery:", reason);
-			return fail(400, { message: "Invalid Stripe signature." });
+			return webhookRefused(
+				"stripe-v2",
+				"signature_invalid",
+				fail(400, { message: "Invalid Stripe signature." }),
+			);
 		}
 		const n = notification as unknown as {
 			id: string;
@@ -1413,7 +1466,12 @@ export class PaymentBackendService {
 			return receipt(applied.outcome, applied.detail);
 		} catch (error) {
 			console.error("[payments:webhook-v2]", n.id, n.type, error instanceof Error ? error.message : error);
-			return fail(500, { message: "The event could not be recorded; Stripe will retry it." });
+			return webhookRefused(
+				"stripe-v2",
+				"handler_failed",
+				fail(500, { message: "The event could not be recorded; Stripe will retry it." }),
+				{ eventId: n.id, eventType: n.type },
+			);
 		}
 	}
 	// #endregion

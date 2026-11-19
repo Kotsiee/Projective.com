@@ -1,16 +1,20 @@
 import { z } from "zod";
 
 /**
- * @projective/types/ops alerts — money and job alerts (MR4, Decision #461). Mirrors
+ * @projective/types/ops alerts — money, job and webhook alerts (MR4, Decision #461; OPS5). Mirrors
  * `ops.fn_claim_alerts` (what the sweep leases to send), `ops.fn_record_alert_delivery` (one send's
- * outcome) and `ops.read_alert_deliveries` (`/admin/ledger`'s Alerts section), all in 00001660. The
- * database groups, dedupes and raises the dead-man switch; these are the shapes the service maps the
- * jsonb onto.
+ * outcome), `ops.fn_deliver_alert_in_app` (an operator notice) and `ops.read_alert_deliveries`
+ * (`/admin/ledger`'s Alerts section), all in 00001660; and `ops.fn_record_webhook_failure` and
+ * `ops.fn_heartbeat` (00001650). The database groups, dedupes and raises the dead-man switch; these
+ * are the shapes the services map the jsonb onto.
  */
 
 // #region Vocabulary
-/** Where an alert goes: an incoming webhook (Slack-compatible JSON) or the email digest (Resend). */
-export const AlertChannel = z.enum(["webhook", "email"]);
+/**
+ * Where an alert goes: an incoming webhook (Slack-compatible JSON), the email digest (Resend), or an
+ * in-app notice to every platform operator (OPS5).
+ */
+export const AlertChannel = z.enum(["webhook", "email", "in_app"]);
 export type AlertChannel = z.infer<typeof AlertChannel>;
 
 /** A `level` rule matches rows at or above a level; a `silence` rule is a dead-man switch. */
@@ -117,4 +121,43 @@ export const AlertsReadSchema = z.object({
 	deliveries: z.array(AlertDeliveryViewSchema),
 });
 export type AlertsRead = z.infer<typeof AlertsReadSchema>;
+// #endregion
+
+// #region Webhook failures and the heartbeat (OPS5)
+/** A webhook provider's code: the `<provider>` of scope `webhook.<provider>` (`stripe`, `zoom`, …). */
+export const WEBHOOK_PROVIDER_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+/** A failure's reason code (`signature_invalid`, `handler_failed`, `not_configured`, …). */
+export const WEBHOOK_REASON_PATTERN = /^[a-z0-9_]{1,40}$/;
+
+/**
+ * How a failed delivery counts: `failure` is a 5xx (the provider redelivers, and enough of them alert),
+ * `signature` a missing or forged signature (enough alert, by webhook only), `refused` any other 4xx.
+ */
+export const WebhookOutcomeClass = z.enum(["failure", "signature", "refused"]);
+export type WebhookOutcomeClass = z.infer<typeof WebhookOutcomeClass>;
+
+/**
+ * One non-2xx webhook outcome, as a webhook service reports it: facts only. The event's id and type
+ * when it had a verified one; never its payload, a signature or a secret.
+ */
+export const WebhookFailureSchema = z.object({
+	provider: z.string().regex(WEBHOOK_PROVIDER_PATTERN),
+	status: z.number().int().min(300).max(599),
+	reason: z.string().regex(WEBHOOK_REASON_PATTERN),
+	eventId: z.string().max(128).optional(),
+	eventType: z.string().max(128).optional(),
+});
+export type WebhookFailure = z.infer<typeof WebhookFailureSchema>;
+
+/** `ops.fn_heartbeat()`: the watcher ran recently, and no alert has waited 15 minutes. */
+export const HeartbeatSchema = z.object({
+	watch: z.boolean(),
+	alerts: z.boolean(),
+});
+export type Heartbeat = z.infer<typeof HeartbeatSchema>;
+
+/** `GET /api/ops/health`'s whole body: `{ ok }`, nothing else. */
+export const HealthBodySchema = z.object({ ok: z.boolean() });
+export type HealthBody = z.infer<typeof HealthBodySchema>;
 // #endregion

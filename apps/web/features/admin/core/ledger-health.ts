@@ -45,7 +45,7 @@ export const LEDGER_SECTION_COPY: Record<LedgerSectionId, { title: string; lede:
 	alerts: {
 		title: "Alerts",
 		lede:
-			"Every money and job error, and a nightly check gone silent, reaches a person by webhook and by email within minutes. The same problem alerts once per window.",
+			"Every money error, a job that failed or stopped running, a webhook that keeps failing, and a nightly check gone silent reach a person within minutes: by webhook, by email and as a notice to every operator. The same problem alerts once per window.",
 	},
 };
 // #endregion
@@ -156,6 +156,18 @@ export function alertStatus(row: Pick<AlertDeliveryView, "status" | "attempts">)
 /** The group an alert names, for a person: the dead-man switch, or its short id or code. */
 export function alertGroup(row: Pick<AlertDeliveryView, "fingerprint">): string {
 	return row.fingerprint === "silence" ? "Dead-man switch" : row.fingerprint || "—";
+}
+
+/** A delivery's channel, as the Alerts table names it. */
+export function alertChannelLabel(channel: AlertDeliveryView["channel"]): string {
+	switch (channel) {
+		case "webhook":
+			return "Webhook";
+		case "email":
+			return "Email digest";
+		case "in_app":
+			return "Operator notice";
+	}
 }
 // #endregion
 

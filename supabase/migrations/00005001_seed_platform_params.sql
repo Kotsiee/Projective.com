@@ -88,6 +88,19 @@ INSERT INTO security.platform_params (key, value, description) VALUES
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
 
+-- #region [ops_alerts] When a job, a webhook or the watcher counts as failing (OPS5)
+-- Read by ops-watch-jobs' staleness and webhook passes and by the heartbeat (00001650). Operational
+-- dials, not business rules; each falls back to the value here when missing or not a number >= 1.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('job_stale_factor', '3'::jsonb,
+        'How many of its own cadences an enabled job may go without a success before ops.fn_report_stale_jobs writes scheduler:<job>:stale at error (once a day while it lasts). The cadence is the largest gap between two fire times in a day, never finer than ops-watch-jobs'' own. Missing or below 1: 3.'),
+    ('webhook_failure_threshold', '5'::jsonb,
+        'How many failed (5xx) deliveries of one provider''s webhook within 15 minutes make ops.fn_watch_webhooks write webhook:<provider>:failing at error (at most hourly); the same count of signature refusals writes webhook:<provider>:signature at warn (at most daily). Missing or below 1: 5.'),
+    ('heartbeat_watch_minutes', '30'::jsonb,
+        'GET /api/ops/health answers 503 unless ops-watch-jobs is enabled and succeeded within this many minutes (ops.fn_heartbeat). Missing or below 1: 30.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
 -- from 20260723090000
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('base_currency', '"GBP"'::jsonb,

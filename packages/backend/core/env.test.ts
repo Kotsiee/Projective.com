@@ -25,6 +25,19 @@ Deno.test("an explicit DENO_ENV is taken as given", () => {
 	withDenoEnv("production", () => assertEquals(serverEnv().appEnv, "production"));
 });
 
+Deno.test("OPS_HEALTH_TOKEN is read as the heartbeat's bearer, and is optional (OPS5)", () => {
+	const before = Deno.env.get("OPS_HEALTH_TOKEN");
+	try {
+		Deno.env.delete("OPS_HEALTH_TOKEN");
+		assertEquals(serverEnv().opsHealthToken, undefined);
+		Deno.env.set("OPS_HEALTH_TOKEN", "health-token-fixture");
+		assertEquals(serverEnv().opsHealthToken, "health-token-fixture");
+	} finally {
+		if (before === undefined) Deno.env.delete("OPS_HEALTH_TOKEN");
+		else Deno.env.set("OPS_HEALTH_TOKEN", before);
+	}
+});
+
 Deno.test("the Turnstile pair is read from its canonical names", () => {
 	const names = ["TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"] as const;
 	const before = names.map((name) => Deno.env.get(name));

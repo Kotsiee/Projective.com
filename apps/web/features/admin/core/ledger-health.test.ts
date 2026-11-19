@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import { EscrowAgeKind, LedgerSectionId } from "@projective/types/finance";
 import type { ConservationCurrency } from "@projective/types/finance";
 import {
+	alertChannelLabel,
 	alertGroup,
 	alertStatus,
 	conservationGroups,
@@ -73,6 +74,13 @@ Deno.test("an alert's status and group read as a person would say them", () => {
 	assertEquals(alertStatus({ status: "pending", attempts: 2 }).label, "Retrying");
 	assertEquals(alertGroup({ fingerprint: "silence" }), "Dead-man switch");
 	assertEquals(alertGroup({ fingerprint: "2f6a0b0e" }), "2f6a0b0e");
+	assertEquals(alertGroup({ fingerprint: "stripe:failing" }), "stripe:failing");
+	assertEquals(
+		["webhook", "email", "in_app"].map((c) =>
+			alertChannelLabel(c as "webhook" | "email" | "in_app")
+		),
+		["Webhook", "Email digest", "Operator notice"],
+	);
 });
 
 Deno.test("daysText and shortId", () => {

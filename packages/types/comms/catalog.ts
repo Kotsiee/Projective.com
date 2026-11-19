@@ -211,6 +211,10 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"quote.offer_declined",
 	"quote.withdrawn",
 	// #endregion
+
+	// #region [ops] Alerts to the operators (OPS5)
+	"ops.alert",
+	// #endregion
 ] as const;
 
 /** The seeded event keys as a union type. Runtime values are NOT limited to these. */

@@ -28,11 +28,18 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT:
 
 ### `comms.notification_types`
 
-The routing matrix **as data**: one row per event key declaring how that event is delivered. 113 keys
+The routing matrix **as data**: one row per event key declaring how that event is delivered. 146 keys
 are seeded (money · work · messages · schedule · discovery · account · system · marketing).
 `packages/types/comms/catalog.contract.test.ts` fails when a `comms.fn_notify` call in a migration,
 or an `rpc("fn_notify")` in a backend service, emits a key (or alias) the seed does not carry, and
 when `KNOWN_NOTIFICATION_TYPES` drifts from the seed.
+
+**Added 2026-11-19 (OPS5):** `ops.alert` (system · high · in_app only, mandatory, not digestible,
+audited; one-day group window; action URL `/admin/ledger`) — the alert sweep's third channel, sent by
+`ops.fn_deliver_alert_in_app` to every `ops.admin_users` row for each `in_app` alert delivery (a money
+error, a failed, stalled or misconfigured job, a failing webhook, a silent nightly check, a drill). A
+repeat of the same alert group within a day refreshes the notice (`group_key = 'ops.alert:<group>'`).
+The body is figures, short ids and codes only. Seeded in its own `[ops]` region of `00005010`.
 
 **Added 2026-11-04 (SCH-WP4a; Decision #343, ruling C4):** `integration.reconnect_required` (account ·
 high · in_app + email, not mandatory, not digestible; opens `/settings/integrations`) — sent by

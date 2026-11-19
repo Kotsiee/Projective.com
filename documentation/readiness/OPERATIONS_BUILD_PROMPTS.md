@@ -652,6 +652,14 @@ ACCEPTANCE:
 
 Gives PRD-G7 its non-money half (→ 🟡, together with MR4's money half). The row flips to ✅ in OPS7.
 
+> **Status 2026-11-19: OPS5 landed** (#518; PRD-G7 stays 🟡, narrowed to OPS7's hosted drills). MR4
+> had built the pipeline (#507), so OPS5 added rules, the staleness and webhook passes, the heartbeat
+> and the in-app channel. The owner ruled the four stops: `ops.scheduler` at warn and above, hourly
+> (one rule per scope and channel, so the writers throttle the daily rows); the in-app notice on every
+> alerting scope, money included; the drill as **OPS7 step 6** has it (`ops.fn_raise_alert('test')`
+> on every channel), not step 7's webhook-only rule; and no wait for OPS1. **For OPS7:** step 6's
+> "resolve it: one resolved message" is not built; it is the new PRD-G10.
+
 **One pipeline, MR4's shape.** [MONEY_BUILD_PROMPTS.md](MONEY_BUILD_PROMPTS.md) MR4 specifies a
 log-to-alert router:
 

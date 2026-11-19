@@ -197,8 +197,9 @@ CREATE TABLE ops.contact_request_attachments (
 -- /admin/ledger. A rule names a scope and a channel; `ops.fn_claim_alerts` (00001660) folds every new
 -- server row a rule matches into one delivery per scope and fingerprint per dedupe window, and the
 -- `ops-deliver-alerts` job sends what is due through `OpsAlertService`. Two channels that fail apart,
--- an incoming webhook and an email digest through Resend (#461 (A)). Rules are seeded in 00005065;
--- adding a scope is a row, not code. Definer-only (RLS on, no client policy), as the job registry is.
+-- an incoming webhook and an email digest through Resend (#461 (A)), and a third inside the product:
+-- an `in_app` notice to every operator (OPS5). Rules are seeded in 00005065; adding a scope is a row,
+-- not code. Definer-only (RLS on, no client policy), as the job registry is.
 
 -- One rule: `level` matches every server row whose scope is LIKE `scope_pattern` at `min_level` or
 -- above (`warn` < `error`; a `metric` row never alerts); `silence` is a dead-man switch, raised when no
@@ -223,7 +224,7 @@ CREATE TABLE ops.alert_rules (
     (kind = 'level' AND min_level = ANY (ARRAY['warn'::text, 'error'::text]) AND max_silence IS NULL)
     OR (kind = 'silence' AND min_level IS NULL AND max_silence > interval '0')
   ),
-  CONSTRAINT alert_rules_channel_check CHECK (channel = ANY (ARRAY['webhook'::text, 'email'::text])),
+  CONSTRAINT alert_rules_channel_check CHECK (channel = ANY (ARRAY['webhook'::text, 'email'::text, 'in_app'::text])),
   CONSTRAINT alert_rules_window_check CHECK (dedupe_window >= interval '5 minutes'),
   CONSTRAINT alert_rules_unique UNIQUE (kind, scope_pattern, channel)
 );
@@ -259,7 +260,7 @@ CREATE TABLE ops.alert_deliveries (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT alert_deliveries_pkey PRIMARY KEY (id),
   CONSTRAINT alert_deliveries_rule_fkey FOREIGN KEY (rule_id) REFERENCES ops.alert_rules (id) ON DELETE RESTRICT,
-  CONSTRAINT alert_deliveries_channel_check CHECK (channel = ANY (ARRAY['webhook'::text, 'email'::text])),
+  CONSTRAINT alert_deliveries_channel_check CHECK (channel = ANY (ARRAY['webhook'::text, 'email'::text, 'in_app'::text])),
   CONSTRAINT alert_deliveries_level_check CHECK (level = ANY (ARRAY['warn'::text, 'error'::text])),
   CONSTRAINT alert_deliveries_status_check CHECK (status = ANY (ARRAY['pending'::text, 'sent'::text])),
   CONSTRAINT alert_deliveries_sent_check CHECK ((status = 'sent') = (sent_at IS NOT NULL)),
