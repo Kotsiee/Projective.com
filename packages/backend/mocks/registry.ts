@@ -22,6 +22,7 @@
  * ## Reading an entry
  *
  *  - `gate` — the flag its code consults, or `null` for an always-live domain (`alwaysLive` says why).
+ *    `alsoGatedBy` names another domain's gate a directory also consults for a sub-feature it hosts.
  *  - `gated` — the sub-features the gate covers. A gate rarely covers a whole domain: EXPLORE, CATALOGUE
  *    and FILES each gate a slice, and `ungated` lists what reads the database whatever the gate says.
  *  - `fixtureRoad` — with the gate off, the `gated` sub-features answer fixtures, a stub, or an
@@ -88,6 +89,11 @@ export interface MockDomainInfo {
 	label: string;
 	/** The env flag its code consults, or `null`: the domain is always live (see `alwaysLive`). */
 	gate: BackendGate | null;
+	/**
+	 * Other domains' gates this directory also consults, for a sub-feature it hosts on their behalf
+	 * (each named in `gated`). `resolveDataSource` reports the primary `gate` only.
+	 */
+	alsoGatedBy?: readonly BackendGate[];
 	/** One line on why an ungated domain has no gate. Present exactly when `gate` is `null`. */
 	alwaysLive?: string;
 	/**
@@ -385,11 +391,13 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "messaging",
 		label: "Global messaging",
 		gate: "MESSAGING_BACKEND_LIVE",
+		alsoGatedBy: ["PROJECTS_BACKEND_LIVE"],
 		liveImplemented: true,
 		fixtureRoad: true,
 		gated: [
 			"the /messages inbox, a conversation and its message pages, contacts, settings, files and roster",
 			"starring, muting, pinning and read markers (off: some refuse, some echo)",
+			"PROJECTS_BACKEND_LIVE: a project channel's message send (comms.project_messages), which the one send door carries for projects (MS2)",
 		],
 		ungated: ["rendering a group photo (through media), on the fixture road too"],
 		modules: [

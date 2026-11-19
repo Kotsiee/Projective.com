@@ -253,4 +253,29 @@ UPDATE marketplace.service_blueprints SET availability_preset_id = '68ae26c9-61a
 
 UPDATE marketplace.service_blueprints SET availability_preset_id = '3dd54050-7793-4267-a15a-72aae46ab579' WHERE id = '40d68e27-474f-4b56-a37e-1605cbc3fdb4';
 
+INSERT INTO projects.projects (id, owner_user_id, owner_team_id, title, slug, description, description_text, format, structure_variation, session_kind, status, visibility, publish_visibility, currency, budget_type, source_blueprint_id)
+VALUES
+  ('53b9127b-6fb7-415e-a41d-63e905560fd4', '6ce1906f-caab-4708-a19e-df3d8960666e', NULL, 'Design systems workshop', 'prj-k2xj728k8e', '{}'::jsonb, 'A live, multi-seat workshop: build a token-driven design system alongside a small cohort, seats sold per attendee.', 'session'::public.project_format, 'standard'::projects.structure_variation, 'group', 'active'::public.project_status, 'unlisted'::public.visibility, 'unlisted'::public.visibility, 'USD', 'fixed_price'::public.budget_type, '40d68e27-474f-4b56-a37e-1605cbc3fdb4')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO projects.project_stages (id, project_id, name, slug, sort_order, unit_price_cents)
+VALUES
+  ('2786befa-3aa2-45c5-ad4f-d1945be8668f', '53b9127b-6fb7-415e-a41d-63e905560fd4', 'Sessions', 'stg-9g4aofe7eg', 0, 9000)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO projects.cohorts (id, project_id, project_stage_id, name, max_seats, status, min_seats, enrolment_closes_at, cadence, opened_by)
+VALUES
+  ('d4ec224e-c049-4cad-a6df-f0ecca568a23', '53b9127b-6fb7-415e-a41d-63e905560fd4', '2786befa-3aa2-45c5-ad4f-d1945be8668f', 'Design systems workshop', 16, 'enrolling'::projects.cohort_status, 4, ((date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '22 days' + interval '1080 minutes') AT TIME ZONE 'Europe/London') - interval '24 hours', NULL, '6ce1906f-caab-4708-a19e-df3d8960666e')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO projects.session_events (id, cohort_id, title, slug, start_time, end_time)
+VALUES
+  ('8fee1f97-8be9-40d8-ac9b-37c5720c4926', 'd4ec224e-c049-4cad-a6df-f0ecca568a23', 'Design systems workshop', 'ssn-56y9785u6w', ((date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '22 days' + interval '1080 minutes') AT TIME ZONE 'Europe/London'), ((date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '22 days' + interval '1080 minutes') AT TIME ZONE 'Europe/London') + interval '120 minutes')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO scheduling.events (id, schedule_id, project_id, kind, status, title, starts_at, ends_at, attendee_count, capacity, source_session_event_id, created_by)
+VALUES
+  ('8ebd0790-785c-42cf-ae84-5a2ede754025', '75d05796-1a22-4a0b-a5d6-be2ce79100a9', '53b9127b-6fb7-415e-a41d-63e905560fd4', 'session'::scheduling.event_kind, 'confirmed'::scheduling.event_status, 'Design systems workshop', ((date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '22 days' + interval '1080 minutes') AT TIME ZONE 'Europe/London'), ((date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '22 days' + interval '1080 minutes') AT TIME ZONE 'Europe/London') + interval '120 minutes', 0, 16, '8fee1f97-8be9-40d8-ac9b-37c5720c4926', '6ce1906f-caab-4708-a19e-df3d8960666e')
+ON CONFLICT (id) DO NOTHING;
+
 -- scheduling: 10 schedules, 50 bands, 4 calls, 6 project meetings, 10 presets, 3 bound services.

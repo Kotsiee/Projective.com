@@ -18,7 +18,7 @@ import {
 import { LISTING_REVIEWS } from "./reviews.ts";
 import { ago, ahead, arr, HEADER, id, insert, jsonb, num, q, slugFor, uuidFor } from "./sql.ts";
 import type { Asset, Principal, World } from "./resolve.ts";
-import { ENTITIES, SKILLS } from "./world.ts";
+import { ENTITIES, SALE_FILES, SKILLS } from "./world.ts";
 
 // #region Helpers
 
@@ -273,6 +273,28 @@ function articleBody(world: World, key: string, blocks: CorpusArticleBlock[]): u
 	});
 }
 
+/** The label a seeded sale file carries (`SALE_FILES`), by its download name. */
+function saleLabel(productKey: string, name: string): string {
+	return SALE_FILES[productKey]?.find((f) => f.name === name)?.label ?? "File";
+}
+
+/**
+ * A product's manifest when it sells real library files (Decision #488): one `AttachmentRefSchema`
+ * entry per file, each naming its `fileId`, in place of the corpus's descriptive bundle. Null when the
+ * product sells none, so the corpus manifest stands.
+ */
+function saleManifest(world: World, productKey: string): unknown[] | null {
+	const files = world.productFiles.get(productKey);
+	if (!files) return null;
+	return files.map((a) => ({
+		name: a.displayName,
+		label: saleLabel(productKey, a.displayName),
+		extension: `.${a.displayName.split(".").pop()}`,
+		bytes: a.sizeBytes,
+		fileId: a.id,
+	}));
+}
+
 /** The plain-text twin of an article body, for search and card blurbs. */
 function articleText(blocks: CorpusArticleBlock[]): string {
 	return blocks
@@ -330,7 +352,7 @@ export function emitCatalogue(world: World): string {
 					q(p.currency),
 					q(p.licence),
 					String(p.attributionRequired),
-					jsonb(p.files),
+					jsonb(saleManifest(world, p.key) ?? p.files),
 					jsonb(p.compatibility),
 					jsonb(p.specs),
 					String(p.span),
@@ -339,6 +361,37 @@ export function emitCatalogue(world: World): string {
 			}),
 		),
 	);
+	// #endregion
+
+	// #region Product versions (Decision #488)
+	// What publishing froze for each product that sells real files: version 1, ready, its bytes copied
+	// into `originals/{product}/{version}/{file}` by generate.ts, so a reset can be bought and
+	// downloaded end to end. The same shape catalogue.fn_freeze_product_version writes.
+	const sold = PRODUCTS.flatMap((p) => world.productFiles.has(p.key) ? [p] : []);
+	if (sold.length > 0) {
+		out.push(
+			insert(
+				"catalogue.product_versions",
+				["id", "product_id", "version", "manifest", "published_at", "ready_at", "created_at"],
+				sold.map((p) => [
+					id(world.productVersionId(p.key)),
+					id(world.productId(p.key)),
+					"1",
+					jsonb(world.productFiles.get(p.key)!.map((a) => ({
+						fileId: a.id,
+						name: a.displayName,
+						label: saleLabel(p.key, a.displayName),
+						extension: `.${a.displayName.split(".").pop()}`,
+						bytes: a.sizeBytes,
+						mime: a.mime,
+					}))),
+					ago(60),
+					ago(60),
+					ago(60),
+				]),
+			),
+		);
+	}
 	// #endregion
 
 	// #region Articles

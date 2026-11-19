@@ -19,15 +19,15 @@ import {
 	VOTE_RESOLUTION_LEAD_HOURS,
 } from "@projective/types/scheduling";
 import { SERVICES } from "./corpus.ts";
-import { HEADER, id, insert, localAt, minutesOf, num, q, uuidFor } from "./sql.ts";
+import { HEADER, id, insert, localAt, minutesOf, num, q, slugFor, uuidFor } from "./sql.ts";
 import { type Lookup, party, persona, type World } from "./resolve.ts";
 import {
 	type Band,
 	DISCOVERY_CALLS,
 	PROJECT_MEETINGS,
 	type ProjectMeetingSpec,
-	type ScheduleSpec,
 	SCHEDULES,
+	type ScheduleSpec,
 	type WeekSlot,
 } from "./schedules.ts";
 
@@ -55,7 +55,9 @@ function resolveSchedule(world: Lookup, spec: ScheduleSpec): ResolvedSchedule {
 		};
 	}
 	if (who.kind !== "team") {
-		throw new Error(`schedules: "${spec.owner}" is a ${who.kind}; only people and teams publish schedules`);
+		throw new Error(
+			`schedules: "${spec.owner}" is a ${who.kind}; only people and teams publish schedules`,
+		);
 	}
 	return {
 		spec,
@@ -243,7 +245,17 @@ export function emitScheduling(world: World): string {
 	// #region Commitments
 	out.push(insert(
 		"scheduling.events",
-		["id", "schedule_id", "kind", "status", "title", "starts_at", "ends_at", "is_masked", "created_by"],
+		[
+			"id",
+			"schedule_id",
+			"kind",
+			"status",
+			"title",
+			"starts_at",
+			"ends_at",
+			"is_masked",
+			"created_by",
+		],
 		resolved.flatMap((r) =>
 			(r.spec.events ?? []).map((e, i) => [
 				id(uuidFor("schedule-event", `${r.spec.owner}:${i}`)),
@@ -263,7 +275,9 @@ export function emitScheduling(world: World): string {
 	// #region Discovery calls
 	const callRows = DISCOVERY_CALLS.map((c) => {
 		const host = byOwner.get(c.host);
-		if (!host?.spec.call) throw new Error(`schedules: call "${c.key}" is hosted by "${c.host}", who takes no calls`);
+		if (!host?.spec.call) {
+			throw new Error(`schedules: call "${c.key}" is hosted by "${c.host}", who takes no calls`);
+		}
 		const settings = host.spec.call;
 		const flavour = c.type === "paid" ? settings.paid : settings.courtesy;
 		if (!flavour) {
@@ -271,7 +285,9 @@ export function emitScheduling(world: World): string {
 		}
 		assertInWorkingHours(host, c.key, c.at, flavour.minutes);
 		if (c.platform && !settings.platforms.includes(c.platform)) {
-			throw new Error(`schedules: call "${c.key}" is on ${c.platform}, which "${c.host}" does not offer`);
+			throw new Error(
+				`schedules: call "${c.key}" is on ${c.platform}, which "${c.host}" does not offer`,
+			);
 		}
 		const requester = persona(world, c.requester);
 		const start = at(host.timezone, c.at);
@@ -296,7 +312,9 @@ export function emitScheduling(world: World): string {
 			num(fee?.feeMinor ?? null),
 			q(fee?.currency ?? null),
 			`${start} - interval '${c.requestedDaysBefore * 24} hours'`,
-			confirmed ? `${start} - interval '${Math.max(1, c.requestedDaysBefore - 1) * 24} hours'` : "NULL",
+			confirmed
+				? `${start} - interval '${Math.max(1, c.requestedDaysBefore - 1) * 24} hours'`
+				: "NULL",
 			c.status === "completed" ? end : "NULL",
 		];
 	});
@@ -332,12 +350,196 @@ export function emitScheduling(world: World): string {
 	const presets = emitPresets(world, resolved);
 	out.push(presets.sql);
 
+	const cohorts = emitGroupCohorts(world, resolved);
+	out.push(cohorts.sql);
+
 	// A trailing marker, so a partial run is visible in the reset log.
 	out.push(
 		`-- scheduling: ${resolved.length} schedules, ${bandRows.length} bands, ${callRows.length} calls, ${PROJECT_MEETINGS.length} project meetings, ${presets.presets} presets, ${presets.bound} bound services.\n`,
 	);
 	return out.join("\n");
 }
+
+// #region Group cohorts (Decision #498)
+/**
+ * One cohort taking bookings on every seeded group-session listing (#453 (e)), shaped exactly as
+ * `projects.open_cohort` leaves one: the listing's group engagement (`session_kind = 'group'`,
+ * unlisted, active) and its "Sessions" stage; the cohort at the listing's cohort size, a minimum of
+ * four, enrolment closing a day before the first sitting; the listing's sittings, the first on the
+ * Tuesday three weeks out at 18:00 in the owner's zone and the rest a week apart at the same wall-clock
+ * time; and each sitting's roster-less calendar mirror on the owner's schedule. Opened by the owner, so
+ * the waitlist job finds it on its first tick.
+ */
+function emitGroupCohorts(
+	world: World,
+	resolved: readonly ResolvedSchedule[],
+): { sql: string; cohorts: number } {
+	const projects: string[][] = [];
+	const stages: string[][] = [];
+	const cohorts: string[][] = [];
+	const sittings: string[][] = [];
+	const mirrors: string[][] = [];
+	for (const s of SERVICES) {
+		if (s.model !== "group_session") continue;
+		const principal = world.principals.get(s.owner);
+		if (!principal) throw new Error(`cohorts: no principal owns "${s.owner}"`);
+		const ownerKey = principal.entityKey ??
+			[...world.personas.values()].find((p) => p.userId === principal.accountUserId)?.key;
+		const schedule = resolved.find((r) => r.spec.owner === ownerKey);
+		if (!schedule) {
+			throw new Error(`cohorts: ${s.key} is a group session but its owner publishes no schedule`);
+		}
+		const owner = principal.accountUserId;
+		const team = principal.kind === "team" ? principal.entityId ?? null : null;
+		const projectId = uuidFor("cohort-engagement", s.key);
+		const stageId = uuidFor("cohort-stage", s.key);
+		const cohortId = uuidFor("cohort", `${s.key}:1`);
+		const count = s.sessionCount ?? 1;
+		const minutes = s.sessionMinutes ?? 60;
+		const size = s.seatsPerSession ?? 12;
+		const first = localAt(schedule.timezone, 3, 1, 18 * 60);
+
+		projects.push([
+			id(projectId),
+			id(owner),
+			id(team),
+			q(s.title),
+			q(slugFor("prj", `cohort-${s.key}`)),
+			"'{}'::jsonb",
+			q(s.summary),
+			"'session'::public.project_format",
+			"'standard'::projects.structure_variation",
+			q("group"),
+			"'active'::public.project_status",
+			"'unlisted'::public.visibility",
+			"'unlisted'::public.visibility",
+			q(s.currency),
+			"'fixed_price'::public.budget_type",
+			id(world.serviceId(s.key)),
+		]);
+		stages.push([
+			id(stageId),
+			id(projectId),
+			q("Sessions"),
+			q(slugFor("stg", `cohort-${s.key}`)),
+			"0",
+			String(s.sessionPriceMinor ?? s.priceMinor),
+		]);
+		cohorts.push([
+			id(cohortId),
+			id(projectId),
+			id(stageId),
+			q(s.title),
+			String(size),
+			"'enrolling'::projects.cohort_status",
+			String(Math.min(4, size)),
+			`${first} - interval '24 hours'`,
+			count > 1 ? q("weekly") : "NULL",
+			id(owner),
+		]);
+		for (let k = 0; k < count; k++) {
+			const start = localAt(schedule.timezone, 3 + k, 1, 18 * 60);
+			const end = `${start} + interval '${minutes} minutes'`;
+			const title = count === 1 ? s.title : `${s.title} — session ${k + 1} of ${count}`;
+			const sittingId = uuidFor("cohort-sitting", `${s.key}:1:${k}`);
+			sittings.push([
+				id(sittingId),
+				id(cohortId),
+				q(title),
+				q(slugFor("ssn", `cohort-${s.key}:1:${k}`)),
+				start,
+				end,
+			]);
+			mirrors.push([
+				id(uuidFor("cohort-sitting-event", `${s.key}:1:${k}`)),
+				id(schedule.scheduleId),
+				id(projectId),
+				"'session'::scheduling.event_kind",
+				"'confirmed'::scheduling.event_status",
+				q(title),
+				start,
+				end,
+				"0",
+				String(size),
+				id(sittingId),
+				id(owner),
+			]);
+		}
+	}
+	const sql = [
+		insert(
+			"projects.projects",
+			[
+				"id",
+				"owner_user_id",
+				"owner_team_id",
+				"title",
+				"slug",
+				"description",
+				"description_text",
+				"format",
+				"structure_variation",
+				"session_kind",
+				"status",
+				"visibility",
+				"publish_visibility",
+				"currency",
+				"budget_type",
+				"source_blueprint_id",
+			],
+			projects,
+		),
+		insert(
+			"projects.project_stages",
+			["id", "project_id", "name", "slug", "sort_order", "unit_price_cents"],
+			stages,
+		),
+		insert(
+			"projects.cohorts",
+			[
+				"id",
+				"project_id",
+				"project_stage_id",
+				"name",
+				"max_seats",
+				"status",
+				"min_seats",
+				"enrolment_closes_at",
+				"cadence",
+				"opened_by",
+			],
+			cohorts,
+		),
+		insert("projects.session_events", [
+			"id",
+			"cohort_id",
+			"title",
+			"slug",
+			"start_time",
+			"end_time",
+		], sittings),
+		insert(
+			"scheduling.events",
+			[
+				"id",
+				"schedule_id",
+				"project_id",
+				"kind",
+				"status",
+				"title",
+				"starts_at",
+				"ends_at",
+				"attendee_count",
+				"capacity",
+				"source_session_event_id",
+				"created_by",
+			],
+			mirrors,
+		),
+	].join("\n");
+	return { sql, cohorts: cohorts.length };
+}
+// #endregion
 
 // #region Availability presets
 /**
@@ -490,13 +692,17 @@ function emitProjectMeetings(world: World): string {
 
 	for (const m of PROJECT_MEETINGS) {
 		const project = world.projects.get(m.project);
-		if (!project) throw new Error(`schedules: meeting "${m.key}" names unknown project "${m.project}"`);
+		if (!project) {
+			throw new Error(`schedules: meeting "${m.key}" names unknown project "${m.project}"`);
+		}
 		const stageIndex = m.stage ? project.stages.findIndex((s) => s.key === m.stage) : -1;
 		if (m.stage && stageIndex < 0) {
 			throw new Error(`schedules: meeting "${m.key}" names unknown stage "${m.stage}"`);
 		}
 		const channelId = project.channelsByKey.get(m.stage ?? "general") ?? null;
-		const meta = stageIndex >= 0 ? `Stage ${stageIndex + 1} · ${project.stages[stageIndex].name}` : project.title;
+		const meta = stageIndex >= 0
+			? `Stage ${stageIndex + 1} · ${project.stages[stageIndex].name}`
+			: project.title;
 		const eventId = uuidFor("project_event", m.key);
 		const host = persona(world, m.host);
 		const created = `now() - interval '${m.createdDaysAgo * 24} hours'`;
@@ -564,10 +770,14 @@ function emitProjectMeetings(world: World): string {
 				q(a.note ?? null),
 				created,
 			]);
-			if (answered) line("rsvp", who.userId, RSVP_SUMMARY[a.response], a.note ?? null, seat, answered);
+			if (answered) {
+				line("rsvp", who.userId, RSVP_SUMMARY[a.response], a.note ?? null, seat, answered);
+			}
 		}
 
-		if (m.reschedule) emitNegotiation(world, m, eventId, seats, reschedules, proposals, votes, line);
+		if (m.reschedule) {
+			emitNegotiation(world, m, eventId, seats, reschedules, proposals, votes, line);
+		}
 	}
 
 	return [
@@ -627,7 +837,13 @@ function emitProjectMeetings(world: World): string {
 			],
 			proposals,
 		),
-		insert("scheduling.proposal_votes", ["id", "reschedule_id", "proposal_id", "attendee_id", "cast_at"], votes),
+		insert("scheduling.proposal_votes", [
+			"id",
+			"reschedule_id",
+			"proposal_id",
+			"attendee_id",
+			"cast_at",
+		], votes),
 		insert(
 			"scheduling.event_history",
 			["id", "event_id", "kind", "actor_user_id", "summary", "detail", "target_id", "occurred_at"],
@@ -711,7 +927,14 @@ function emitNegotiation(
 			id(seat),
 			when,
 		]);
-		line("vote", who.userId, `Voted for ${slotLabel(r.proposals[v.proposal].at)}`, null, proposalIds[v.proposal], when);
+		line(
+			"vote",
+			who.userId,
+			`Voted for ${slotLabel(r.proposals[v.proposal].at)}`,
+			null,
+			proposalIds[v.proposal],
+			when,
+		);
 	}
 }
 // #endregion

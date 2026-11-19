@@ -128,14 +128,20 @@ Deno.test("each entry's liveImplemented matches whether its code reaches the dat
 	}
 });
 
-Deno.test("each entry's gate is the predicate its code consults (or null when it consults none)", () => {
+Deno.test("each entry's gates are the predicates its code consults (none when gate is null)", () => {
 	for (const domain of MOCK_DOMAINS) {
-		const { gate } = MOCK_REGISTRY[domain];
+		const { gate, alsoGatedBy = [] } = MOCK_REGISTRY[domain];
+		const declared = gate ? [gate, ...alsoGatedBy].sort() : [...alsoGatedBy];
 		assertEquals(
 			SCANS.get(domain)?.gates ?? [],
-			gate ? [gate] : [],
-			`${domain}: registry gate ${gate ?? "null"} disagrees with the predicates its code calls`,
+			declared,
+			`${domain}: registry gates ${
+				declared.join(", ") || "none"
+			} disagree with the predicates its code calls`,
 		);
+		if (!gate) {
+			assertEquals(alsoGatedBy, [], `${domain}: an always-live domain has no secondary gate`);
+		}
 	}
 });
 // #endregion

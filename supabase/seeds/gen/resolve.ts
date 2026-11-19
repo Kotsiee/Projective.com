@@ -19,6 +19,7 @@ import {
 	PRODUCT_COVERS,
 	PROJECTS,
 	type ProjectSpec,
+	SALE_FILES,
 	SERVICE_COVERS,
 } from "./world.ts";
 
@@ -49,7 +50,8 @@ export interface Principal {
 
 export interface Asset {
 	id: string;
-	bucket: "avatars" | "catalogue" | "project" | "showcase" | "public_assets";
+	/** `personal` holds a seller's sale files, a private library upload (Decision #488). */
+	bucket: "avatars" | "catalogue" | "project" | "showcase" | "public_assets" | "personal";
 	/**
 	 * `files.items.purpose`. Absent = `library` (an upload the owner can pick again); `showcase` is a
 	 * rendition the profile hero shows — the only kind the `showcase` bucket holds.
@@ -63,7 +65,7 @@ export interface Asset {
 	ownerUserId: string;
 	ownerType: "user" | "team" | "business";
 	ownerEntityId: string | null;
-	visibility: "public" | "link";
+	visibility: "public" | "link" | "private";
 	mime: string;
 	sizeBytes: number;
 	width: number | null;
@@ -120,6 +122,14 @@ export interface World {
 	articleImage: Map<string, Asset>;
 	/** submission key (`project:sub`) → deliverable assets. */
 	submissionFiles: Map<string, Asset[]>;
+	/**
+	 * Product key → the library files the product sells, in bundle order (Decision #488). Each is a
+	 * private `personal` upload of the seller's; the product's manifest names them and its frozen
+	 * version 1 delivers them from `originals`.
+	 */
+	productFiles: Map<string, Asset[]>;
+	/** A product's seeded version 1 (`catalogue.product_versions.id`). */
+	productVersionId: (corpusKey: string) => string;
 	/** Persona or entity key → its showcase renditions, slot 1 first (`profiles.ts` `SHOWCASES`). */
 	showcaseSlots: Map<string, Array<{ asset: Asset; alt: string }>>;
 	/** `${personaKey}:${index}` → a "Selected work" piece's cover (`profiles.ts` `PORTFOLIO`). */
@@ -453,6 +463,32 @@ export async function buildWorld(): Promise<World> {
 		assets.push(a);
 		productCover.set(p.key, a);
 	}
+	// What two products deliver (Decision #488): real bytes in the seller's private library, so a
+	// fresh reset can be bought and downloaded end to end. Both sellers are people, as the library
+	// ownership rule of `catalogue.fn_listing_file_ok` expects.
+	const productFiles = new Map<string, Asset[]>();
+	for (const [key, files] of Object.entries(SALE_FILES)) {
+		const product = PRODUCTS.find((p) => p.key === key);
+		if (!product) throw new Error(`SALE_FILES names an unknown product: ${key}`);
+		const owner = principals.get(product.owner)!;
+		const list: Asset[] = [];
+		for (const [n, file] of files.entries()) {
+			const a = await asset({
+				bucket: "personal",
+				path: `users/${owner.accountUserId}/library/${key}-${n + 1}/${file.name}`,
+				source: file.source,
+				displayName: file.name,
+				ownerUserId: owner.accountUserId,
+				ownerType: "user",
+				ownerEntityId: null,
+				visibility: "private",
+				createdDaysAgo: 85,
+			});
+			assets.push(a);
+			list.push(a);
+		}
+		productFiles.set(key, list);
+	}
 	// Articles: a cover, plus one stored object per distinct inline image — the body references the
 	// OBJECT (bucket + path), never a URL, so the live reader builds the address the same way it builds
 	// every other image on the platform.
@@ -580,6 +616,8 @@ export async function buildWorld(): Promise<World> {
 		articleCover,
 		articleImage,
 		submissionFiles,
+		productFiles,
+		productVersionId: (cid) => uuidFor("product-version", cid),
 		showcaseSlots,
 		portfolioCover,
 		serviceId: (cid) => uuidFor("service", cid),

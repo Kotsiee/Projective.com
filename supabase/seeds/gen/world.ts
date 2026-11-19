@@ -925,6 +925,29 @@ export const PRODUCT_COVERS: Record<string, string> = {
 	"pr-iconography-set": "product_5.webp",
 	"pr-notion-ops-suite": "product_6.jpg",
 };
+
+/** One file a seeded product sells: the `test_images/` source, the name a buyer downloads, its label. */
+export interface SaleFile {
+	source: string;
+	name: string;
+	label: string;
+}
+
+/**
+ * The products a fresh reset can be bought AND downloaded from (Decision #488): each sells two real
+ * files from the seller's private library, frozen into version 1 and copied into `originals`. Both
+ * sellers are people; every other product's manifest still only describes its bundle.
+ */
+export const SALE_FILES: Record<string, SaleFile[]> = {
+	"pr-iconography-set": [
+		{ source: "brandmark_7.png", name: "iconography-sheet-a.png", label: "PNG icon sheet" },
+		{ source: "brandmark_2.webp", name: "iconography-sheet-b.webp", label: "WebP icon sheet" },
+	],
+	"pr-grain-lightroom-pack": [
+		{ source: "product_1.jpg", name: "grain-reference-before.jpg", label: "Reference, before" },
+		{ source: "product_2.jpg", name: "grain-reference-after.jpg", label: "Reference, after" },
+	],
+};
 // #endregion
 
 // #region Projects

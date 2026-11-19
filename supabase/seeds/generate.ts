@@ -111,6 +111,22 @@ for (const asset of PLATFORM_ASSETS) {
 	await Deno.copyFile(new URL(asset.source, imagesRoot), target);
 	copied++;
 }
+
+/**
+ * What a seeded product's frozen version delivers (Decision #488): the same bytes as the seller's
+ * library file, at the `originals/{product}/{version}/{file}` key `originalLocation()` builds. No
+ * `files.items` row points here — `originals` has no storage policy and no library listing, exactly
+ * as the publish copy leaves it.
+ */
+for (const [productKey, files] of world.productFiles) {
+	for (const file of files) {
+		const path = `${world.productId(productKey)}/${world.productVersionId(productKey)}/${file.id}`;
+		const target = new URL(`originals/${path}`, assetsRoot);
+		await Deno.mkdir(new URL(".", target), { recursive: true });
+		await Deno.copyFile(new URL(file.source, imagesRoot), target);
+		copied++;
+	}
+}
 console.log(`copied ${copied} images into supabase/seed-assets/`);
 // #endregion
 
