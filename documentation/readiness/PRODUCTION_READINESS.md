@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
-| **UAT**          | **66%** |           67 | 39 |  8 | 20 |           6 |
-| **Production**   | **45%** |          148 | 51 | 25 | 72 |          16 |
+| **UAT**          | **67%** |           67 | 39 |  9 | 19 |           5 |
+| **Production**   | **46%** |          148 | 51 | 26 | 71 |          15 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -57,7 +57,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   17 |  3 |  6 |  8 |   40% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  5 | 11 |   43% |
-| G. Scheduled jobs & operations     |    8 |  3 |  1 |  4 |   33% |
+| G. Scheduled jobs & operations     |    8 |  3 |  2 |  3 |   42% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
 | J. Routing, URLs & SEO             |    5 |  3 |  1 |  1 |   75% |
@@ -70,7 +70,8 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 - **MVP:** PRD-E3 (chat live refresh; the send door landed, #508) → PRD-A1 (`/home`).
 - **UAT:** PRD-D3 (malware scan) → PRD-E4 + PRD-E5 + PRD-E6 (dispatcher, notification email, auth
   SMTP: built, a hosted send to prove) → PRD-G2 + PRD-F23 (claim sweep, ghosting timer) → PRD-G6
-  (hosted cron secrets) → PRD-F5 (dispute freeze).
+  (hosted cron secrets: the tool and check are built, #514, and OPS7 runs them) → PRD-F5 (dispute
+  freeze).
 - **PROD:** PRD-C17 (MFA + step-up) · PRD-C19 (erasure) · PRD-D9 / D10 / D14 (moderation loop,
   publication gate, CSAM hashing) · PRD-F8 (Stripe ↔ ledger reconciliation) · PRD-F15 (holding
   period) · PRD-F17 (live Stripe run; #476) · PRD-G8 (deployment) · PRD-K4 (CI) · PRD-M1
@@ -233,7 +234,7 @@ Work orders for every open row, with the run order:
 | PRD-G3 | Workload-report expiry is scheduled                                                   | ❌     | High     | UAT  | `fn_resolve_expired_workload_reports` (`00001140:135`) has no job row                                                                             | PM     |
 | PRD-G4 | Reschedule ballots settle                                                             | ✅     | High     | UAT  | OPS2 (#513, `dd1ee9a2`): `scheduling.fn_settle_votes` closes every vote past its deadline through `close_reschedule_round` (SKIP LOCKED, re-checked under the lock, a failure logged as `settle_failed`), and `scheduling-settle-votes` registers at :11/:26/:41/:56. Only the electorate's ballots count, on the read path too (`votesOfVoters`). Probe `settle_votes.sql`, its fixtures settled by `settleVote` in `coordination.contract.test.ts` | OPS2 ✅ |
 | PRD-G5 | Search query-log retention                                                            | ✅     | Normal   | PROD | OPS4 (#515, `4a73588e`): `search.fn_prune_query_logs` (`00001060` §7) deletes `search.query_logs` past `retention_search_query_log_days` (90 days, ⚖️ pending counsel), oldest first in SKIP LOCKED batches, at most 20 a run; an invalid dial keeps 90 days and logs `search.retention`. `search-query-log-retention` registers at 04:36, and `cron:run` runs it. Probe `query_log_retention.sql` | OPS4 ✅ |
-| PRD-G6 | Every HTTP job's bearer and `CRON_APP_URL` are in the hosted Vault                    | ❌     | Critical | UAT  | `cron:vault` provisions `INTEGRATIONS_CRON_SECRET` only (`scripts/cron-vault.ts:16, 36`); the finance, accounts, scheduling and contact jobs skip | —      |
+| PRD-G6 | Every HTTP job's bearer and `CRON_APP_URL` are in the hosted Vault                    | 🟡     | Critical | UAT  | Tool and check built (OPS1, #514). `deno task cron:vault --env-file <file>` writes `CRON_APP_URL` and every bearer the registry names (read from `ops.scheduled_jobs`, so a new job needs no edit) to any database, in one transaction after every value is vetted. `--check` proves each is present, at least 32 characters, digest-equal to the file and scheduled, and exits 1 if not. Proved on a throwaway: 18 of 18 ready, and a deleted secret or a changed value each exits 1. Left: the check green against the hosted project (OPS7); its output is this row's evidence | OPS1 ✅; OPS7 |
 | PRD-G7 | Alerting on job failures, ledger drift and webhook errors                             | 🟡     | High     | PROD | Job failures (`ops.scheduler` at `error`) and ledger drift (every `finance.*` error, a dead-man switch on the two nightly checks) alert by webhook and email digest (#507). Left: webhook errors write no `ops.log_entries` row, so they cannot alert; a hosted send | MR4 ✅; webhook errors |
 | PRD-G8 | Deployment config and runbook (hosting, Supabase project, domains, backups, rollback) | ❌     | Critical | PROD | No deployment config in the repo; `deno task share` (Cloudflare tunnels) is the only hosting path                                                 | —      |
 
@@ -339,8 +340,13 @@ Work orders for every open row, with the run order:
 
 - `supabase/migrations/00005050_seed_reference_data.sql:105` says every provider ships
   `is_enabled=false`; `google`, `outlook` and `zoom` ship `true` (#386).
-- `SYSTEM_ARCHITECTURE.md` §Scheduled jobs says five rows wait for their function (two do) and its
-  table lacks `finance-expire-spend-approvals` and `finance-sweep-idempotency-keys`.
+- ~~`SYSTEM_ARCHITECTURE.md` §Scheduled jobs says five rows wait for their function (two do) and its
+  table lacks `finance-expire-spend-approvals` and `finance-sweep-idempotency-keys`.~~ Fixed (OPS1,
+  #514): both rows are in the table, and the dormant-rows paragraph names what has registered.
+- PRD-G1's evidence reads "40 of 42 rows register"; a fresh build of the migrations on 2026-11-19
+  seeded 48 rows and scheduled 47 (the claim sweep is paused). EPI §8.1 and COMMS_DELIVERY CD2
+  still show the hosted Vault secrets set by hand with `vault.create_secret`, which
+  `cron:vault --env-file` does now (#514 (g)).
 - ~~DB3 landed in `44382c08`, yet `FINANCE_BUILD_PROMPTS.md` §0 calls it uncommitted;
   `FINANCE_AUDIT.md` §5 lists A14, A16, K4, L9, V4 and S4 (and H3) as open though they are closed in
   code.~~ Fixed (MR0): FBP's header and §0 re-verified at `b7280787`; FA §5 marks A14, A16, K4, L9, V4
@@ -412,3 +418,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | MS2 (#508): PRD-E2 ❌ → ✅ (one send door for both stores; `cht-` is the only routed chat address); PRD-J1 narrowed; new PRD-E17 ❌ | 67% | 63% |  43% |
 | 2026-11-19 | OPS2 (#513): PRD-G4 ❌ → ✅ (a reschedule vote past its deadline settles on a timer, through the read path's door; only the electorate's ballots count) | 76% | 66% |  45% |
 | 2026-11-19 | OPS4 (#515): PRD-G5 ❌ → ✅ (query logs past their 90-day dial are deleted daily; the dormant `search-query-log-retention` job registers) | 76% | 66% |  45% |
+| 2026-11-19 | OPS1 (#514): PRD-G6 ❌ → 🟡 (`cron:vault --env-file` provisions every registry bearer to any Vault, and `--check` proves each equals the file; the hosted run is OPS7's) | 76% | 67% |  46% |

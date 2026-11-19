@@ -2561,16 +2561,41 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
   also the path for a database without pg_cron.
 - **Environments.** The Supabase Postgres image ships pg_cron, pg_net and Vault, local
   `supabase start` included (measured 2026-10-13: pg_cron 1.6.4, pg_net 0.20.4), so every sql job
-  runs locally as it does when hosted. The http jobs skip (and log) until the Vault secrets below
-  exist, and a skipped run still reads as succeeded in `cron.job_run_details`. Locally `CRON_APP_URL`
-  is `http://host.docker.internal:<PORT>`, because pg_net runs inside the database container, and
-  `deno task db:reset` sets it with `INTEGRATIONS_CRON_SECRET`, `COMMS_DISPATCH_SECRET` and
-  `OPS_CRON_SECRET` from `.env.local` (`cron:vault`, each only when well formed), because a rebuild empties Vault. The money
-  sweeps stay on `deno task cron:run` locally.
+  runs locally as it does when hosted. The http jobs skip (and log) until their Vault secrets exist,
+  and a skipped run still reads as succeeded in `cron.job_run_details`. `deno task cron:vault`
+  (`scripts/cron-vault.ts`, OPS1) writes them. It reads the bearer list from the target database's
+  own registry rows, so a new http job needs no edit to it.
+  - **Locally** `CRON_APP_URL` is `http://host.docker.internal:<PORT>`, because pg_net runs inside
+    the database container. `deno task db:reset` sets it, with `INTEGRATIONS_CRON_SECRET`,
+    `COMMS_DISPATCH_SECRET` and `OPS_CRON_SECRET` from `.env.local` (`cron:vault` with no flag,
+    each only when well formed), because a rebuild empties Vault. The money sweeps stay on
+    `deno task cron:run` locally. `cron:vault --all` is the opt-in that writes every bearer the
+    registry names (from `.env.local`, then `.env`), after which the money sweeps run on their timers
+    against the dev server until the next reset.
+  - **Hosted**, from an operator's machine and never from a deployed app. Keep the environment's
+    values in a gitignored `.env.<name>` beside the repo (`.env.staging`, say): `CRON_VAULT_DB_URL`
+    (the project's direct or session-pooler connection string), `CRON_VAULT_DB_CA` (the path of the
+    project's CA certificate, from Database settings → SSL configuration), `APP_URL`, `CRON_APP_URL`
+    if it differs from `APP_URL`'s origin, and every bearer the registry names, each the value the
+    app's host holds. A non-loopback database is reached only over TLS that verifies it, never
+    downgraded. First `deno task cron:vault --env-file .env.staging`: it vets every value (at least
+    32 characters, not `XXXX-XXXX`, no whitespace, no two names sharing one; `CRON_APP_URL` https,
+    on a public host and equal to `APP_URL`'s origin), then writes them all in one transaction, or
+    writes nothing and says why. Then `deno task cron:vault --env-file .env.staging --check`, which
+    is read-only. For each enabled http job it reports the bearer present in Vault, its length
+    measured in SQL, its sha256 equal to the file's (each side digests its own copy, so no value
+    crosses), the `cron.job` entry and the last dispatch. It exits 1 when any job is not ready, or
+    when the app has refused a bearer (401, 403 or 404) since it was written. That output is
+    PRD-G6's evidence. No value is read from the command line or printed.
+  - **Rotation:** the app's env first, then the Vault value: edit the file, re-run `--env-file`,
+    then `--check`. In between, the routes 404 the old bearer (Decision #125), `ops-watch-jobs` logs
+    each refusal as `http_failed`, and every job is safe to re-run, so the first run after the Vault
+    write catches up.
 - **The comms Vault secrets.** The notification dispatcher (§The Notification Engine, Decision #344
   (a)) reads `CRON_APP_URL` and `COMMS_DISPATCH_SECRET` from Vault twice: the `comms.notifications`
   trigger posts each new notification to `/api/comms/dispatch` with them, and the
-  `comms-dispatch-sweep` http job uses the same pair. A hosted project needs both, by hand, before the
+  `comms-dispatch-sweep` http job uses the same pair. A hosted project gets both from
+  `cron:vault --env-file` (above), and `--check` shows them ready, before the
   `comms.dispatch_webhook` flag is turned on (EPI §8.1's runbook).
 
 | Job                                 | Cadence (UTC)                     | Runs                                                                     | Owner                                                             | Idempotency                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -2606,6 +2631,8 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `finance-sweep-card-payments`       | :13 / :28 / :43 / :58             | `POST /api/finance/cron/card-payments?limit=50` · `FINANCE_CRON_SECRET`  | Finance — `PaymentBackendService.sweepUnsettledCardPayments` (N1, CO15) | Each payment is leased once per window (`finance.claim_unsettled_card_payments`); every settlement is idempotent on its intent. An intent still `requires_*` 24 h after Stripe created it is re-read and canceled under a key derived from the intent, so a re-run cancels once; the `payment_intent.canceled` webhook closes the payment.                                                                                                                                                                                                                                                                                                                                                                        |
 | `projects-release-expired-claims`   | :03 / :18 / :33 / :48, **paused** | `projects.fn_release_expired_claims()`                                   | Projects — the claim TTL (`00001140`)                             | Registered with `enabled = false` until PM-WP1 adds `SKIP LOCKED` and a `claimed` re-check (#338 (a)).                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `scheduling-expire-discovery-calls` | `1,16,31,46 * * * *`              | `SELECT scheduling.fn_expire_discovery_calls();`                         | Scheduling — discovery-call expiry (`00001510`, audit S-11)       | `FOR UPDATE SKIP LOCKED` batches; only a call still `proposed` past its TTL or its start is taken, so an expired call is never touched or announced twice.                                                                                                                                                                                                                                                                                                                                             |
+| `finance-expire-spend-approvals`    | hourly :12                        | `finance.fn_expire_spend_approvals()`                                    | Finance — spend approvals (`00001210`, FINANCE_AUDIT A16)         | `FOR UPDATE SKIP LOCKED` batches of 5 000; only a `pending` request past its `expires_at` becomes `expired`, so a re-run or an overlapping run expires nothing twice. Moves no money. |
+| `finance-sweep-idempotency-keys`    | daily 04:27                       | `finance.fn_sweep_idempotency_keys()`                                    | Finance — idempotency keys (`00001240`)                           | Deletes keys expired more than 30 days ago, in `SKIP LOCKED` batches of 10 000; the `stripe.webhook` claims are kept as the webhook's replay guard and a key with no `expires_at` is never swept, so a re-run deletes nothing a retry still needs. |
 | `scheduling-settle-votes`           | `11,26,41,56 * * * *`             | `SELECT scheduling.fn_settle_votes();`                                   | Scheduling — vote settlement (`00001510` §6f, audit S-13, #513)   | `FOR UPDATE SKIP LOCKED` batches of 200; a round is re-read under its lock and closed through `close_reschedule_round`, which answers NULL for one already closed, so a round the read path settled first, or a second run, moves nothing and tells nobody again. A failed close is logged (`settle_failed`) and retried next run.                                                                                                                                                                     |
 | `integrations-mint-rooms`           | every minute                      | `POST /api/integrations/cron/rooms`                                      | Integrations — `RoomBackendService`                               | Mints the rooms the queue is waiting for, then follows moved and cancelled rooms at their providers; repeat-safe. |
 | `integrations-presence-reconcile`   | every 15 min                      | `POST /api/integrations/cron/rooms?task=reconcile`                       | Integrations — `RoomBackendService`                               | Reads each ended meeting's attendance from its provider. A failed read stamps nothing, so a sitting that needed it stays held. |
@@ -2634,9 +2661,10 @@ FOUNDER_QUESTIONNAIRE Q0.3): the comms engine's `fn_process_queue`, `fn_escalate
 `fn_compact_delivery_events` run on the minutes that file sets, and so does the N1 card-payment
 recovery sweep (`finance-sweep-card-payments`). `projects.fn_release_expired_claims` is registered
 **paused** until PM-WP1 hardens it (#338 flag (a)); `projects.fn_resolve_expired_workload_reports`
-is not registered, and PM-WP5 adds it with its fixes. Five more rows (discovery-call expiry, vote
-settlement, spend-approval expiry, the idempotency-key sweep and query-log retention) register
-themselves at the first reset after their function exists.
+is not registered, and PM-WP5 adds it with its fixes. Five more rows register themselves at the
+first reset after their function exists, and all five have: discovery-call expiry, spend-approval
+expiry and the idempotency-key sweep, then vote settlement (`scheduling.fn_settle_votes`, OPS2) and
+query-log retention (`search.fn_prune_query_logs`, OPS4). Each has its row in the table above.
 
 ### Edge Functions & Webhooks
 
@@ -4521,9 +4549,12 @@ SEARCH_CRON_SECRET=XXXX-XXXX
 OPS_ALERT_WEBHOOK_URL=XXXX-XXXX
 OPS_ALERT_EMAIL=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
-# pg_net reads them inside the database to call the routes above; set them per environment with
-#   SELECT vault.create_secret('<value>', '<NAME>');   -- vault.update_secret(id, '<value>') to rotate
-# and never in a migration or a seed. Until they exist, each http job skips and logs instead of running.
+# pg_net reads them inside the database to call the routes above. `deno task cron:vault` sets them per
+# environment, taking the names from the job registry: `--env-file .env.<name>` writes a hosted
+# project's from that gitignored file, whose CRON_VAULT_DB_URL and CRON_VAULT_DB_CA are operator
+# tooling the app never reads, and `--check` proves each equals the file (§Scheduled jobs,
+# Environments). Never in a migration or a seed. Until they exist, each http job skips and logs
+# instead of running.
 #   CRON_APP_URL         the origin the DATABASE reaches the app on (public APP_URL when hosted;
 #                        http://host.docker.internal:<PORT> locally)
 #   FINANCE_CRON_SECRET  the same value as the env key above
