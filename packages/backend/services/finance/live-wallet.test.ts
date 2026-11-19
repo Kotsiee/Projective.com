@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import type { MoneyProjector } from "./commerce-money.ts";
+import { MONEY_LOCKED } from "./money-gate.ts";
 import {
 	actionsFor,
 	decidableBy,
@@ -90,9 +91,66 @@ const ALL_RULE_ACTIONS = [
 	"archive_recurring",
 ];
 
+/**
+ * Run `fn` with the money switch `on` or off (`FINANCE_BACKEND_LIVE`, Supabase configured, not
+ * mocked), putting the environment back afterwards. `actionsFor` reads it to lock every action.
+ */
+function moneySwitch<T>(on: boolean, fn: () => T): T {
+	const vars: Record<string, string | undefined> = {
+		FINANCE_BACKEND_LIVE: on ? "true" : "false",
+		USE_MOCKS: "false",
+		VITE_USE_MOCKS: undefined,
+		SUPABASE_URL: Deno.env.get("SUPABASE_URL") ?? "http://127.0.0.1:59999",
+		SUPABASE_ANON_KEY: Deno.env.get("SUPABASE_ANON_KEY") ?? "anon-key",
+	};
+	const prior = new Map(Object.keys(vars).map((key) => [key, Deno.env.get(key)]));
+	const apply = (values: Iterable<[string, string | undefined]>) => {
+		for (const [key, value] of values) {
+			if (value === undefined) Deno.env.delete(key);
+			else Deno.env.set(key, value);
+		}
+	};
+	apply(Object.entries(vars));
+	try {
+		return fn();
+	} finally {
+		apply(prior);
+	}
+}
+
+Deno.test("actionsFor: with the money switch off, every offered action is drawn locked with its reason", () => {
+	const caps = ["view", "add_funds", "spend", "distribute", "withdraw", "manage_billing"];
+	const off = moneySwitch(
+		false,
+		() => actionsFor("team", account("team", caps), [SELLER], ELIGIBLE, [], true, true),
+	);
+	const on = moneySwitch(
+		true,
+		() => actionsFor("team", account("team", caps), [SELLER], ELIGIBLE, [], true, true),
+	);
+	assertEquals(off.offered, on.offered, "the switch locks; it never hides what the viewer may do");
+	assert(
+		off.offered.includes("transfer") && off.offered.includes("distribute"),
+		"internal moves are offered",
+	);
+	assertEquals(off.unavailable, off.offered.map((action) => ({ action, reason: MONEY_LOCKED })));
+	assertFalse(
+		on.unavailable.some((u) => u.reason === MONEY_LOCKED),
+		"with it on, each action answers to its own state",
+	);
+	assertEquals(
+		on.unavailable.find((u) => u.action === "distribute"),
+		undefined,
+		"a vault that holds money with an agreed split distributes",
+	);
+});
+
 Deno.test("actionsFor: a holder is offered every automation, locked with its reason, never dropped", () => {
 	assertEquals(ELIGIBLE.status, "eligible");
-	const out = actionsFor("personal", SELLER, [SELLER], ELIGIBLE, [], true, false);
+	const out = moneySwitch(
+		true,
+		() => actionsFor("personal", SELLER, [SELLER], ELIGIBLE, [], true, false),
+	);
 	assert(out.offered.includes("set_payout"), "a manual payout stays offered");
 	assert(out.offered.includes("enrol_smoother"), "a locked enrolment is still drawn");
 	assertEquals(out.locks.map((l) => l.code), ["pots_not_running", "smoother_planned"]);
