@@ -508,13 +508,13 @@ ACCEPTANCE:
 
 ### OPS3 — The workload-report expiry sweep is safe to run, then it runs
 
-> **Status 2026-11-19: OPS3 landed (Decision #519; PRD-G3 ✅).** Two context lines were out of date
-> when it ran. The grant finding was already closed: SAC1's deny-by-default region (#477) had revoked
-> the sweep from PUBLIC, anon and authenticated, so step 4 only names it. And `6,21,36,51` meets two
-> dailies, not one: 04:36 and `reviews-reminders` at 09:21 (#487). No quarter-hour set is free every
-> hour, and this one meets the fewest jobs. A report that changed under the lock is logged
-> (`changed_under_lock`), and a failed close is rolled back alone (`resolve_failed`). PM-WP5a carries
-> the status note.
+> **Status 2026-11-19: OPS3 landed** (`fd0c91aa`, Decision #519; PRD-G3 ✅). Two context lines were
+> out of date when it ran. The grant finding was already closed: SAC1's deny-by-default region
+> (#477) had revoked the sweep from PUBLIC, anon and authenticated, so step 4 only names it. And
+> `6,21,36,51` meets two dailies, not one: 04:36 and `reviews-reminders` at 09:21 (#487). No
+> quarter-hour set is free every hour, and this one meets the fewest jobs. A report that changed
+> under the lock is logged (`changed_under_lock`), and a failed close is rolled back alone
+> (`resolve_failed`). PM-WP5a carries the status note.
 
 PM-WP5a step 3g plus the sweep-time half of 3d, carved out. Closes PRD-G3.
 

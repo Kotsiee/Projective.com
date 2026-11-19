@@ -878,7 +878,8 @@ ACCEPTANCE:
 
 ### PM-WP5a — Workload reporting reaches the product
 
-> **Status 2026-11-19:** Partly done: step 3g and the sweep-time half of 3d landed in OPS3 (#519).
+> **Status 2026-11-19:** Partly done: step 3g and the sweep-time half of 3d landed in OPS3
+> (`fd0c91aa`, #519).
 > `fn_resolve_expired_workload_reports(p_now, p_limit)` locks the ticket before its report
 > (`SKIP LOCKED`) and re-checks it `open`. A lapsed report whose ticket has left `reported_hidden`, or
 > carries a later report, closes `acknowledged` with no penalty. `projects-resolve-workload-reports`
