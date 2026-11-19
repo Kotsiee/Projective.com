@@ -78,17 +78,39 @@ BEGIN
         RAISE EXCEPTION 'FAIL no fixture: need a verified business client project with 1000.00 in its wallet whose owner can spend (deno task db:reset)';
     END IF;
 
+    -- The seats this probe commits stay behind, so take freelancers who already own a project or hold
+    -- a live seat first: seat_fill_concurrency, which runs after it, needs four who do neither.
     SELECT fp.user_id INTO v_fl1 FROM org.freelancer_profiles fp
      WHERE fp.user_id <> (SELECT v FROM wp1_fx WHERE k = 'owner') AND finance.fn_freelancer_payout_ready(fp.user_id)
-     ORDER BY fp.user_id LIMIT 1;
+     ORDER BY (EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = fp.user_id)
+               OR EXISTS (SELECT 1 FROM projects.stage_assignments sa
+                           WHERE sa.freelancer_profile_id = fp.user_id
+                             AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed'))) DESC,
+              (SELECT COALESCE(SUM(t.workload_intensity), 0) FROM projects.tickets t
+                WHERE t.current_assignee_id = fp.user_id
+                  AND t.status IN ('claimed', 'in_progress', 'in_review', 'reported_hidden')),
+              fp.user_id
+     LIMIT 1;
     SELECT fp.user_id INTO v_fl2 FROM org.freelancer_profiles fp
      WHERE fp.user_id NOT IN ((SELECT v FROM wp1_fx WHERE k = 'owner'), v_fl1) AND finance.fn_freelancer_payout_ready(fp.user_id)
-     ORDER BY fp.user_id LIMIT 1;
+     ORDER BY (EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = fp.user_id)
+               OR EXISTS (SELECT 1 FROM projects.stage_assignments sa
+                           WHERE sa.freelancer_profile_id = fp.user_id
+                             AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed'))) DESC,
+              (SELECT COALESCE(SUM(t.workload_intensity), 0) FROM projects.tickets t
+                WHERE t.current_assignee_id = fp.user_id
+                  AND t.status IN ('claimed', 'in_progress', 'in_review', 'reported_hidden')),
+              fp.user_id
+     LIMIT 1;
     IF v_fl2 IS NULL THEN RAISE EXCEPTION 'FAIL no fixture: need two payout-ready freelancers'; END IF;
     INSERT INTO wp1_fx VALUES ('fl1', v_fl1), ('fl2', v_fl2);
 
+    -- The next free sort order, so a second run on the same database adds its own stage.
     INSERT INTO projects.project_stages (project_id, name, sort_order, status, unit_price_cents)
-    VALUES ((SELECT v FROM wp1_fx WHERE k = 'project'), 'Probe WP1 race A', 970, 'open', 10000) RETURNING id INTO v_sa;
+    SELECT (SELECT v FROM wp1_fx WHERE k = 'project'), 'Probe WP1 race A',
+           COALESCE(MAX(s.sort_order), 0) + 1, 'open', 10000
+      FROM projects.project_stages s WHERE s.project_id = (SELECT v FROM wp1_fx WHERE k = 'project')
+    RETURNING id INTO v_sa;
     INSERT INTO wp1_fx VALUES ('stage', v_sa);
     INSERT INTO projects.stage_assignments (project_stage_id, assignee_type, freelancer_profile_id, assigned_by, is_client_managed, status)
     VALUES (v_sa, 'freelancer', v_fl1, (SELECT v FROM wp1_fx WHERE k = 'owner'), false, 'assigned'),
