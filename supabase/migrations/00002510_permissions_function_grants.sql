@@ -244,6 +244,10 @@ REVOKE ALL ON FUNCTION search.fn_team_live_workload (uuid) FROM PUBLIC, anon, au
 -- search.is_admin(uuid) answers for any user id it is handed, so no client role calls it (PRD-C6).
 -- Its callers are the three weight and analytics definers, which run it as their owner. The weights
 -- policy asks security.is_admin(), which reads only auth.uid().
+
+-- Query-log retention (00001060 §7, OPS4): only the scheduler and the service role run the prune.
+REVOKE ALL ON FUNCTION search.fn_prune_query_logs (integer, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION search.fn_prune_query_logs (integer, timestamptz) TO service_role;
 -- #endregion
 
 -- --- from 0220_search_engine_rpc.sql ---

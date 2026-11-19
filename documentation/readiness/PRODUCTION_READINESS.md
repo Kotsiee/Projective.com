@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
 | **UAT**          | **66%** |           67 | 39 |  8 | 20 |           6 |
-| **Production**   | **45%** |          148 | 50 | 25 | 73 |          16 |
+| **Production**   | **45%** |          148 | 51 | 25 | 72 |          16 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -57,7 +57,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   17 |  3 |  6 |  8 |   40% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  5 | 11 |   43% |
-| G. Scheduled jobs & operations     |    8 |  2 |  1 |  5 |   28% |
+| G. Scheduled jobs & operations     |    8 |  3 |  1 |  4 |   33% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
 | J. Routing, URLs & SEO             |    5 |  3 |  1 |  1 |   75% |
@@ -232,7 +232,7 @@ Work orders for every open row, with the run order:
 | PRD-G2 | The claim-TTL sweep is hardened and running                                           | ❌     | Critical | UAT  | `projects-release-expired-claims` seeded paused; the sweep has no lock, re-check, history row or notice (`00001140:689-720`)                      | PM-WP1 |
 | PRD-G3 | Workload-report expiry is scheduled                                                   | ❌     | High     | UAT  | `fn_resolve_expired_workload_reports` (`00001140:135`) has no job row                                                                             | PM     |
 | PRD-G4 | Reschedule ballots settle                                                             | ✅     | High     | UAT  | OPS2 (#513, `dd1ee9a2`): `scheduling.fn_settle_votes` closes every vote past its deadline through `close_reschedule_round` (SKIP LOCKED, re-checked under the lock, a failure logged as `settle_failed`), and `scheduling-settle-votes` registers at :11/:26/:41/:56. Only the electorate's ballots count, on the read path too (`votesOfVoters`). Probe `settle_votes.sql`, its fixtures settled by `settleVote` in `coordination.contract.test.ts` | OPS2 ✅ |
-| PRD-G5 | Search query-log retention                                                            | ❌     | Normal   | PROD | The `search-query-log-retention` row exists; `search.fn_prune_query_logs` does not                                                                | —      |
+| PRD-G5 | Search query-log retention                                                            | ✅     | Normal   | PROD | OPS4 (#515): `search.fn_prune_query_logs` (`00001060` §7) deletes `search.query_logs` past `retention_search_query_log_days` (90 days, ⚖️ pending counsel), oldest first in SKIP LOCKED batches, at most 20 a run; an invalid dial keeps 90 days and logs `search.retention`. `search-query-log-retention` registers at 04:36, and `cron:run` runs it. Probe `query_log_retention.sql` | OPS4 ✅ |
 | PRD-G6 | Every HTTP job's bearer and `CRON_APP_URL` are in the hosted Vault                    | ❌     | Critical | UAT  | `cron:vault` provisions `INTEGRATIONS_CRON_SECRET` only (`scripts/cron-vault.ts:16, 36`); the finance, accounts, scheduling and contact jobs skip | —      |
 | PRD-G7 | Alerting on job failures, ledger drift and webhook errors                             | 🟡     | High     | PROD | Job failures (`ops.scheduler` at `error`) and ledger drift (every `finance.*` error, a dead-man switch on the two nightly checks) alert by webhook and email digest (#507). Left: webhook errors write no `ops.log_entries` row, so they cannot alert; a hosted send | MR4 ✅; webhook errors |
 | PRD-G8 | Deployment config and runbook (hosting, Supabase project, domains, backups, rollback) | ❌     | Critical | PROD | No deployment config in the repo; `deno task share` (Cloudflare tunnels) is the only hosting path                                                 | —      |
@@ -411,3 +411,4 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | SC1 (#501): no row flips; PRD-I3 narrowed (`catalogue.listings` has its row schema; comms messages, `scheduling.events` and seven catalogue tables left) | 58% | 61% | 42% |
 | 2026-11-18 | MS2 (#508): PRD-E2 ❌ → ✅ (one send door for both stores; `cht-` is the only routed chat address); PRD-J1 narrowed; new PRD-E17 ❌ | 67% | 63% |  43% |
 | 2026-11-19 | OPS2 (#513): PRD-G4 ❌ → ✅ (a reschedule vote past its deadline settles on a timer, through the read path's door; only the electorate's ballots count) | 76% | 66% |  45% |
+| 2026-11-19 | OPS4 (#515): PRD-G5 ❌ → ✅ (query logs past their 90-day dial are deleted daily; the dormant `search-query-log-retention` job registers) | 76% | 66% |  45% |

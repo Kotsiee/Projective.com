@@ -41,7 +41,8 @@
 >   - `fn_team_archive_blockers` checks `escrow_held` and `live_assignments` only.
 >   - The `users_public` row policy is unchanged (`00002010:10-13`).
 >   - No flag exists for the minors proxy.
->   - `search.fn_prune_query_logs` is named only by its dormant job row (`00005060`).
+>   - `search.fn_prune_query_logs` was named only by its dormant job row (`00005060`). It exists
+>     since OPS4 (2026-11-19, `00001060` §7), and the row registers on reset.
 
 ---
 
@@ -155,7 +156,8 @@ Shared files outside §B.0 that still collide:
 - **RLS1 ⏳** the F, P and C SQL steps; F·SV2/SV3/SV5 and RED WP2 (`live-wallet.ts`); and M·N1 (the
   messaging services).
 - **Already done by jobs-sql (Wave 1.3):** `search-query-log-retention` is seeded dormant and
-  registers itself once `search.fn_prune_query_logs` exists (ERA2).
+  registers itself once `search.fn_prune_query_logs` exists. **Done by OPS4 (2026-11-19):** the
+  function exists (`00001060` §7), so the job registers; ERA2 keeps only its fold-in (ERA2 status).
 
 ### 0.5 Open decisions and new contradictions
 
@@ -733,6 +735,15 @@ ACCEPTANCE:
 ```
 
 ### ERA2 — Erasure windows and retention periods become dials
+
+> **Status 2026-11-19:** step 3 and `retention_search_query_log_days` landed in OPS4
+> ([OPERATIONS_BUILD_PROMPTS.md](../readiness/OPERATIONS_BUILD_PROMPTS.md) §OPS4).
+> `search.fn_prune_query_logs(p_batch integer DEFAULT 5000, p_now timestamptz DEFAULT NULL)` is in
+> `00001060` §7, and `search-query-log-retention` registers on reset. Fold the dial into your
+> `[erasure_retention]` region and drop OPS4's `[search_retention]` region in `00005001`. Then switch
+> the prune's read of `"default"` to `security.fn_retention_period`. Keep the fallback: an invalid
+> period keeps 90 days and writes a `search.retention` warning. Extend `query_log_retention.sql`
+> rather than duplicating it in `erasure_windows.sql`.
 
 ```text
 PROMPT ERA2: Erasure windows and retention periods become dials, and the retention sweeps run

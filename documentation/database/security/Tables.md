@@ -156,6 +156,7 @@ Finance-relevant keys:
 | `session_payout_hours`             | `24`    | Negative-consent window before a session payout auto-releases — per sitting on a 1-1 (Decision #211).|
 | `set_session_schedule_hours`       | `72`    | Hours after a set-session block is paid for to agree each remaining sitting's time before the pencilled-in weekly time stands (capped at `session_cancel_notice_hours` before it; Decision #211). |
 | `public_metrics_min_n`             | `10`    | The public site's publication threshold (`00005001` `[about_metrics]`, Decision #277): a live figure on `/about` or the landing page whose underlying count is below it — protected escrows, delivered stages, delivered stages with a funding-to-approval interval — is withheld by `finance.public_metrics()`, never padded. Missing or not a number ≥ 1, the literal default 10 applies and `PublicMetricsService` logs it. |
+| `retention_search_query_log_days`  | object  | Days a `search.query_logs` row is kept (`00005001` `[search_retention]`, OPS4; finance-model.md §17, ⚖️ pending counsel). Every retention period's shape: `{"default": n, "by_country": {"XX": n}}`, seeded `{"default": 90, "by_country": {}}`. Read only by `search.fn_prune_query_logs`, the daily `search-query-log-retention` job ([search/Functions.md](../search/Functions.md)), and only its `default`: a query log has no country. If it is missing, not a whole number or below 1, the prune keeps 90 days and logs a warning (`ops.log_entries`, scope `search.retention`). ERA2 folds it into its `[erasure_retention]` region. |
 
 ---
 

@@ -10,12 +10,14 @@
 --   org.schedule_account_deletion                 the whole account is erased in 30 days
 --   org.cancel_deletion_request                   undo either, restoring exactly what scheduling paused
 --   org.fn_purge_due_deletions                    (service role) the sweep that runs the erasure
+--   search.fn_prune_query_logs                    (scheduler) deletes query logs past their retention
 --
 -- Refusals are the exception MESSAGE with SQLSTATE `P0001` and are one of the `AccountRefusal`
 -- codes; a blocked schedule carries the blocker codes, comma-separated, in DETAIL. Nothing is
 -- deleted from the product's own tables: listings are archived, profile content is cleared, and the
 -- request row is the record that the erasure ran. The one exception is GoTrue's credentials
--- (`auth.identities`, `auth.sessions`), which an erased account must not keep.
+-- (`auth.identities`, `auth.sessions`), which an erased account must not keep. The retention sweeps
+-- (§7) are a separate rule: a record past its retention period (finance-model.md §17) is deleted.
 -- =============================================================================================
 
 -- #region 1. Handle policy
@@ -647,5 +649,117 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
     SELECT org.fn_purge_due_deletions(p_limit);
+$$;
+-- #endregion
+
+-- #region 7. Retention: search query logs (finance-model.md §17 ⚖️; OPS4, ERA2 step 3)
+-- The scheduler's `search-query-log-retention` job (daily at 04:36; 00005060 registers it by this
+-- name) calls this with no arguments. It lives here with the erasure work, not in 00001400, which
+-- the search track edits. The period is the `retention_search_query_log_days` dial, in every
+-- retention period's shape {"default": n, "by_country": {"XX": n}}. A query log has no country, so
+-- only "default" is read; ERA2 later swaps the read for security.fn_retention_period.
+--
+-- A dial that is missing, not a whole number or below 1 never widens the sweep: the run raises a
+-- WARNING, writes an ops.log_entries row (scope `search.retention`) and keeps §17's 90 days. Rows go
+-- oldest first in batches of p_batch, each locked SKIP LOCKED and re-checked under the lock, until a
+-- batch comes back short, and at most 20 batches a run so it cannot hold the table. A run that stops at
+-- the cap with rows still due says so the same way, and the next run carries on. A period longer than
+-- the calendar reaches back keeps every row. A row with no created_at has no age and is never deleted.
+-- p_now moves the clock for probes. Returns how many rows were deleted. Service role and scheduler
+-- only.
+CREATE OR REPLACE FUNCTION search.fn_prune_query_logs(
+    p_batch integer DEFAULT 5000,
+    p_now timestamptz DEFAULT NULL
+)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    c_job constant text := 'search-query-log-retention';
+    c_key constant text := 'retention_search_query_log_days';
+    c_fallback_days constant integer := 90;
+    c_max_batches constant integer := 20;
+    v_batch integer := GREATEST(COALESCE(p_batch, 5000), 1);
+    v_value jsonb;
+    v_num numeric;
+    v_days integer;
+    v_cutoff timestamptz;
+    v_deleted integer := 0;
+    v_total integer := 0;
+    v_runs integer := 0;
+BEGIN
+    SELECT p.value INTO v_value
+      FROM security.platform_params p
+     WHERE p.key = c_key;
+    v_num := CASE WHEN pg_catalog.jsonb_typeof(v_value -> 'default') = 'number'
+                  THEN (v_value -> 'default')::numeric END;
+
+    IF v_num IS NOT NULL AND v_num >= 1 AND v_num = pg_catalog.trunc(v_num) THEN
+        v_days := LEAST(v_num, 2147483647)::integer;
+    ELSE
+        v_days := c_fallback_days;
+        RAISE WARNING '[search.retention] % is %; its "default" is not a whole number of days >= 1, so query logs are kept % days',
+            c_key, COALESCE(v_value::text, 'missing'), c_fallback_days;
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            pg_catalog.format('scheduler:%s:invalid_dial', c_job),
+            'warn',
+            pg_catalog.format('%s is %s; its "default" is not a whole number of days >= 1, so query logs were kept %s days',
+                c_key, COALESCE(v_value::text, 'missing'), c_fallback_days),
+            pg_catalog.now(),
+            'server',
+            'search.retention',
+            pg_catalog.jsonb_build_object('job', c_job, 'reason', 'invalid_dial', 'key', c_key,
+                'value', v_value, 'fallback_days', c_fallback_days)
+        );
+    END IF;
+
+    BEGIN
+        v_cutoff := COALESCE(p_now, pg_catalog.now()) - pg_catalog.make_interval(days => v_days);
+    EXCEPTION WHEN datetime_field_overflow THEN
+        RETURN 0;
+    END;
+
+    WHILE v_runs < c_max_batches LOOP
+        WITH due AS (
+            SELECT q.id
+              FROM search.query_logs q
+             WHERE q.created_at < v_cutoff
+             ORDER BY q.created_at
+             LIMIT v_batch
+               FOR UPDATE SKIP LOCKED
+        )
+        DELETE FROM search.query_logs q
+         USING due
+         WHERE q.id = due.id
+           AND q.created_at < v_cutoff;
+        GET DIAGNOSTICS v_deleted = ROW_COUNT;
+        v_total := v_total + v_deleted;
+        v_runs := v_runs + 1;
+        EXIT WHEN v_deleted < v_batch;
+    END LOOP;
+
+    IF v_deleted = v_batch AND EXISTS (SELECT 1 FROM search.query_logs q WHERE q.created_at < v_cutoff) THEN
+        RAISE WARNING '[search.retention] % stopped at % batches of %: query logs past % days remain',
+            c_job, c_max_batches, v_batch, v_days;
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            pg_catalog.format('scheduler:%s:backlog', c_job),
+            'warn',
+            pg_catalog.format('the prune stopped at %s batches of %s with query logs past %s days remaining; the next run carries on',
+                c_max_batches, v_batch, v_days),
+            pg_catalog.now(),
+            'server',
+            'search.retention',
+            pg_catalog.jsonb_build_object('job', c_job, 'reason', 'backlog', 'deleted', v_total,
+                'batches', c_max_batches, 'batch', v_batch, 'days', v_days)
+        );
+    END IF;
+
+    RETURN v_total;
+END;
 $$;
 -- #endregion

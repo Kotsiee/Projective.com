@@ -11,7 +11,8 @@ Declared in `00001400_functions_search.sql`; the triggers that fire them are in
 `00001800_triggers_core_search.sql`. Tables: [Tables.md](Tables.md) · Policies:
 [Policies.md](Policies.md).
 
-Documented here: the **index-sync triggers**, `fn_log_query`, the **discovery-signal** functions
+Documented here: the **index-sync triggers**, `fn_log_query`, its retention sweep
+`fn_prune_query_logs` (declared in `00001060`, not here), the **discovery-signal** functions
 (`ranking_weights`, `trending_entities`, `record_view`) and the **embedding** functions
 (`fn_set_embedding`, `fn_nearest`, `fn_nearest_to_entity` — Decision #179). The other query and
 admin RPCs (`fn_search_analytics`, `fn_get_weights`, `fn_set_weight`, `is_admin`) are not yet
@@ -152,6 +153,41 @@ writes `auth.uid()`, which is NULL for a guest, and NULL with no query vector fo
 function (`42883`, PostgREST `PGRST202`). It is also the table's only writer: no client role holds
 `INSERT` on `search.query_logs`, and the table has no INSERT policy ([Policies.md](Policies.md)).
 Pinned by `supabase/probes/search_query_log_attribution.sql` (PRD-C8, SEC G13).
+
+---
+
+## `search.fn_prune_query_logs` — query-log retention (OPS4, PRD-G5)
+
+`(p_batch integer DEFAULT 5000, p_now timestamptz DEFAULT NULL) RETURNS integer`: `SECURITY
+DEFINER`, `search_path = ''`, service role only (`00002510`; no client role executes it). Declared
+in `00001060_functions_org_account_lifecycle.sql` §7 with the other retention and erasure work,
+because the search track edits `00001400` (IDENTITY_BUILD_PROMPTS §0.3).
+
+Deletes the `search.query_logs` rows whose `created_at` is older than the
+`retention_search_query_log_days` dial ([security/Tables.md](../security/Tables.md);
+finance-model.md §17, ⚖️ pending counsel), and returns how many it deleted. The scheduler's
+`search-query-log-retention` job runs `SELECT search.fn_prune_query_logs();` daily at 04:36
+(`00005060` registers the row once a function of this exact name exists). By hand:
+`deno task cron:run search-query-log-retention`.
+
+- **The dial.** Every retention period has the shape `{"default": n, "by_country": {"XX": n}}`. A
+  query log has no country, so only `"default"` is read. ERA2 later swaps the read for
+  `security.fn_retention_period`.
+- **An invalid dial never widens the sweep.** If the dial is missing, its `"default"` is not a whole
+  number, or it is below 1, the run raises a `WARNING`. It also writes one `warn` row to
+  `ops.log_entries`: `scope = 'search.retention'`, `client_id =
+  'scheduler:search-query-log-retention:invalid_dial'`, with `data` holding the job, reason, key,
+  value and `fallback_days`. Then it keeps §17's 90 days. A period longer than the calendar reaches
+  back keeps every row.
+- **Batches.** Rows go oldest first, in batches of `p_batch`. Each batch is locked `FOR UPDATE SKIP
+  LOCKED` and re-checked under the lock, so two overlapping runs never delete a row twice. The run
+  stops when a batch comes back short, or after 20 batches. A run that stops at the cap with rows
+  still due writes the same kind of row (`…:backlog`), and the next run carries on.
+- A row with no `created_at` has no age and is never deleted. Its only writer, `fn_log_query`, always
+  takes the column's `DEFAULT now()`.
+- `p_now` moves the clock for probes.
+
+Pinned by `supabase/probes/query_log_retention.sql`.
 
 ---
 

@@ -78,6 +78,16 @@ VALUES ('newsletter.provider_sync', false, jsonb_build_object(
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
 
+-- #region [search_retention] How long search query logs are kept (OPS4; finance-model.md §17 ⚖️)
+-- The value is the owner's §17 table, pending counsel (Decision #336, ruling I1). The shape is every
+-- retention period's, {"default": n, "by_country": {"XX": n}}; ERA2 folds this key into its
+-- [erasure_retention] region and drops this one.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('retention_search_query_log_days', '{"default": 90, "by_country": {}}'::jsonb,
+        'Days a search.query_logs row is kept before the daily search-query-log-retention job deletes it (search.fn_prune_query_logs; finance-model.md §17, ⚖️ pending counsel). A query log has no country, so only "default" is read. Missing, not a whole number or below 1: the prune keeps 90 days and logs a warning (ops.log_entries scope search.retention).')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
 -- from 20260723090000
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('base_currency', '"GBP"'::jsonb,
