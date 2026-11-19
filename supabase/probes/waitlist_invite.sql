@@ -473,12 +473,14 @@ BEGIN
          WHERE pp.key = 'waitlist_invite_hold_hours') IS DISTINCT FROM 48 THEN
         RAISE EXCEPTION 'FAIL waitlist_invite_hold_hours is not seeded at 48';
     END IF;
-    IF (SELECT count(*) FROM comms.notification_types t
-         WHERE t.key IN ('waitlist.invited', 'waitlist.invite_expired')
-           AND t.default_channels = ARRAY['in_app']::comms.notification_channel[]) <> 2 THEN
-        RAISE EXCEPTION 'FAIL the two waitlist notice types are not seeded in-app only';
+    -- The invitation also emails (#455, COMMS NT3); the expiry notice stays in-app only.
+    IF (SELECT t.default_channels FROM comms.notification_types t WHERE t.key = 'waitlist.invited')
+           IS DISTINCT FROM ARRAY['in_app', 'email']::comms.notification_channel[]
+       OR (SELECT t.default_channels FROM comms.notification_types t WHERE t.key = 'waitlist.invite_expired')
+           IS DISTINCT FROM ARRAY['in_app']::comms.notification_channel[] THEN
+        RAISE EXCEPTION 'FAIL waitlist.invited is not seeded in-app + email, or waitlist.invite_expired not in-app only';
     END IF;
-    RAISE NOTICE 'PASS the job runs the dispatch, the dial is 48 hours, both notices are in-app';
+    RAISE NOTICE 'PASS the job runs the dispatch, the dial is 48 hours, the invitation emails, the expiry is in-app';
 END $$;
 -- #endregion
 
