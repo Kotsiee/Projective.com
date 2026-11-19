@@ -568,20 +568,22 @@ export type Mode =
 	| { kind: "default" }
 	| { kind: "all" }
 	| { kind: "check-local" }
-	| { kind: "write-env"; envFile: string }
-	| { kind: "check-env"; envFile: string }
+	| { kind: "write-env"; envFile: string; operatorFile?: string }
+	| { kind: "check-env"; envFile: string; operatorFile?: string }
 	| { kind: "help" };
 
 /** The usage text. */
 export const USAGE = [
-	"Usage: deno task cron:vault [--all | --env-file <path>] [--check]",
+	"Usage: deno task cron:vault [--all | --env-file <path> [--operator-file <path>]] [--check]",
 	"",
-	"  (no flags)          the local container: CRON_APP_URL plus the integrations, dispatcher and",
-	"                      alert bearers from .env.local (the db:reset hook; never fails a reset)",
-	"  --all               the local container: every bearer the registry names, money sweeps included",
-	"  --env-file <path>   any database: CRON_VAULT_DB_URL in that file; writes CRON_APP_URL and every",
-	"                      registry bearer from the same file",
-	"  --check             read-only, with either target: is every enabled http job ready? Exit 1 if not",
+	"  (no flags)              the local container: CRON_APP_URL plus the integrations, dispatcher",
+	"                          and alert bearers from .env.local (the db:reset hook; never fails a reset)",
+	"  --all                   the local container: every bearer the registry names, money sweeps included",
+	"  --env-file <path>       any database: writes CRON_APP_URL and every registry bearer from the env",
+	"                          file the app's host receives",
+	"  --operator-file <path>  where CRON_VAULT_DB_URL and CRON_VAULT_DB_CA live, kept out of the host's",
+	"                          file; without it they are read from the --env-file",
+	"  --check                 read-only, with either target: is every enabled http job ready? Exit 1 if not",
 	"",
 	"No value is ever read from the command line or printed.",
 ];
@@ -593,26 +595,35 @@ export const USAGE = [
 export function parseArgs(args: readonly string[]): Mode | { error: string } {
 	let all = false;
 	let check = false;
-	let envFile: string | undefined;
+	const paths: Record<"--env-file" | "--operator-file", string | undefined> = {
+		"--env-file": undefined,
+		"--operator-file": undefined,
+	};
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
 		if (arg === "--help" || arg === "-h") return { kind: "help" };
 		if (arg === "--all") all = true;
 		else if (arg === "--check") check = true;
-		else if (arg === "--env-file") {
+		else if (arg === "--env-file" || arg === "--operator-file") {
 			const path = args[i + 1];
-			if (!path || path.startsWith("--")) return { error: "--env-file needs a path" };
-			if (envFile !== undefined) return { error: "--env-file is given twice" };
-			envFile = path;
+			if (!path || path.startsWith("--")) return { error: `${arg} needs a path` };
+			if (paths[arg] !== undefined) return { error: `${arg} is given twice` };
+			paths[arg] = path;
 			i++;
 		} else return { error: `argument ${i + 1} is not a flag cron:vault knows` };
+	}
+	const envFile = paths["--env-file"];
+	const operatorFile = paths["--operator-file"];
+	if (operatorFile !== undefined && envFile === undefined) {
+		return { error: "--operator-file goes with --env-file" };
 	}
 	if (all && envFile !== undefined) {
 		return { error: "--all is local only; drop it with --env-file" };
 	}
 	if (all && check) return { error: "--check reads; run it without --all" };
 	if (envFile !== undefined) {
-		return check ? { kind: "check-env", envFile } : { kind: "write-env", envFile };
+		const files = operatorFile === undefined ? { envFile } : { envFile, operatorFile };
+		return check ? { kind: "check-env", ...files } : { kind: "write-env", ...files };
 	}
 	if (all) return { kind: "all" };
 	return check ? { kind: "check-local" } : { kind: "default" };
@@ -620,6 +631,52 @@ export function parseArgs(args: readonly string[]): Mode | { error: string } {
 // #endregion
 
 // #region Connection string
+/** The only keys read from an operator file. */
+export const OPERATOR_KEYS = ["CRON_VAULT_DB_URL", "CRON_VAULT_DB_CA"] as const;
+
+/** Where the connection string and the CA file path come from. */
+export interface ConnectionKeys {
+	dbUrl: string | undefined;
+	ca: string | undefined;
+	/** The file the keys were read from, for messages. */
+	source: string;
+}
+
+/**
+ * The connection keys for an `--env-file` run. With an operator file they are read from it alone,
+ * and the env file the app's host receives may hold neither: an operator credential never travels
+ * in the host's environment (OPS6's `deploy:check` refuses one there too). Without an operator file
+ * both come from the env file, the single-file form. Every other key in an operator file is ignored,
+ * so bearers are only ever compared against the values the host receives.
+ */
+export function connectionKeys(
+	env: Readonly<Record<string, string | undefined>>,
+	operator: Readonly<Record<string, string | undefined>> | null,
+	sources: { env: string; operator?: string },
+): ConnectionKeys | { problem: string } {
+	if (!operator) {
+		return { dbUrl: env.CRON_VAULT_DB_URL, ca: env.CRON_VAULT_DB_CA, source: sources.env };
+	}
+	const held = OPERATOR_KEYS.filter((key) => {
+		const value = env[key];
+		return !!value && !value.toUpperCase().includes(PLACEHOLDER);
+	});
+	if (held.length) {
+		return {
+			problem: `${sources.env} holds ${held.join(" and ")}, which ${
+				held.length > 1 ? "belong" : "belongs"
+			} only in ${
+				sources.operator ?? "the operator file"
+			}: the file a host receives never carries an operator credential`,
+		};
+	}
+	return {
+		dbUrl: operator.CRON_VAULT_DB_URL,
+		ca: operator.CRON_VAULT_DB_CA,
+		source: sources.operator ?? "the operator file",
+	};
+}
+
 /** A database connection, parsed from `CRON_VAULT_DB_URL`. */
 export interface DbConnection {
 	hostname: string;

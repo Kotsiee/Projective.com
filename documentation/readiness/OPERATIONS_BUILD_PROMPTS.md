@@ -319,12 +319,13 @@ D8. READINESS <ROWS> = PRD-G2 → ✅. Also: PRD-F23's evidence drops "with the 
 Gives PRD-G6 its tooling (→ 🟡). The row flips to ✅ in OPS7, when the check is green against the
 hosted project.
 
-> **Status 2026-11-19: OPS1 landed** (`10454e87`, #514; PRD-G6 🟡). For OPS7: a non-loopback
-> database is reached only over verified TLS, so the staging env file also needs `CRON_VAULT_DB_CA`
-> (the project's CA certificate file) beside `CRON_VAULT_DB_URL`. The default local mode had already
-> grown to `COMMS_DISPATCH_SECRET` and `OPS_CRON_SECRET` (NT2, MR4), and it keeps them. MR4's "add
-> this job's secret to cron-vault.ts" step is now a no-op; MONEY_BUILD_PROMPTS.md is left to its
-> owner.
+> **Status 2026-11-19: OPS1 landed** (`10454e87`, #514; PRD-G6 🟡). For OPS7, a hosted run takes two
+> files (#514 (j), at OPS6's request): `--env-file .env.staging`, the env the app's host receives,
+> and `--operator-file .env.staging.operator` with `CRON_VAULT_DB_URL` and `CRON_VAULT_DB_CA` (the
+> project's CA certificate file: a non-loopback database is reached only over verified TLS). A host
+> file holding either key is refused. The default local mode had already grown to
+> `COMMS_DISPATCH_SECRET` and `OPS_CRON_SECRET` (NT2, MR4), and it keeps them. MR4's "add this job's
+> secret to cron-vault.ts" step is now a no-op; MONEY_BUILD_PROMPTS.md is left to its owner.
 
 ```text
 PROMPT OPS1: Provision every scheduler secret into any Vault from the registry, and prove each one

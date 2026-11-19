@@ -2567,27 +2567,32 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
   own registry rows, so a new http job needs no edit to it.
   - **Locally** `CRON_APP_URL` is `http://host.docker.internal:<PORT>`, because pg_net runs inside
     the database container. `deno task db:reset` sets it, with `INTEGRATIONS_CRON_SECRET`,
-    `COMMS_DISPATCH_SECRET` and `OPS_CRON_SECRET` from `.env.local` (`cron:vault` with no flag,
-    each only when well formed), because a rebuild empties Vault. The money sweeps stay on
+    `COMMS_DISPATCH_SECRET` and `OPS_CRON_SECRET` from `.env.local` (`cron:vault` with no flag, each
+    only when well formed), because a rebuild empties Vault. The money sweeps stay on
     `deno task cron:run` locally. `cron:vault --all` is the opt-in that writes every bearer the
-    registry names (from `.env.local`, then `.env`), after which the money sweeps run on their timers
-    against the dev server until the next reset.
-  - **Hosted**, from an operator's machine and never from a deployed app. Keep the environment's
-    values in a gitignored `.env.<name>` beside the repo (`.env.staging`, say): `CRON_VAULT_DB_URL`
-    (the project's direct or session-pooler connection string), `CRON_VAULT_DB_CA` (the path of the
-    project's CA certificate, from Database settings → SSL configuration), `APP_URL`, `CRON_APP_URL`
-    if it differs from `APP_URL`'s origin, and every bearer the registry names, each the value the
-    app's host holds. A non-loopback database is reached only over TLS that verifies it, never
-    downgraded. First `deno task cron:vault --env-file .env.staging`: it vets every value (at least
-    32 characters, not `XXXX-XXXX`, no whitespace, no two names sharing one; `CRON_APP_URL` https,
-    on a public host and equal to `APP_URL`'s origin), then writes them all in one transaction, or
-    writes nothing and says why. Then `deno task cron:vault --env-file .env.staging --check`, which
-    is read-only. For each enabled http job it reports the bearer present in Vault, its length
-    measured in SQL, its sha256 equal to the file's (each side digests its own copy, so no value
+    registry names (from `.env.local`, then `.env`), after which the money sweeps run on their
+    timers against the dev server until the next reset.
+  - **Hosted**, from an operator's machine and never from a deployed app, over two gitignored files
+    beside the repo. `.env.staging` is exactly the env the app's host receives (OPS6's
+    `deploy:check` runs on it): `APP_URL`, `CRON_APP_URL` if it differs from `APP_URL`'s origin, and
+    every bearer the registry names. `.env.staging.operator` holds the operator credentials, which
+    never travel to a host: `CRON_VAULT_DB_URL` (the project's direct or session-pooler connection
+    string) and `CRON_VAULT_DB_CA` (the path of the project's CA certificate, from Database settings
+    → SSL configuration). A non-loopback database is reached only over TLS that verifies it, never
+    downgraded. First
+    `deno task cron:vault --env-file .env.staging --operator-file .env.staging.operator`: it vets
+    every value (at least 32 characters, not `XXXX-XXXX`, no whitespace, no two names sharing one;
+    `CRON_APP_URL` https, on a public host and equal to `APP_URL`'s origin), then writes them all in
+    one transaction, or writes nothing and says why. Then the same command with `--check`, which is
+    read-only. For each enabled http job it reports the bearer present in Vault, its length measured
+    in SQL, its sha256 equal to the host file's (each side digests its own copy, so no value
     crosses), the `cron.job` entry and the last dispatch. It exits 1 when any job is not ready, or
     when the app has refused a bearer (401, 403 or 404) since it was written. That output is
-    PRD-G6's evidence. No value is read from the command line or printed.
-  - **Rotation:** the app's env first, then the Vault value: edit the file, re-run `--env-file`,
+    PRD-G6's evidence. With `--operator-file`, the connection keys are read from it alone, a host
+    file that also holds one is refused, and nothing else in it is read. Without it, both come from
+    the `--env-file` (the single-file form, for a database no host env is built from). No value is
+    read from the command line or printed.
+  - **Rotation:** the app's env first, then the Vault value: edit `.env.staging`, re-run the write,
     then `--check`. In between, the routes 404 the old bearer (Decision #125), `ops-watch-jobs` logs
     each refusal as `http_failed`, and every job is safe to re-run, so the first run after the Vault
     write catches up.
@@ -4551,10 +4556,11 @@ OPS_ALERT_EMAIL=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
 # pg_net reads them inside the database to call the routes above. `deno task cron:vault` sets them per
 # environment, taking the names from the job registry: `--env-file .env.<name>` writes a hosted
-# project's from that gitignored file, whose CRON_VAULT_DB_URL and CRON_VAULT_DB_CA are operator
-# tooling the app never reads, and `--check` proves each equals the file (§Scheduled jobs,
-# Environments). Never in a migration or a seed. Until they exist, each http job skips and logs
-# instead of running.
+# project's from that gitignored file (the env its app host receives), connecting through
+# CRON_VAULT_DB_URL and CRON_VAULT_DB_CA in `--operator-file .env.<name>.operator` (operator tooling
+# the app never reads, never in a host's env), and `--check` proves each equals the file
+# (§Scheduled jobs, Environments). Never in a migration or a seed. Until they exist, each http job
+# skips and logs instead of running.
 #   CRON_APP_URL         the origin the DATABASE reaches the app on (public APP_URL when hosted;
 #                        http://host.docker.internal:<PORT> locally)
 #   FINANCE_CRON_SECRET  the same value as the env key above

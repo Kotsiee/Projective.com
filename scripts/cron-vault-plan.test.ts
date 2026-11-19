@@ -10,6 +10,7 @@ import {
 	bearersFromRegistry,
 	type Capabilities,
 	checkSql,
+	connectionKeys,
 	describeLast,
 	describeVerdict,
 	evaluateCheck,
@@ -570,9 +571,73 @@ Deno.test("the modes parse, and a stray argument is refused without being echoed
 	assert("error" in parseArgs(["--all", "--check"]));
 	assert("error" in parseArgs(["--env-file", "a", "--env-file", "b"]));
 });
+
+Deno.test("--operator-file rides with --env-file, in either mode, and never alone", () => {
+	assertEquals(
+		parseArgs(["--env-file", ".env.staging", "--operator-file", ".env.staging.operator"]),
+		{ kind: "write-env", envFile: ".env.staging", operatorFile: ".env.staging.operator" },
+	);
+	assertEquals(
+		parseArgs([
+			"--operator-file",
+			".env.staging.operator",
+			"--check",
+			"--env-file",
+			".env.staging",
+		]),
+		{ kind: "check-env", envFile: ".env.staging", operatorFile: ".env.staging.operator" },
+	);
+	assert("error" in parseArgs(["--operator-file", ".env.staging.operator"]));
+	assert("error" in parseArgs(["--operator-file", ".env.staging.operator", "--check"]));
+	assert("error" in parseArgs(["--env-file", "a", "--operator-file"]));
+	assert("error" in parseArgs(["--env-file", "a", "--operator-file", "b", "--operator-file", "c"]));
+});
 // #endregion
 
 // #region Connection string
+Deno.test("without an operator file the connection keys come from the env file", () => {
+	assertEquals(
+		connectionKeys({ CRON_VAULT_DB_URL: "u", CRON_VAULT_DB_CA: "ca.crt" }, null, {
+			env: ".env.staging",
+		}),
+		{ dbUrl: "u", ca: "ca.crt", source: ".env.staging" },
+	);
+});
+
+Deno.test("with an operator file the connection keys come from it alone; nothing else does", () => {
+	const keys = connectionKeys(
+		{ APP_URL: "https://staging.example.com", FINANCE_CRON_SECRET: value() },
+		{ CRON_VAULT_DB_URL: "u", CRON_VAULT_DB_CA: "ca.crt", FINANCE_CRON_SECRET: value() },
+		{ env: ".env.staging", operator: ".env.staging.operator" },
+	);
+	assertEquals(keys, { dbUrl: "u", ca: "ca.crt", source: ".env.staging.operator" });
+});
+
+Deno.test("a host's env file that holds an operator credential is refused, naming no value", () => {
+	const url = `postgresql://postgres:${value()}@db.example.com:5432/postgres`;
+	const refused = connectionKeys(
+		{ CRON_VAULT_DB_URL: url },
+		{ CRON_VAULT_DB_URL: url },
+		{ env: ".env.staging", operator: ".env.staging.operator" },
+	);
+	assert("problem" in refused);
+	assertStringIncludes(refused.problem, ".env.staging holds CRON_VAULT_DB_URL");
+	assertFalse(refused.problem.includes(url));
+	const ca = connectionKeys(
+		{ CRON_VAULT_DB_CA: "ca.crt" },
+		{ CRON_VAULT_DB_URL: url },
+		{ env: ".env.staging", operator: ".env.staging.operator" },
+	);
+	assert("problem" in ca && ca.problem.includes("CRON_VAULT_DB_CA"));
+	assertFalse(
+		"problem" in connectionKeys(
+			{ CRON_VAULT_DB_URL: "XXXX-XXXX" },
+			{ CRON_VAULT_DB_URL: url },
+			{ env: ".env.staging", operator: ".env.staging.operator" },
+		),
+	);
+});
+
 Deno.test("CRON_VAULT_DB_URL parses, labels without the password and marks loopback", () => {
 	const password = value();
 	const parsed = parseDbUrl(

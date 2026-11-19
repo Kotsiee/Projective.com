@@ -19,11 +19,13 @@
  *   --all              The local container, every bearer the registry names, from `.env.local` then
  *                      `.env` (the app's own view). Opt-in: the money sweeps then run on their timers
  *                      against the dev server, and the next `db:reset` puts back the default.
- *   --env-file <path>  Any database: `CRON_VAULT_DB_URL` in that file is the connection string, and
- *                      the same file holds `APP_URL`, `CRON_APP_URL` (default: `APP_URL`'s origin)
- *                      and every bearer. Every value is vetted first, and all of them are written in
- *                      one transaction or none is. A non-loopback host is reached over verified TLS
- *                      only (`CRON_VAULT_DB_CA`: the provider's CA certificate file).
+ *   --env-file <path>  Any database. That file is the env the app's host receives: `APP_URL`,
+ *                      `CRON_APP_URL` (default: `APP_URL`'s origin) and every bearer. The
+ *                      connection (`CRON_VAULT_DB_URL`, and `CRON_VAULT_DB_CA`, the provider's CA
+ *                      certificate file) comes from `--operator-file <path>` when given, which the
+ *                      host's file may then not repeat, and otherwise from the same file. Every value
+ *                      is vetted first, and all of them are written in one transaction or none is. A
+ *                      non-loopback host is reached over verified TLS only.
  *   --check            With either target, read-only: per enabled http job, the bearer is in Vault,
  *                      ≥ 32 characters, digest-equal to the env, scheduled in `cron.job`, and its last
  *                      dispatch; `CRON_APP_URL` passes the target's guard. Exit 1 if any is not ready.
@@ -40,6 +42,8 @@ import {
 	type Capabilities,
 	CAPABILITIES_SQL,
 	checkSql,
+	type ConnectionKeys,
+	connectionKeys,
 	type DbConnection,
 	describeVerdict,
 	evaluateCheck,
@@ -363,23 +367,64 @@ async function readEnvFile(path: string): Promise<Record<string, string> | null>
 	}
 }
 
-/** Opens the env file's database, refusing a bad connection string or an unreadable CA file. */
+/** An `--env-file` run's inputs: the host's env, where the connection comes from, and a printer. */
+interface EnvRun {
+	env: Record<string, string>;
+	keys: ConnectionKeys;
+	print: (line: string) => void;
+}
+
+/**
+ * Reads the env file the app's host receives and, when given, the operator file beside it, then
+ * settles where the connection keys come from. Every line printed afterwards is scrubbed of the
+ * values of both files. The exit code instead when they cannot be read (2) or the host's file holds
+ * an operator credential (1).
+ */
+async function loadEnvRun(
+	files: { envFile: string; operatorFile?: string },
+): Promise<EnvRun | number> {
+	const env = await readEnvFile(files.envFile);
+	if (!env) return 2;
+	const operator = files.operatorFile ? await readEnvFile(files.operatorFile) : null;
+	if (files.operatorFile && !operator) return 2;
+	const keys = connectionKeys(env, operator, { env: files.envFile, operator: files.operatorFile });
+	const redact = redactor([
+		...secretValues(env),
+		...secretValues(operator ?? {}),
+		parseDbUrlPassword(env.CRON_VAULT_DB_URL),
+		parseDbUrlPassword(operator?.CRON_VAULT_DB_URL),
+	]);
+	const print = (line: string) => console.log(redact(line));
+	if ("problem" in keys) {
+		print(`cron:vault: refused: ${keys.problem}.`);
+		return 1;
+	}
+	return { env, keys, print };
+}
+
+/** The `--env-file` / `--operator-file` flags of a run, for the next command it suggests. */
+function fileFlags(files: { envFile: string; operatorFile?: string }): string {
+	return files.operatorFile
+		? `--env-file ${files.envFile} --operator-file ${files.operatorFile}`
+		: `--env-file ${files.envFile}`;
+}
+
+/** Opens the run's database, refusing a bad connection string or an unreadable CA file. */
 async function openEnvDatabase(
-	env: Record<string, string>,
-	path: string,
+	keys: ConnectionKeys,
 	print: (line: string) => void,
 ): Promise<{ client: PgClient; conn: DbConnection } | null> {
-	const conn = parseDbUrl(env.CRON_VAULT_DB_URL);
+	const conn = parseDbUrl(keys.dbUrl);
 	if ("problem" in conn) {
-		print(`cron:vault: ${conn.problem} in ${path}.`);
+		print(`cron:vault: ${conn.problem} in ${keys.source}.`);
 		return null;
 	}
 	let ca: string | undefined;
-	if (env.CRON_VAULT_DB_CA) {
+	if (keys.ca) {
 		try {
-			ca = await Deno.readTextFile(env.CRON_VAULT_DB_CA);
+			ca = await Deno.readTextFile(keys.ca);
 		} catch {
-			print(`cron:vault: CRON_VAULT_DB_CA in ${path} names a file that cannot be read.`);
+			print(`cron:vault: CRON_VAULT_DB_CA in ${keys.source} names a file that cannot be read.`);
 			return null;
 		}
 	}
@@ -389,7 +434,7 @@ async function openEnvDatabase(
 		print(`cron:vault: cannot reach ${conn.label}: ${errorText(error)}`);
 		if (!conn.loopback && !ca) {
 			print(
-				"cron:vault: a hosted database is reached only over verified TLS. Set CRON_VAULT_DB_CA in the env file to the provider's CA certificate (Supabase: Database settings → SSL configuration).",
+				`cron:vault: a hosted database is reached only over verified TLS. Set CRON_VAULT_DB_CA in ${keys.source} to the provider's CA certificate (Supabase: Database settings → SSL configuration).`,
 			);
 		}
 		return null;
@@ -397,12 +442,12 @@ async function openEnvDatabase(
 }
 
 /** `--env-file <path>`: vet every value, then write them all in one transaction. */
-async function writeEnvMode(path: string): Promise<number> {
-	const env = await readEnvFile(path);
-	if (!env) return 2;
-	const redact = redactor([...secretValues(env), parseDbUrlPassword(env.CRON_VAULT_DB_URL)]);
-	const print = (line: string) => console.log(redact(line));
-	const opened = await openEnvDatabase(env, path, print);
+async function writeEnvMode(files: { envFile: string; operatorFile?: string }): Promise<number> {
+	const run = await loadEnvRun(files);
+	if (typeof run === "number") return run;
+	const { env, print } = run;
+	const path = files.envFile;
+	const opened = await openEnvDatabase(run.keys, print);
 	if (!opened) return 2;
 	const { client, conn } = opened;
 	try {
@@ -458,7 +503,7 @@ async function writeEnvMode(path: string): Promise<number> {
 				names.join(", ")
 			}) written to ${conn.label}.`,
 		);
-		print(`cron:vault: now prove it: deno task cron:vault --env-file ${path} --check`);
+		print(`cron:vault: now prove it: deno task cron:vault ${fileFlags(files)} --check`);
 		return 0;
 	} catch (error) {
 		print(`cron:vault: nothing written to ${conn.label}: ${errorText(error)}`);
@@ -474,18 +519,23 @@ function parseDbUrlPassword(value: string | undefined): string | undefined {
 	return "problem" in conn ? undefined : conn.password;
 }
 
-/** `--env-file <path> --check`: the read-only check against that file's database. */
-async function checkEnvMode(path: string): Promise<number> {
-	const env = await readEnvFile(path);
-	if (!env) return 2;
-	const redact = redactor([...secretValues(env), parseDbUrlPassword(env.CRON_VAULT_DB_URL)]);
-	const print = (line: string) => console.log(redact(line));
-	const opened = await openEnvDatabase(env, path, print);
+/** `--env-file <path> --check`: the read-only check against that run's database. */
+async function checkEnvMode(files: { envFile: string; operatorFile?: string }): Promise<number> {
+	const run = await loadEnvRun(files);
+	if (typeof run === "number") return run;
+	const { env, print } = run;
+	const opened = await openEnvDatabase(run.keys, print);
 	if (!opened) return 2;
 	const session = remoteSession(opened.client, opened.conn.label);
 	try {
 		await opened.client.queryArray("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY");
-		return await check(session, env, { kind: "hosted", appUrl: env.APP_URL }, path, print);
+		return await check(
+			session,
+			env,
+			{ kind: "hosted", appUrl: env.APP_URL },
+			files.envFile,
+			print,
+		);
 	} catch (error) {
 		print(`cron:vault --check: ${errorText(error)}`);
 		return 2;
@@ -536,9 +586,9 @@ async function main(args: readonly string[]): Promise<number> {
 		case "check-local":
 			return await checkLocalMode();
 		case "write-env":
-			return await writeEnvMode(mode.envFile);
+			return await writeEnvMode(mode);
 		case "check-env":
-			return await checkEnvMode(mode.envFile);
+			return await checkEnvMode(mode);
 	}
 }
 
