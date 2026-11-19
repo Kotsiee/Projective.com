@@ -569,9 +569,9 @@ ACCEPTANCE:
 
 ERA2 step 3 and its one dial, carved out. Closes PRD-G5.
 
-> **Status 2026-11-19: OPS4 landed.** The prune also takes `p_now timestamptz DEFAULT NULL`, because
-> the §1.1 header requires an injectable clock for every sweep. ERA2's source prompt carries the
-> fold-in note.
+> **Status 2026-11-19: OPS4 landed** (`4a73588e`, #515). The prune also takes
+> `p_now timestamptz DEFAULT NULL`, because the §1.1 header requires an injectable clock for every
+> sweep. ERA2's source prompt carries the fold-in note.
 
 ```text
 PROMPT OPS4: search.fn_prune_query_logs exists, reads its dial, and the dormant job registers

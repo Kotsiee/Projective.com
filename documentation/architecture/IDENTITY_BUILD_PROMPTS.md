@@ -736,8 +736,8 @@ ACCEPTANCE:
 
 ### ERA2 — Erasure windows and retention periods become dials
 
-> **Status 2026-11-19:** step 3 and `retention_search_query_log_days` landed in OPS4
-> ([OPERATIONS_BUILD_PROMPTS.md](../readiness/OPERATIONS_BUILD_PROMPTS.md) §OPS4).
+> **Status 2026-11-19:** step 3 and `retention_search_query_log_days` landed in OPS4 (`4a73588e`,
+> #515; [OPERATIONS_BUILD_PROMPTS.md](../readiness/OPERATIONS_BUILD_PROMPTS.md) §OPS4).
 > `search.fn_prune_query_logs(p_batch integer DEFAULT 5000, p_now timestamptz DEFAULT NULL)` is in
 > `00001060` §7, and `search-query-log-retention` registers on reset. Fold the dial into your
 > `[erasure_retention]` region and drop OPS4's `[search_retention]` region in `00005001`. Then switch
