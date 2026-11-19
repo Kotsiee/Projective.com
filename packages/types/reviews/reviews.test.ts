@@ -7,7 +7,8 @@ import {
 	SubmitReviewInputSchema,
 } from "./mod.ts";
 
-const COMMENT = "A clear brief, a handoff our team could build from, and every question answered inside a day.....";
+const COMMENT =
+	"A clear brief, a handoff our team could build from, and every question answered inside a day.....";
 
 function item(review: Reviewable["review"], open = true): Reviewable {
 	return {
@@ -23,7 +24,9 @@ function item(review: Reviewable["review"], open = true): Reviewable {
 	};
 }
 
-function review(over: Partial<NonNullable<Reviewable["review"]>> = {}): NonNullable<Reviewable["review"]> {
+function review(
+	over: Partial<NonNullable<Reviewable["review"]>> = {},
+): NonNullable<Reviewable["review"]> {
 	return {
 		id: "44444444-4444-4444-8444-444444444444",
 		rating: 5,
@@ -63,11 +66,20 @@ Deno.test("reviews: a submission needs 100 characters, half stars, and drops an 
 	const ok = SubmitReviewInputSchema.safeParse(base);
 	assertEquals(ok.success, true);
 	assertEquals(ok.success && ok.data.title, null);
-	assertEquals(SubmitReviewInputSchema.safeParse({ ...base, comment: "Too short." }).success, false);
+	assertEquals(
+		SubmitReviewInputSchema.safeParse({ ...base, comment: "Too short." }).success,
+		false,
+	);
 	assertEquals(SubmitReviewInputSchema.safeParse({ ...base, rating: 4.3 }).success, false);
 	assertEquals(SubmitReviewInputSchema.safeParse({ ...base, rating: 6 }).success, false);
-	assertEquals(SubmitReviewInputSchema.safeParse({ ...base, anchorKind: "listing" }).success, false);
-	assertEquals(EditReviewInputSchema.safeParse({ rating: 3, comment: COMMENT.padEnd(100, ".") }).success, true);
+	assertEquals(
+		SubmitReviewInputSchema.safeParse({ ...base, anchorKind: "listing" }).success,
+		false,
+	);
+	assertEquals(
+		EditReviewInputSchema.safeParse({ rating: 3, comment: COMMENT.padEnd(100, ".") }).success,
+		true,
+	);
 });
 
 Deno.test("reviews: a reply is 1 to 1,000 characters", () => {

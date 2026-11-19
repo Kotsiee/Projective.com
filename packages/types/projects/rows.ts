@@ -221,6 +221,8 @@ export const StageAssignmentRowSchema = z.object({
 	assignedBy: uuid,
 	isClientManaged: z.boolean(),
 	status: StageAssignmentStatus,
+	/** When the seat ended (`completed` · `released` · `cancelled`); stamped by the trigger (#487). */
+	endedAt: timestamp.nullable(),
 	createdAt: timestamp,
 });
 export type StageAssignmentRow = z.infer<typeof StageAssignmentRowSchema>;

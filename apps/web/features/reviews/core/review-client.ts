@@ -21,7 +21,12 @@ export async function sendReviewWrite(
 			body: JSON.stringify(body ?? {}),
 		});
 		const json = await res.json().catch(() => null) as
-			| { ok?: boolean; message?: string; errors?: Record<string, string>; data?: { id?: string } | null }
+			| {
+				ok?: boolean;
+				message?: string;
+				errors?: Record<string, string>;
+				data?: { id?: string } | null;
+			}
 			| null;
 		if (res.ok && json?.ok) return { ok: true, id: json.data?.id ?? null };
 		const field = json?.errors ? Object.values(json.errors)[0] : undefined;

@@ -22,7 +22,9 @@ export interface ReviewReplyThreadProps {
 	viewer?: ReviewViewer;
 }
 
-export function ReviewReplyThread({ reviewId, reply, viewer }: ReviewReplyThreadProps): JSX.Element | null {
+export function ReviewReplyThread(
+	{ reviewId, reply, viewer }: ReviewReplyThreadProps,
+): JSX.Element | null {
 	const composing = useSignal(false);
 	const body = useSignal(reply?.body ?? "");
 	const busy = useSignal(false);
@@ -41,9 +43,13 @@ export function ReviewReplyThread({ reviewId, reply, viewer }: ReviewReplyThread
 		}
 		busy.value = true;
 		error.value = null;
-		const result = await sendReviewWrite(`/api/reviews/${reviewId}/reply`, reply ? "PATCH" : "POST", {
-			body: text,
-		});
+		const result = await sendReviewWrite(
+			`/api/reviews/${reviewId}/reply`,
+			reply ? "PATCH" : "POST",
+			{
+				body: text,
+			},
+		);
 		busy.value = false;
 		if (!result.ok) {
 			error.value = result.message;
@@ -77,10 +83,13 @@ export function ReviewReplyThread({ reviewId, reply, viewer }: ReviewReplyThread
 							aria-label={reply ? "Edit your reply" : "Your reply"}
 							placeholder="Thank them, or add what the next client should know."
 						/>
-						{error.value && <Message severity="danger" variant="subtle" size="sm">{error.value}</Message>}
+						{error.value && (
+							<Message severity="danger" variant="subtle" size="sm">{error.value}</Message>
+						)}
 						<div class="rv-composer__foot">
 							<span class="rv-composer__count" aria-live="polite">
-								{body.value.trim().length.toLocaleString("en-US")} / {REVIEW_REPLY_MAX.toLocaleString("en-US")}
+								{body.value.trim().length.toLocaleString("en-US")} /{" "}
+								{REVIEW_REPLY_MAX.toLocaleString("en-US")}
 							</span>
 							<span class="rv-composer__buttons">
 								<Button

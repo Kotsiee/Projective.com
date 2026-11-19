@@ -1,7 +1,12 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { refuseIfRestricted } from "@web/utils/age-gate.ts";
-import { invalid, readJsonBody, signedOut, toReviewsResponse } from "@features/reviews/core/respond.ts";
+import {
+	invalid,
+	readJsonBody,
+	signedOut,
+	toReviewsResponse,
+} from "@features/reviews/core/respond.ts";
 import { SubmitReviewInputSchema } from "@projective/types/reviews";
 import { ReviewsBackendService } from "@server/services/reviews/ReviewsBackendService.ts";
 

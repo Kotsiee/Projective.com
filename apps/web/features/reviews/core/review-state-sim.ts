@@ -18,7 +18,13 @@ import type { Reviewable, ReviewState } from "@projective/types/reviews";
 /** The cookie the Dev Context Switcher writes and the Overview reads in development. */
 export const REVIEW_STATE_SIM_COOKIE = "pj.dev.review-state";
 
-const REVIEW_STATE_SIMS: ReadonlyArray<ReviewState> = ["open", "reviewed", "locked", "withdrawn", "closed"];
+const REVIEW_STATE_SIMS: ReadonlyArray<ReviewState> = [
+	"open",
+	"reviewed",
+	"locked",
+	"withdrawn",
+	"closed",
+];
 
 const DAY_MS = 86_400_000;
 const SAMPLE_COMMENT =

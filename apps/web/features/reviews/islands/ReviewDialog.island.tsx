@@ -2,7 +2,14 @@ import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import { Dialog, Message } from "@projective/ui/feedback";
-import { Button, InputText, type Option, SelectButton, StarRatingInput, Textarea } from "@projective/ui/fields";
+import {
+	Button,
+	InputText,
+	type Option,
+	SelectButton,
+	StarRatingInput,
+	Textarea,
+} from "@projective/ui/fields";
 import {
 	REVIEW_COMMENT_MAX,
 	REVIEW_COMMENT_MIN,
@@ -48,7 +55,9 @@ function firstActionable(items: Reviewable[]): number {
 	return i < 0 ? 0 : i;
 }
 
-export default function ReviewDialog({ slug, items, initialOpen }: ReviewDialogProps): JSX.Element | null {
+export default function ReviewDialog(
+	{ slug, items, initialOpen }: ReviewDialogProps,
+): JSX.Element | null {
 	const visible = useSignal(initialOpen && items.length > 0);
 	const picked = useSignal<string | string[]>(String(firstActionable(items)));
 	const index = useComputed(() => Number(typeof picked.value === "string" ? picked.value : 0) || 0);
@@ -81,7 +90,7 @@ export default function ReviewDialog({ slug, items, initialOpen }: ReviewDialogP
 	/** Drop `?review=` so a reload does not reopen what was just closed. */
 	const forgetAddress = () => {
 		const url = new URL(globalThis.location.href);
-		if (!url.searchParams.has("review")) return;
+		if (url.searchParams.get("review") !== slug) return;
 		url.searchParams.delete("review");
 		globalThis.history.replaceState(globalThis.history.state, "", url);
 	};
@@ -103,7 +112,11 @@ export default function ReviewDialog({ slug, items, initialOpen }: ReviewDialogP
 		}
 		busy.value = true;
 		error.value = null;
-		const payload = { rating: rating.value, title: title.value.trim() || undefined, comment: comment.value.trim() };
+		const payload = {
+			rating: rating.value,
+			title: title.value.trim() || undefined,
+			comment: comment.value.trim(),
+		};
 		const result = state === "reviewed" && item.review
 			? await sendReviewWrite(`/api/reviews/${item.review.id}`, "PATCH", payload)
 			: await sendReviewWrite("/api/reviews", "POST", {
@@ -136,15 +149,28 @@ export default function ReviewDialog({ slug, items, initialOpen }: ReviewDialogP
 
 	const close = () => (visible.value = false);
 
-	const options: Option[] = items.map((it, i) => ({ value: String(i), label: it.target?.name ?? "Provider" }));
+	const options: Option[] = items.map((it, i) => ({
+		value: String(i),
+		label: it.target?.name ?? "Provider",
+	}));
 	const writing = state === "open" || state === "reviewed";
 
 	const footer = confirmWithdraw.value
 		? (
 			<div class="rv-dialog__actions">
-				<Button label="Keep it" severity="secondary" variant="text" disabled={busy.value}
-					onClick={() => (confirmWithdraw.value = false)} />
-				<Button label="Withdraw review" severity="danger" loading={busy.value} onClick={() => void withdraw()} />
+				<Button
+					label="Keep it"
+					severity="secondary"
+					variant="text"
+					disabled={busy.value}
+					onClick={() => (confirmWithdraw.value = false)}
+				/>
+				<Button
+					label="Withdraw review"
+					severity="danger"
+					loading={busy.value}
+					onClick={() => void withdraw()}
+				/>
 			</div>
 		)
 		: writing
@@ -152,11 +178,22 @@ export default function ReviewDialog({ slug, items, initialOpen }: ReviewDialogP
 			<div class="rv-dialog__actions">
 				{state === "reviewed" && (
 					<span class="rv-dialog__actions-start">
-						<Button label="Withdraw review" severity="secondary" variant="text" disabled={busy.value}
-							onClick={() => (confirmWithdraw.value = true)} />
+						<Button
+							label="Withdraw review"
+							severity="secondary"
+							variant="text"
+							disabled={busy.value}
+							onClick={() => (confirmWithdraw.value = true)}
+						/>
 					</span>
 				)}
-				<Button label="Cancel" severity="secondary" variant="text" disabled={busy.value} onClick={close} />
+				<Button
+					label="Cancel"
+					severity="secondary"
+					variant="text"
+					disabled={busy.value}
+					onClick={close}
+				/>
 				<Button
 					label={state === "reviewed" ? "Save changes" : "Post review"}
 					loading={busy.value}
@@ -173,7 +210,11 @@ export default function ReviewDialog({ slug, items, initialOpen }: ReviewDialogP
 	return (
 		<Dialog
 			visible={visible}
-			header={state === "reviewed" ? "Edit your review" : state === "open" ? "Write a review" : "Your review"}
+			header={state === "reviewed"
+				? "Edit your review"
+				: state === "open"
+				? "Write a review"
+				: "Your review"}
 			width="36rem"
 			class="rv-dialog"
 			initialFocusRef={focusRef}
@@ -186,16 +227,22 @@ export default function ReviewDialog({ slug, items, initialOpen }: ReviewDialogP
 				{items.length > 1 && (
 					<div class="rv-dialog__field">
 						<span class="rv-dialog__label" aria-hidden="true">Who you are reviewing</span>
-						<SelectButton options={options} value={picked} size="sm" aria-label="Who you are reviewing"
-							onValueChange={reseed} />
+						<SelectButton
+							options={options}
+							value={picked}
+							size="sm"
+							aria-label="Who you are reviewing"
+							onValueChange={reseed}
+						/>
 					</div>
 				)}
 
 				{confirmWithdraw.value
 					? (
 						<p class="rv-dialog__lead">
-							Withdraw your review of {name}? It leaves their profile and the listing, and it stays withdrawn:
-							you can't write another for this engagement.
+							Withdraw your review of{" "}
+							{name}? It leaves their profile and the listing, and it stays withdrawn: you can't
+							write another for this engagement.
 						</p>
 					)
 					: writing
@@ -203,31 +250,58 @@ export default function ReviewDialog({ slug, items, initialOpen }: ReviewDialogP
 						<>
 							<p class="rv-dialog__lead">
 								{state === "reviewed"
-									? `You can change your review of ${name} until ${dateOf(item.review?.window_closes_at)}, or until they reply.`
+									? `You can change your review of ${name} until ${
+										dateOf(item.review?.window_closes_at)
+									}, or until they reply.`
 									: `How was working with ${name}? Your review shows on their profile${
 										item.anchor_kind === "project" ? " and on the listing you bought" : ""
 									}.`}
 							</p>
 							<div class="rv-dialog__field" ref={focusRef}>
 								<span class="rv-dialog__label" aria-hidden="true">Rating</span>
-								<StarRatingInput value={rating} precision={0.5} clearable={false} aria-label="Rating" />
+								<StarRatingInput
+									value={rating}
+									precision={0.5}
+									clearable={false}
+									aria-label="Rating"
+								/>
 							</div>
 							<div class="rv-dialog__field">
 								<label class="rv-dialog__label" for="rv-dialog-title">Headline (optional)</label>
-								<InputText id="rv-dialog-title" value={title} maxLength={REVIEW_TITLE_MAX} fluid
-									placeholder="The one line the next client should read" />
+								<InputText
+									id="rv-dialog-title"
+									value={title}
+									maxLength={REVIEW_TITLE_MAX}
+									fluid
+									placeholder="The one line the next client should read"
+								/>
 							</div>
 							<div class="rv-dialog__field">
 								<label class="rv-dialog__label" for="rv-dialog-comment">Your review</label>
-								<Textarea id="rv-dialog-comment" value={comment} rows={5} autoResize maxRows={12}
-									maxLength={REVIEW_COMMENT_MAX} fluid aria-describedby="rv-dialog-count"
-									placeholder="What was delivered, how it went, and what the next client should know." />
-								<span id="rv-dialog-count" class="rv-dialog__count"
+								<Textarea
+									id="rv-dialog-comment"
+									value={comment}
+									rows={5}
+									autoResize
+									maxRows={12}
+									maxLength={REVIEW_COMMENT_MAX}
+									fluid
+									aria-describedby="rv-dialog-count"
+									placeholder="What was delivered, how it went, and what the next client should know."
+								/>
+								<span
+									id="rv-dialog-count"
+									class="rv-dialog__count"
 									data-short={length < REVIEW_COMMENT_MIN ? "true" : undefined}
-									aria-live="polite">
+									aria-live="polite"
+								>
 									{length < REVIEW_COMMENT_MIN
-										? `${(REVIEW_COMMENT_MIN - length).toLocaleString("en-US")} more characters to go`
-										: `${length.toLocaleString("en-US")} / ${REVIEW_COMMENT_MAX.toLocaleString("en-US")}`}
+										? `${
+											(REVIEW_COMMENT_MIN - length).toLocaleString("en-US")
+										} more characters to go`
+										: `${length.toLocaleString("en-US")} / ${
+											REVIEW_COMMENT_MAX.toLocaleString("en-US")
+										}`}
 								</span>
 							</div>
 							{state === "open" && (
@@ -265,7 +339,9 @@ export default function ReviewDialog({ slug, items, initialOpen }: ReviewDialogP
 						</p>
 					)}
 
-				{error.value && <Message severity="danger" variant="subtle" size="sm">{error.value}</Message>}
+				{error.value && (
+					<Message severity="danger" variant="subtle" size="sm">{error.value}</Message>
+				)}
 			</div>
 		</Dialog>
 	);

@@ -37,7 +37,9 @@ export async function readJsonBody(req: Request): Promise<unknown> {
 
 /** The 401 a reviews write answers a signed-out caller with, before its body is read. */
 export function signedOut(): Response {
-	return Response.json({ ok: false, message: "Sign in to review what you completed." }, { status: 401 });
+	return Response.json({ ok: false, message: "Sign in to review what you completed." }, {
+		status: 401,
+	});
 }
 
 /** The 422 for a body its schema refuses, keyed by field path (first message per path wins). */
@@ -49,12 +51,16 @@ export function invalid(
 		const key = issue.path.map(String).join(".") || "form";
 		if (!errors[key]) errors[key] = issue.message;
 	}
-	return Response.json({ ok: false, message: "Check the highlighted fields.", errors }, { status: 422 });
+	return Response.json({ ok: false, message: "Check the highlighted fields.", errors }, {
+		status: 422,
+	});
 }
 
 /** A review id from the path, or `null` when it is not a uuid (the route answers 404). */
 export function reviewIdOf(raw: string | undefined): string | null {
-	return raw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
+	return raw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+		? raw
+		: null;
 }
 
 /** The 404 for a path that names no review. */

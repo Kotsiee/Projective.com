@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { type Reviewable, reviewStateOf, type ReviewState } from "@projective/types/reviews";
+import { type Reviewable, type ReviewState, reviewStateOf } from "@projective/types/reviews";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import { Block, MetaFacts } from "../dashboard/DashboardBlocks.tsx";
 
@@ -24,7 +24,10 @@ function stateFacts(item: Reviewable, state: ReviewState): string[] {
 		case "open":
 			return ["Not reviewed yet", `Open until ${closes}`];
 		case "reviewed":
-			return ["Reviewed", `Editable until ${DATE.format(new Date(item.review?.window_closes_at ?? item.closes_at))}`];
+			return [
+				"Reviewed",
+				`Editable until ${DATE.format(new Date(item.review?.window_closes_at ?? item.closes_at))}`,
+			];
 		case "locked":
 			return item.review?.reply ? ["Reviewed", "Replied"] : ["Reviewed"];
 		case "withdrawn":

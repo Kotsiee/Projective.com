@@ -13,7 +13,10 @@ export async function withReviewViewers(
 	actor: ReadActor,
 ): Promise<EntityView | undefined> {
 	if (!view || !actor.userId || !view.reviews.list.length) return view;
-	const result = await ReviewsBackendService.viewerActions(view.reviews.list.map((r) => r.id), actor);
+	const result = await ReviewsBackendService.viewerActions(
+		view.reviews.list.map((r) => r.id),
+		actor,
+	);
 	const viewers = result.ok && result.data ? result.data : {};
 	if (!Object.keys(viewers).length) return view;
 	return {

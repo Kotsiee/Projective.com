@@ -35,7 +35,10 @@ export class ReviewsBackendService {
 	 * provider of each of their session seats on it — with their party's review where one exists.
 	 * `[]` when they are not its client party or attendee; 404 for a project that does not exist.
 	 */
-	static async reviewables(projectSlug: string, actor: ReadActor): Promise<ServiceResult<Reviewable[]>> {
+	static async reviewables(
+		projectSlug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<Reviewable[]>> {
 		if (!isExploreBackendLive()) return ok([]);
 		if (!canReadLive(actor)) return fail(401, { message: SIGNED_OUT });
 		try {
@@ -53,7 +56,10 @@ export class ReviewsBackendService {
 	}
 
 	/** Write a review (reviews.submit_review) and answer its id. */
-	static async submit(input: SubmitReviewInput, actor: ReadActor): Promise<ServiceResult<{ id: string }>> {
+	static async submit(
+		input: SubmitReviewInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ id: string }>> {
 		if (!isExploreBackendLive()) return fail(503, { message: OFFLINE });
 		if (!canReadLive(actor)) return fail(401, { message: SIGNED_OUT });
 		try {
@@ -76,28 +82,60 @@ export class ReviewsBackendService {
 	}
 
 	/** Rewrite the caller's review while its window is open and before the reply (reviews.edit_review). */
-	static async edit(reviewId: string, input: EditReviewInput, actor: ReadActor): Promise<ServiceResult<null>> {
-		return await ReviewsBackendService.call("edit_review", {
-			p_review: reviewId,
-			p_rating: input.rating,
-			p_title: input.title,
-			p_comment: input.comment,
-		}, actor, "Review updated.");
+	static async edit(
+		reviewId: string,
+		input: EditReviewInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<null>> {
+		return await ReviewsBackendService.call(
+			"edit_review",
+			{
+				p_review: reviewId,
+				p_rating: input.rating,
+				p_title: input.title,
+				p_comment: input.comment,
+			},
+			actor,
+			"Review updated.",
+		);
 	}
 
 	/** Withdraw the caller's review: kept, gone from every reader (reviews.withdraw_review). */
 	static async withdraw(reviewId: string, actor: ReadActor): Promise<ServiceResult<null>> {
-		return await ReviewsBackendService.call("withdraw_review", { p_review: reviewId }, actor, "Review withdrawn.");
+		return await ReviewsBackendService.call(
+			"withdraw_review",
+			{ p_review: reviewId },
+			actor,
+			"Review withdrawn.",
+		);
 	}
 
 	/** The target's one public reply (reviews.reply_to_review). */
-	static async reply(reviewId: string, input: ReviewReplyInput, actor: ReadActor): Promise<ServiceResult<null>> {
-		return await ReviewsBackendService.call("reply_to_review", { p_review: reviewId, p_body: input.body }, actor, "Reply posted.");
+	static async reply(
+		reviewId: string,
+		input: ReviewReplyInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<null>> {
+		return await ReviewsBackendService.call(
+			"reply_to_review",
+			{ p_review: reviewId, p_body: input.body },
+			actor,
+			"Reply posted.",
+		);
 	}
 
 	/** Rewrite the reply, for 7 days after it was posted (reviews.edit_reply). */
-	static async editReply(reviewId: string, input: ReviewReplyInput, actor: ReadActor): Promise<ServiceResult<null>> {
-		return await ReviewsBackendService.call("edit_reply", { p_review: reviewId, p_body: input.body }, actor, "Reply updated.");
+	static async editReply(
+		reviewId: string,
+		input: ReviewReplyInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<null>> {
+		return await ReviewsBackendService.call(
+			"edit_reply",
+			{ p_review: reviewId, p_body: input.body },
+			actor,
+			"Reply updated.",
+		);
 	}
 
 	/**
@@ -112,7 +150,9 @@ export class ReviewsBackendService {
 		if (!reviewIds.length || !isExploreBackendLive() || !canReadLive(actor)) return ok({});
 		try {
 			const db = getUserClient(actor.accessToken);
-			const { data, error } = await db.schema("reviews").rpc("get_review_actions", { p_ids: reviewIds });
+			const { data, error } = await db.schema("reviews").rpc("get_review_actions", {
+				p_ids: reviewIds,
+			});
 			if (error) return reviewRefusal(error);
 			return ok(toReviewViewers(z.array(ReviewActionsSchema).parse(data ?? [])));
 		} catch (error) {

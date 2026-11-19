@@ -1,7 +1,7 @@
 import {
 	type Reviewable,
-	type ReviewActions,
 	ReviewableSchema,
+	type ReviewActions,
 	type ReviewViewer,
 } from "@projective/types/reviews";
 import { z } from "zod";
@@ -19,8 +19,10 @@ const UNREACHABLE = "We couldn't reach reviews just now. Try again in a moment."
 // #region Refusals
 /** A door's refusal (SQLSTATE + message) onto a ServiceResult; the message is the database's own. */
 export function reviewRefusal<T>(error: { code?: string; message?: string }): ServiceResult<T> {
-	const message = error.message?.replace(/^(review|reply|hide|reviewables) refused: /, "") ?? UNREACHABLE;
-	const sentence = message.charAt(0).toUpperCase() + message.slice(1) + (message.endsWith(".") ? "" : ".");
+	const message = error.message?.replace(/^(review|reply|hide|reviewables) refused: /, "") ??
+		UNREACHABLE;
+	const sentence = message.charAt(0).toUpperCase() + message.slice(1) +
+		(message.endsWith(".") ? "" : ".");
 	switch (error.code) {
 		case "42501":
 			return fail(403, { message: sentence });
@@ -70,4 +72,3 @@ export function toReviewViewers(rows: ReviewActions[]): Record<string, ReviewVie
 	return out;
 }
 // #endregion
-
