@@ -72,7 +72,8 @@ export default define.middleware(async (ctx) => {
 	// Mint a renewed session onto the response (or clear a dead one) — empty on the fast path.
 	for (const cookie of session.setCookies) res.headers.append("set-cookie", cookie);
 	for (const cookie of session.clearCookies) res.headers.append("set-cookie", cookie);
-	if (profile) return res;
+	// A redirect (the retired `/[handle]/edit` routes) stays one: it renders no profile body.
+	if (profile || (res.status >= 300 && res.status < 400)) return res;
 	// Reserved word / unknown / hidden → 404; unreadable → 503. The layout renders the matching body.
 	return new Response(res.body, { status, headers: res.headers });
 });

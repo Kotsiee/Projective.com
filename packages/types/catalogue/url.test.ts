@@ -112,6 +112,8 @@ function workspaceState(next: () => number): WorkspaceUrlState {
 	if (team) state.team = team;
 	const client = maybe(next, () => oneOf(next, CLIENTS));
 	if (client) state.client = client;
+	const cohort = maybe(next, () => oneOf(next, ["open", "cancel:ssn-23456789ab"] as const));
+	if (cohort) state.cohort = cohort;
 	return state;
 }
 
@@ -330,6 +332,19 @@ Deno.test("workspaceHref emits params in canonical order and omits defaults", ()
 		}),
 		"/catalogue/svc-23456789ab?tab=preview&section=seo&device=mobile&period=12m&client=@ab",
 	);
+	assertEquals(
+		workspaceHref("svc-23456789ab", { section: "availability", cohort: "cancel:ssn-23456789ab" }),
+		"/catalogue/svc-23456789ab?section=availability&cohort=cancel:ssn-23456789ab",
+	);
+});
+
+Deno.test("parseWorkspaceUrl reads the cohort dialog, and never a uuid", () => {
+	const at = (q: string) =>
+		parseWorkspaceUrl(new URL(`https://projective.test/catalogue/svc-23456789ab?${q}`));
+	assertEquals(at("cohort=open").cohort, "open");
+	assertEquals(at("cohort=cancel:ssn-23456789ab").cohort, "cancel:ssn-23456789ab");
+	assertEquals(at("cohort=cancel:00000000-0000-4000-8000-000000000001").cohort, undefined);
+	assertEquals(at("cohort=close").cohort, undefined);
 });
 // #endregion
 

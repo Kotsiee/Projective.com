@@ -120,6 +120,11 @@ export default define.page(function App({ Component, state }) {
 				<link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16" />
 				<link rel="icon" href="/favicon.ico" sizes="48x48" />
 				<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+				{
+					/* The web app manifest (COMMS NT4): iOS delivers Web Push only to an app added to the
+					   Home Screen with one, and it names the icons and colours an installed app uses. */
+				}
+				<link rel="manifest" href="/manifest.webmanifest" />
 				{state.description ? <meta name="description" content={state.description} /> : null}
 				{
 					/* A public page's canonical URL, robots and Open Graph block (`applyPageMeta`). */

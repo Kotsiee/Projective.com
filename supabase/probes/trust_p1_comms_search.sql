@@ -408,7 +408,7 @@ BEGIN
     JOIN projects.project_stages ps ON ps.project_id = p.id
     JOIN projects.stage_assignments sa ON sa.project_stage_id = ps.id
     WHERE sa.assignee_type = 'freelancer' AND sa.status NOT IN ('declined', 'cancelled', 'released')
-      AND projects.is_protected_phase(p.id)
+      AND projects.is_protected_phase(p.id) AND p.source_blueprint_id IS NULL
     ORDER BY p.id LIMIT 1;
     IF v_owner IS NULL THEN RAISE EXCEPTION 'FAIL no fixture: no assigned freelancer on a protected project'; END IF;
 

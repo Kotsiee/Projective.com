@@ -53,3 +53,11 @@ storage policy is operator read of SENT attachments ([files Policies.md](../file
 `00002017`), and their `files.items` rows are readable by their uploader and, through
 `files.fn_can_read`'s contact arm, by operators once a request links them — a file removed or never
 sent is nobody's but its uploader's. Probe: [`supabase/probes/contact_requests.sql`](../../../supabase/probes/contact_requests.sql).
+
+## `ops.alert_rules` · `ops.alert_deliveries` · `ops.alert_seen` (MR4, Decision #461)
+
+RLS enabled in `00002001` (region `[alerts]`), **no policy**: no client role reads or writes them.
+Grants in `00002520`: everything revoked from `PUBLIC`, `anon` and `authenticated`; `service_role` may
+`SELECT`, `INSERT` and `UPDATE` rules (a migration or an operator by hand adds or pauses one) and
+`SELECT` the deliveries and the cursor. Deliveries move only through `ops.fn_claim_alerts` and
+`ops.fn_record_alert_delivery` (definers); operators read through `ops.read_alert_deliveries`.

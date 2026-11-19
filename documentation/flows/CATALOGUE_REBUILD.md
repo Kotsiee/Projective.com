@@ -470,7 +470,7 @@ Each new `@projective/ui` component lands with its `DESIGN_SYSTEM.md` §C.1 rost
 | Metric | Definition (window W) | Source |
 | :-- | :-- | :-- |
 | Impressions | Count of `interest_events` `impression` for the listing's subject | rollup `listing.impressions` |
-| Views | Distinct (session, listing, day) `view` events | rollup `listing.views` |
+| Views | Distinct (session, listing, day) `view` events — one per page shown (`ListingViewBeacon`), kept at most once per viewer per 30 minutes and never for the seller or the owning team (MARKETPLACE SC5); all-time, `listings.view_count` | rollup `listing.views` |
 | CTR | clicks ÷ impressions (shown only when impressions ≥ 20) | derived |
 | Checkout starts | Basket adds of the listing (`finance.basket_items` created) | rollup `listing.checkout_starts` |
 | Orders / bookings | `finance.order_lines` on confirmed or invoiced orders, plus session bookings | rollup `listing.orders` |

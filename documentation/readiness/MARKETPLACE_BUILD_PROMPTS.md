@@ -63,10 +63,10 @@ left); **MK-12** (reserve a cohort seat) → **SC3**.
 | MK-37 | 🟡 · High · UAT    | **CK1**                                           | ✅ once sale originals are private, frozen at publish (A6) and delivered               |
 | MK-38 | ✅ · Crit · MVP    | **SC2**                                           | The CREATE category is copied; a tiered Pipeline is seeded (note clears)               |
 | MK-39 | ✅ · High · UAT    | **SC2**                                           | A session plan is seeded (note clears)                                                 |
-| MK-40 | ❌ · High · UAT    | **SC3** → SCH-WP7                                 | 🟡 after SC3 (a seller opens a cohort); ✅ after WP7 (sittings scheduled from the app) |
+| MK-40 | 🟡 · High · UAT    | **SC3** (✅, #498) → SCH-WP7                      | 🟡 after SC3 (a seller opens a cohort); ✅ after WP7 (sittings scheduled from the app) |
 | MK-41 | 🟡 · Crit · PROD   | **SC4** (#494) + T&S SN2 → SN3                    | ✅ once SN3 screens before publish; SC4 closes the write bypass and the emitter        |
 | MK-42 | ✅ · Normal · UAT  | **MKZ** (🧑 close #219 (d))                       | The note cites SA's sanctioned loosening                                               |
-| MK-43 | 🟡 · Normal · UAT  | **SC5**                                           | Views are written and counted; 90 days are seeded                                      |
+| MK-43 | ✅ · Normal · UAT  | **SC5** (#506)                                   | Views are written and counted; 90 days are seeded                                      |
 | MK-44 | 🟡 · Normal · UAT  | **SC6** (#500; ⏳ CK1, SC4)                       | Slug links; a team or business buyer is named                                          |
 | MK-45 | ✅ · High · UAT    | **SC6** (ruled #500; ⏳ CK1, SC4)                 | The note states the ruled team-editing scope                                           |
 | MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                            |
@@ -155,7 +155,7 @@ block, so a question you defer still stops the build at the right step.
 | 8  | Review eligibility, window and edits, the reply, one aggregate (#244 (e))                        | RV1                 | RV1's four recommendations                                                                              |
 | 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | **Ruled #486:** double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score. |
 | 10 | What Standing's peer track is                                                                    | RV3                 | **Ruled #489:** B, the client track alone, for all 20 points; a review recomputes its subject.          |
-| 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | Capacity, start, cadence, close; an optional minimum, and a cancel that refunds every seat in full      |
+| 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | **Ruled #498:** A; cancel any time before sitting 1; queue places restored; close by sitting 1    |
 | 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | **Ruled #500:** A, tightened: holders edit any team listing and create; delete: the creator or an admin |
 | 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | **Ruled #493:** approved as asked, 0–50% of net; `exclusive_transfer`/`licensed_use`; stops on erasure  |
 | 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | **Ruled #496:** a `notice` source and a takedown hold; the regime itself stays counsel's                |

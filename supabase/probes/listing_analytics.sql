@@ -114,7 +114,8 @@ BEGIN
         ('brand-1', 'click', v_bp, 'service', 'brand identity', '2024-07-03 10:01Z'),
         ('logo-1', 'click', v_bp, 'service', NULL, '2024-07-03 11:01Z'),
         ('brand-1', 'view', v_bp, 'service', NULL, '2024-07-03 10:02Z'),
-        ('brand-1', 'view', v_bp, 'service', NULL, '2024-07-03 10:30Z'),
+        -- Outside 10:02's 30 minutes, so it is stored (search.trg_interest_events_view, SC5).
+        ('brand-1', 'view', v_bp, 'service', NULL, '2024-07-03 10:40Z'),
         ('logo-1', 'view', v_bp, 'service', NULL, '2024-07-03 11:02Z'),
         -- The day before and the day after never leak in.
         ('edge-0', 'impression', v_bp, 'service', NULL, '2024-07-02 23:59:59Z'),

@@ -103,6 +103,11 @@ $$;
 --   listing.query_clicks {q}               sessions (KEYWORD_MIN_SESSIONS); clicks for the same queries
 --   listing.cancellations                  refunded or cancelled non-session lines (by the order's last
 --                                          change) plus sittings cancelled that day
+--
+-- It also keeps the console's two derived counters (MARKETPLACE SC5): `catalogue.listings.view_count`
+-- and `order_count` are each listing's `listing.views` and `listing.orders`, summed over every day
+-- rolled up, rewritten for the listings the day wrote or removed a row for. The derived-column guard
+-- (00001895) refuses those columns to a client; this definer is their one writer.
 CREATE OR REPLACE FUNCTION analytics.fn_rollup_listings(p_day date)
 RETURNS integer
 LANGUAGE plpgsql
@@ -114,6 +119,7 @@ DECLARE
     v_from timestamptz;
     v_to timestamptz;
     v_written integer;
+    v_touched uuid[];
 BEGIN
     IF p_day IS NULL THEN
         RAISE EXCEPTION 'A day to roll up is required' USING ERRCODE = '22004';
@@ -295,7 +301,7 @@ BEGIN
            SET value = EXCLUDED.value,
                sample_count = EXCLUDED.sample_count,
                computed_at = EXCLUDED.computed_at
-        RETURNING r.id
+        RETURNING r.id, r.subject_id
     ),
     stale AS (
         DELETE FROM analytics.daily_rollups d
@@ -303,9 +309,31 @@ BEGIN
            AND d.subject_kind = 'listing'::analytics.subject_kind
            AND d.metric LIKE 'listing.%'
            AND NOT EXISTS (SELECT 1 FROM written w WHERE w.id = d.id)
-        RETURNING d.id
+        RETURNING d.id, d.subject_id
     )
-    SELECT pg_catalog.count(*)::integer INTO v_written FROM written;
+    SELECT (SELECT pg_catalog.count(*)::integer FROM written),
+           ARRAY(SELECT w.subject_id FROM written w UNION SELECT s.subject_id FROM stale s)
+      INTO v_written, v_touched;
+
+    -- The counters read the rollups as they stand after the statement above, so this is its own
+    -- statement; a listing whose totals did not move is not rewritten.
+    UPDATE catalogue.listings l
+       SET view_count = t.views,
+           order_count = t.orders
+      FROM (
+          SELECT u.id,
+                 COALESCE(pg_catalog.sum(r.value) FILTER (WHERE r.metric = 'listing.views'), 0)::integer AS views,
+                 COALESCE(pg_catalog.sum(r.value) FILTER (WHERE r.metric = 'listing.orders'), 0)::integer AS orders
+            FROM pg_catalog.unnest(v_touched) AS u(id)
+            LEFT JOIN analytics.daily_rollups r
+              ON r.subject_kind = 'listing'::analytics.subject_kind
+             AND r.subject_id = u.id
+             AND r.metric IN ('listing.views', 'listing.orders')
+             AND r.dimensions = '{}'::jsonb
+           GROUP BY u.id
+      ) t
+     WHERE l.id = t.id
+       AND (l.view_count IS DISTINCT FROM t.views OR l.order_count IS DISTINCT FROM t.orders);
 
     RETURN v_written;
 END;
@@ -315,7 +343,9 @@ COMMENT ON FUNCTION analytics.fn_rollup_listings(date) IS
 'Writes one UTC day of listing analytics into analytics.daily_rollups (subject_kind = listing):
 impressions, clicks, views, checkout_starts, orders, gross_minor {currency}, bookings, booking_slot
 {dow, hour} in the seller''s timezone, query_impressions / query_clicks {q} from 5+ distinct sessions,
-cancellations. Idempotent per day. Service role only; job analytics-listing-rollups.';
+cancellations. Then rewrites catalogue.listings.view_count / order_count (all-time listing.views /
+listing.orders) for every listing the day touched. Idempotent per day. Service role only; job
+analytics-listing-rollups.';
 
 -- Rolls every day in [p_from, p_to] up again, oldest first, for a backfill after seeding or a fix to the
 -- writer. Bounded to two years so a typo cannot pin the database. Service role only.

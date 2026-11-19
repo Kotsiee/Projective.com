@@ -326,13 +326,16 @@ import type {
  * SSR first paint. Islands never reach this — they `fetch` the routes via the thin
  * `ProjectSidebarService`.
  *
- * **Stub mode (default).** With `PROJECTS_BACKEND_LIVE` off (see {@link isProjectsBackendLive}) the
- * service answers from the in-memory fixtures — the running app is unchanged. The live path
- * (RLS-scoped `projects.*` + `org.*` membership reads, escrow-aware) slots in behind the same gate
- * when it lands, a fill-in rather than a re-architecture.
+ * **Three roads, decided by the gate alone (PRD-B1).** With `PROJECTS_BACKEND_LIVE` off (see
+ * {@link isProjectsBackendLive}) the service answers from the in-memory fixtures and the stub store.
+ * With it on, every read answers from Postgres under the caller's JWT, or refuses: a caller with no
+ * access token is a `401`, a query that throws is a `503`, and a row the database withholds is a
+ * `404`. The fixture corpus is never the answer while the gate is on — a database hiccup or a lapsed
+ * session must not show a real person someone else's invented projects as their own. Writes keep the
+ * same rule through {@link liveWrite}.
  */
 
-/** Compose the feed payload from the pure selectors (the stub read path; also the live fallback). */
+/** Compose the feed payload from the pure selectors — the fixture road only. */
 function buildFeed(params: ProjectFeedParams): ProjectFeedPayload {
 	const items = getFeed(params);
 	return {
@@ -373,13 +376,6 @@ function buildLiveFeed(
 }
 
 /**
- * Record that a live read failed and the fixtures answered instead.
- *
- * Warned rather than thrown or swallowed: thrown, a transient broker error takes down a surface the
- * fixtures could still render; swallowed, a permanently broken live path is indistinguishable from a
- * working one. Falling back cannot disclose anything — the fixture corpus belongs to nobody.
- */
-/**
  * The outbound-invitation ceiling, per acting identity (`HIRE_RATE_LIMIT`: 10 sends per sliding 10
  * minutes). In-process — the same lifetime as the write-store the invitations land in — and reset
  * with it by tests.
@@ -406,10 +402,63 @@ const OPEN_OWNED_FEED: ProjectFeedParams = {
 	serviceId: "",
 };
 
+// #region Live roads
+/**
+ * Record that a live call failed. The caller answers with a refusal, never the fixtures (PRD-B1).
+ *
+ * Warned rather than swallowed: a permanently broken live path must not be indistinguishable from a
+ * working one in the log, while the person in front of it is told plainly that it failed.
+ */
 function liveFailed(method: string, error: unknown): void {
 	const reason = error instanceof Error ? error.message : String(error);
-	console.warn(`[ProjectBackendService.${method}] live read failed, serving fixtures: ${reason}`);
+	console.warn(`[ProjectBackendService.${method}] live call failed: ${reason}`);
 }
+
+/**
+ * The live backend is on, but this request carries no identity Postgres can check: a guest, or a
+ * session whose access token lapsed and has not been refreshed. A `401` lets `apiFetch` renew the
+ * session and retry; the fixture corpus would show a real person invented projects as theirs.
+ */
+function sessionRequired<T>(): ServiceResult<T> {
+	return fail<T>(401, {
+		message: "Your session has expired — sign in again to see your projects.",
+	});
+}
+
+/** The live backend is on, but the database could not answer this read. */
+function liveUnavailable<T>(): ServiceResult<T> {
+	return fail<T>(503, { message: "Your projects can't be loaded right now — please try again." });
+}
+
+/**
+ * Which road a gated read took, and what it found there.
+ *
+ *  - `off` — the gate is off (`dev:mock`, tests): the fixture branch answers. The ONLY road it may.
+ *  - `live` — the database answered. `value: null` means it was asked and said no — a real 404 the
+ *    caller must not paper over with a fabricated fixture.
+ *  - `refused` — the gate is on and the database was not, or could not be, asked: a `401` for a
+ *    caller with no token, a `503` for a query that threw. The caller returns `result` as is.
+ */
+type LiveRead<T> =
+	| { road: "off" }
+	| { road: "live"; value: T | null }
+	| { road: "refused"; result: ServiceResult<never> };
+
+/**
+ * The gate check every hand-written live read in this service shares: `off`, a refusal, or the
+ * credential to read with. For the reads whose live branch is not one cached query.
+ */
+function liveGate(
+	actor: ReadActor | undefined,
+): { road: "off" } | { road: "refused"; result: ServiceResult<never> } | {
+	road: "live";
+	actor: ReadActor & { accessToken: string };
+} {
+	if (!isProjectsBackendLive()) return { road: "off" };
+	if (!actor || !canReadLive(actor)) return { road: "refused", result: sessionRequired() };
+	return { road: "live", actor };
+}
+// #endregion
 
 /**
  * Narrow a roster's invitation and request queues to the routed stage — `invitesForScope` and
@@ -512,13 +561,13 @@ function stubJoinedMember(
 }
 
 /**
- * Run a cached live read, or return `undefined` to mean "the caller should use the fixtures".
+ * Run a cached live read, and say which {@link LiveRead} road it took.
  *
- * Six methods share this shape exactly, and writing it out six times is six chances for one of them
- * to forget the actor check, the cache key, or the try/catch. The `undefined` return is deliberately
- * distinct from the `null` a resolver returns for "no such row": `undefined` means the live path did
- * not run or could not answer, and the fixture branch takes over; `null` means the database was
- * asked and said no, which is a real 404 the caller must NOT paper over with a fabricated fixture.
+ * Eleven methods share this shape exactly, and writing it out eleven times is eleven chances for one
+ * of them to forget the actor check, the cache key, or the try/catch. With the gate on, the answer
+ * is the database's or a refusal, never "use the fixtures": a caller with no token is a `401`
+ * before any query, and a query that throws is a `503` (PRD-B1). Only `{ road: "off" }` lets the
+ * fixture branch run.
  */
 async function liveRead<T>(
 	method: string,
@@ -526,17 +575,19 @@ async function liveRead<T>(
 	namespace: string,
 	key: unknown,
 	run: (actor: ReadActor & { accessToken: string }) => Promise<T | null>,
-): Promise<T | null | undefined> {
-	if (!isProjectsBackendLive() || !actor || !canReadLive(actor)) return undefined;
+): Promise<LiveRead<T>> {
+	const gate = liveGate(actor);
+	if (gate.road !== "live") return gate;
 	try {
-		return await cachedRead(
+		const value = await cachedRead(
 			projectsReadCache,
-			cacheKey(tenantOf(actor), namespace, key),
-			() => run(actor),
+			cacheKey(tenantOf(gate.actor), namespace, key),
+			() => run(gate.actor),
 		);
+		return { road: "live", value };
 	} catch (error) {
 		liveFailed(method, error);
-		return undefined;
+		return { road: "refused", result: liveUnavailable() };
 	}
 }
 
@@ -569,8 +620,8 @@ function invalidateUserProjects(userId: string): void {
 /**
  * The refusal a write returns when nobody is signed in.
  *
- * A write genuinely needs an identity, unlike the reads, which answer a guest from the fixture
- * corpus. This is the service's own guard and not an authorisation decision: RLS remains the real
+ * A write genuinely needs an identity, even with the gate off, where the reads answer a guest from
+ * the fixture corpus. This is the service's own guard and not an authorisation decision: RLS remains the real
  * gate (root CLAUDE.md §6), and no capability is checked here, because the Dev Context Switcher's
  * simulated persona never reaches the server and a capability bounce would fire on it
  * (Decision #53(b)).
@@ -1069,27 +1120,27 @@ export class ProjectBackendService {
 		params: ProjectFeedParams,
 		actor: ReadActor,
 	): Promise<ServiceResult<ProjectFeedPayload>> {
-		if (!isProjectsBackendLive() || !canReadLive(actor)) {
-			// Stub mode: drop a phantom scope pin (a real auth contextId matches no fixture workspace)
-			// so the lane shows the acting account's feed instead of stranding empty. See
+		const gate = liveGate(actor);
+		if (gate.road === "off") {
+			// The fixture road: drop a phantom scope pin (a real auth contextId matches no fixture
+			// workspace) so the lane shows the acting account's feed instead of stranding empty. See
 			// {@link withResolvableScope}. This covers BOTH the SSR first paint and the thin
 			// `/api/projects/list` refetch (a stale cached scopeId), the single chokepoint they share.
-			//
-			// It runs on the guest path too: an unauthenticated caller cannot reach the live branch,
-			// and `anon` holds no USAGE on the `projects` schema anyway, so the query would fail 42501
-			// rather than return an empty feed.
 			return ok(overlayFeed(buildFeed(withResolvableScope(params)), actor));
 		}
+		// The gate is on: a caller with no token is refused, never handed the fixture feed. `anon`
+		// holds no USAGE on the `projects` schema, so there is no guest feed to read either.
+		if (gate.road === "refused") return gate.result;
 		try {
 			// The ROWS are cached, not the composed payload: the filter/sort facets change on every
 			// keystroke of the lane's search, and caching per-facet-combination would miss constantly
 			// while holding many near-identical copies of one tenant's projects.
-			const key = cacheKey(tenantOf(actor), "projects.rows");
-			const rows = await cachedRead(projectsReadCache, key, () => fetchProjectRows(actor));
+			const key = cacheKey(tenantOf(gate.actor), "projects.rows");
+			const rows = await cachedRead(projectsReadCache, key, () => fetchProjectRows(gate.actor));
 			return ok(buildLiveFeed(rows, params));
 		} catch (error) {
 			liveFailed("list", error);
-			return ok(overlayFeed(buildFeed(withResolvableScope(params)), actor));
+			return liveUnavailable();
 		}
 	}
 
@@ -1098,21 +1149,19 @@ export class ProjectBackendService {
 		slug: string,
 		actor: ReadActor,
 	): Promise<ServiceResult<{ item: ProjectSummary }>> {
-		if (isProjectsBackendLive() && canReadLive(actor)) {
-			try {
-				const key = cacheKey(tenantOf(actor), "projects.item", { slug });
-				const item = await cachedRead(
-					projectsReadCache,
-					key,
-					() => fetchProjectBySlug(actor, slug),
-				);
-				// A live miss is a real 404 — the slug does not exist, or RLS withholds it. Falling
-				// through to the fixtures would answer a genuine "no" with a fabricated "yes".
-				if (item) return ok({ item });
-				return fail(404, { message: `No project found for slug "${slug}".` });
-			} catch (error) {
-				liveFailed("item", error);
-			}
+		const live = await liveRead(
+			"item",
+			actor,
+			"projects.item",
+			{ slug },
+			(a) => fetchProjectBySlug(a, slug),
+		);
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			// A live miss is a real 404 — the slug does not exist, or RLS withholds it. Falling
+			// through to the fixtures would answer a genuine "no" with a fabricated "yes".
+			if (live.value) return ok({ item: live.value });
+			return fail(404, { message: `No project found for slug "${slug}".` });
 		}
 		const drafted = createdSummary(slug, actor);
 		if (drafted) return ok({ item: drafted });
@@ -1154,9 +1203,10 @@ export class ProjectBackendService {
 			{ slug },
 			(a) => fetchProjectDetail(a, slug),
 		);
-		if (live !== undefined) {
-			if (!live) return fail(404, { message: `No project found for slug "${slug}".` });
-			return ok({ detail: live });
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) return fail(404, { message: `No project found for slug "${slug}".` });
+			return ok({ detail: live.value });
 		}
 		// A project this viewer DRAFTED has no fixture underneath it. Asked first, because this is the
 		// read the `/projects/[projectId]` role dispatcher branches on: a null detail defaults
@@ -1213,9 +1263,10 @@ export class ProjectBackendService {
 			params,
 			(a) => fetchChannelMessagePage(a, params),
 		);
-		if (live !== undefined) {
-			if (!live) return fail(404, { message: "No such project channel." });
-			return ok({ page: live });
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) return fail(404, { message: "No such project channel." });
+			return ok({ page: live.value });
 		}
 		const page = findMessagePage(params);
 		if (!page) return fail(404, { message: "No such project channel." });
@@ -1253,11 +1304,12 @@ export class ProjectBackendService {
 			params,
 			(a) => fetchFilePage(a, params),
 		);
-		if (live !== undefined) {
-			if (!live) {
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) {
 				return fail(404, { message: `No project found for id "${params.projectId}".` });
 			}
-			return ok({ page: live });
+			return ok({ page: live.value });
 		}
 		const page = findFilePage(params);
 		if (!page) {
@@ -1295,11 +1347,12 @@ export class ProjectBackendService {
 			params,
 			(a) => fetchSubmissionPage(a, params),
 		);
-		if (live !== undefined) {
-			if (!live) {
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) {
 				return fail(404, { message: `No project found for id "${params.projectId}".` });
 			}
-			return ok({ page: live });
+			return ok({ page: live.value });
 		}
 		const page = findSubmissionPage(params);
 		if (!page) {
@@ -1336,11 +1389,12 @@ export class ProjectBackendService {
 			params,
 			(a) => fetchBoardPage(a, params),
 		);
-		if (live !== undefined) {
-			if (!live) {
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) {
 				return fail(404, { message: `No project found for id "${params.projectId}".` });
 			}
-			return ok({ page: live });
+			return ok({ page: live.value });
 		}
 		const page = findBoardPage(params);
 		if (!page) {
@@ -1396,9 +1450,10 @@ export class ProjectBackendService {
 			{ slug },
 			(a) => fetchTicketLocation(a, slug),
 		);
-		if (live !== undefined) {
-			if (!live) return notFound();
-			projectSlug = live.projectSlug;
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) return notFound();
+			projectSlug = live.value.projectSlug;
 		} else {
 			// The stub store first: a ticket created through the stub path exists nowhere in the fixture
 			// corpus, and a corpus walk that ran first would spend its whole cost to say "not here".
@@ -1445,11 +1500,14 @@ export class ProjectBackendService {
 			boardParams,
 			(a) => fetchBoardPage(a, boardParams),
 		);
-		if (live !== undefined) {
-			if (!live) {
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) {
 				return fail(404, { message: `No project found for id "${params.projectId}".` });
 			}
-			return ok({ page: buildProjectTimeline(live, { nowMs: Date.now(), timezone: null }) });
+			return ok({
+				page: buildProjectTimeline(live.value, { nowMs: Date.now(), timezone: null }),
+			});
 		}
 		const board = findBoardPage(boardParams);
 		if (!board) {
@@ -1492,11 +1550,12 @@ export class ProjectBackendService {
 			params,
 			(a) => fetchLiveMemberRoster(a, params),
 		);
-		if (live !== undefined) {
-			if (!live) {
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) {
 				return fail(404, { message: `No project found for id "${params.projectId}".` });
 			}
-			return ok({ page: scopeInvites(live) });
+			return ok({ page: scopeInvites(live.value) });
 		}
 		// A project this viewer drafted in the stub store has no fixture roster; it answers with its
 		// creator as the sole member, so the profile's assignment modal can open on it.
@@ -1699,12 +1758,14 @@ export class ProjectBackendService {
 		const denied = requireIdentity<{ page: SentInvitesPage }>(actor, "see your invitations");
 		if (denied) return denied;
 
-		if (isProjectsBackendLive() && canReadLive(actor)) {
+		const gate = liveGate(actor);
+		if (gate.road === "refused") return gate.result;
+		if (gate.road === "live") {
 			try {
-				return ok({ page: await fetchSentInvitations(actor) });
+				return ok({ page: await fetchSentInvitations(gate.actor) });
 			} catch (error) {
 				liveFailed("sentInvites", error);
-				return fail(502, { message: "Your invitations could not be read — please try again." });
+				return fail(503, { message: "Your invitations could not be read — please try again." });
 			}
 		}
 
@@ -1794,8 +1855,10 @@ export class ProjectBackendService {
 	 * the read behind the profile's Add-to-project rows, which disable a locked project and print the
 	 * date it reopens. One query on the live branch ({@link fetchDeclinedInvitations}); on the stub
 	 * branch the declined invitations in each open project's roster, through the SAME
-	 * `activeInviteCooldown` the brief and the write use. A guest has sent nothing and gets `{}`; a
-	 * failed project read fails, and callers degrade to no cooldowns.
+	 * `activeInviteCooldown` the brief and the write use. A guest has sent nothing and gets `{}`. With
+	 * the gate on, a lapsed session is a `401`, and an unreachable database answers `{}` from
+	 * {@link fetchDeclinedInvitations}' own degrade (the write re-checks the cooldown in SQL); callers
+	 * degrade to no cooldowns. Never the fixture roster's declines.
 	 */
 	static async hireCooldowns(
 		handle: string,
@@ -1813,9 +1876,10 @@ export class ProjectBackendService {
 			{ handle: bare },
 			(a) => fetchDeclinedInvitations(a, bare),
 		);
-		if (live !== undefined && live !== null) {
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
 			const out: Record<string, string> = {};
-			for (const [slug, declines] of Object.entries(live)) {
+			for (const [slug, declines] of Object.entries(live.value ?? {})) {
 				const until = activeInviteCooldown(
 					declines.map((d) => ({
 						status: "declined" as const,
@@ -2445,6 +2509,11 @@ export class ProjectBackendService {
 	): Promise<ServiceResult<ProjectApplication>> {
 		const denied = requireIdentity<ProjectApplication>(actor, "apply to a project");
 		if (denied) return denied;
+		// The allowance pre-flight below reads under the caller's token. With the gate on and none,
+		// the answer is a 401 here, as {@link liveWrite} would give — not a gate run against nothing.
+		if (liveGate(actor).road === "refused") {
+			return fail(401, { message: "Your session has expired — sign in again to send this." });
+		}
 		const note = input.message.trim();
 
 		const gated = await proposalGate<ProjectApplication>(actor, input.teamId, input.projectId);
@@ -2574,8 +2643,8 @@ export class ProjectBackendService {
 					await listMyApplicationsLive(actor, query.project ?? null, query.team ?? null),
 				);
 			} catch (error) {
-				console.error("[ProjectBackendService.sentApplications]", error);
-				return fail(502, { message: "We couldn't load your proposals just now." });
+				liveFailed("sentApplications", error);
+				return fail(503, { message: "We couldn't load your proposals just now." });
 			}
 		}
 
@@ -2751,9 +2820,10 @@ export class ProjectBackendService {
 			{ slug },
 			(a) => fetchProjectSetup(a, slug),
 		);
-		if (live !== undefined) {
-			if (!live) return noSuchProject(slug);
-			return ok({ setup: live });
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) return noSuchProject(slug);
+			return ok({ setup: live.value });
 		}
 		// A project this viewer minted through the stub create has no fixture underneath it, so it is
 		// resolved before the corpus is consulted. Without this branch the Quick-Init modal navigates to
@@ -2789,9 +2859,10 @@ export class ProjectBackendService {
 			{ slug },
 			(a) => fetchProjectOverview(a, slug),
 		);
-		if (live !== undefined) {
-			if (!live) return noSuchProject(slug);
-			return ok({ overview: live });
+		if (live.road === "refused") return live.result;
+		if (live.road === "live") {
+			if (!live.value) return noSuchProject(slug);
+			return ok({ overview: live.value });
 		}
 		const found = findProjectOverview(slug);
 		if (!found) return noSuchProject(slug);
@@ -3501,7 +3572,7 @@ export class ProjectBackendService {
 	 * Client/owner only, refused 403 by the function for anyone else.
 	 *
 	 * Live only, like {@link requestPaidRevision}: the stub store holds no escrow, and a preview built
-	 * from fixtures would show figures no settlement could ever match. A thrown read is a `502`, never a
+	 * from fixtures would show figures no settlement could ever match. A thrown read is a `503`, never a
 	 * fallback, for the same reason.
 	 */
 	static async previewStageFairExit(
@@ -3520,7 +3591,7 @@ export class ProjectBackendService {
 			return ok(outcome.data);
 		} catch (error) {
 			liveFailed("previewStageFairExit", error);
-			return fail(502, { message: "The Fair Exit figures could not be read — please try again." });
+			return fail(503, { message: "The Fair Exit figures could not be read — please try again." });
 		}
 	}
 
@@ -3583,7 +3654,7 @@ export class ProjectBackendService {
 			return ok(outcome.data);
 		} catch (error) {
 			liveFailed("previewProjectCancel", error);
-			return fail(502, {
+			return fail(503, {
 				message: "What cancelling settles could not be read — please try again.",
 			});
 		}
@@ -3657,9 +3728,17 @@ export class ProjectBackendService {
 		const owner = writeOwnerOf(actor);
 		let created: CreatedProject;
 
-		if (isProjectsBackendLive() && canReadLive(actor)) {
+		// The gate on and a lapsed token is a 401, as in {@link liveWrite} — never a draft written to
+		// the stub store that no reload against the database would ever find.
+		const gate = liveGate(actor);
+		if (gate.road === "refused") {
+			return fail<CreatedProject>(401, {
+				message: "Your session has expired — sign in again to save this.",
+			});
+		}
+		if (gate.road === "live") {
 			try {
-				const outcome = await insertProject(actor, input);
+				const outcome = await insertProject(gate.actor, input);
 				if (outcome === null) return notFound<CreatedProject>("project", input.title);
 				if ("refusal" in outcome) return refused<CreatedProject>(outcome.refusal);
 				created = outcome.data;

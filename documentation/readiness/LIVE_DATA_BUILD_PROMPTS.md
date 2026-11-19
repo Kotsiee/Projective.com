@@ -55,7 +55,8 @@
 None are expected. Each prompt restores a contract the source docs already state. A prompt stops
 only if it finds a decision row that rules the other way. Those cases are named inside LD2 and LD3.
 LD3 has one architect default to confirm or override before it runs: **retire the dead
-`PROFILE_BACKEND_LIVE` flag** (recommended) rather than wire it.
+`PROFILE_BACKEND_LIVE` flag** (recommended) rather than wire it. **Ruled 2026-11-18: retire it**
+(Decision #505), and LD3 ran beside LD2 rather than after it.
 
 ---
 
@@ -85,7 +86,9 @@ Delta at `b7280787`:
 
 ### LD1 — A live gate never serves fixtures
 
-Closes PRD-B1.
+Closes PRD-B1. **Built 2026-11-18 (Decision #495).** `liveRead` is three-valued, `live-gate.test.ts`
+pins every public read and write, and the lane, the board and `/projects` show the failure. The
+sweep found one more leak, the proposal-allowance stub meter, and closed it.
 
 ```text
 PROMPT LD1: With PROJECTS_BACKEND_LIVE on, a read answers from the database or fails — never with
@@ -196,7 +199,8 @@ SAME CHANGE: SYSTEM_ARCHITECTURE.md (the finance flag paragraph + the env contra
 
 ### LD3 — The flags tell the truth
 
-Closes PRD-B4.
+Closes PRD-B4. **Built 2026-11-18 (Decision #505):** the architect default was confirmed (the flag
+is retired). LD4 can read the registry's `gate`, `gated`, `ungated` and `fixtureRoad`.
 
 ```text
 PROMPT LD3: USE_MOCKS reaches no database, the registry matches the services, and no flag is dead

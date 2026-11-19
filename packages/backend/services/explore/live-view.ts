@@ -388,10 +388,25 @@ interface ReviewRow {
 	id: string;
 	reviewer_user_id: string;
 	project_id: string | null;
+	cohort_membership_id: string | null;
+	order_line_id: string | null;
 	rating: number | string;
 	title: string | null;
 	comment: string;
 	created_at: string;
+	reply_comment: string | null;
+	replied_at: string | null;
+	reply_edited_at: string | null;
+}
+
+/** The target's public reply under a review, or nothing (Decision #487). */
+function replyOf(
+	body: string | null | undefined,
+	at: string | null | undefined,
+	edited: boolean,
+): EntityReview["reply"] {
+	if (!body || !at) return undefined;
+	return { body, repliedAt: at, dateLabel: monthLabel(at), edited };
 }
 
 /** The review subject a view item is scored under, or null for items nobody reviews directly. */
@@ -428,14 +443,21 @@ async function reviewsFor(
 	const empty = { summary: { average: 0, count: 0, distribution: [0, 0, 0, 0, 0] }, list: [] };
 	const subject = reviewSubject(catalog, item);
 	if (!subject) return empty;
-	const { data, error } = await getAnonClient()
+	// A service listing reads the reviews of its provider bought through it (`service_blueprint_id`,
+	// Decision #487) beside any written of the listing itself; a product reads its own. The policy
+	// returns visible reviews only, so a withdrawn or hidden one never arrives.
+	const base = getAnonClient()
 		.schema("reviews")
 		.from("entity_reviews")
-		.select("id, reviewer_user_id, project_id, rating, title, comment, created_at")
-		.eq("target_entity_id", subject.id)
-		.eq("target_entity_type", subject.type)
-		.order("created_at", { ascending: false })
-		.limit(100);
+		.select(
+			"id, reviewer_user_id, project_id, cohort_membership_id, order_line_id, rating, title, comment, created_at, reply_comment, replied_at, reply_edited_at",
+		);
+	const scoped = subject.type === "service_blueprint"
+		? base.or(
+			`service_blueprint_id.eq.${subject.id},and(target_entity_type.eq.service_blueprint,target_entity_id.eq.${subject.id})`,
+		)
+		: base.eq("target_entity_id", subject.id).eq("target_entity_type", subject.type);
+	const { data, error } = await scoped.order("created_at", { ascending: false }).limit(100);
 	if (error) throw new Error(`explore view: reading reviews failed — ${error.message}`);
 	const rows = (data ?? []) as ReviewRow[];
 	if (!rows.length) return empty;
@@ -457,8 +479,10 @@ async function reviewsFor(
 			dateLabel: monthLabel(r.created_at),
 			// No reviews table carries the other party's rating back, so reciprocity is unknown — false.
 			reciprocal: false,
-			// A review tied to a delivered engagement; a listing review with no project is not.
-			verifiedEngagement: r.project_id !== null,
+			// Every review rests on an anchor its author completed (Decision #487).
+			verifiedEngagement: r.project_id !== null || r.cohort_membership_id !== null ||
+				r.order_line_id !== null,
+			reply: replyOf(r.reply_comment, r.replied_at, r.reply_edited_at !== null),
 		};
 	});
 	const average = Math.round((total / rows.length) * 100) / 100;
@@ -486,6 +510,10 @@ interface ProfileReviewRow {
 	author_name: string | null;
 	/** NULL unless the engagement's project is `public` — the database does the redaction. */
 	context_title: string | null;
+	reply_comment?: string | null;
+	replied_at?: string | null;
+	reply_edited_at?: string | null;
+	edited_at?: string | null;
 }
 
 /**
@@ -541,10 +569,11 @@ async function clientReviewsFor(
 			createdAt: r.created_at,
 			dateLabel: monthLabel(r.created_at),
 			reciprocal: false,
-			// The RPC withholds the engagement link along with a private title, so this cannot be told
-			// apart from a review with no engagement — false is the claim the data supports.
-			verifiedEngagement: false,
+			// Every review carries the anchor its author completed (`ck_entity_reviews_one_anchor`,
+			// Decision #487), so each one is a verified engagement even where the RPC withholds its title.
+			verifiedEngagement: true,
 			contextTitle: r.context_title?.trim() || undefined,
+			reply: replyOf(r.reply_comment, r.replied_at, !!r.reply_edited_at),
 		};
 	});
 	const average = Math.round((total / rows.length) * 100) / 100;

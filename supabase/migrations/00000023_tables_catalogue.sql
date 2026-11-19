@@ -86,8 +86,10 @@ CREATE TABLE catalogue.products (
     -- Licence terms the /view product template renders as its permission ledger (Decision #217(i)).
     licence catalogue.product_licence NOT NULL DEFAULT 'personal'::catalogue.product_licence,
     attribution_required boolean NOT NULL DEFAULT false,
-    -- Deliverable manifest: [{ name, mime, size_bytes }]. jsonb rather than a child table because it is
-    -- authored by the seller as one document, read back whole, and never queried by member.
+    -- Deliverable manifest, the seller's DRAFT: [{ name, label, extension, bytes, fileId? }]
+    -- (`AttachmentRefSchema`, at most 24). jsonb rather than a child table because it is authored by
+    -- the seller as one document, read back whole, and never queried by member. An entry with a
+    -- `fileId` delivers that library file; publishing freezes those into catalogue.product_versions.
     file_manifest jsonb NOT NULL DEFAULT '[]'::jsonb,
     compatibility jsonb NOT NULL DEFAULT '[]'::jsonb,
     -- The specification ledger the /view product template prints (`ProductSpecSchema`): an ordered
@@ -321,5 +323,82 @@ CREATE TABLE catalogue.collection_listings (
     CONSTRAINT collection_listings_pkey PRIMARY KEY (collection_id, listing_id),
     CONSTRAINT collection_listings_collection_fkey FOREIGN KEY (collection_id) REFERENCES catalogue.collections(id) ON DELETE CASCADE,
     CONSTRAINT collection_listings_listing_fkey FOREIGN KEY (listing_id) REFERENCES catalogue.listings(id) ON DELETE CASCADE
+);
+-- #endregion
+
+-- #region Product versions and entitlements (Decision #488, ASSET_DELIVERY_ARCHITECTURE.md §10)
+-- What a buyer receives is never the seller's working copy. `products.file_manifest` stays the
+-- listing's editable draft (what the view page prints); publishing FREEZES it into a numbered
+-- version (catalogue.fn_freeze_product_version), and the service copies each file's bytes into the
+-- private, policy-less `originals` bucket (ruling A6). A seller who renames, replaces or deletes a
+-- library file therefore cannot change what a buyer already paid for.
+--
+-- `manifest` is [{ fileId, name, label, extension, bytes, mime }] in the seller's order, at most 24
+-- (the editor's ceiling), only the entries that name a library file. It carries no storage address:
+-- a file's place in `originals` is derived (`originals/{product_id}/{version_id}/{fileId}`), so a
+-- holder may read the row without learning where anything is stored (invariant 2). `ready_at` is
+-- NULL until every file has been copied (catalogue.mark_product_version_ready); until then the
+-- download route answers 503 with Retry-After rather than a broken file.
+CREATE TABLE catalogue.product_versions (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    product_id uuid NOT NULL,
+    version integer NOT NULL CHECK (version > 0),
+    manifest jsonb NOT NULL,
+    published_at timestamptz NOT NULL DEFAULT now(),
+    ready_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT product_versions_pkey PRIMARY KEY (id),
+    CONSTRAINT product_versions_number_key UNIQUE (product_id, version),
+    CONSTRAINT product_versions_product_fkey FOREIGN KEY (product_id) REFERENCES catalogue.products(id) ON DELETE CASCADE,
+    CONSTRAINT ck_product_versions_manifest CHECK (
+        jsonb_typeof(manifest) = 'array' AND jsonb_array_length(manifest) BETWEEN 1 AND 24
+    )
+);
+
+-- One row per bought product line: the licence the buyer holds and the version it delivers. Written
+-- by finance.place_wallet_order in the same transaction as its order line (every purchase reaches it;
+-- place_on_account_order pays through it), held by the order's owner — the person, or the team,
+-- business or enterprise that bought. No client writes it.
+--
+--   * `slug` — the `ent-…` address `/api/downloads/[entitlement]/[fileId]` names (Decision #88),
+--     minted by security.fn_slug_guard('ent').
+--   * `version_id` — the version this purchase delivers, the newest frozen when it was bought. NULL
+--     when the seller attached no file; SET NULL with the product, because a receipt outlives it
+--     (ruling A11).
+--   * `updates_until` — reserved for the later-versions rule (ASSET §10). Phase 0 serves exactly
+--     `version_id`, never reads this column and always writes NULL.
+--   * `delivery_terms_accepted_at` — when the buyer accepted, before Pay, that a file counts as
+--     downloaded once it has been delivered in full (ruling A8). NULL when the line had no file or the
+--     buyer paid without the acknowledgement; the refund rule never treats such a line as downloaded.
+--   * `first_delivered_at` — the first response that streamed a whole file of the line to its last
+--     byte (catalogue.fn_record_delivery). The A8 fact; each delivery is also a files.download_events
+--     row (`via = 'purchase'`).
+CREATE TABLE catalogue.entitlements (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    -- NOT NULL with NO DEFAULT: the slug trigger fills it before the NOT NULL is checked.
+    slug text NOT NULL,
+    order_line_id uuid NOT NULL,
+    product_id uuid,
+    version_id uuid,
+    holder_type files.owner_kind NOT NULL,
+    holder_id uuid NOT NULL,
+    licence catalogue.product_licence NOT NULL,
+    seats integer NOT NULL DEFAULT 1 CHECK (seats BETWEEN 1 AND 999),
+    updates_until timestamptz,
+    status catalogue.entitlement_status NOT NULL DEFAULT 'active'::catalogue.entitlement_status,
+    delivery_terms_accepted_at timestamptz,
+    first_delivered_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT entitlements_pkey PRIMARY KEY (id),
+    CONSTRAINT entitlements_slug_key UNIQUE (slug),
+    CONSTRAINT entitlements_order_line_key UNIQUE (order_line_id),
+    -- The exact shape `security.mint_slug('ent')` produces, and nothing else.
+    CONSTRAINT ck_entitlements_slug_shape CHECK (slug ~ '^ent-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
+    CONSTRAINT entitlements_order_line_fkey FOREIGN KEY (order_line_id) REFERENCES finance.order_lines(id),
+    CONSTRAINT entitlements_product_fkey FOREIGN KEY (product_id) REFERENCES catalogue.products(id) ON DELETE SET NULL,
+    CONSTRAINT entitlements_version_fkey FOREIGN KEY (version_id) REFERENCES catalogue.product_versions(id) ON DELETE SET NULL
 );
 -- #endregion

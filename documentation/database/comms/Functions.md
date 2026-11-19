@@ -191,8 +191,8 @@ the finder returns `0`. Probe: `supabase/probes/basket_nudge.sql`.
 | `comms.mark_notifications_seen()`              | `integer` | Clears the **badge** without marking anything read — what opening the drawer does. |
 | `comms.archive_notifications(uuid[])`          | `integer` | Dismiss = archive. Nothing is hard-deleted.                                        |
 | `comms.get_notification_summary()`             | `jsonb`   | `{ unread, unseen, total, by_category }` — the shell badge in one round trip.      |
-| `comms.register_device(…)`                     | `uuid`    | Upserts the live row for a browser; resets `failure_count`.                        |
-| `comms.revoke_device(id, reason)`              | `boolean` | Soft-revokes and clears the Web Push keys.                                         |
+| `comms.register_device(…)`                     | `uuid`    | Upserts the live row for a browser; resets `failure_count`. Called by `POST /api/notifications/devices` (`PushDeviceBackendService`, COMMS NT4) under the caller's JWT, with `token = endpoint`, `provider 'web_push'`, `platform 'web'`, after the service checks the endpoint is a known push service. |
+| `comms.revoke_device(id, reason)`              | `boolean` | Soft-revokes and clears the Web Push keys. Called by `DELETE /api/notifications/devices` ("Stop on this device"). |
 
 These run as the caller, so the policies in [Policies.md](Policies.md) are the real boundary; the
 explicit `auth.uid()` predicates are belt-and-braces. They write only `read_at` / `seen_at` /
@@ -319,7 +319,7 @@ missing. Read by the trigger, by the claim, and by the app's channel liveness
 (`NotificationDispatchService.isRunning`, which also requires a well-formed `COMMS_DISPATCH_SECRET`
 and caches the read for 30 s). `SECURITY DEFINER`, `search_path = ''`; service role only.
 
-#### `comms.fn_claim_deliveries(p_channels notification_channel[], p_notification uuid DEFAULT NULL, p_limit integer DEFAULT 200) → TABLE (delivery_id, notification_id, user_id, channel, status, attempts, suppressed_reason, destination jsonb, title, action_url, type, category)`
+#### `comms.fn_claim_deliveries(p_channels notification_channel[], p_notification uuid DEFAULT NULL, p_limit integer DEFAULT 200) → TABLE (delivery_id, notification_id, user_id, channel, status, attempts, suppressed_reason, destination jsonb, title, action_url, type, category, urgency, group_key)`
 
 Hands up to `p_limit` due deliveries of `p_channels` (one notification's, or any) to exactly one
 caller (`FOR UPDATE SKIP LOCKED`), and nothing while the flag is off. A row of any other channel stays
@@ -339,8 +339,10 @@ the unrevoked `comms.device_tokens` row (endpoint and keys). In the same stateme
 destination becomes `skipped` (`no_target`), one `fn_is_suppressed` refuses becomes `suppressed`
 (`suppressed_destination`; a hard bounce blocks every category, an unsubscribe Marketing only, CAS
 N8), and the rest become `queued` with `attempts + 1` and `queued_at`. Returns every claimed row with
-its status, and the destination on a `queued` row only. The title and action URL come with it; the
-body and payload never do. A destination never leaves the dispatch service and is never logged.
+its status, and the destination on a `queued` row only. The title and action URL come with it, and
+so do the notification's `urgency` and `group_key` (COMMS NT4: the push `Urgency` header, and the
+`Topic` that lets a newer push of the same group replace an undelivered older one); the body and
+payload never do. A destination never leaves the dispatch service and is never logged.
 `SECURITY DEFINER`, `search_path = ''`; service role only.
 
 #### `comms.fn_record_delivery_result(p_delivery uuid, p_status delivery_status, p_provider text DEFAULT NULL, p_provider_ref text DEFAULT NULL, p_error text DEFAULT NULL) → boolean`

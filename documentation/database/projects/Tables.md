@@ -394,6 +394,7 @@ Maps a specific freelancer or team to a project stage.
 | `assigned_by`           | uuid            | NOT NULL. FK → `org.users_public.user_id`.                               |
 | `is_client_managed`     | boolean         | NOT NULL `DEFAULT false`.                                                |
 | `status`                | text            | NOT NULL. CHECK `ck_stage_assignments_status` (audit X8): `pending_funding` (parked on an unpublished draft), `assigned`/`accepted` (live), `completed`/`released`/`cancelled` (ended after work began), `declined` (never taken). `released`/`cancelled`/`declined`/`completed` are the inactive set. |
+| `ended_at`              | timestamptz     | When the seat ended (`completed`, `released`, `cancelled`), stamped by `projects.trg_stage_assignment_ended_at` (`00001670`, trigger `00001850`) on the move; an update that leaves the status alone keeps it, so the owner's assignment policy cannot backdate it. A review of a provider who left mid-engagement opens here (Decision #487). |
 | `created_at`            | timestamptz     | NOT NULL `DEFAULT now()`.                                                |
 
 **Indexes:** `uq_stage_assignment_active_assignee` — UNIQUE on (`project_stage_id`, `assignee_type`,
@@ -856,16 +857,26 @@ One revision round a client sends back on a submission (Decision #167; lifecycle
 
 ### `projects.cohorts`
 
-A group of attendees on a `session` engagement.
+A group of attendees on a `session` engagement. A 1-1 booking is a cohort of one seat
+(`fn_book_session_slot`); a group cohort is opened by its seller (`projects.open_cohort`, Decision
+#498), whose terms below are each disclosed to the buyer before purchase. No client role writes it
+(`00002520`). Lifecycle: `PRODUCT_MANAGEMENT.md` §3.5 (Group cohort).
 
-| Column       | Type                   | Notes                                                       |
-| :----------- | :--------------------- | :---------------------------------------------------------- |
-| `id`         | uuid                   | PK, `DEFAULT gen_random_uuid()`.                            |
-| `project_id` | uuid                   | NOT NULL. FK → `projects.projects.id`.                      |
-| `name`       | text                   | NOT NULL.                                                   |
-| `max_seats`  | integer                | NOT NULL `DEFAULT 1`.                                       |
-| `status`     | projects.cohort_status | NOT NULL `DEFAULT 'enrolling'`. `enrolling`, `active`, `completed`, `cancelled`. |
-| `created_at` | timestamptz            | NOT NULL `DEFAULT now()`.                                   |
+| Column                | Type                   | Notes                                                       |
+| :-------------------- | :--------------------- | :---------------------------------------------------------- |
+| `id`                  | uuid                   | PK, `DEFAULT gen_random_uuid()`.                            |
+| `project_id`          | uuid                   | NOT NULL. FK → `projects.projects.id`.                      |
+| `project_stage_id`    | uuid                   | NOT NULL. FK → `projects.project_stages.id` (an escrow is always held against a stage). |
+| `name`                | text                   | NOT NULL.                                                   |
+| `max_seats`           | integer                | NOT NULL `DEFAULT 1`; `ck_cohorts_max_seats` 1–500.         |
+| `status`              | projects.cohort_status | NOT NULL `DEFAULT 'enrolling'`. `enrolling`, `active`, `completed`, `cancelled`. |
+| `created_at`          | timestamptz            | NOT NULL `DEFAULT now()`.                                   |
+| `min_seats`           | integer                | The fewest paid seats it runs with; below it at the close the seller may cancel it. `ck_cohorts_min_seats`: NULL or 1–`max_seats`. NULL on a 1-1. |
+| `enrolment_closes_at` | timestamptz            | When it stops taking bookings — at or before its first sitting, before it with a minimum (`open_cohort`). The instant is the state: `reserve_seat`, `fn_confirm_seat`, `get_cohort_offer` and the waitlist refuse it from then on; `fn_close_cohort_enrolment` writes `active`. NULL = no close (a 1-1). |
+| `cadence`             | text                   | `ck_cohorts_cadence`: NULL (one sitting, or a 1-1), `weekly`, `fortnightly`, `fixed`. |
+| `opened_by`           | uuid                   | FK → `org.users_public.user_id`. The seller who opened it.  |
+| `cancelled_at`        | timestamptz            | Set by `cancel_cohort`.                                     |
+| `cancel_reason`       | text                   | `ck_cohorts_cancel_reason`: `under_filled` (the close passed below `min_seats`) or `provider`. `ck_cohorts_cancelled`: both NULL unless `status = 'cancelled'` (a 1-1's one-seat cohort ending with its seat leaves both NULL). |
 
 ### `projects.cohort_memberships`
 

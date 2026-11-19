@@ -8,6 +8,7 @@ import {
 } from "./items.ts";
 import { ProfileStandingSchema, VerificationTier } from "../profile/profile.ts";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
+import { ReviewReplySchema, ReviewViewerSchema } from "../reviews/mod.ts";
 import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
 
 /**
@@ -131,6 +132,10 @@ export const EntityReviewSchema = z.object({
 	 * unlisted or private project), so an absent value means "withheld or none", never "unknown".
 	 */
 	contextTitle: z.string().max(160).optional(),
+	/** The reviewed side's one public reply (Decision #487). */
+	reply: ReviewReplySchema.optional(),
+	/** What the viewer may do to this review (edit theirs, reply for the target); absent for a guest. */
+	viewer: ReviewViewerSchema.optional(),
 });
 export type EntityReview = z.infer<typeof EntityReviewSchema>;
 // #endregion

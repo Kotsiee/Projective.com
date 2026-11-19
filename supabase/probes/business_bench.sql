@@ -5,9 +5,9 @@
 -- Seed facts read here: Helia Finance (priyaraman owner, hannahcole admin) hired marisdelacroix on two
 -- projects (Meridian s1 paid + s2 live, the wallet's s1 live), juno on Meridian's documentation stage
 -- (accepted; the stage opens after her Haddad Studio deadline), and the team Atelier Nova (owner
--- inesduarte, admin lenamueller) on Verdant; hannah reviewed Maris 5.0 on Meridian. Atlas Labs
--- (danielokafor owner, miguelsantos member granted hire) hired North Loop (owner kwamemensah: s1 paid,
--- s2 live), reviewed 4.8 by daniel. noor and lenamueller join Helia as members (rolled back). Each
+-- inesduarte, admin lenamueller) on Verdant; the probe has hannah review Maris 5.0 on Meridian. Atlas
+-- Labs (danielokafor owner, miguelsantos member granted hire) hired North Loop (owner kwamemensah: s1
+-- paid, s2 live), which the probe has daniel review 4.8 (the seed reviews no running engagement, #487). noor and lenamueller join Helia as members (rolled back). Each
 -- what-if region runs inside a SAVEPOINT and is rolled back to it, so every region reads the seed.
 BEGIN;
 
@@ -40,6 +40,29 @@ SELECT pg_temp.check(NOT has_function_privilege('anon', 'org.get_business_bench(
 -- #endregion
 
 -- #region The owner reads Helia's bench
+-- Hannah, for Helia, reviews Maris 5.0 on Meridian. The seed holds no review on a running engagement
+-- (Decision #487: a completed stage on it opens none), so the probe writes the one it reads.
+INSERT INTO reviews.entity_reviews (target_entity_id, target_entity_type, reviewer_user_id, reviewer_business_id,
+                                    project_id, window_closes_at, rating, comment)
+SELECT m.user_id, 'freelancer', h.user_id, pr.client_business_id, pr.id, now() + interval '30 days', 5.0,
+       repeat('The token work engineering actually adopted. ', 3)
+  FROM projects.projects pr
+  JOIN org.users_public m ON m.username = 'marisdelacroix'
+  JOIN org.users_public h ON h.username = 'hannahcole'
+ WHERE pr.title = 'Meridian design system';
+-- Daniel, for Atlas Labs, reviews North Loop 4.8 on the analytics engagement, the same way.
+INSERT INTO reviews.entity_reviews (target_entity_id, target_entity_type, reviewer_user_id, reviewer_business_id,
+                                    project_id, window_closes_at, rating, comment)
+SELECT t.id, 'team', d.user_id, pr.client_business_id, pr.id, now() + interval '30 days', 4.8,
+       repeat('Reliable, communicative, and the load test held. ', 3)
+  FROM projects.projects pr
+  JOIN org.business_profiles b ON b.id = pr.client_business_id AND b.slug = 'atlaslabs'
+  JOIN org.teams t ON t.slug = 'northloop'
+  JOIN org.users_public d ON d.username = 'danielokafor'
+ WHERE EXISTS (SELECT 1 FROM projects.project_stages ps JOIN projects.stage_assignments sa ON sa.project_stage_id = ps.id
+                WHERE ps.project_id = pr.id AND sa.team_id = t.id)
+ ORDER BY pr.id
+ LIMIT 1;
 SELECT set_config('probe.helia', (SELECT id::text FROM org.business_profiles WHERE slug = 'heliafinance'), true);
 SELECT pg_temp.act('priyaraman');
 SET LOCAL ROLE authenticated;
@@ -187,8 +210,9 @@ ROLLBACK TO SAVEPOINT closed;
 SAVEPOINT rating;
 -- Juno, who works on Meridian but is no Helia member, reviews Maris there.
 WITH ins AS (
-    INSERT INTO reviews.entity_reviews (target_entity_id, target_entity_type, reviewer_user_id, project_id, rating, comment)
-    SELECT r.target_entity_id, r.target_entity_type, j.user_id, r.project_id, 1.0,
+    INSERT INTO reviews.entity_reviews (target_entity_id, target_entity_type, reviewer_user_id, project_id,
+                                        window_closes_at, rating, comment)
+    SELECT r.target_entity_id, r.target_entity_type, j.user_id, r.project_id, r.window_closes_at, 1.0,
            repeat('Not the business''s view of Maris. ', 4)
       FROM reviews.entity_reviews r
       JOIN projects.projects pr ON pr.id = r.project_id

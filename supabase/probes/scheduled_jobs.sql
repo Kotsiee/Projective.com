@@ -63,6 +63,9 @@ BEGIN
     IF pg_catalog.to_regprocedure('finance.fn_claim_stale_payouts(integer)') IS NOT NULL THEN
         v_expected := v_expected || ARRAY[ARRAY['finance-sweep-stale-payouts', '*/10 * * * *']];
     END IF;
+    IF pg_catalog.to_regprocedure('ops.fn_claim_alerts(integer)') IS NOT NULL THEN
+        v_expected := v_expected || ARRAY[ARRAY['ops-deliver-alerts', '*/5 * * * *']];
+    END IF;
     IF pg_catalog.to_regprocedure('security.claim_data_exports(integer)') IS NOT NULL THEN
         v_expected := v_expected || ARRAY[ARRAY['account-data-exports', '9,24,39,54 * * * *']];
     END IF;

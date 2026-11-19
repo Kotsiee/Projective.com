@@ -28,6 +28,7 @@ import {
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { batchOutcomes, type BatchRow, refusalOf } from "./catalogue-refusals.ts";
+import { materialisePublished } from "./delivery.ts";
 import {
 	LISTING_MEDIA_COLUMNS,
 	listingMediaFileIds,
@@ -364,6 +365,8 @@ export async function setListingStatus(
 		p_status: input.status,
 	});
 	if (error) return refusalOf(error);
+	// A published product froze a version; its bytes go into `originals` now (Decision #488).
+	if (input.status === "published") await materialisePublished(db, [l.id]);
 	return ok({ listing: await readBack(input.id, actor) }, { message: statusMessage(input.status) });
 }
 // #endregion
@@ -490,7 +493,11 @@ export async function batchListings(
 			p_status: input.status,
 		});
 		if (error) return refusalOf(error);
-		return ok(batchOutcomes((data ?? []) as BatchRow[], requested));
+		const rows = (data ?? []) as BatchRow[];
+		if (input.status === "published") {
+			await materialisePublished(db, rows.flatMap((r) => r.ok ? [r.listing_id] : []));
+		}
+		return ok(batchOutcomes(rows, requested));
 	}
 
 	const rows: BatchRow[] = [];

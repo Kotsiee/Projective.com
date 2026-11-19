@@ -5,7 +5,11 @@ import { readActor } from "@web/utils/api-session.ts";
 import { cspHeaderFor } from "@web/utils/csp.ts";
 import { resolveFilesBootstrap } from "@web/features/files/core/files-ssr.ts";
 import { facetsOfSearch } from "@web/features/files/core/asset-model.ts";
+import { isPurchasesView } from "@web/features/files/core/files-lane-slot.tsx";
 import FilesHub from "@web/features/files/islands/FilesHub.island.tsx";
+import PurchasesView from "@web/features/files/islands/PurchasesView.island.tsx";
+import { EntitlementSlug } from "@projective/types/catalogue";
+import { DeliveryBackendService } from "@server/services/catalogue/DeliveryBackendService.ts";
 
 /**
  * `/files/…` — the personal/entity asset library, at any depth.
@@ -63,6 +67,19 @@ function segmentsOf(raw: string | undefined): string[] {
 
 export const handler = define.handlers({
 	async GET(ctx) {
+		// What the acting account bought (Decision #488): a page state of `/files`, not a folder.
+		if (isPurchasesView(ctx.url)) {
+			const result = await DeliveryBackendService.purchases(readActor(ctx));
+			const focus = EntitlementSlug.safeParse(ctx.url.searchParams.get("entitlement")).data ?? null;
+			ctx.state.title = "Purchases · Files · Projective";
+			return page({
+				kind: "purchases" as const,
+				purchases: result.data?.purchases ?? [],
+				error: result.ok ? null : result.message ?? "We couldn't load your purchases just now.",
+				focus,
+			}, { status: result.ok ? 200 : result.status });
+		}
+
 		const path = segmentsOf(ctx.params.path);
 		const params: AssetListParams = {
 			scope: "hub",
@@ -80,7 +97,7 @@ export const handler = define.handlers({
 		const here = path.length > 0 ? listing.crumbs.at(-1)?.label : null;
 		ctx.state.title = here ? `${here} · Files · Projective` : "Files · Projective";
 
-		return page({ listing, tree, path, error }, {
+		return page({ kind: "library" as const, listing, tree, path, error }, {
 			status: error ? status : 200,
 			headers: { "content-security-policy": cspHeaderFor("inspector") },
 		});
@@ -88,6 +105,9 @@ export const handler = define.handlers({
 });
 
 export default define.page<typeof handler>(function FilesHubPage({ data }) {
+	if (data.kind === "purchases") {
+		return <PurchasesView purchases={data.purchases} error={data.error} focus={data.focus} />;
+	}
 	return (
 		<FilesHub
 			initial={data.listing}

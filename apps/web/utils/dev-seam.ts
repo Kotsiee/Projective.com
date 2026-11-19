@@ -320,12 +320,42 @@ export type DevNotificationDelivery = "auto" | "live" | "off";
 export type DevEmailDeliverability = "auto" | "deliverable" | "bounced";
 
 /**
+ * Settings → Notifications' "Alerts on this device" (COMMS NT4): `auto` reads the real browser;
+ * the rest draw one state of the control without changing browser settings: `prompt` (never asked),
+ * `granted` (drawn as subscribed), `denied` (blocked in the browser), `unsupported` (no Push API, so
+ * nothing renders) and `ios-not-installed` (iOS Safari outside a Home-Screen app). Client-side only;
+ * pressing a control still uses the real browser.
+ */
+export type DevPushPermission =
+	| "auto"
+	| "prompt"
+	| "granted"
+	| "denied"
+	| "unsupported"
+	| "ios-not-installed";
+
+/**
  * The simulated basket (the header drawer and its switcher): `empty` answers a basket with no lines;
  * `multi_owner` adds a team and a business account, each with a basket and a list, to the switcher;
  * `unavailable` marks the first line no longer buyable. `auto` shows the real basket. Client-side
  * only: the drawer substitutes its read; every write still goes to the server.
  */
 export type DevBasketScenario = "auto" | "empty" | "multi_owner" | "unavailable";
+
+/**
+ * A purchase's files on the purchases view and the confirmation (`pj.dev.delivery`, Decision #488;
+ * ASSET_DELIVERY §12): `auto` reads the real version; `ready` draws every file downloadable;
+ * `rendering` draws them as still being prepared; `failed` draws the copy as failed, with its retry
+ * note. Display only — a Download still asks the real route.
+ */
+export type DevDelivery = "auto" | "ready" | "rendering" | "failed";
+
+/**
+ * A purchase's standing on the purchases view (`pj.dev.entitlement`, Decision #488): `auto` reads the
+ * real entitlements; `active` draws each as live; `refunded` draws each as refunded, its files
+ * withdrawn; `none` draws the view as if nothing were bought. Display only.
+ */
+export type DevEntitlement = "auto" | "active" | "refunded" | "none";
 
 /**
  * The simulated business checkout gate (Decision #243): `needs_approval` / `over_limit` a refusal
@@ -696,8 +726,14 @@ export interface DevSeamState {
 	notificationDelivery?: DevNotificationDelivery;
 	/** The simulated email deliverability. Optional like `walletAurora`; absent reads as `auto`. */
 	emailDeliverability?: DevEmailDeliverability;
+	/** The simulated push permission. Optional like `walletAurora`; absent reads as `auto`. */
+	pushPermission?: DevPushPermission;
 	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
 	basketScenario?: DevBasketScenario;
+	/** The simulated purchase delivery. Optional like `walletAurora`; absent reads as `auto`. */
+	delivery?: DevDelivery;
+	/** The simulated purchase standing. Optional like `walletAurora`; absent reads as `auto`. */
+	entitlement?: DevEntitlement;
 	/** The simulated business checkout gate. Optional like `walletAurora`; absent reads as `auto`. */
 	checkoutGate?: DevCheckoutGate;
 	/** The simulated payment outcome. Optional like `walletAurora`; absent reads as `ok`. */
@@ -939,12 +975,22 @@ const TEAM_SETTINGS_SIMS: readonly DevTeamSettings[] = [
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
 const NOTIFICATION_DELIVERIES: readonly DevNotificationDelivery[] = ["auto", "live", "off"];
 const EMAIL_DELIVERABILITIES: readonly DevEmailDeliverability[] = ["auto", "deliverable", "bounced"];
+const PUSH_PERMISSIONS: readonly DevPushPermission[] = [
+	"auto",
+	"prompt",
+	"granted",
+	"denied",
+	"unsupported",
+	"ios-not-installed",
+];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = [
 	"auto",
 	"empty",
 	"multi_owner",
 	"unavailable",
 ];
+const DELIVERIES: readonly DevDelivery[] = ["auto", "ready", "rendering", "failed"];
+const ENTITLEMENTS: readonly DevEntitlement[] = ["auto", "active", "refunded", "none"];
 const CHECKOUT_GATES: readonly DevCheckoutGate[] = [
 	"auto",
 	"needs_approval",
@@ -1073,7 +1119,10 @@ export function readDevSeam(): DevSeamState | null {
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		notificationDelivery: coerce(ds.devNotificationDelivery, NOTIFICATION_DELIVERIES, "auto"),
 		emailDeliverability: coerce(ds.devEmailDeliverability, EMAIL_DELIVERABILITIES, "auto"),
+		pushPermission: coerce(ds.devPushPermission, PUSH_PERMISSIONS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
+		delivery: coerce(ds.devDelivery, DELIVERIES, "auto"),
+		entitlement: coerce(ds.devEntitlement, ENTITLEMENTS, "auto"),
 		checkoutGate: coerce(ds.devCheckoutGate, CHECKOUT_GATES, "auto"),
 		// Absent = `ok`, its inert value: `reflect()` omits the attribute while nothing is simulated.
 		checkoutPayment: coerce(ds.devCheckoutPayment, CHECKOUT_PAYMENTS, "ok"),

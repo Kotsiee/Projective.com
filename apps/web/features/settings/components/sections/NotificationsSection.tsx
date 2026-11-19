@@ -22,6 +22,7 @@ import {
 } from "../SettingsParts.tsx";
 import { SettingsService } from "../../core/SettingsService.ts";
 import { sectionMeta } from "../../core/settings-registry.ts";
+import { PushDeviceBlock } from "./notifications/PushDeviceBlock.tsx";
 import {
 	categoryChannelOn,
 	CHANNEL_LABEL,
@@ -291,6 +292,8 @@ export function NotificationsSection(props: NotificationsSectionProps): JSX.Elem
 					/>
 				))}
 			</SettingsBlock>
+
+			<PushDeviceBlock />
 
 			<SettingsBlock
 				anchor="routing"

@@ -10,7 +10,6 @@ import { useMaskFigures } from "@projective/ui/utils/screen-share";
 import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
 import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
 import { loadStripe } from "@features/payments/core/stripe-js.ts";
-import { returnPathOf, stripeReturnOf, withoutStripeReturn } from "@features/payments/core/stripe-flow.ts";
 import type { CardPaymentHandoff } from "@projective/types/finance";
 import { CheckoutService } from "../core/CheckoutService.ts";
 import { basketHref, checkoutStepHref, payInParamOf } from "../core/basket-model.ts";
@@ -38,6 +37,12 @@ import {
 import { contributionOptedIn, seedStep } from "../core/checkout-state.ts";
 import { cardStepPending } from "../core/card-step.ts";
 import {
+	expressReturnPath,
+	finishSettled,
+	resumeExpressReturn,
+	type SettleIo,
+} from "../core/express-return.ts";
+import {
 	attemptFingerprint,
 	type ChargeWitness,
 	chargeWitness,
@@ -64,6 +69,7 @@ import { ConfirmPayDialog } from "../components/ConfirmPayDialog.tsx";
 import { OrderSummaryRail } from "../components/OrderSummaryRail.tsx";
 import { PaymentMethodChooser } from "../components/PaymentChoice.tsx";
 import { PayGateNotice } from "../components/PayGateNotice.tsx";
+import { DeliveryTermsNotice } from "../components/DeliveryTermsNotice.tsx";
 import { type ExpressStart, ExpressCheckoutElement } from "../components/ExpressCheckoutElement.tsx";
 import { RequestApprovalDialog } from "../components/RequestApprovalDialog.tsx";
 import { SpendLimitNotice } from "../components/SpendLimitNotice.tsx";
@@ -163,6 +169,8 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	const readKey = useRef<string>("");
 
 	const confirmOpen = useSignal(false);
+	/** The buyer's A8 tick (Decision #488): required before Pay whenever a line delivers files. */
+	const termsAccepted = useSignal(false);
 	const addMethodOpen = useSignal(false);
 	const reading = useSignal(false);
 	/**
@@ -255,6 +263,9 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 
 	// #region Derivations (all read signals, so a change re-renders)
 	const paying = view.items.filter((item) => includedNow(item, item.isSelectedForCheckout));
+	/** A product line delivers files, so Pay waits on the download-terms tick (ruling A8). */
+	const needsTerms = paying.some((item) => item.itemType === "digital_product");
+	const termsPending = needsTerms && !termsAccepted.value;
 
 	const gates = routeGatesFor(view, chosenProvider.value, chosenCardId.value);
 	const blockers = [...view.blockers, ...gates];
@@ -437,6 +448,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 
 		submitting.value = true;
 		approvalNote.value = null;
+		returnNotice.value = null;
 		const key = override?.key ?? newAttemptKey();
 		// The charge the buyer was SHOWN — in their own currency with its quote, or the listings' — never
 		// recomputed here: the server re-verifies it and refuses on mismatch, which is what makes a moved
@@ -459,6 +471,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			processingContributionMinor: current.totals.processingContribution.minor,
 			billingContextId: current.buyer.contextId,
 			idempotencyKey: key,
+			deliveryTermsAccepted: termsAccepted.value || undefined,
 		}, {
 			...currentCheckoutContext(),
 			provider,
@@ -506,28 +519,54 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	 * nothing is ordered on the browser's word.
 	 */
 	const cardSettling = useSignal(false);
+	/**
+	 * What a redirect return said, kept apart from `checkoutError`: every successful read clears that,
+	 * and the mount's reconciling session read lands just after a failed return has spoken.
+	 */
+	const returnNotice = useSignal<string | null>(null);
+	const settleIo = useCallback((): SettleIo => ({
+		settle: async (paymentId) => {
+			cardSettling.value = true;
+			checkoutError.value = null;
+			const settled = await PaymentsService.waitForSettledPayment(paymentId);
+			cardSettling.value = false;
+			return settled;
+		},
+		open: (orderId) => {
+			clearDraft();
+			const href = checkoutStepHref(
+				"confirmation",
+				sessionSignal.peek()?.basketId || initial.session.basketId,
+				initial.owner,
+				undefined,
+				orderId,
+			);
+			if (typeof globalThis.location !== "undefined") globalThis.location.href = href;
+		},
+		place: (key) =>
+			submit({
+				provider: "wallet",
+				key: key ?? newAttemptKey(),
+				witness: chargeWitnessRef.current,
+			}),
+		say: (message) => {
+			checkoutError.value = message;
+		},
+	}), [submit]);
 	const finishByCard = useCallback(async (paymentId: string, key: string | null) => {
-		cardSettling.value = true;
-		checkoutError.value = null;
-		const settled = await PaymentsService.waitForSettlement(paymentId);
-		cardSettling.value = false;
-		if (settled !== "succeeded") {
-			checkoutError.value = settled === "failed"
-				? "The card payment didn't go through. Nothing was charged."
-				: "Your bank accepted the payment, but it hasn't reached your wallet yet. Your order is placed automatically when it arrives — you'll get a notification.";
-			return;
-		}
-		await submit({
-			provider: "wallet",
-			key: key ?? newAttemptKey(),
-			witness: chargeWitnessRef.current,
-		});
-	}, [submit]);
+		await finishSettled(paymentId, key, settleIo());
+	}, [settleIo]);
 
 	/** Open the PaymentIntent for an express wallet payment (Stripe's Express Checkout Element). */
 	const beginExpress = useCallback(async (): Promise<ExpressStart> => {
 		const current = sessionSignal.value;
 		if (!current || submitting.value) return { ok: false, message: "A payment is already in progress." };
+		const expressLines = current.items.filter((item) =>
+			includedNow(item, item.isSelectedForCheckout)
+		);
+		if (expressLines.some((item) => item.itemType === "digital_product") && !termsAccepted.value) {
+			return { ok: false, message: "Tick the box about downloads above Pay first. Nothing was charged." };
+		}
 		// Each press of a wallet button is its own attempt; its key travels with the charge from here.
 		resetAttempt();
 		const key = newAttemptKey();
@@ -535,6 +574,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		chargeKey.current = key;
 		chargeWitnessRef.current = witness;
 		submitting.value = true;
+		returnNotice.value = null;
 		const res = await CheckoutService.create({
 			basketId: current.basketId,
 			ownerType: current.owner.ownerType,
@@ -549,6 +589,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			processingContributionMinor: current.totals.processingContribution.minor,
 			billingContextId: current.buyer.contextId,
 			idempotencyKey: key,
+			deliveryTermsAccepted: termsAccepted.value || undefined,
 		}, { ...currentCheckoutContext(), provider: "express", contribute: contributionOptedIn.value });
 		submitting.value = false;
 		const result = res.ok ? res.data?.result : undefined;
@@ -596,20 +637,17 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 
 	/*
 	 * A redirect-based wallet (PayPal) came back. The return names the payment and the attempt it was
-	 * started under (`expressReturnPath`), so the page RESUMES that payment — waits for the webhook,
-	 * then places the order under the same key — instead of offering to start a second one. The
-	 * params are stripped from the address before anything else, so a reload can never replay them.
-	 * Stripe's `redirect_status` is a claim, not the fact: success is still decided by the webhook.
+	 * started under (`expressReturnPath`), so the page RESUMES that payment instead of offering to start
+	 * a second one (`resumeExpressReturn`, which strips the params before anything else).
 	 */
 	useEffect(() => {
-		const back = expressReturnOf(globalThis.location?.href ?? "");
-		if (!back) return;
-		globalThis.history.replaceState(globalThis.history.state, "", back.cleanPath);
-		if (back.status === "failed") {
-			checkoutError.value = "The wallet didn't complete the payment. Nothing was charged.";
-			return;
-		}
-		void finishByCard(back.paymentId, back.key);
+		void resumeExpressReturn(globalThis.location?.href ?? "", {
+			...settleIo(),
+			replace: (path) => globalThis.history.replaceState(globalThis.history.state, "", path),
+			say: (message) => {
+				returnNotice.value = message;
+			},
+		});
 	}, []);
 
 	/**
@@ -695,10 +733,10 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 
 	return (
 		<div class="cko cko-pstep" data-done={done ? "true" : undefined}>
-			{checkoutError.value && (
+			{(checkoutError.value ?? returnNotice.value) && (
 				<p class="cko__error" role="alert">
 					<Icon name="warning" />
-					{checkoutError.value}
+					{checkoutError.value ?? returnNotice.value}
 				</p>
 			)}
 
@@ -844,7 +882,8 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									blocked={hardBlocked}
 									begin={beginExpress}
 									onConfirmed={(paymentId) => void finishByCard(paymentId, chargeKey.current)}
-									returnPathFor={(paymentId) => expressReturnPath(paymentId, chargeKey.current)}
+									returnPathFor={(paymentId) =>
+										expressReturnPath(globalThis.location, paymentId, chargeKey.current)}
 									onError={(message) => {
 										checkoutError.value = message;
 									}}
@@ -916,6 +955,8 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									/>
 								)}
 
+								{!cardStep && needsTerms && <DeliveryTermsNotice id="cko-buy-terms" accepted={termsAccepted} />}
+
 								{!cardStep && !gateCommits && (
 									<div class="cko-rail__commit">
 										<Button
@@ -925,9 +966,9 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 											size="lg"
 											fluid
 											rounded
-											disabled={blocked}
+											disabled={blocked || termsPending}
 											loading={submitting.value}
-											aria-describedby={blocked ? "cko-buy-gate" : undefined}
+											aria-describedby={blocked ? "cko-buy-gate" : termsPending ? "cko-buy-terms" : undefined}
 											label={buyLabel}
 											onClick={() => openConfirm()}
 										/>
@@ -983,53 +1024,6 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	);
 	// #endregion
 }
-
-// #region Redirect return (express wallets)
-/** The params an express return carries beside Stripe's own: the payment, and its attempt key. */
-const RETURN_PAY = "pay";
-const RETURN_ATTEMPT = "attempt";
-const PAYMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ATTEMPT_KEY = /^co_[0-9a-z]+_[0-9a-z]+$/;
-
-/**
- * Where a redirect-based wallet returns: this page, minus any earlier Stripe return, plus the payment
- * and the attempt key it was started under — so the return resumes THAT payment.
- */
-function expressReturnPath(paymentId: string, key: string | null): string {
-	const url = new URL(returnPathOf(globalThis.location), globalThis.location.origin);
-	url.searchParams.set(RETURN_PAY, paymentId);
-	if (key) url.searchParams.set(RETURN_ATTEMPT, key);
-	return `${url.pathname}${url.search}`;
-}
-
-/**
- * The express payment an address returned from, or `null`. Both ids are validated before use — they
- * arrive in a URL — and the address with every return param removed is handed back for
- * `history.replaceState`.
- */
-function expressReturnOf(href: string): {
-	paymentId: string;
-	key: string | null;
-	status: string;
-	cleanPath: string;
-} | null {
-	if (!href) return null;
-	const url = new URL(href);
-	const back = stripeReturnOf(url.searchParams);
-	const paymentId = url.searchParams.get(RETURN_PAY) ?? "";
-	if (!back || back.kind !== "payment" || !PAYMENT_ID.test(paymentId)) return null;
-	const rawKey = url.searchParams.get(RETURN_ATTEMPT);
-	const clean = withoutStripeReturn(url);
-	clean.searchParams.delete(RETURN_PAY);
-	clean.searchParams.delete(RETURN_ATTEMPT);
-	return {
-		paymentId,
-		key: rawKey && ATTEMPT_KEY.test(rawKey) ? rawKey : null,
-		status: back.status,
-		cleanPath: `${clean.pathname}${clean.search}${clean.hash}`,
-	};
-}
-// #endregion
 
 // #region Route back to the basket
 function basketLineHref(view: CheckoutSessionContext, owner: string, itemId: string): string {

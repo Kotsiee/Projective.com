@@ -10,6 +10,8 @@ import {
 	DEV_AVAILABILITY_CONFLICTS,
 	DEV_PROMOTION_STATES,
 	DEV_BASKET_SCENARIOS,
+	DEV_DELIVERIES,
+	DEV_ENTITLEMENTS,
 	DEV_BUSINESS_KYBS,
 	DEV_BUSINESS_PAGES,
 	DEV_BUSINESS_PLAN_GATES,
@@ -35,6 +37,7 @@ import {
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
 	DEV_EMAIL_DELIVERABILITIES,
+	DEV_PUSH_PERMISSIONS,
 	DEV_NOTIFICATION_DELIVERIES,
 	DEV_NOTIFICATIONS,
 	DEV_OPERATOR_DESKS,
@@ -66,6 +69,7 @@ import {
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_SUBMISSION_STATES,
 	DEV_TEAM_PAGES,
+	DEV_REVIEW_STATES,
 	DEV_TEAM_SETTINGS,
 	DEV_TRUST_ADORNMENTS,
 	DEV_VERIFICATION_STAMPS,
@@ -430,6 +434,24 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						disabled={!o.enabled}
 						onChange={(serviceSide) => {
 							patchDevContext({ serviceSide });
+							reloadProjectPage();
+						}}
+					/>
+				</Field>
+
+				{
+					/* The engagement's reviews (Decision #487): the Overview's Reviews block and the review
+				    dialog in each state get_reviewables can answer. Server-side via `pj.dev.review-state`,
+				    so a change reloads a project page. */
+				}
+				<Field label="Review state" hint="Overview block · dialog · reloads">
+					<Segment
+						name="Review state"
+						options={DEV_REVIEW_STATES}
+						value={o.reviewState}
+						disabled={!o.enabled}
+						onChange={(reviewState) => {
+							patchDevContext({ reviewState });
 							reloadProjectPage();
 						}}
 					/>
@@ -907,6 +929,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 					/>
 				</Field>
 
+				<Field label="Push permission" hint="Settings → Notifications · this device">
+					<Segment
+						name="Push permission"
+						options={DEV_PUSH_PERMISSIONS}
+						value={o.pushPermission}
+						disabled={!o.enabled}
+						onChange={(pushPermission) => patchDevContext({ pushPermission })}
+					/>
+				</Field>
+
 				{
 					/* The header basket drawer. A second paying account and a delisted line both wait on
 				    other people, so the drawer substitutes its read here; writes still reach the server. */
@@ -918,6 +950,30 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.basketScenario}
 						disabled={!o.enabled}
 						onChange={(basketScenario) => patchDevContext({ basketScenario })}
+					/>
+				</Field>
+
+				{
+					/* A bought product's files (Decision #488). The copy into `originals` lands in moments and a
+				    refund waits on MONEY's doors, so the purchases view and the confirmation substitute their
+				    reading here; a Download still asks the real route. */
+				}
+				<Field label="Purchase files" hint="ready · preparing · failed copy">
+					<Segment
+						name="Purchase files"
+						options={DEV_DELIVERIES}
+						value={o.delivery}
+						disabled={!o.enabled}
+						onChange={(delivery) => patchDevContext({ delivery })}
+					/>
+				</Field>
+				<Field label="Purchase standing" hint="purchases view">
+					<Segment
+						name="Purchase standing"
+						options={DEV_ENTITLEMENTS}
+						value={o.entitlement}
+						disabled={!o.enabled}
+						onChange={(entitlement) => patchDevContext({ entitlement })}
 					/>
 				</Field>
 

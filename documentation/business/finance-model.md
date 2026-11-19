@@ -688,7 +688,9 @@ Governs shared wallets (Business / Team / Enterprise).
   ops job (`SYSTEM_ARCHITECTURE.md` §Integration Blueprints). After it runs the per-currency
   conservation identity (§6; Decision #337, ruling M2 (A); `finance.fn_check_conservation`, one
   `ops.log_entries` row per currency per night, `error` for any imbalance), which also never
-  corrects; operators read both, and the escrow-age figures (MR7), on `/admin/ledger`. A conversion
+  corrects; operators read both, and the escrow-age figures (MR7), on `/admin/ledger`. An `error`
+  row from either, or a night with no row at all, alerts a person by webhook and email within minutes
+  (MR4, Decision #461). A conversion
   (§11, Decision #435) is reconciled on its own too: `finance.v_fx_conversion_reconciliation` sets
   each `finance.fx_conversions` row against its ledger legs (principal, margin and credit; every
   drift must be 0), and `finance.v_fx_exposure` totals the platform's net position per currency

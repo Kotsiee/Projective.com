@@ -1,0 +1,127 @@
+/*
+ * files-purchases — the purchases view of `/files` (`/files?source=purchases`, Decision #488).
+ *
+ * It sits in the hub's own body box (`.fh-hub`: its padding, its container) so the page reads as a
+ * location of the files surface, not a second app. A purchase is a row of text, never a card: the
+ * rows are separated by one hairline, and the only contained marks are the lifecycle status of a
+ * refunded purchase and the per-file Download controls (§B.4, §B.11).
+ */
+
+/* #region Head */
+.fh-purchases__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin-block-end: var(--space-4);
+}
+
+.fh-purchases__title {
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region List */
+.fh-purchases__list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.fh-purchases__item {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block: var(--space-4);
+	border-block-start: var(--hairline);
+	scroll-margin-block-start: var(--space-6);
+}
+
+.fh-purchases__item:first-child {
+	border-block-start: none;
+	padding-block-start: 0;
+}
+
+.fh-purchases__itemhead {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: center;
+	min-inline-size: 0;
+}
+
+.fh-purchases__name {
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.fh-purchases__note {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Files */
+.fh-purchases__files {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.fh-purchases__file {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: var(--space-1) var(--space-3);
+	align-items: center;
+	padding-block: var(--space-1);
+}
+
+.fh-purchases__filetext {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.fh-purchases__filename {
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.fh-purchases__file .ui-meta-line {
+	font-variant-numeric: tabular-nums;
+}
+/* #endregion */
+
+/* #region Empty */
+.fh-purchases__empty {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	align-items: flex-start;
+	padding-block: var(--space-6);
+}
+/* #endregion */
+
+/* #region Narrow */
+@container fh-hub (max-width: 30rem) {
+	.fh-purchases__file {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */

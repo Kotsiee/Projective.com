@@ -38,6 +38,7 @@ import {
 	LaneIconButton,
 } from "@projective/ui/navigation";
 import { Toast, useToast } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { logger } from "@web/utils/logger.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
@@ -142,6 +143,12 @@ export interface ProjectSidebarProps {
 	detail: ProjectDetail | null;
 	/** The routed slug (offers a retry/back even on a miss). */
 	slug: string;
+	/**
+	 * Why the detail could not be READ (a lapsed session, an unreachable database), or absent. With
+	 * no detail, the lane then says the project can't be loaded and offers Try again — never "Project
+	 * not found", which would tell the reader a project they own does not exist (PRD-B1).
+	 */
+	loadError?: string | null;
 	/** Pathname at SSR — seeds the active view link. */
 	path: string;
 	/**
@@ -339,6 +346,28 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 			});
 		});
 	}, []);
+
+	// The read failed rather than missed: say so, with a retry, and keep the way back.
+	if (!detail && props.loadError) {
+		return (
+			<div class="proj-detail proj-detail--empty">
+				<LaneBackLink href="/projects" label="Back to all projects" />
+				<div class="proj-detail__missing" role="alert">
+					<p class="proj-detail__missing-title">This project can't be loaded</p>
+					<p class="proj-detail__missing-note">{props.loadError}</p>
+					<div class="proj-detail__missing-action">
+						<Button
+							label="Try again"
+							severity="neutral"
+							variant="outlined"
+							size="sm"
+							onClick={() => globalThis.location.reload()}
+						/>
+					</div>
+				</div>
+			</div>
+		);
+	}
 
 	// A slug that resolved to nothing — a calm stub with a way back, never a hard error.
 	if (!detail) {

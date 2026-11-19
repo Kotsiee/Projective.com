@@ -75,6 +75,14 @@ ALTER TABLE ops.contact_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ops.contact_request_attachments ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
+-- #region [alerts] Money and job alerts (MR4, Decision #461): no client policy; definers only
+ALTER TABLE ops.alert_rules ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE ops.alert_deliveries ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE ops.alert_seen ENABLE ROW LEVEL SECURITY;
+-- #endregion
+
 ALTER TABLE org.business_profiles ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.freelancer_profiles ENABLE ROW LEVEL SECURITY;
@@ -689,6 +697,10 @@ ALTER TABLE catalogue.listing_tags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE catalogue.collections ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE catalogue.collection_listings ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.product_versions ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.entitlements ENABLE ROW LEVEL SECURITY;
 
 
 -- --- editorial + community (Decision #274) ---

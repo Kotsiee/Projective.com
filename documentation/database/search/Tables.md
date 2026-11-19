@@ -46,29 +46,33 @@ search and is not logged. Gated by `EXPLORE_BACKEND_LIVE` (off ⇒ nothing is wr
 | `result_count`    | Matching items (`SearchPayload.count`).                                                      |
 | `matched_density` | `result_count / candidate pool`: the pool is the searched category's catalogue size.       |
 
-## `search.interest_events` — discovery impressions, clicks and rail depth
+## `search.interest_events` — discovery impressions, clicks, rail depth and listing page views
 
 Migration [`00000018_tables_search.sql`](../../../supabase/migrations/00000018_tables_search.sql);
-RLS in `00002014`, grants in `00002520`. Zod SSOT: `@projective/types/explore`
-(`DiscoveryEventBatchSchema`, `packages/types/explore/telemetry.ts`).
+RLS in `00002014`, grants in `00002520`; BEFORE INSERT triggers `trg_interest_events_minor` and
+`trg_interest_events_view` (`00001800`, [Functions.md](Functions.md)); indexes in `00004004`. Zod
+SSOT: `@projective/types/explore` (`DiscoveryEventBatchSchema`, `packages/types/explore/telemetry.ts`).
 
-Written by `InterestBackendService.record` (`packages/backend/services/search/`) from the
-`ImpressionTracker` island's `POST /api/explore/events` beacon, inserted **as the caller** (their
-JWT, so RLS pins `user_id = auth.uid()`). It falls back to an anonymous row with `user_id` NULL
-when the caller's token no longer verifies, because a beacon sent from `pagehide` often outlives
-its session. Gated by `EXPLORE_BACKEND_LIVE`: off ⇒ the batch is validated and acknowledged with
-no write.
+Written by `InterestBackendService.record` (`packages/backend/services/search/`) from two
+`POST /api/explore/events` beacons: the `ImpressionTracker` island on the discovery surfaces, and
+the `ListingViewBeacon` island on a service or product page (`/view/:slug`, `/:handle/view/:slug`;
+MARKETPLACE SC5). Rows are inserted **as the caller** (their JWT, so RLS pins
+`user_id = auth.uid()`). It falls back to an anonymous row with `user_id` NULL when the caller's
+token no longer verifies, because a beacon sent from `pagehide` often outlives its session. The
+route stores nothing for a crawler, headless browser or scripted client (`isAutomatedAgent`, a
+`User-Agent` filter) and answers `202`. Gated by `EXPLORE_BACKEND_LIVE`: off ⇒ the batch is
+validated and acknowledged with no write. The only reader is `analytics.fn_rollup_listings`.
 
 | Column        | Meaning                                                                                                                 |
 | :------------ | :---------------------------------------------------------------------------------------------------------------------- |
 | `user_id`     | The signed-in reader, NULL for a guest.                                                                                 |
 | `session_id`  | Anonymous per-tab key (`sessionStorage` `pj.session.explore.discoverySession`). Joins one browsing session's events.    |
-| `event_type`  | `impression` · `click` · `rail_depth` from the tracker; `view` — a listing page view (Decision #217(k): one per session per listing per day, aggregates only). `search` · `save` · `hire` · `apply` · `message` are reserved.  |
+| `event_type`  | `impression` · `click` · `rail_depth` from the tracker; `view` — a service or product page was shown (`ListingViewBeacon`), stored at most once per viewer per listing per 30 minutes and never for the listing's seller or its owning team (`trg_interest_events_view`); the rollup counts distinct sessions per listing per day (Decision #217(k), aggregates only). `search` · `save` · `hire` · `apply` · `message` are reserved.  |
 | `entity_id`   | The listing/profile **uuid**. Cards carry public slugs/handles; the service resolves them against the cached public catalogue and **drops** any id the catalogue does not hold. NULL for `rail_depth`. |
 | `entity_type` | `service` · `product` · `article` · `project` · `user` · `freelancer` · `team` · `business`, taken from the catalogue, never from the client. NULL for `rail_depth`. |
 | `query`       | The results page's active `?q=` when the event happened.                                                                |
-| `weight`      | `impression` 0.1 · `click` 1.0 · `rail_depth` 0 (`EVENT_WEIGHT` in `interest-rows.ts`).                                 |
-| `context`     | jsonb: `{ surface, rail?, position? }` for cards (`surface` is `explore.home` or `explore.results`; `position` is the zero-based slot in the rail or grid), `{ surface, rail, depth, items }` for rail depth. |
+| `weight`      | `impression` 0.1 · `click` 1.0 · `view` 1.0 · `rail_depth` 0 (`EVENT_WEIGHT` in `interest-rows.ts`).                   |
+| `context`     | jsonb: `{ surface, rail?, position? }` for cards (`surface` is `explore.home` or `explore.results`; `position` is the zero-based slot in the rail or grid), `{ surface, rail, depth, items }` for rail depth, `{ surface: "view.entity" }` for a page view. |
 
 **Event semantics** (the `discovery.*` rows of `analytics.event_catalogue`):
 
@@ -78,6 +82,13 @@ no write.
   creator or a skill is not a click on the item.
 - `rail_depth`: the furthest `(scrollLeft + clientWidth) / scrollWidth` reached in one
   `[data-rail-id]` track, re-sent only when it grows by more than 0.01.
+- `view`: a service or product page a reader evaluates (not the owner's preview or simulation, not
+  a 13–17 account) was shown — once per page load, after hydration, as soon as the tab is visible.
+  The batch is `surface = "view.entity"` with exactly that one event, and a view from any other
+  surface is a `422`. The trigger keeps one per visitor (the signed-in person, else the session)
+  per listing per 30 minutes either side, and drops one with no visitor or by the seller or an
+  active member of the owning team; the service also drops the seller's own when the beacon is
+  written anonymously.
 
 > **Ranking caveat.** A ranking that reads popularity from this table should take `sum(weight)` or
 > exclude impressions: a bare `count(*)` with no `event_type` filter counts an impression as much as

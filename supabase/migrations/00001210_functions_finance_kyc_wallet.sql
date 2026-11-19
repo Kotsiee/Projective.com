@@ -1417,6 +1417,8 @@ DECLARE
     v_offer marketplace.quote_offers;
     v_request marketplace.quote_requests;
     v_offer_terms jsonb;
+    v_version_id uuid;
+    v_version_manifest jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to pay' USING ERRCODE = '42501';
@@ -1950,7 +1952,10 @@ BEGIN
             'owner_team_id', v_line.owner_team_id,
             'licence', v_line.licence,
             'format', v_line.format,
-            'manifest', v_line.file_manifest
+            'manifest', v_line.file_manifest,
+            -- The buyer ticked, before Pay, that a file counts as downloaded once delivered in full
+            -- (ruling A8, Decision #488): the checkout writes it onto the line as the buyer's own act.
+            'terms_accepted', COALESCE(v_line.metadata -> 'deliveryTermsAccepted' = 'true'::jsonb, false)
         );
     END LOOP;
 
@@ -2269,7 +2274,18 @@ BEGIN
         PERFORM finance.fn_wallet_credit_pending (v_seller_id, v_seller_type, v_currency, v_paid - v_fee,
             'product_sale', 'orders', v_order_id);
 
-        v_manifest := v_line.l -> 'manifest' -> 0;
+        -- What this purchase delivers is the newest version publishing froze (Decision #488, ruling A6),
+        -- never the seller's draft; a product that attached no library file has none. The receipt names
+        -- the file when the bundle is one file, and always carries the bundle's total size.
+        v_version_id := NULL;
+        v_version_manifest := NULL;
+        SELECT pv.id, pv.manifest INTO v_version_id, v_version_manifest
+          FROM catalogue.product_versions pv
+         WHERE pv.product_id = (v_line.l ->> 'item_id')::uuid
+         ORDER BY pv.version DESC
+         LIMIT 1;
+        v_manifest := COALESCE(v_version_manifest,
+            CASE WHEN pg_catalog.jsonb_typeof(v_line.l -> 'manifest') = 'array' THEN v_line.l -> 'manifest' ELSE '[]'::jsonb END);
         INSERT INTO finance.order_lines (
             order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
             currency, promo_discount_minor, platform_fee_bp, platform_fee_minor, fulfilment,
@@ -2279,9 +2295,26 @@ BEGIN
             v_line.l ->> 'title', 'Instant download', (v_line.l ->> 'quantity')::integer,
             (v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint, v_currency,
             v_share, v_line_bp, v_fee, 'download',
-            v_manifest ->> 'name',
-            CASE WHEN pg_catalog.jsonb_typeof(v_manifest -> 'bytes') = 'number' THEN (v_manifest ->> 'bytes')::bigint END,
+            CASE WHEN pg_catalog.jsonb_array_length(v_manifest) = 1 THEN v_manifest -> 0 ->> 'name' END,
+            (SELECT pg_catalog.sum((x ->> 'bytes')::bigint)
+               FROM pg_catalog.jsonb_array_elements(v_manifest) AS x
+              WHERE pg_catalog.jsonb_typeof(x -> 'bytes') = 'number'),
             v_line.l ->> 'format', v_line.l ->> 'licence', v_i - 1
+        )
+        RETURNING id INTO v_order_line;
+
+        -- The line's entitlement, in this transaction (Decision #488): held by whoever owns the order —
+        -- a person (a freelancer's wallet is still their own), or the team, business or enterprise.
+        INSERT INTO catalogue.entitlements (
+            order_line_id, product_id, version_id, holder_type, holder_id, licence, seats,
+            delivery_terms_accepted_at
+        ) VALUES (
+            v_order_line, (v_line.l ->> 'item_id')::uuid, v_version_id,
+            (CASE WHEN v_basket.owner_type = 'freelancer' THEN 'user' ELSE v_basket.owner_type END)::files.owner_kind,
+            v_basket.owner_id,
+            (v_line.l ->> 'licence')::catalogue.product_licence,
+            LEAST(GREATEST((v_line.l ->> 'quantity')::integer, 1), 999),
+            CASE WHEN v_version_id IS NOT NULL AND (v_line.l ->> 'terms_accepted')::boolean THEN pg_catalog.now() END
         );
 
         UPDATE finance.basket_items
@@ -2321,7 +2354,9 @@ line from the catalogue against the unit price the buyer was shown, re-validate 
 applied (none sent → none applied), debit the wallet, credit each seller net of their own marketplace
 commission (fn_effective_commission_bp, truncated, recorded on the line with its rate; Decision #337
 ruling M1), write the order (platform_fee_minor the lines'' sum, platform_fee_bp the payer''s rate, which
-escrow lines are charged at release) and its lines, consume the basket lines. Digital products, and one-ticket project lines
+escrow lines are charged at release) and its lines, each digital product''s line with its
+catalogue.entitlements row (the newest frozen version, held by the order''s owner; Decision #488),
+consume the basket lines. Digital products, and one-ticket project lines
 (Decision #166), which settle by holding that ticket''s escrow (projects.fund_ticket) instead of a
 seller credit, and cohort seats (Decision #171), which settle through the buyer''s seat hold into a
 membership and a seat escrow (projects.fn_confirm_seat), and 1-1 sessions and set-session blocks

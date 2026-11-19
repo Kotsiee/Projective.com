@@ -105,7 +105,12 @@ export function fixtureWorkspace(
 			: null,
 		hold: null,
 		host_escrows: role === "host"
-			? { held_minor: group ? 81000 : 18000, held_count: group ? 9 : 1, released_minor: 0, currency: "USD" }
+			? {
+				held_minor: group ? 81000 : 18000,
+				held_count: group ? 9 : 1,
+				released_minor: 0,
+				currency: "USD",
+			}
 			: null,
 		curriculum,
 		join: next && role !== "prospect"
@@ -123,7 +128,11 @@ export function fixtureWorkspace(
 }
 
 /** A fixture listing's enrolling cohort. */
-export function fixtureCohortOffer(listingId: string, maxSeats: number, now: number): RawCohortOffer {
+export function fixtureCohortOffer(
+	listingId: string,
+	maxSeats: number,
+	now: number,
+): RawCohortOffer {
 	const sittings = sittingsFor(listingId, fid(listingId, 1), now, 100).slice(1);
 	// No seat is sold in the fixture world; the Dev Context Switcher's "Seat full" previews a full one.
 	return {
@@ -133,6 +142,9 @@ export function fixtureCohortOffer(listingId: string, maxSeats: number, now: num
 		taken: 0,
 		remaining: maxSeats,
 		first_start: sittings[0].starts_at,
+		min_seats: Math.min(3, maxSeats),
+		enrolment_closes_at: new Date(Date.parse(sittings[0].starts_at) - 24 * 3_600_000).toISOString(),
+		cadence: sittings.length > 1 ? "fixed" : null,
 		sittings,
 		curriculum: sittings.map((s, i) => ({
 			id: fid(listingId, 200 + i),

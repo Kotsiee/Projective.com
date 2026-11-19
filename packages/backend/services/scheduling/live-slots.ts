@@ -142,8 +142,9 @@ export async function readGridSource(
 	window: { from: number; to: number },
 	options: GridSourceOptions = {},
 ): Promise<GridSource | undefined> {
-	const client = options.client ?? getAnonClient();
 	try {
+		// Inside the try: a refused client (no database, `USE_MOCKS`) is "could not answer".
+		const client = options.client ?? getAnonClient();
 		const schedule = await client.schema("scheduling").from("schedules")
 			.select("id, timezone, is_published")
 			.eq("owner_type", owner.type)
@@ -217,9 +218,11 @@ export async function readGridSource(
  */
 export async function scheduleIdOf(
 	owner: ScheduleOwner,
-	client: SupabaseClient = getAnonClient(),
+	given?: SupabaseClient,
 ): Promise<string | null | undefined> {
 	try {
+		// Inside the try: a refused client (no database, `USE_MOCKS`) is "could not answer".
+		const client = given ?? getAnonClient();
 		const { data, error } = await client.schema("scheduling").from("schedules")
 			.select("id, is_published")
 			.eq("owner_type", owner.type)

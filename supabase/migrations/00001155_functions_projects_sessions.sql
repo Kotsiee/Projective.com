@@ -183,7 +183,9 @@ $$;
 -- (PRODUCT_SPEC §The Entity View, "remaining capacity"). It returns no person, no URL and no money
 -- beyond the seat count. NULL when the listing has no enrolling cohort. `taken` counts the free seats
 -- its waitlist has first call on (fn_cohort_seats_owed, Decision #455): to anyone outside the queue they
--- are not for sale. A queued buyer's own figure is projects.get_waitlist_place's.
+-- are not for sale. A queued buyer's own figure is projects.get_waitlist_place's. A cohort whose enrolment
+-- close has passed is offered to nobody, before the sweep writes it `active`, and the terms a cohort
+-- was opened on — its minimum, its close and its cadence — are part of the offer (Decision #498).
 CREATE OR REPLACE FUNCTION projects.get_cohort_offer(p_blueprint_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -195,7 +197,7 @@ DECLARE
     v record;
     v_taken integer;
 BEGIN
-    SELECT c.id, c.name, c.max_seats, c.project_stage_id,
+    SELECT c.id, c.name, c.max_seats, c.project_stage_id, c.min_seats, c.enrolment_closes_at, c.cadence,
            (SELECT min(se.start_time) FROM projects.session_events se
              WHERE se.cohort_id = c.id AND se.status = 'scheduled') AS first_start
       INTO v
@@ -206,6 +208,7 @@ BEGIN
        AND p.format = 'session'
        AND p.status IN ('draft', 'active')
        AND c.status = 'enrolling'
+       AND (c.enrolment_closes_at IS NULL OR c.enrolment_closes_at > pg_catalog.now())
        -- A listing nobody may see yet answers only its own seller (their preview).
        AND (sb.is_published OR projects.fn_is_session_host(p.id, auth.uid()))
      ORDER BY first_start NULLS LAST, c.created_at
@@ -223,6 +226,9 @@ BEGIN
         'taken', v_taken,
         'remaining', v.max_seats - v_taken,
         'first_start', v.first_start,
+        'min_seats', v.min_seats,
+        'enrolment_closes_at', v.enrolment_closes_at,
+        'cadence', v.cadence,
         'sittings', COALESCE((
             SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
                 'id', se.id, 'title', se.title, 'starts_at', se.start_time, 'ends_at', se.end_time
@@ -260,7 +266,9 @@ $$;
 -- the first one's hold. One live hold per buyer per cohort (`uq_cohort_seat_holds_live`) — asking
 -- again renews it rather than stacking a second, and a renewal never shortens it: a waitlist invite's
 -- hold keeps its own end (Decision #455). The seats the listing's waitlist has first call on are not
--- for the caller to take (fn_cohort_seats_owed): they are refused as `full`, with what is left.
+-- for the caller to take (fn_cohort_seats_owed): they are refused as `full`, with what is left. A
+-- cohort past its enrolment close is `closed` whatever its status says, and a hold placed before the
+-- close ends at it (Decision #498).
 --
 -- Refusals: 42501 signed out · 22023 a seat count outside 1–500 · P0002 no such cohort · PU422 your
 -- own session · PS409 closed / full / already seated, with DETAIL {reason, remaining}.
@@ -294,7 +302,8 @@ BEGIN
     IF projects.fn_is_session_host(v_cohort.project_id, v_uid) THEN
         RAISE EXCEPTION 'You can''t reserve a seat on your own session' USING ERRCODE = 'PU422';
     END IF;
-    IF v_cohort.status <> 'enrolling' THEN
+    IF v_cohort.status <> 'enrolling'
+       OR (v_cohort.enrolment_closes_at IS NOT NULL AND v_cohort.enrolment_closes_at <= pg_catalog.now()) THEN
         RAISE EXCEPTION USING ERRCODE = 'PS409', MESSAGE = 'This cohort isn''t taking bookings',
             DETAIL = pg_catalog.jsonb_build_object('reason', 'closed', 'remaining', 0)::text;
     END IF;
@@ -320,8 +329,8 @@ BEGIN
                 'reason', 'full', 'remaining', GREATEST(v_cohort.max_seats - v_taken - v_owed, 0))::text;
     END IF;
 
-    v_expires := pg_catalog.now() + pg_catalog.make_interval(
-        mins => projects.fn_session_param('seat_hold_minutes', 15));
+    v_expires := LEAST(pg_catalog.now() + pg_catalog.make_interval(
+        mins => projects.fn_session_param('seat_hold_minutes', 15)), v_cohort.enrolment_closes_at);
 
     UPDATE projects.cohort_seat_holds
        SET seats = p_seats, expires_at = GREATEST(expires_at, v_expires), updated_at = pg_catalog.now()
@@ -393,7 +402,8 @@ BEGIN
             USING ERRCODE = 'PC409';
     END IF;
     SELECT * INTO v_cohort FROM projects.cohorts WHERE id = v_hold.cohort_id FOR UPDATE;
-    IF v_cohort.status <> 'enrolling' THEN
+    IF v_cohort.status <> 'enrolling'
+       OR (v_cohort.enrolment_closes_at IS NOT NULL AND v_cohort.enrolment_closes_at <= pg_catalog.now()) THEN
         RAISE EXCEPTION 'This cohort stopped taking bookings while you were paying' USING ERRCODE = 'PS409';
     END IF;
     IF v_hold.expires_at <= pg_catalog.now()
@@ -530,13 +540,17 @@ $$;
 -- own end, and the 24-hour cancel rule is judged against its own start. A provider is never made to
 -- wait for the end of a six-week block to be paid for week one.
 
--- The seller's session engagement for a 1-1 listing: ONE per listing, made on its first booking, with
--- one "Sessions" stage that every booking's cohort hangs off (an escrow is always held against a
--- stage). Concurrent first bookings are serialised on an advisory lock keyed to the listing, so two
--- buyers paying at once cannot each mint an engagement. `unlisted` and `active`: it is the provider's
--- delivery workspace, never a public project, so it takes no public-project slot.
+-- The seller's session engagement for a session listing: ONE per listing and kind, made on its first
+-- booking (`normal`, a 1-1) or its first opened cohort (`group`, projects.open_cohort), with one
+-- "Sessions" stage that every cohort hangs off (an escrow is always held against a stage). Concurrent
+-- first bookings or opens are serialised on an advisory lock keyed to the listing, so two callers at
+-- once cannot each mint an engagement — and a caller that must see the listing's cohorts unchanged
+-- (open_cohort's one-enrolling rule) holds that lock for the rest of its transaction. `unlisted` and
+-- `active`: it is the provider's delivery workspace, never a public project, so it takes no
+-- public-project slot.
 CREATE OR REPLACE FUNCTION projects.fn_session_engagement_for(
     p_blueprint_id uuid,
+    p_kind text DEFAULT 'normal',
     OUT o_project_id uuid,
     OUT o_stage_id uuid
 )
@@ -548,6 +562,9 @@ AS $$
 DECLARE
     v_bp marketplace.service_blueprints;
 BEGIN
+    IF p_kind IS NULL OR p_kind NOT IN ('normal', 'group') THEN
+        RAISE EXCEPTION 'A session engagement is a 1-1 (normal) or a group' USING ERRCODE = '22023';
+    END IF;
     SELECT * INTO v_bp FROM marketplace.service_blueprints WHERE id = p_blueprint_id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'That session is no longer offered' USING ERRCODE = 'P0002';
@@ -559,7 +576,7 @@ BEGIN
       FROM projects.projects p
      WHERE p.source_blueprint_id = p_blueprint_id
        AND p.format = 'session'::public.project_format
-       AND p.session_kind = 'normal'
+       AND p.session_kind = p_kind
        AND p.status IN ('draft', 'active')
        AND p.owner_user_id = v_bp.freelancer_profile_id
        AND p.owner_team_id IS NOT DISTINCT FROM v_bp.owner_team_id
@@ -573,7 +590,7 @@ BEGIN
         ) VALUES (
             v_bp.freelancer_profile_id, v_bp.owner_team_id, v_bp.title, v_bp.description,
             v_bp.description_text, 'session'::public.project_format, 'standard'::projects.structure_variation,
-            'normal', 'active'::public.project_status, 'unlisted'::public.visibility,
+            p_kind, 'active'::public.project_status, 'unlisted'::public.visibility,
             'unlisted'::public.visibility, pg_catalog.upper(v_bp.currency), 'fixed_price'::public.budget_type,
             v_bp.id
         )
@@ -949,11 +966,71 @@ AS $$
        AND ev.attendee_count IS DISTINCT FROM x.seats;
 $$;
 
+-- Internal: write one sitting of a GROUP cohort and its roster-less calendar mirror — the one path both
+-- schedule_sitting and open_cohort schedule through. The caller has authorised the provider and holds
+-- the cohort's row lock. The time is re-tested against the provider's calendar under a lock on it
+-- (scheduling.fn_slot_is_free: events, discovery calls, blackouts, buffers), so a sitting can never be
+-- double-booked against a 1-1 booking or a discovery call taking the same lock. The caller syncs the
+-- mirrors' seat count. Refusal: PS409 the time is not free.
+CREATE OR REPLACE FUNCTION projects.fn_write_group_sitting(
+    p_cohort_id uuid,
+    p_title text,
+    p_starts_at timestamptz,
+    p_ends_at timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_cohort projects.cohorts;
+    v_project projects.projects;
+    v_schedule uuid;
+    v_sitting projects.session_events;
+    v_mirror uuid;
+BEGIN
+    SELECT * INTO v_cohort FROM projects.cohorts WHERE id = p_cohort_id;
+    SELECT * INTO v_project FROM projects.projects WHERE id = v_cohort.project_id;
+
+    v_schedule := projects.fn_session_host_schedule(v_project.id);
+    IF v_schedule IS NOT NULL THEN
+        PERFORM 1 FROM scheduling.schedules WHERE id = v_schedule FOR UPDATE;
+        IF NOT scheduling.fn_slot_is_free(v_schedule, p_starts_at, p_ends_at) THEN
+            RAISE EXCEPTION 'That time clashes with something already on your calendar — pick another'
+                USING ERRCODE = 'PS409';
+        END IF;
+    END IF;
+
+    INSERT INTO projects.session_events (cohort_id, title, start_time, end_time)
+    VALUES (v_cohort.id, p_title, p_starts_at, p_ends_at)
+    RETURNING * INTO v_sitting;
+
+    -- No roster: the sitting is the provider's to keep, not a meeting its seat-holders vote to move
+    -- (above). Anchored to the engagement as well as the schedule, so no client policy reaches it.
+    INSERT INTO scheduling.events (
+        schedule_id, project_id, kind, status, title, starts_at, ends_at, capacity,
+        source_session_event_id, created_by
+    ) VALUES (
+        v_schedule, v_project.id, 'session'::scheduling.event_kind, 'confirmed'::scheduling.event_status,
+        p_title, p_starts_at, p_ends_at, v_cohort.max_seats, v_sitting.id, v_project.owner_user_id
+    )
+    RETURNING id INTO v_mirror;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'sitting_id', v_sitting.id, 'slug', v_sitting.slug, 'calendar_event_id', v_mirror,
+        'title', v_sitting.title, 'starts_at', v_sitting.start_time, 'ends_at', v_sitting.end_time
+    );
+END;
+$$;
+
 -- The provider adds a sitting to one of their group cohorts. Refusals: 42501 signed out or not the
 -- cohort's host · PM403 under 18 · 22023 an empty or over-long title, no span, a span over 24 hours, a
 -- start that has passed · P0002 no such cohort · PU422 a 1-1 booking's cohort · PS409 the cohort or its
--- engagement has ended, the time is not free on the provider's calendar, or the sitting would move the
--- cohort's start earlier for people who have already paid.
+-- engagement has ended, the time is not free on the provider's calendar, the sitting would start before
+-- the cohort's enrolment closes (a cohort's sittings follow its close, Decision #498), or it would move
+-- the cohort's start earlier for people who have already paid.
 --
 -- That last refusal is the same money as the vote's. A seat is refunded or forfeited against the
 -- cohort's FIRST sitting, so a new sitting before it would pull every seat-holder towards — or straight
@@ -979,9 +1056,7 @@ DECLARE
     v_cohort projects.cohorts;
     v_project projects.projects;
     v_first timestamptz;
-    v_schedule uuid;
-    v_sitting projects.session_events;
-    v_mirror uuid;
+    v_out jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to schedule a session' USING ERRCODE = '42501';
@@ -1014,6 +1089,10 @@ BEGIN
     IF v_cohort.status NOT IN ('enrolling', 'active') OR v_project.status NOT IN ('draft', 'active') THEN
         RAISE EXCEPTION 'This cohort has ended — it takes no new sessions' USING ERRCODE = 'PS409';
     END IF;
+    IF v_cohort.enrolment_closes_at IS NOT NULL AND p_starts_at < v_cohort.enrolment_closes_at THEN
+        RAISE EXCEPTION 'This cohort takes bookings until its enrolment closes — its sessions start after that'
+            USING ERRCODE = 'PS409';
+    END IF;
 
     IF projects.fn_cohort_seats_taken(v_cohort.id) > 0 THEN
         SELECT min(se.start_time) INTO v_first
@@ -1029,44 +1108,18 @@ BEGIN
         END IF;
     END IF;
 
-    v_schedule := projects.fn_session_host_schedule(v_project.id);
-    IF v_schedule IS NOT NULL THEN
-        PERFORM 1 FROM scheduling.schedules WHERE id = v_schedule FOR UPDATE;
-        IF NOT scheduling.fn_slot_is_free(v_schedule, p_starts_at, p_ends_at) THEN
-            RAISE EXCEPTION 'That time clashes with something already on your calendar — pick another'
-                USING ERRCODE = 'PS409';
-        END IF;
-    END IF;
-
-    INSERT INTO projects.session_events (cohort_id, title, start_time, end_time)
-    VALUES (v_cohort.id, v_title, p_starts_at, p_ends_at)
-    RETURNING * INTO v_sitting;
-
-    -- No roster: the sitting is the provider's to keep, not a meeting its seat-holders vote to move
-    -- (above). Anchored to the engagement as well as the schedule, so no client policy reaches it.
-    INSERT INTO scheduling.events (
-        schedule_id, project_id, kind, status, title, starts_at, ends_at, capacity,
-        source_session_event_id, created_by
-    ) VALUES (
-        v_schedule, v_project.id, 'session'::scheduling.event_kind, 'confirmed'::scheduling.event_status,
-        v_title, p_starts_at, p_ends_at, v_cohort.max_seats, v_sitting.id, v_project.owner_user_id
-    )
-    RETURNING id INTO v_mirror;
+    v_out := projects.fn_write_group_sitting(v_cohort.id, v_title, p_starts_at, p_ends_at);
     PERFORM projects.fn_sync_sitting_mirrors(v_cohort.id);
-
-    RETURN pg_catalog.jsonb_build_object(
-        'sitting_id', v_sitting.id, 'slug', v_sitting.slug, 'calendar_event_id', v_mirror,
-        'title', v_sitting.title, 'starts_at', v_sitting.start_time, 'ends_at', v_sitting.end_time
-    );
+    RETURN v_out;
 END;
 $$;
 
 COMMENT ON FUNCTION projects.schedule_sitting(uuid, text, timestamptz, timestamptz) IS
 'The provider''s door for adding a sitting to a group cohort they host: writes the sitting and its
-roster-less calendar mirror (so it blocks free/busy and both booking gates, and no vote can move it).
-Refusals: 42501 · PM403 · 22023 title / span / time passed · P0002 · PU422 a 1-1 cohort · PS409 ended,
-not free on the calendar, or earlier than the first sitting (or inside the cancellation notice) once a
-seat is taken.';
+roster-less calendar mirror (fn_write_group_sitting, so it blocks free/busy and both booking gates, and
+no vote can move it). Refusals: 42501 · PM403 · 22023 title / span / time passed · P0002 · PU422 a 1-1
+cohort · PS409 ended, not free on the calendar, before the cohort''s enrolment close, or earlier than
+the first sitting (or inside the cancellation notice) once a seat is taken.';
 
 -- The provider renames one of their sittings — a 1-1's or a group's — and its calendar mirror with it.
 -- Nothing else about the sitting changes. Refusals: 42501 signed out or not the host · 22023 an empty or
@@ -1152,6 +1205,576 @@ BEGIN
             MESSAGE = 'event: a 1-1 sitting is agreed between its provider and client — it is never put to a vote';
     END IF;
     RETURN NEW;
+END;
+$$;
+-- #endregion
+
+-- #region 4d. Open and cancel a group cohort — the seller's doors (Decision #498)
+-- A group-session listing sells seats only on its ENROLLING cohort (get_cohort_offer), so until a
+-- seller opens one the listing is waitlist-only. Owner rulings (2026-11-18):
+--   * the seller sets the capacity (the listing's cohort size by default), the first sitting, how the
+--     listing's `session_count` sittings repeat (weekly · fortnightly · fixed dates), an enrolment close
+--     at or before the first sitting, and an optional minimum — every one shown to the buyer before
+--     they pay (get_cohort_offer);
+--   * the seller may cancel a whole cohort any time before its first sitting starts: every seat is
+--     refunded in full through the seat escrow's refund path (`under_filled` when the close passed
+--     below the minimum, `provider` otherwise); a seller who does nothing runs it;
+--   * a cancelled cohort's waitlist keeps its order: an invite's seat is released and its place goes
+--     back to waiting where it stood, and a refunded seat-holder's place reopens at its original
+--     queue time (#455 (b) amended for this case); seat-holders and the queue are told;
+--   * a cohort's enrolment closes by its first sitting; the listing's "join after start" toggle
+--     (`allow_continuous_enrollment`) has no effect yet.
+-- One enrolling cohort per listing at a time (#455 (e): the listing sells only one), checked under the
+-- listing's engagement lock. No client role writes `projects.cohorts` (00002520).
+
+-- The seller opens a cohort on one of their group-session listings, with its sittings, through the path
+-- schedule_sitting takes (fn_write_group_sitting). `p_listing` is the catalogue listing; the caller must
+-- manage it (catalogue.fn_manages_listing: its owner, or a `publish_listings` holder on its team).
+-- Weekly and fortnightly sittings keep their wall-clock time in the provider's own zone across a clock
+-- change. Opening is what the waitlist job waits for (fn_waitlist_dispatch): its next tick invites the
+-- queue, one per seat, in order.
+--
+-- Refusals: 42501 signed out · PM403 under 18 · P0002 not a listing the caller manages · PU422 not a
+-- group session, or archived · 22023 seats outside 1–500, a minimum outside 1–the cohort size, a first
+-- sitting that has passed, a close that has passed or falls after the first sitting (strictly before it
+-- with a minimum, so there is time to decide), a cadence that does not fit the listing's sitting count,
+-- fixed dates that do not number its later sittings, sittings out of order or overlapping · PS409 a
+-- cohort already taking bookings, or a sitting that is not free on the provider's calendar.
+CREATE OR REPLACE FUNCTION projects.open_cohort(
+    p_listing uuid,
+    p_first_start timestamptz,
+    p_cadence text DEFAULT NULL,
+    p_later_starts timestamptz[] DEFAULT NULL,
+    p_max_seats integer DEFAULT NULL,
+    p_min_seats integer DEFAULT NULL,
+    p_enrolment_closes_at timestamptz DEFAULT NULL,
+    p_name text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_listing catalogue.listings;
+    v_bp marketplace.service_blueprints;
+    v_count integer;
+    v_minutes integer;
+    v_max integer;
+    v_close timestamptz;
+    v_name text;
+    v_later integer := COALESCE(pg_catalog.cardinality(p_later_starts), 0);
+    v_step integer;
+    v_tz text;
+    v_eng record;
+    v_cohort projects.cohorts;
+    v_starts timestamptz[];
+    v_prev_end timestamptz;
+    v_plan_title text;
+    v_title text;
+    v_sittings jsonb := '[]'::jsonb;
+    k integer;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to open a cohort' USING ERRCODE = '42501';
+    END IF;
+    PERFORM org.fn_assert_adult(v_uid);
+    IF NOT COALESCE(catalogue.fn_manages_listing(p_listing), false) THEN
+        RAISE EXCEPTION 'No such listing' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT * INTO v_listing FROM catalogue.listings WHERE id = p_listing;
+    SELECT * INTO v_bp FROM marketplace.service_blueprints WHERE id = v_listing.service_blueprint_id;
+    IF v_bp.id IS NULL OR v_bp.delivery_model <> 'group_session'::marketplace.service_delivery_model THEN
+        RAISE EXCEPTION 'Only a group session opens cohorts' USING ERRCODE = 'PU422';
+    END IF;
+    IF v_listing.status = 'archived'::catalogue.listing_status THEN
+        RAISE EXCEPTION 'This listing is archived — restore it to open a cohort' USING ERRCODE = 'PU422';
+    END IF;
+
+    v_count := COALESCE(v_bp.session_count, 1);
+    v_minutes := COALESCE(v_bp.session_minutes, 60);
+    v_max := COALESCE(p_max_seats, v_bp.max_seats_per_cohort);
+    IF v_max IS NULL OR v_max < 1 OR v_max > 500 THEN
+        RAISE EXCEPTION 'A cohort seats between 1 and 500 people' USING ERRCODE = '22023';
+    END IF;
+    IF p_min_seats IS NOT NULL AND (p_min_seats < 1 OR p_min_seats > v_max) THEN
+        RAISE EXCEPTION 'The minimum is between 1 seat and the cohort''s size (%)', v_max USING ERRCODE = '22023';
+    END IF;
+    IF p_first_start IS NULL OR p_first_start <= pg_catalog.now() THEN
+        RAISE EXCEPTION 'Pick a first session that is still ahead' USING ERRCODE = '22023';
+    END IF;
+    v_close := COALESCE(p_enrolment_closes_at, p_first_start);
+    IF v_close <= pg_catalog.now() OR v_close > p_first_start THEN
+        RAISE EXCEPTION 'Enrolment has to close after now and no later than the first session' USING ERRCODE = '22023';
+    END IF;
+    IF p_min_seats IS NOT NULL AND v_close >= p_first_start THEN
+        RAISE EXCEPTION 'With a minimum, enrolment has to close before the first session, so there is time to decide whether it runs'
+            USING ERRCODE = '22023';
+    END IF;
+    v_name := pg_catalog.left(COALESCE(NULLIF(pg_catalog.btrim(COALESCE(p_name, '')), ''), v_bp.title), 200);
+
+    IF v_count = 1 THEN
+        IF p_cadence IS NOT NULL OR v_later > 0 THEN
+            RAISE EXCEPTION 'This listing is a single session — it has no cadence' USING ERRCODE = '22023';
+        END IF;
+    ELSIF p_cadence IS NULL OR p_cadence NOT IN ('weekly', 'fortnightly', 'fixed') THEN
+        RAISE EXCEPTION 'Choose weekly, fortnightly or fixed dates for the % sessions', v_count USING ERRCODE = '22023';
+    ELSIF p_cadence = 'fixed' AND v_later <> v_count - 1 THEN
+        RAISE EXCEPTION 'Pick a date for each of the % later sessions', v_count - 1 USING ERRCODE = '22023';
+    ELSIF p_cadence <> 'fixed' AND v_later > 0 THEN
+        RAISE EXCEPTION 'Dates of your own go with the fixed cadence' USING ERRCODE = '22023';
+    END IF;
+
+    -- The listing's engagement, and its lock for the rest of the transaction: two opens queue here.
+    SELECT * INTO v_eng FROM projects.fn_session_engagement_for(v_bp.id, 'group');
+    IF EXISTS (
+        SELECT 1
+          FROM projects.cohorts c
+          JOIN projects.projects p ON p.id = c.project_id
+         WHERE p.source_blueprint_id = v_bp.id
+           AND p.format = 'session'::public.project_format
+           AND c.status = 'enrolling'::projects.cohort_status
+           AND (c.enrolment_closes_at IS NULL OR c.enrolment_closes_at > pg_catalog.now())
+    ) THEN
+        RAISE EXCEPTION 'This listing already has a cohort taking bookings — cancel it, or wait for its enrolment to close, before opening the next'
+            USING ERRCODE = 'PS409';
+    END IF;
+
+    v_starts := ARRAY[p_first_start];
+    IF p_cadence = 'fixed' THEN
+        v_starts := v_starts || p_later_starts;
+    ELSIF p_cadence IN ('weekly', 'fortnightly') THEN
+        v_step := CASE p_cadence WHEN 'weekly' THEN 7 ELSE 14 END;
+        v_tz := COALESCE((SELECT s.timezone FROM scheduling.schedules s
+                           WHERE s.id = projects.fn_session_host_schedule(v_eng.o_project_id)), 'UTC');
+        FOR k IN 1 .. v_count - 1 LOOP
+            v_starts := v_starts || (((p_first_start AT TIME ZONE v_tz)
+                + pg_catalog.make_interval(days => v_step * k)) AT TIME ZONE v_tz);
+        END LOOP;
+    END IF;
+
+    INSERT INTO projects.cohorts (
+        project_id, project_stage_id, name, max_seats, status, min_seats, enrolment_closes_at, cadence, opened_by
+    ) VALUES (
+        v_eng.o_project_id, v_eng.o_stage_id, v_name, v_max, 'enrolling'::projects.cohort_status,
+        p_min_seats, v_close, CASE WHEN v_count > 1 THEN p_cadence END, v_uid
+    )
+    RETURNING * INTO v_cohort;
+
+    FOR k IN 1 .. v_count LOOP
+        IF v_starts[k] IS NULL OR (k > 1 AND v_starts[k] < v_prev_end) THEN
+            RAISE EXCEPTION 'Each session has to start after the one before it ends' USING ERRCODE = '22023';
+        END IF;
+        v_plan_title := CASE WHEN pg_catalog.jsonb_typeof(v_bp.session_plan -> (k - 1)) = 'object'
+                             THEN NULLIF(pg_catalog.btrim(COALESCE(v_bp.session_plan -> (k - 1) ->> 'title', '')), '') END;
+        v_title := pg_catalog.left(CASE
+            WHEN v_count = 1 THEN COALESCE(v_name || ' — ' || v_plan_title, v_name)
+            WHEN v_plan_title IS NOT NULL THEN pg_catalog.format('%s — session %s of %s: %s', v_name, k, v_count, v_plan_title)
+            ELSE pg_catalog.format('%s — session %s of %s', v_name, k, v_count) END, 200);
+        v_sittings := v_sittings || projects.fn_write_group_sitting(
+            v_cohort.id, v_title, v_starts[k], v_starts[k] + pg_catalog.make_interval(mins => v_minutes));
+        v_prev_end := v_starts[k] + pg_catalog.make_interval(mins => v_minutes);
+    END LOOP;
+    PERFORM projects.fn_sync_sitting_mirrors(v_cohort.id);
+
+    RETURN pg_catalog.jsonb_build_object(
+        'cohort_id', v_cohort.id,
+        'name', v_cohort.name,
+        'status', v_cohort.status,
+        'max_seats', v_cohort.max_seats,
+        'min_seats', v_cohort.min_seats,
+        'enrolment_closes_at', v_cohort.enrolment_closes_at,
+        'cadence', v_cohort.cadence,
+        'project_slug', (SELECT p.slug FROM projects.projects p WHERE p.id = v_eng.o_project_id),
+        'sittings', v_sittings
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.open_cohort(uuid, timestamptz, text, timestamptz[], integer, integer, timestamptz, text) IS
+'The seller''s door for opening a cohort on a group-session listing they manage (Decision #498): one
+enrolling cohort with the listing''s session_count sittings (first, then weekly / fortnightly in the
+provider''s zone, or fixed dates), a capacity, an optional minimum and an enrolment close at or before
+the first sitting; each sitting through fn_write_group_sitting. The waitlist job invites on its next
+tick. Refusals: 42501 · PM403 · P0002 · PU422 · 22023 · PS409 one already enrolling / calendar clash.';
+
+-- The seller cancels a whole group cohort before its first sitting starts. Under the cohort's row lock
+-- (the lock reserve_seat and fn_confirm_seat take, so nobody is seated while it runs) it: closes the
+-- cohort (`cancelled`, with its reason); refunds every held seat escrow in full to its payer
+-- (finance.fn_refund_seat_escrow — the provider-cancel row of PRODUCT_SPEC §Session-Based C); cancels
+-- the seats, their reminders, the sittings and their calendar mirrors; releases every live hold; puts
+-- each invited place back to waiting where it stood and reopens each refunded seat-holder's converted
+-- place at its original queue time; and tells the seat-holders (`session.cancelled`) and everyone left
+-- waiting (`waitlist.cohort_cancelled`). `under_filled` when the close has passed with fewer paid seats
+-- than the minimum, `provider` for any other cancel.
+--
+-- Refusals: 42501 signed out, or not a seller who manages the listing · P0002 no such cohort · PU422 a
+-- 1-1 booking's cohort (it is cancelled seat by seat) · PS409 the cohort has already ended, or its
+-- first sitting has started (its seats are then cancelled one by one).
+CREATE OR REPLACE FUNCTION projects.cancel_cohort(p_cohort_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_cohort projects.cohorts;
+    v_project projects.projects;
+    v_listing uuid;
+    v_slug text;
+    v_title text;
+    v_first timestamptz;
+    v_paid integer;
+    v_reason text;
+    m record;
+    e record;
+    v_wait record;
+    v_member_refund bigint;
+    v_refunded bigint := 0;
+    v_seats integer := 0;
+    v_currency text;
+    v_restored integer := 0;
+    v_rows integer;
+    v_told integer := 0;
+    v_place_back boolean;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to cancel a cohort' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO v_cohort FROM projects.cohorts WHERE id = p_cohort_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That cohort no longer exists' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT * INTO v_project FROM projects.projects WHERE id = v_cohort.project_id;
+    SELECT l.id INTO v_listing
+      FROM catalogue.listings l
+     WHERE l.service_blueprint_id = v_project.source_blueprint_id
+     ORDER BY l.created_at
+     LIMIT 1;
+    IF v_listing IS NULL OR NOT COALESCE(catalogue.fn_manages_listing(v_listing), false) THEN
+        RAISE EXCEPTION 'Only the listing''s seller can cancel its cohort' USING ERRCODE = '42501';
+    END IF;
+    IF v_project.session_kind <> 'group' THEN
+        RAISE EXCEPTION 'A 1-1 booking is cancelled seat by seat, not as a cohort' USING ERRCODE = 'PU422';
+    END IF;
+    IF v_cohort.status NOT IN ('enrolling', 'active') THEN
+        RAISE EXCEPTION 'This cohort has already ended' USING ERRCODE = 'PS409';
+    END IF;
+    SELECT min(se.start_time) INTO v_first
+      FROM projects.session_events se
+     WHERE se.cohort_id = v_cohort.id AND se.status IN ('scheduled', 'completed');
+    IF v_first IS NOT NULL AND v_first <= pg_catalog.now() THEN
+        RAISE EXCEPTION 'This cohort''s first session has started — cancel its seats one by one instead'
+            USING ERRCODE = 'PS409';
+    END IF;
+
+    SELECT COALESCE(sum(cm.seats), 0)::integer INTO v_paid
+      FROM projects.cohort_memberships cm
+     WHERE cm.cohort_id = v_cohort.id AND cm.status = 'active';
+    v_reason := CASE
+        WHEN v_cohort.min_seats IS NOT NULL
+         AND v_cohort.enrolment_closes_at IS NOT NULL
+         AND v_cohort.enrolment_closes_at <= pg_catalog.now()
+         AND v_paid < v_cohort.min_seats THEN 'under_filled'
+        ELSE 'provider'
+    END;
+    SELECT sb.slug, sb.title INTO v_slug, v_title
+      FROM marketplace.service_blueprints sb WHERE sb.id = v_project.source_blueprint_id;
+
+    UPDATE projects.cohorts
+       SET status = 'cancelled'::projects.cohort_status, cancelled_at = pg_catalog.now(), cancel_reason = v_reason
+     WHERE id = v_cohort.id;
+
+    FOR m IN
+        SELECT cm.id, cm.user_id, cm.seats, cm.joined_at
+          FROM projects.cohort_memberships cm
+         WHERE cm.cohort_id = v_cohort.id AND cm.status = 'active'
+         ORDER BY cm.joined_at, cm.id
+           FOR UPDATE
+    LOOP
+        v_member_refund := 0;
+        FOR e IN
+            SELECT es.id, es.currency
+              FROM finance.escrows es
+             WHERE es.cohort_membership_id = m.id AND es.status = 'held'
+             ORDER BY es.created_at, es.id
+               FOR UPDATE
+        LOOP
+            v_member_refund := v_member_refund + finance.fn_refund_seat_escrow(e.id);
+            v_currency := e.currency;
+        END LOOP;
+        v_refunded := v_refunded + v_member_refund;
+        v_seats := v_seats + m.seats;
+
+        UPDATE projects.cohort_memberships
+           SET status = 'cancelled', cancelled_at = pg_catalog.now()
+         WHERE id = m.id;
+        PERFORM comms.fn_cancel_queued(q.dedupe_key)
+           FROM comms.notification_queue q
+          WHERE q.status = 'scheduled'
+            AND q.user_id = m.user_id
+            AND q.entity_table = 'projects.session_events'
+            AND q.entity_id IN (SELECT se.id FROM projects.session_events se WHERE se.cohort_id = v_cohort.id);
+
+        -- The place their purchase converted reopens where it stood (fn_confirm_seat resolved it in
+        -- the same transaction that seated them, so an older conversion is left alone).
+        UPDATE projects.waitlists w
+           SET status = 'waiting'::projects.waitlist_status, cohort_id = NULL, hold_id = NULL,
+               invited_at = NULL, invite_expires_at = NULL, resolved_at = NULL
+         WHERE w.service_blueprint_id = v_project.source_blueprint_id
+           AND w.user_id = m.user_id
+           AND w.status = 'converted'::projects.waitlist_status
+           AND w.resolved_at >= m.joined_at;
+        v_place_back := FOUND;
+        IF v_place_back THEN
+            v_restored := v_restored + 1;
+        END IF;
+
+        PERFORM comms.fn_notify(
+            m.user_id, 'session.cancelled', 'Your cohort was cancelled',
+            CASE WHEN v_reason = 'under_filled'
+                 THEN pg_catalog.format('"%s" didn''t reach its minimum of %s seats by the time enrolment closed, so the seller cancelled it. Your seat was refunded in full.', v_cohort.name, v_cohort.min_seats)
+                 ELSE pg_catalog.format('The seller cancelled "%s" before it started. Your seat was refunded in full.', v_cohort.name)
+            END || CASE WHEN v_place_back THEN ' You''re back on its waitlist, in your place.' ELSE '' END,
+            'projects.cohort_memberships', m.id,
+            pg_catalog.jsonb_build_object('outcome', 'refunded', 'reason', v_reason, 'refunded_minor', v_member_refund,
+                'currency', v_currency, 'waitlist_restored', v_place_back),
+            v_uid, 'project', v_project.id, NULL, '/view/' || v_slug
+        );
+    END LOOP;
+
+    -- Every invite on this cohort goes back to waiting where it stood, its held seat released.
+    UPDATE projects.waitlists
+       SET status = 'waiting'::projects.waitlist_status, cohort_id = NULL, hold_id = NULL,
+           invited_at = NULL, invite_expires_at = NULL
+     WHERE cohort_id = v_cohort.id AND status = 'invited'::projects.waitlist_status;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    v_restored := v_restored + v_rows;
+    UPDATE projects.cohort_seat_holds
+       SET status = 'released', updated_at = pg_catalog.now()
+     WHERE cohort_id = v_cohort.id AND status = 'held';
+
+    UPDATE projects.session_events
+       SET status = 'cancelled_by_freelancer'::projects.session_event_status, updated_at = pg_catalog.now()
+     WHERE cohort_id = v_cohort.id AND status = 'scheduled';
+    UPDATE scheduling.events ev
+       SET status = 'cancelled'::scheduling.event_status
+      FROM projects.session_events se
+     WHERE se.cohort_id = v_cohort.id
+       AND ev.source_session_event_id = se.id
+       AND ev.status <> 'cancelled'::scheduling.event_status;
+    PERFORM comms.fn_cancel_queued(NULL, 'projects.session_events', se.id)
+       FROM projects.session_events se
+      WHERE se.cohort_id = v_cohort.id;
+
+    -- The queue is told; a refunded seat-holder has had their own notice above.
+    FOR v_wait IN
+        SELECT wl.id, wl.user_id
+          FROM projects.waitlists wl
+         WHERE wl.service_blueprint_id = v_project.source_blueprint_id
+           AND wl.status = 'waiting'::projects.waitlist_status
+           AND NOT EXISTS (SELECT 1 FROM projects.cohort_memberships cm
+                            WHERE cm.cohort_id = v_cohort.id AND cm.user_id = wl.user_id)
+         ORDER BY wl.queued_at, wl.id
+    LOOP
+        PERFORM comms.fn_notify(
+            v_wait.user_id, 'waitlist.cohort_cancelled', 'A cohort you''re waiting for was cancelled',
+            pg_catalog.format('A cohort of "%s" was cancelled before it started. You keep your place on its waitlist, and you''ll be offered a seat when the seller opens the next one.', v_title),
+            'projects.waitlists', v_wait.id,
+            pg_catalog.jsonb_build_object('listing', v_slug, 'cohort_id', v_cohort.id, 'reason', v_reason),
+            v_uid, p_action_url => '/view/' || v_slug
+        );
+        v_told := v_told + 1;
+    END LOOP;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'cohort_id', v_cohort.id,
+        'status', 'cancelled',
+        'reason', v_reason,
+        'seats_refunded', v_seats,
+        'refunded_minor', v_refunded,
+        'currency', v_currency,
+        'places_restored', v_restored,
+        'waitlist_told', v_told
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.cancel_cohort(uuid) IS
+'The seller''s door for cancelling a whole group cohort before its first sitting (Decision #498): every
+held seat escrow refunded in full (fn_refund_seat_escrow), seats, sittings, mirrors and reminders
+cancelled, holds released, invited and refunded places back to waiting where they stood, seat-holders and
+the queue told. Reason under_filled (close passed below the minimum) or provider. Refusals: 42501 ·
+P0002 · PU422 a 1-1 cohort · PS409 ended / started.';
+
+-- The seller's view of a group-session listing's cohorts: what the listing's opening form needs (its
+-- sitting count and length, its cohort size), and its cohorts — enrolling and running first, then the
+-- last 90 days' cancelled and completed — each with its terms, paid and held seats, sittings, and two
+-- answers the island must not compute: `phase` (enrolling · closed · running · cancelled · completed;
+-- `closed` once the close has passed, before the sweep writes it) and `can_cancel`. `under_filled`:
+-- the close has passed with fewer paid seats than the minimum. Answers only to whoever manages the
+-- listing (catalogue.fn_manages_listing); anyone else is told it does not exist (P0002); PU422 a
+-- listing that is not a group session.
+CREATE OR REPLACE FUNCTION projects.get_listing_cohorts(p_listing uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_bp marketplace.service_blueprints;
+BEGIN
+    IF NOT COALESCE(catalogue.fn_manages_listing(p_listing), false) THEN
+        RAISE EXCEPTION 'No such listing' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT sb.* INTO v_bp
+      FROM catalogue.listings l
+      JOIN marketplace.service_blueprints sb ON sb.id = l.service_blueprint_id
+     WHERE l.id = p_listing;
+    IF v_bp.id IS NULL OR v_bp.delivery_model <> 'group_session'::marketplace.service_delivery_model THEN
+        RAISE EXCEPTION 'Only a group session has cohorts' USING ERRCODE = 'PU422';
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'session_count', COALESCE(v_bp.session_count, 1),
+        'session_minutes', COALESCE(v_bp.session_minutes, 60),
+        'cohort_size', v_bp.max_seats_per_cohort,
+        'cohorts', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'cohort_id', x.id,
+                       'name', x.name,
+                       'status', x.status,
+                       'phase', x.phase,
+                       'max_seats', x.max_seats,
+                       'min_seats', x.min_seats,
+                       'seats_paid', x.seats_paid,
+                       'seats_held', x.seats_held,
+                       'enrolment_closes_at', x.enrolment_closes_at,
+                       'cadence', x.cadence,
+                       'first_start', x.first_start,
+                       'last_end', x.last_end,
+                       'under_filled', x.min_seats IS NOT NULL AND x.enrolment_closes_at <= pg_catalog.now()
+                                       AND x.seats_paid < x.min_seats AND x.phase IN ('closed', 'enrolling'),
+                       'can_cancel', x.status IN ('enrolling', 'active')
+                                     AND (x.first_start IS NULL OR x.first_start > pg_catalog.now()),
+                       'cancel_reason', x.cancel_reason,
+                       'cancelled_at', x.cancelled_at,
+                       'project_slug', x.project_slug,
+                       'sittings', x.sittings
+                   ) ORDER BY x.band, x.first_start NULLS LAST, x.created_at)
+              FROM (
+                  SELECT c.id, c.name, c.status, c.max_seats, c.min_seats, c.enrolment_closes_at, c.cadence,
+                         c.cancel_reason, c.cancelled_at, c.created_at, p.slug AS project_slug,
+                         f.first_start, f.last_end,
+                         CASE
+                             WHEN c.status = 'cancelled' THEN 'cancelled'
+                             WHEN c.status = 'completed' THEN 'completed'
+                             WHEN f.first_start IS NOT NULL AND f.first_start <= pg_catalog.now() THEN 'running'
+                             WHEN c.status = 'active' OR c.enrolment_closes_at <= pg_catalog.now() THEN 'closed'
+                             ELSE 'enrolling'
+                         END AS phase,
+                         CASE WHEN c.status IN ('enrolling', 'active') THEN 0 ELSE 1 END AS band,
+                         COALESCE((SELECT sum(cm.seats) FROM projects.cohort_memberships cm
+                                    WHERE cm.cohort_id = c.id AND cm.status = 'active'), 0)::integer AS seats_paid,
+                         COALESCE((SELECT sum(h.seats) FROM projects.cohort_seat_holds h
+                                    WHERE h.cohort_id = c.id AND h.status = 'held'
+                                      AND h.expires_at > pg_catalog.now()), 0)::integer AS seats_held,
+                         COALESCE((SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                                       'sitting_id', se.id, 'slug', se.slug, 'title', se.title,
+                                       'starts_at', se.start_time, 'ends_at', se.end_time, 'status', se.status
+                                   ) ORDER BY se.start_time)
+                                     FROM projects.session_events se WHERE se.cohort_id = c.id), '[]'::jsonb) AS sittings
+                    FROM projects.cohorts c
+                    JOIN projects.projects p ON p.id = c.project_id
+                    LEFT JOIN LATERAL (
+                        SELECT min(se.start_time) FILTER (WHERE se.status IN ('scheduled', 'completed')) AS first_start,
+                               max(se.end_time) FILTER (WHERE se.status IN ('scheduled', 'completed')) AS last_end
+                          FROM projects.session_events se WHERE se.cohort_id = c.id
+                    ) f ON true
+                   WHERE p.source_blueprint_id = v_bp.id
+                     AND p.format = 'session'::public.project_format
+                     AND p.session_kind = 'group'
+                     AND (c.status IN ('enrolling', 'active')
+                          OR COALESCE(c.cancelled_at, c.created_at) > pg_catalog.now() - INTERVAL '90 days')
+                   ORDER BY CASE WHEN c.status IN ('enrolling', 'active') THEN 0 ELSE 1 END, f.first_start NULLS LAST
+                   LIMIT 20
+              ) x
+        ), '[]'::jsonb)
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.get_listing_cohorts(uuid) IS
+'A group-session listing''s cohorts for whoever manages it (Decision #498): the opening form''s facts
+(session_count, session_minutes, cohort_size) and each cohort''s terms, paid and held seats, sittings,
+phase, under_filled and can_cancel. Refusals: P0002 not a listing the caller manages · PU422 not a group
+session.';
+
+-- The enrolment sweep, run at the head of the waitlist job (fn_waitlist_dispatch, every minute): each
+-- enrolling cohort whose close has passed becomes `active`. Its live holds are released, and an invite
+-- it held goes back to waiting where it stood rather than expiring, because the cohort closed under it,
+-- not the buyer's hold. A cohort that closed below its minimum tells its seller they may cancel it
+-- (`session.cohort_under_filled`). The close already binds by its instant — every door refuses a seat
+-- from then on — so a stalled sweep only delays the status. Internal; answers how many closed.
+CREATE OR REPLACE FUNCTION projects.fn_close_cohort_enrolment(p_now timestamptz DEFAULT pg_catalog.now())
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    r record;
+    v_paid integer;
+    v_listing_slug text;
+    v_closed integer := 0;
+BEGIN
+    FOR r IN
+        SELECT c.id, c.name, c.min_seats, c.project_id, p.owner_user_id, p.source_blueprint_id
+          FROM projects.cohorts c
+          JOIN projects.projects p ON p.id = c.project_id
+         WHERE c.status = 'enrolling'::projects.cohort_status
+           AND c.enrolment_closes_at IS NOT NULL
+           AND c.enrolment_closes_at <= p_now
+         ORDER BY c.enrolment_closes_at, c.id
+           FOR UPDATE OF c SKIP LOCKED
+    LOOP
+        UPDATE projects.cohorts SET status = 'active'::projects.cohort_status WHERE id = r.id;
+        UPDATE projects.waitlists
+           SET status = 'waiting'::projects.waitlist_status, cohort_id = NULL, hold_id = NULL,
+               invited_at = NULL, invite_expires_at = NULL
+         WHERE cohort_id = r.id AND status = 'invited'::projects.waitlist_status;
+        UPDATE projects.cohort_seat_holds
+           SET status = 'released', updated_at = pg_catalog.now()
+         WHERE cohort_id = r.id AND status = 'held';
+        v_closed := v_closed + 1;
+
+        IF r.min_seats IS NOT NULL THEN
+            SELECT COALESCE(sum(cm.seats), 0)::integer INTO v_paid
+              FROM projects.cohort_memberships cm
+             WHERE cm.cohort_id = r.id AND cm.status = 'active';
+            IF v_paid < r.min_seats THEN
+                SELECT sb.slug INTO v_listing_slug
+                  FROM marketplace.service_blueprints sb
+                 WHERE sb.id = r.source_blueprint_id;
+                PERFORM comms.fn_notify(
+                    r.owner_user_id, 'session.cohort_under_filled', 'Your cohort is under its minimum',
+                    pg_catalog.format('Enrolment for "%s" closed with %s of the %s seats it needs. You can cancel it before its first session, and every seat is refunded in full, or run it as it is.',
+                        r.name, v_paid, r.min_seats),
+                    'projects.cohorts', r.id,
+                    pg_catalog.jsonb_build_object('seats_paid', v_paid, 'min_seats', r.min_seats),
+                    NULL, 'project', r.project_id, NULL,
+                    '/catalogue/' || v_listing_slug || '?tab=edit&section=availability'
+                );
+            END IF;
+        END IF;
+    END LOOP;
+    RETURN v_closed;
 END;
 $$;
 -- #endregion
@@ -2369,6 +2992,7 @@ AS $$
        AND p.format = 'session'
        AND p.status IN ('draft', 'active')
        AND c.status = 'enrolling'
+       AND (c.enrolment_closes_at IS NULL OR c.enrolment_closes_at > pg_catalog.now())
        AND sb.is_published
      ORDER BY (SELECT min(se.start_time) FROM projects.session_events se
                 WHERE se.cohort_id = c.id AND se.status = 'scheduled') NULLS LAST,
@@ -2572,14 +3196,18 @@ COMMENT ON FUNCTION projects.get_listing_waitlist(uuid, integer) IS
 state and the places (invited, then the queue in order, then converted and expired), by handle.
 Refusals: P0002 not a listing the caller manages.';
 
--- The waitlist job (`cohort-waitlist-invites`, 00005060, every minute). First every invite whose hold
+-- The waitlist job (`cohort-waitlist-invites`, 00005060, every minute). First the enrolment sweep
+-- (fn_close_cohort_enrolment, Decision #498): every cohort past its close becomes `active`, and an invite
+-- it held goes back to waiting where it stood. Then every invite whose hold
 -- is no longer live: a hold that converted makes the place `converted`; any other lapse makes it
 -- `expired`, releases the hold and tells the buyer. Then, per listing with people waiting, under the
 -- cohort row lock reserve_seat takes, one invite per seat nobody holds, in queue order: a one-seat hold
--- until `p_now + waitlist_invite_hold_hours`, the place `invited`, and an in-app notice linking to the
--- listing. Someone already seated converts; someone holding a live seat already is being served and is
--- passed over; a lapsed hold being paid for right now (locked) stops the listing for this run, so the
--- order is kept. Internal — run by pg_cron, not granted. Answers {expired, invited}.
+-- until `p_now + waitlist_invite_hold_hours` (never past the cohort's enrolment close), the place
+-- `invited`, and an in-app notice linking to the listing. A cohort just opened (projects.open_cohort) is
+-- what wakes a queue that had nothing to wait on. Someone already seated converts; someone holding a
+-- live seat already is being served and is passed over; a lapsed hold being paid for right now (locked)
+-- stops the listing for this run, so the order is kept. Internal — run by pg_cron, not granted. Answers
+-- {closed, expired, invited}.
 CREATE OR REPLACE FUNCTION projects.fn_waitlist_dispatch(p_now timestamptz DEFAULT pg_catalog.now())
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -2599,7 +3227,11 @@ DECLARE
     v_hold uuid;
     v_expired integer := 0;
     v_invited integer := 0;
+    v_closed integer;
+    v_hold_until timestamptz;
 BEGIN
+    v_closed := projects.fn_close_cohort_enrolment(p_now);
+
     FOR r IN
         SELECT w.id, w.user_id, w.hold_id, h.status AS hold_status, sb.slug, sb.title
           FROM projects.waitlists w
@@ -2635,7 +3267,9 @@ BEGIN
           FROM projects.cohorts c
          WHERE c.id = projects.fn_waitlist_cohort(v_blueprint)
            FOR UPDATE;
-        CONTINUE WHEN NOT FOUND OR v_cohort.status <> 'enrolling';
+        CONTINUE WHEN NOT FOUND OR v_cohort.status <> 'enrolling'
+            OR (v_cohort.enrolment_closes_at IS NOT NULL AND v_cohort.enrolment_closes_at <= p_now);
+        v_hold_until := LEAST(v_until, v_cohort.enrolment_closes_at);
         v_free := v_cohort.max_seats - projects.fn_cohort_seats_taken(v_cohort.id);
         CONTINUE WHEN v_free <= 0;
         SELECT sb.slug, sb.title INTO v_slug, v_title
@@ -2674,38 +3308,42 @@ BEGIN
             END;
             IF v_hold IS NOT NULL THEN
                 UPDATE projects.cohort_seat_holds
-                   SET seats = 1, expires_at = v_until, updated_at = pg_catalog.now()
+                   SET seats = 1, expires_at = v_hold_until, updated_at = pg_catalog.now()
                  WHERE id = v_hold;
             ELSE
                 INSERT INTO projects.cohort_seat_holds (cohort_id, user_id, seats, expires_at)
-                VALUES (v_cohort.id, r.user_id, 1, v_until)
+                VALUES (v_cohort.id, r.user_id, 1, v_hold_until)
                 RETURNING id INTO v_hold;
             END IF;
 
             UPDATE projects.waitlists
                SET status = 'invited', cohort_id = v_cohort.id, hold_id = v_hold,
-                   invited_at = p_now, invite_expires_at = v_until
+                   invited_at = p_now, invite_expires_at = v_hold_until
              WHERE id = r.id;
             v_free := v_free - 1;
             v_invited := v_invited + 1;
             PERFORM comms.fn_notify(
                 r.user_id, 'waitlist.invited', 'A seat is held for you',
-                pg_catalog.format('A seat on "%s" is held for you for %s hours. Reserve it before then, or it passes to the next person on the waitlist.', v_title, v_hours),
+                CASE WHEN v_hold_until = v_until
+                     THEN pg_catalog.format('A seat on "%s" is held for you for %s hours. Reserve it before then, or it passes to the next person on the waitlist.', v_title, v_hours)
+                     ELSE pg_catalog.format('A seat on "%s" is held for you until its enrolment closes. Reserve it before then, or it passes to the next person on the waitlist.', v_title)
+                END,
                 'projects.waitlists', r.id,
                 pg_catalog.jsonb_build_object('listing', v_slug, 'cohort_id', v_cohort.id, 'hold_id', v_hold,
-                    'expires_at', v_until),
+                    'expires_at', v_hold_until),
                 p_action_url => '/view/' || v_slug,
-                p_expires_at => v_until
+                p_expires_at => v_hold_until
             );
         END LOOP;
     END LOOP;
 
-    RETURN pg_catalog.jsonb_build_object('expired', v_expired, 'invited', v_invited);
+    RETURN pg_catalog.jsonb_build_object('closed', v_closed, 'expired', v_expired, 'invited', v_invited);
 END;
 $$;
 
 COMMENT ON FUNCTION projects.fn_waitlist_dispatch(timestamptz) IS
-'The cohort waitlist job (Decision #455): expires lapsed invites (releasing their holds), then invites
+'The cohort waitlist job (Decisions #455, #498): closes enrolment on cohorts past their close
+(fn_close_cohort_enrolment), expires lapsed invites (releasing their holds), then invites
 the people waiting in queue order, one per free seat, each holding its seat for
 waitlist_invite_hold_hours. Internal; scheduled in 00005060. {expired, invited}.';
 -- #endregion

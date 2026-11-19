@@ -1,4 +1,5 @@
 import { serverEnv } from "./env.ts";
+import { assertDatabaseAllowed } from "./supabase.ts";
 import { encodeObjectPath } from "./storage-url.ts";
 
 /**
@@ -28,13 +29,15 @@ export interface StoredObjectRequest {
  * Fetch one stored object as the service role, forwarding the range and conditional headers.
  *
  * Answers storage's raw response, whatever its status; throws when the project is not configured or the
- * request cannot be made. The caller owns the body and must cancel any it does not forward.
+ * request cannot be made, and `MocksForcedError` under `USE_MOCKS` (it bypasses the client factories, so
+ * it refuses for them). The caller owns the body and must cancel any it does not forward.
  */
 export async function fetchStoredObject(
 	bucket: string,
 	path: string,
 	request: StoredObjectRequest,
 ): Promise<Response> {
+	assertDatabaseAllowed("fetchStoredObject");
 	const env = serverEnv();
 	const base = env.supabaseUrl?.replace(/\/+$/, "");
 	const key = env.supabaseServiceRoleKey;

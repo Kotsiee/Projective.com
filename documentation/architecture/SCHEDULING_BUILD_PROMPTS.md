@@ -1049,6 +1049,16 @@ ACCEPTANCE:
 > `session_late_booking_grace_minutes` or `sessionCancelWindow`, and `cancelSeat` has no caller.
 > Stale premise: the TS majority now leaves out guests (`eligibleVoterCount`,
 > `scheduling.fn_event_has_voters`, #391), so step 7's SQL twin must too.
+>
+> **2026-11-18, MARKETPLACE SC3 (Decision #498): a seller now opens cohorts.** `projects.open_cohort`
+> writes a group cohort WITH every one of the listing's sittings (first, then weekly, fortnightly or
+> fixed dates), each through `projects.fn_write_group_sitting` — the one sitting writer, which
+> `schedule_sitting` now calls too — and `projects.cancel_cohort` cancels one before its first sitting.
+> So step 5's provider half is "Add a sitting" beyond the opened ones and "Rename", in the session
+> workspace; it no longer has to create a cohort's sittings. Two premises changed: `schedule_sitting`
+> refuses a sitting that starts before the cohort's `enrolment_closes_at` (PS409), and a whole-cohort
+> cancel exists, so step 8's seat Cancel sits beside it, not in place of it. The group-sitting freeze,
+> the mirrors' missing roster and step 6's 🧑 are unchanged. MK-40 is 🟡 until step 5 lands.
 
 ```text
 PROMPT SCH-WP7: Money-bearing events lock at the money window, a late booking gets a grace, and a

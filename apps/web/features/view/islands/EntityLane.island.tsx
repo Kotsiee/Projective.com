@@ -26,6 +26,8 @@ import { BookingCtaRig } from "../components/BookingCtaRig.tsx";
 import BookingPanels from "./BookingPanels.island.tsx";
 import { announce as announceBooking, openBookingPanel } from "../core/booking-state.ts";
 import { type EntityArchetype, offerFor, seatCapacityFor } from "../core/entity-archetype.ts";
+import { cohortTermRows } from "../core/cohort-terms.ts";
+import { browserZone } from "../core/sitting-time.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
 import { purchasableKindOf } from "@web/features/checkout/core/purchasable.ts";
 import { commitBasket, commitBuyNow } from "../core/booking-commits.ts";
@@ -106,6 +108,11 @@ export default function EntityLane(
 	seedSimulation(simulation);
 	const { item } = view;
 	const offer = offerFor(archetype);
+	// The reader's zone once the browser says it; the first byte prints a cohort's times in UTC.
+	const zone = useSignal<string | null>(null);
+	useEffect(() => {
+		zone.value = browserZone();
+	}, []);
 	const capacity = seatCapacityFor(view, archetype);
 	const hasStages = !!stages?.length;
 
@@ -246,9 +253,14 @@ export default function EntityLane(
 	}
 	// A session's delivery line and its booking summary are frequently the same sentence ("60-minute
 	// session"); one fact is printed once, under the label that reaches the row first.
-	if (view.service?.bookingSummary && !ledger.some((r) => r.value === view.service?.bookingSummary)) {
+	if (
+		view.service?.bookingSummary && !ledger.some((r) => r.value === view.service?.bookingSummary)
+	) {
 		ledger.push({ label: "Format", value: view.service.bookingSummary });
 	}
+	// A cohort discloses when it starts, how it repeats, when enrolment closes and its minimum
+	// (Decision #498) — terms of the offer, so they sit with the other key terms.
+	if (archetype === "cohort") ledger.push(...cohortTermRows(bookingOffer.cohort, zone.value));
 	if (archetype === "product" && view.product) {
 		ledger.push({
 			label: "Download",
@@ -279,9 +291,8 @@ export default function EntityLane(
 	 * product carries one — so the fallback matches `StageProgressLedger`'s exactly. Two different
 	 * fallbacks would let the lane and the body stage card label the same number differently.
 	 */
-	const stageCurrency = (item.type === "services" || item.type === "products"
-		? item.currency
-		: undefined) ?? "USD";
+	const stageCurrency =
+		(item.type === "services" || item.type === "products" ? item.currency : undefined) ?? "USD";
 
 	return (
 		<div class="evp-card">
@@ -307,7 +318,12 @@ export default function EntityLane(
 			*/
 			}
 			{hasStages && (
-				<LaneStages stages={stages!} currency={stageCurrency} label="Pipeline stages" limit={CARD_STAGE_LIMIT} />
+				<LaneStages
+					stages={stages!}
+					currency={stageCurrency}
+					label="Pipeline stages"
+					limit={CARD_STAGE_LIMIT}
+				/>
 			)}
 			{capacity && <SeatSummary capacity={capacity} />}
 
@@ -357,4 +373,3 @@ export default function EntityLane(
 		</div>
 	);
 }
-

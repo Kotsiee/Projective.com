@@ -49,6 +49,17 @@ export interface FilesLocation {
 	ownerLabel: string;
 	/** The route base every deep link in this scope hangs off. */
 	base: string;
+	/**
+	 * `/files?source=purchases` (Decision #488): the page shows what the acting account bought instead of
+	 * the library, so the hub-only chrome (search, sort, filters, the footer rig, the inspector) stands
+	 * down rather than drive a body that is not mounted.
+	 */
+	purchases: boolean;
+}
+
+/** Whether a `/files` URL is the purchases view. */
+export function isPurchasesView(url: URL): boolean {
+	return url.searchParams.get("source") === "purchases";
 }
 
 /**
@@ -99,6 +110,7 @@ export function filesLocationOf(url: URL, context: UserContext): FilesLocation |
 		ownerId,
 		ownerLabel,
 		base: filesHref("hub"),
+		purchases: isPurchasesView(url),
 	};
 }
 // #endregion
@@ -120,6 +132,7 @@ export function filesLaneFor(url: URL, context: UserContext): ComponentChildren 
 			subjectId={loc.subjectId}
 			segments={loc.segments}
 			ownerId={loc.ownerId}
+			purchases={loc.purchases}
 		/>
 	);
 }

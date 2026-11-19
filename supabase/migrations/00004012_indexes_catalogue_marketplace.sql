@@ -12,6 +12,14 @@ CREATE INDEX IF NOT EXISTS idx_listings_owner_user
 CREATE INDEX IF NOT EXISTS idx_listings_owner_team
     ON catalogue.listings (owner_team_id)
     WHERE owner_team_id IS NOT NULL;
+-- A listing by what it sells: the view trigger (search.trg_interest_events_view) finds a viewed
+-- listing's seller this way, and the listing rollup maps interest events and order lines to it.
+CREATE INDEX IF NOT EXISTS idx_listings_blueprint
+    ON catalogue.listings (service_blueprint_id)
+    WHERE service_blueprint_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_listings_product
+    ON catalogue.listings (product_id)
+    WHERE product_id IS NOT NULL;
 -- #endregion
 
 -- #region marketplace.quote_requests — the pipeline's quote arm
@@ -43,4 +51,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_quote_offers_one_accepted
 -- #region marketplace.promoted_placements — a listing's paid history (catalogue.fn_listing_engagements)
 CREATE INDEX IF NOT EXISTS idx_promoted_placements_entity
     ON marketplace.promoted_placements (entity_type, entity_id);
+-- #endregion
+
+-- #region catalogue.entitlements — a holder's purchases, newest first (Decision #488)
+-- The purchases view and the download gate both start from the holder; the version FK is what a
+-- seller's re-publish and the holder's version read join on.
+CREATE INDEX IF NOT EXISTS ix_entitlements_holder
+    ON catalogue.entitlements (holder_type, holder_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_entitlements_version
+    ON catalogue.entitlements (version_id)
+    WHERE version_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_entitlements_product
+    ON catalogue.entitlements (product_id)
+    WHERE product_id IS NOT NULL;
 -- #endregion

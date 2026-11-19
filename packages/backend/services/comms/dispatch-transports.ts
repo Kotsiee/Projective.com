@@ -5,6 +5,7 @@ import {
 } from "@projective/types/comms";
 import type { DispatchPayload } from "./dispatch-payload.ts";
 import { emailDispatchTransport } from "./email-transport.ts";
+import { webPushTransport } from "./transport-webpush.ts";
 
 /**
  * dispatch-transports — the registry of what the notification dispatcher can send through: one
@@ -52,11 +53,12 @@ export type TransportRegistry = Partial<Record<OutboundChannel, TransportFactory
 
 // #region Registry
 /**
- * The transports this build ships: email through Resend (NT3), while its key and sender are
- * configured. Push (NT4) and SMS (NT5) are still to come.
+ * The transports this build ships, each while its provider is configured: email through Resend (NT3)
+ * and Web Push through VAPID (NT4). SMS (NT5) is still to come.
  */
 const REGISTRY: TransportRegistry = {
 	email: () => emailDispatchTransport(),
+	push: () => webPushTransport(),
 };
 
 /** Every configured transport, by channel, in the outbound channels' declared order. */

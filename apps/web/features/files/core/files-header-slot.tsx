@@ -25,5 +25,11 @@ import { filesLocationOf } from "./files-lane-slot.tsx";
 export function filesHeaderFor(url: URL, context: UserContext): ComponentChildren {
 	const loc = filesLocationOf(url, context);
 	if (!loc) return null;
-	return <FilesHeaderBand segments={loc.segments} ownerLabel={loc.ownerLabel} />;
+	return (
+		<FilesHeaderBand
+			segments={loc.segments}
+			ownerLabel={loc.ownerLabel}
+			purchases={loc.purchases}
+		/>
+	);
 }

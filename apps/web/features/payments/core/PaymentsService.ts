@@ -44,6 +44,14 @@ async function send<T>(path: string, init?: RequestInit): Promise<PaymentsRespon
 
 const post = <T>(path: string, body: unknown) => send<T>(path, { method: "POST", body: JSON.stringify(body ?? {}) });
 
+/** Where one card payment ended up once the wait is over, and the order it placed, if any. */
+export interface SettledPayment {
+	/** `succeeded` once the webhook credited the wallet; `timeout` when it has not heard yet. */
+	outcome: "succeeded" | "failed" | "timeout";
+	/** The order the payment's checkout placed — by the settling webhook or the browser; else `null`. */
+	orderId: string | null;
+}
+
 export const PaymentsService = {
 	/**
 	 * Where one card payment stands — `succeeded` (or `settled_unapplied`, its lock or order refused)
@@ -63,16 +71,32 @@ export const PaymentsService = {
 		id: string,
 		opts: { timeoutMs?: number; intervalMs?: number } = {},
 	): Promise<"succeeded" | "failed" | "timeout"> {
+		return (await PaymentsService.waitForSettledPayment(id, opts)).outcome;
+	},
+
+	/**
+	 * {@link waitForSettlement}, also naming the order a checkout's payment placed. The settling webhook
+	 * places a card or express checkout's order in the same transaction that settles the payment
+	 * (Decision #153), so a settled payment's `orderId` is the order, already there.
+	 */
+	async waitForSettledPayment(
+		id: string,
+		opts: { timeoutMs?: number; intervalMs?: number } = {},
+	): Promise<SettledPayment> {
 		const deadline = Date.now() + (opts.timeoutMs ?? 30_000);
 		const interval = opts.intervalMs ?? 1_500;
 		while (Date.now() < deadline) {
 			const res = await PaymentsService.payment(id);
-			const status = res.ok ? res.data?.payment.status : undefined;
-			if (isSettledPaymentStatus(status)) return "succeeded";
-			if (status === "failed" || status === "canceled") return "failed";
+			const payment = res.ok ? res.data?.payment : undefined;
+			if (isSettledPaymentStatus(payment?.status)) {
+				return { outcome: "succeeded", orderId: payment?.orderId ?? null };
+			}
+			if (payment?.status === "failed" || payment?.status === "canceled") {
+				return { outcome: "failed", orderId: null };
+			}
 			await new Promise((resolve) => setTimeout(resolve, interval));
 		}
-		return "timeout";
+		return { outcome: "timeout", orderId: null };
 	},
 
 	/**

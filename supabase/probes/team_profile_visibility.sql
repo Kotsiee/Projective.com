@@ -370,10 +370,12 @@ BEGIN
     -- A review a member received personally is theirs, and never reaches the team's list.
     BEGIN
         SET LOCAL session_replication_role = replica;
-        INSERT INTO reviews.entity_reviews (target_entity_id, target_entity_type, reviewer_user_id, rating, comment)
+        INSERT INTO reviews.entity_reviews (target_entity_id, target_entity_type, reviewer_user_id, rating, comment,
+                                            project_id, window_closes_at)
         VALUES (
             pg_temp.id('tomaszwojcik'), 'freelancer', pg_temp.id('noor'), 2.0,
-            repeat('A personal review of one member, which the team page must never merge in. ', 3)
+            repeat('A personal review of one member, which the team page must never merge in. ', 3),
+            (SELECT p.id FROM projects.projects p ORDER BY p.id LIMIT 1), now() + interval '30 days'
         )
         RETURNING id INTO v_member_review;
         SET LOCAL session_replication_role = origin;

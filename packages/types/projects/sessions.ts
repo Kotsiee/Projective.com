@@ -102,9 +102,47 @@ export const CohortSittingSchema = z.object({
 export type CohortSitting = z.infer<typeof CohortSittingSchema>;
 
 /**
+ * `projects.cohort_status` — a cohort's lifecycle, mirrored 1:1. A group cohort is `enrolling` from
+ * `open_cohort` until its enrolment close, then `active` (the sweep), and `cancelled` by `cancel_cohort`
+ * before its first sitting (Decision #498); a 1-1's one-seat cohort is born `active`. `completed` has
+ * no writer for a group cohort yet.
+ */
+export const CohortStatusSchema = z.enum(["enrolling", "active", "completed", "cancelled"]);
+export type CohortStatus = z.infer<typeof CohortStatusSchema>;
+
+/** How a group cohort's sittings repeat (`projects.cohorts.cadence`); `null` for a one-sitting cohort. */
+export const CohortCadenceSchema = z.enum(["weekly", "fortnightly", "fixed"]);
+export type CohortCadence = z.infer<typeof CohortCadenceSchema>;
+
+/** Why a cohort was cancelled (`projects.cohorts.cancel_reason`), set only by `cancel_cohort`. */
+export const CohortCancelReasonSchema = z.enum(["under_filled", "provider"]);
+export type CohortCancelReason = z.infer<typeof CohortCancelReasonSchema>;
+
+/** One `projects.cohorts` row (Decisions #171, #498). The opening terms are NULL on a 1-1's cohort. */
+export const CohortRowSchema = z.object({
+	id: uuid,
+	project_id: uuid,
+	project_stage_id: uuid,
+	name: z.string().min(1).max(200),
+	max_seats: z.number().int().min(1).max(500),
+	status: CohortStatusSchema,
+	created_at: iso,
+	/** The fewest paid seats it runs with; at most `max_seats`. */
+	min_seats: z.number().int().min(1).max(500).nullable(),
+	/** When it stops taking bookings — at or before its first sitting. The instant is the state. */
+	enrolment_closes_at: iso.nullable(),
+	cadence: CohortCadenceSchema.nullable(),
+	opened_by: uuid.nullable(),
+	cancelled_at: iso.nullable(),
+	cancel_reason: CohortCancelReasonSchema.nullable(),
+});
+export type CohortRow = z.infer<typeof CohortRowSchema>;
+
+/**
  * The cohort a group-session listing seats buyers into (`projects.get_cohort_offer`) — real occupancy
- * (paid seats + unexpired holds), the sittings and the curriculum. `null` on the offer when the
- * listing has no enrolling cohort.
+ * (paid seats + unexpired holds), the sittings and the curriculum, and the terms it was opened on,
+ * each disclosed before purchase (Decision #498): the minimum it runs with, when enrolment closes, and
+ * how the sittings repeat. `null` on the offer when the listing has no cohort taking bookings.
  */
 export const CohortOfferSchema = z.object({
 	cohortId: uuid,
@@ -113,6 +151,9 @@ export const CohortOfferSchema = z.object({
 	firstStartsAt: iso.nullable(),
 	sittings: z.array(CohortSittingSchema).max(200),
 	curriculum: z.array(CurriculumModuleSchema).max(100),
+	minSeats: z.number().int().min(1).max(500).nullable(),
+	enrolmentClosesAt: iso.nullable(),
+	cadence: CohortCadenceSchema.nullable(),
 });
 export type CohortOffer = z.infer<typeof CohortOfferSchema>;
 
@@ -245,7 +286,14 @@ export const SittingPhase = z.enum(["upcoming", "live", "ended", "cancelled"]);
 export type SittingPhase = z.infer<typeof SittingPhase>;
 
 /** Why there is (or is not) a join URL — `projects.session_join_link`'s `state`. */
-export const JoinState = z.enum(["not_party", "unfunded", "upcoming", "open", "ended", "cancelled"]);
+export const JoinState = z.enum([
+	"not_party",
+	"unfunded",
+	"upcoming",
+	"open",
+	"ended",
+	"cancelled",
+]);
 export type JoinState = z.infer<typeof JoinState>;
 
 /**
@@ -279,7 +327,7 @@ export type SessionSitting = z.infer<typeof SessionSittingSchema>;
 export const CohortViewSchema = z.object({
 	id: uuid,
 	name: z.string().min(1).max(160),
-	status: z.enum(["enrolling", "active", "completed", "cancelled"]),
+	status: CohortStatusSchema,
 	seats: SeatCountSchema,
 	/** The viewer holds a seat on it. */
 	joined: z.boolean(),
@@ -349,7 +397,9 @@ export const SessionWorkspaceSchema = z.object({
 export type SessionWorkspace = z.infer<typeof SessionWorkspaceSchema>;
 
 /** `POST /api/sessions/sittings/[eventId]/room` — a link the host adds themselves. */
-export const SittingRoomInputSchema = z.object({ link: z.string().regex(/^https:\/\/\S+$/).max(600) });
+export const SittingRoomInputSchema = z.object({
+	link: z.string().regex(/^https:\/\/\S+$/).max(600),
+});
 export type SittingRoomInput = z.infer<typeof SittingRoomInputSchema>;
 
 /** `POST /api/sessions/sittings/[eventId]/review` — whether a sitting with no evidence happened. */
@@ -416,6 +466,196 @@ export const SittingWriteSchema = z.object({
 	endsAt: iso,
 });
 export type SittingWrite = z.infer<typeof SittingWriteSchema>;
+// #endregion
+
+// #region Opening a cohort (Decision #498)
+/** The most sittings a cohort can have — the listing's `session_count` bound. */
+export const COHORT_SITTINGS_MAX = 52;
+
+/**
+ * `POST /api/catalogue/cohorts` → `projects.open_cohort`: the seller opens a cohort on a group-session
+ * listing they manage. The sitting count and length are the listing's (`session_count`,
+ * `session_minutes`), never the request's. `cadence` is required when the listing has more than one
+ * sitting; `laterStartsAt` names sittings 2…n and goes only with `fixed`. `maxSeats` absent reads the
+ * listing's cohort size; `enrolmentClosesAt` absent closes at the first sitting, and with a minimum it
+ * must fall before it. The database re-checks all of it, the calendar included.
+ */
+export const OpenCohortInputSchema = z.object({
+	/** The listing's `svc-…` slug, resolved against the caller's own listings. */
+	listing: z.string().min(1).max(160),
+	firstStartsAt: iso,
+	cadence: CohortCadenceSchema.nullable().default(null),
+	laterStartsAt: z.array(iso).max(COHORT_SITTINGS_MAX - 1).default([]),
+	maxSeats: z.number().int().min(1).max(500).nullable().default(null),
+	minSeats: z.number().int().min(1).max(500).nullable().default(null),
+	enrolmentClosesAt: iso.nullable().default(null),
+	name: z.string().trim().max(SITTING_TITLE_MAX).nullable().default(null),
+}).superRefine((v, ctx) => {
+	const first = Date.parse(v.firstStartsAt);
+	if (!Number.isFinite(first)) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["firstStartsAt"],
+			message: "Pick when the first session starts.",
+		});
+		return;
+	}
+	if (v.minSeats !== null && v.maxSeats !== null && v.minSeats > v.maxSeats) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["minSeats"],
+			message: "The minimum can't be more than the cohort's size.",
+		});
+	}
+	if (v.enrolmentClosesAt !== null) {
+		const close = Date.parse(v.enrolmentClosesAt);
+		if (!Number.isFinite(close) || close > first) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["enrolmentClosesAt"],
+				message: "Enrolment has to close no later than the first session.",
+			});
+		} else if (v.minSeats !== null && close >= first) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["enrolmentClosesAt"],
+				message: "With a minimum, enrolment has to close before the first session.",
+			});
+		}
+	} else if (v.minSeats !== null) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["enrolmentClosesAt"],
+			message: "With a minimum, choose when enrolment closes, before the first session.",
+		});
+	}
+	if (v.cadence !== "fixed" && v.laterStartsAt.length > 0) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["laterStartsAt"],
+			message: "Dates of your own go with fixed dates.",
+		});
+	}
+});
+export type OpenCohortInput = z.infer<typeof OpenCohortInputSchema>;
+
+/** `POST /api/catalogue/cohorts/[cohortId]/cancel` — names the cohort; the body carries nothing. */
+export const CancelCohortInputSchema = z.object({ cohortId: uuid });
+export type CancelCohortInput = z.infer<typeof CancelCohortInputSchema>;
+
+/**
+ * Where a cohort stands for its seller (`get_listing_cohorts.phase`): `closed` once its enrolment
+ * close has passed and before its first sitting, `running` from its first sitting on.
+ */
+export const CohortPhaseSchema = z.enum([
+	"enrolling",
+	"closed",
+	"running",
+	"cancelled",
+	"completed",
+]);
+export type CohortPhase = z.infer<typeof CohortPhaseSchema>;
+
+/** One sitting of a seller's cohort. */
+export const ListingCohortSittingSchema = z.object({
+	id: uuid,
+	slug: z.string().regex(/^ssn-[23456789abcdefghjkmnopqrstuvwxyz]{10}$/),
+	title: z.string().min(1).max(SITTING_TITLE_MAX),
+	startsAt: iso,
+	endsAt: iso,
+	status: z.string().min(1).max(40),
+});
+export type ListingCohortSitting = z.infer<typeof ListingCohortSittingSchema>;
+
+/**
+ * One cohort as its seller reads it (`projects.get_listing_cohorts`). `underFilled` and `canCancel`
+ * are the database's answers; the island renders them and never derives either.
+ */
+export const ListingCohortSchema = z.object({
+	cohortId: uuid,
+	name: z.string().min(1).max(200),
+	status: CohortStatusSchema,
+	phase: CohortPhaseSchema,
+	maxSeats: z.number().int().min(1).max(500),
+	minSeats: z.number().int().min(1).max(500).nullable(),
+	seatsPaid: z.number().int().min(0).max(500),
+	seatsHeld: z.number().int().min(0).max(500),
+	enrolmentClosesAt: iso.nullable(),
+	cadence: CohortCadenceSchema.nullable(),
+	firstStartsAt: iso.nullable(),
+	lastEndsAt: iso.nullable(),
+	underFilled: z.boolean(),
+	canCancel: z.boolean(),
+	cancelReason: CohortCancelReasonSchema.nullable(),
+	cancelledAt: iso.nullable(),
+	projectSlug: z.string().min(1).max(120).nullable(),
+	sittings: z.array(ListingCohortSittingSchema).max(COHORT_SITTINGS_MAX),
+});
+export type ListingCohort = z.infer<typeof ListingCohortSchema>;
+
+/**
+ * `GET /api/catalogue/cohorts?listing=` — what the opening form needs from the listing, and its
+ * cohorts: taking bookings and running first, then the last 90 days' cancelled and completed ones.
+ */
+export const ListingCohortsSchema = z.object({
+	sessionCount: z.number().int().min(1).max(COHORT_SITTINGS_MAX),
+	sessionMinutes: z.number().int().min(5).max(600),
+	cohortSize: z.number().int().min(1).max(500),
+	cohorts: z.array(ListingCohortSchema).max(20),
+});
+export type ListingCohorts = z.infer<typeof ListingCohortsSchema>;
+
+/** What `cancel_cohort` did: the seats it refunded and the waitlist places it put back. */
+export const CohortCancellationSchema = z.object({
+	cohortId: uuid,
+	reason: CohortCancelReasonSchema,
+	seatsRefunded: z.number().int().min(0),
+	refundedMinor: z.number().int().min(0),
+	currency: z.string().regex(/^[A-Z]{3}$/).nullable(),
+	placesRestored: z.number().int().min(0),
+	waitlistTold: z.number().int().min(0),
+});
+export type CohortCancellation = z.infer<typeof CohortCancellationSchema>;
+
+/**
+ * The start of each sitting a cohort would have, for the opening form's preview: the first, then a
+ * week or two apart at the same wall-clock time in the viewer's zone, or the seller's own dates. The
+ * database computes the real ones in the provider's zone; this is only what the form shows first.
+ */
+export function previewCohortStarts(
+	firstStartsAt: string,
+	cadence: CohortCadence | null,
+	count: number,
+	laterStartsAt: readonly string[] = [],
+): string[] {
+	const first = new Date(firstStartsAt);
+	if (!Number.isFinite(first.getTime())) return [];
+	const n = Math.max(1, Math.min(COHORT_SITTINGS_MAX, Math.trunc(count)));
+	if (n === 1) return [first.toISOString()];
+	if (cadence === "fixed") return [first.toISOString(), ...laterStartsAt.slice(0, n - 1)];
+	if (cadence === null) return [first.toISOString()];
+	const step = cadence === "weekly" ? 7 : 14;
+	return Array.from({ length: n }, (_, k) => {
+		const d = new Date(first.getTime());
+		d.setDate(d.getDate() + step * k);
+		return d.toISOString();
+	});
+}
+
+/** "Weekly · 6 sessions" — how a cohort's sittings repeat, as one quiet line. */
+export function cohortCadenceLabel(cadence: CohortCadence | null, count: number): string {
+	const sessions = `${count} ${count === 1 ? "session" : "sessions"}`;
+	switch (cadence) {
+		case "weekly":
+			return `Weekly · ${sessions}`;
+		case "fortnightly":
+			return `Every two weeks · ${sessions}`;
+		case "fixed":
+			return `${sessions} on set dates`;
+		default:
+			return count === 1 ? "One session" : sessions;
+	}
+}
 // #endregion
 
 // #region Presence

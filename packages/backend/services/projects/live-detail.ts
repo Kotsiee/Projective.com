@@ -73,8 +73,8 @@ import {
  *   genuine query failure and returns `null` for a slug that matches nothing.
  * - `projects.project_stages` and `comms.project_channels` also throw. They are the SUBSTANCE of this
  *   projection: a sidebar rendered without them says "this engagement has no stages and no channels",
- *   which is a statement about the engagement rather than about the read. Throwing hands the caller
- *   its fixture fallback instead.
+ *   which is a statement about the engagement rather than about the read. Throwing lets the caller
+ *   say the read failed (a `503`) instead.
  * - Everything else — participants, stage assignments, team and business names, display parties, the
  *   description enrichment — degrades to a neutral value. A roster short one name, or a team group
  *   labelled "Team" rather than "Design Guild", is a page that is less specific. It is not a page that

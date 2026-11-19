@@ -39,6 +39,41 @@ export function DownloadAction(props: DownloadActionProps): JSX.Element | null {
 	// line with no href. This guard is the type narrowing, not a second policy.
 	if (!line.downloadHref) return null;
 
+	// A bundle (Decision #488): one outlined link per file, each its own same-origin address, and the
+	// purchases view for all of them. The facts line counts the files and keeps the total size.
+	if (line.downloadFiles.length > 1) {
+		const bundleFacts = [
+			`${line.downloadFiles.length} files`,
+			line.downloadSizeLabel,
+			line.downloadFormat,
+			line.licence,
+		].filter((fact): fact is string => Boolean(fact));
+		return (
+			<div class="cko-order__fulfil">
+				<div class="cko-order__fulfilrow" role="group" aria-label={`Files in ${line.title}`}>
+					{line.downloadFiles.map((file) => (
+						<a
+							key={file.href}
+							class="cko-order__act"
+							href={file.href}
+							download={file.name}
+							aria-label={`Download ${file.name}, ${file.sizeLabel}`}
+						>
+							<Icon name="download" />
+							<span>{file.name}</span>
+						</a>
+					))}
+					<a class="cko-order__act" href={line.downloadHref}>
+						<span>Open in Purchases</span>
+					</a>
+				</div>
+				<p class="cko-order__actmeta">
+					{bundleFacts.map((fact) => <span key={fact}>{fact}</span>)}
+				</p>
+			</div>
+		);
+	}
+
 	const facts = [line.downloadSizeLabel, line.downloadFormat, line.licence].filter(
 		(fact): fact is string => Boolean(fact),
 	);

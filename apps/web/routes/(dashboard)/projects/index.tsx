@@ -40,7 +40,13 @@ export default define.page<typeof handler>(function ProjectsPage({ data }) {
 	return (
 		<>
 			<ProjectNoticeHost />
-			<ProjectPortfolio items={data.items} filter={data.filter} contextLabel={data.contextLabel}>
+			<ProjectPortfolio
+				items={data.items}
+				filter={data.filter}
+				contextLabel={data.contextLabel}
+				loadError={data.loadError}
+				retryHref={data.retryHref}
+			>
 				<ProposalList />
 			</ProjectPortfolio>
 		</>

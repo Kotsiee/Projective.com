@@ -832,10 +832,36 @@ CREATE TABLE projects.cohorts (
 	status projects.cohort_status NOT NULL DEFAULT 'enrolling'::projects.cohort_status,
 	created_at timestamp with time zone NOT NULL DEFAULT now(),
 
+	-- The terms a GROUP cohort was opened on (`projects.open_cohort`, Decision #498), each one disclosed
+	-- to the buyer before they pay. All NULL on a 1-1's one-seat cohort (`fn_book_session_slot`).
+	--   min_seats            the fewest paid seats it runs with; below it at the close, the seller may
+	--                        cancel the cohort and every seat is refunded in full (`cancel_cohort`).
+	--   enrolment_closes_at  when it stops taking bookings — at or before its first sitting. The instant
+	--                        is the state: every door refuses a seat from then on, whether or not the
+	--                        sweep (`fn_close_cohort_enrolment`) has written `active` yet.
+	--   cadence              how its sittings repeat: weekly · fortnightly · fixed (dates the seller
+	--                        picked); NULL for a one-sitting cohort.
+	min_seats integer,
+	enrolment_closes_at timestamp with time zone,
+	cadence text,
+	opened_by uuid,
+	-- Set only by `projects.cancel_cohort`: `under_filled` when the close passed below `min_seats`,
+	-- `provider` for any other cancel before the first sitting. A 1-1 cohort ending with its one seat
+	-- (`cancel_cohort_membership`) leaves both NULL.
+	cancelled_at timestamp with time zone,
+	cancel_reason text,
+
 	CONSTRAINT cohorts_pkey PRIMARY KEY (id),
 	CONSTRAINT cohorts_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id),
 	CONSTRAINT cohorts_project_stage_id_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages(id),
-	CONSTRAINT ck_cohorts_max_seats CHECK (max_seats BETWEEN 1 AND 500)
+	CONSTRAINT cohorts_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES org.users_public(user_id),
+	CONSTRAINT ck_cohorts_max_seats CHECK (max_seats BETWEEN 1 AND 500),
+	CONSTRAINT ck_cohorts_min_seats CHECK (min_seats IS NULL OR min_seats BETWEEN 1 AND max_seats),
+	CONSTRAINT ck_cohorts_cadence CHECK (cadence IS NULL OR cadence IN ('weekly', 'fortnightly', 'fixed')),
+	CONSTRAINT ck_cohorts_cancel_reason CHECK (cancel_reason IS NULL OR cancel_reason IN ('under_filled', 'provider')),
+	CONSTRAINT ck_cohorts_cancelled CHECK (
+		(cancelled_at IS NULL AND cancel_reason IS NULL) OR status = 'cancelled'::projects.cohort_status
+	)
 );
 
 

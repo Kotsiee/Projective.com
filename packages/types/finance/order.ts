@@ -154,6 +154,18 @@ export const OrderLineSchema = z.object({
 	downloadFormat: z.string().max(80).nullable(),
 	/** Licence tier granted, mirroring `BasketItem.licence`. */
 	licence: z.string().max(80).nullable(),
+	/**
+	 * Every file the purchase delivers, each with its own same-origin address
+	 * (`/api/downloads/ent-…/{fileId}`, Decision #488). One file: {@link downloadHref} is that file's
+	 * address. Several: {@link downloadHref} is the purchases view standing on this purchase, and each
+	 * file is downloaded from its own row here. Empty for every other line.
+	 */
+	downloadFiles: z.array(z.object({
+		name: z.string().min(1).max(200),
+		href: z.string().max(200),
+		bytes: z.number().int().min(0),
+		sizeLabel: z.string().max(24),
+	})).max(24).default([]),
 	// #endregion
 
 	// #region Engagement fulfilment (a stage ticket / a project or service purchase)

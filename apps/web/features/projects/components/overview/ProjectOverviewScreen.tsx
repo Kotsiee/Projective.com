@@ -29,6 +29,9 @@ import {
 } from "./OverviewBlocks.tsx";
 import { BriefBlock, TermsBlock } from "./BriefBlocks.tsx";
 import { ClaimableBlock, SubmissionsBlock } from "./WorkSignalBlocks.tsx";
+import { ReviewsBlock } from "./ReviewsBlock.tsx";
+import ReviewDialog from "@features/reviews/islands/ReviewDialog.island.tsx";
+import type { Reviewable } from "@projective/types/reviews";
 
 /**
  * The engagement's **Overview** — the body of `/projects/[slug]` for the owner and every participant
@@ -73,11 +76,16 @@ export interface ProjectOverviewScreenProps {
 	changes?: readonly OverviewChange[];
 	/** The client's project files, or `null` when that read failed. */
 	attachments?: FileListPage | null;
+	/**
+	 * What the viewer may review here (Decision #487) and whether `?review=` asked for the dialog on
+	 * first paint. Empty until the engagement, a released seat or a sitting completes.
+	 */
+	reviews?: { items: Reviewable[]; open: boolean };
 }
 
 /** The Overview for one engagement, or a calm miss with the one route back. */
 export function ProjectOverviewScreen(
-	{ workspace, slug, changes = [], attachments = null }: ProjectOverviewScreenProps,
+	{ workspace, slug, changes = [], attachments = null, reviews }: ProjectOverviewScreenProps,
 ): JSX.Element {
 	if (!workspace) {
 		return (
@@ -132,6 +140,9 @@ export function ProjectOverviewScreen(
 			{/* Turns a `?notice=room-not-found` left by the room guard into one toast, then strips it. */}
 			<ProjectNoticeHost />
 			{changes.length > 0 && <OverviewArrival changes={changes} />}
+			{reviews && reviews.items.length > 0 && (
+				<ReviewDialog slug={slug} items={reviews.items} initialOpen={reviews.open} />
+			)}
 			<div class="pjd__inner">
 				<header class="pjd-hero">
 					<h1 class="pjd-hero__title" data-pjd-region="details">{hero.title}</h1>
@@ -163,6 +174,7 @@ export function ProjectOverviewScreen(
 					</div>
 					<div class="pjd__aside">
 						{showProvider && <ProviderBlock provider={hero.owner} handle={hero.handle} />}
+						{reviews && <ReviewsBlock slug={slug} items={reviews.items} />}
 						{participant && <SubmissionsBlock submissions={submissions} slug={slug} />}
 						{participant && <ClaimableBlock claimable={claimable} />}
 						{participant && (

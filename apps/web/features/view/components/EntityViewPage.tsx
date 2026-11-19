@@ -16,6 +16,7 @@ import EntityHeroProbe from "../islands/EntityHeroProbe.island.tsx";
 import ReviewsPanel from "../islands/ReviewsPanel.island.tsx";
 import ViewStyleAnchor from "../islands/ViewStyleAnchor.island.tsx";
 import ViewIntentHost from "../islands/ViewIntentHost.island.tsx";
+import ListingViewBeacon from "../islands/ListingViewBeacon.island.tsx";
 import { honouredIntent, type ViewIntent } from "../core/view-intent.ts";
 import { RelatedSection } from "./RelatedRail.tsx";
 import { ArticleViewScreen } from "./ArticleViewScreen.tsx";
@@ -175,6 +176,12 @@ export function EntityViewPage(
 	 * the mode says whether this RENDERING does — the owner's preview never does, whatever the archetype.
 	 */
 	const rails = !preview && !simulation && showsCommercialRails(archetype);
+	// A service or product page a reader evaluates reports one view (the seller's analytics, SC5): not
+	// the owner's preview or simulation, and not a restricted account, which is never profiled (#208).
+	const viewed = !preview && !simulation && !restricted &&
+			(item.type === "services" || item.type === "products")
+		? item.type
+		: null;
 	// The simulation's facts, resolved once and handed to every transactional island, which seed the
 	// commit gate from them (they are separate hydration roots and cannot share a prop).
 	const sim = simulation ? simulationFactsFor(view, offer) : undefined;
@@ -194,6 +201,7 @@ export function EntityViewPage(
 		>
 			<ViewStyleAnchor />
 			{intent && <ViewIntentHost intent={opening} />}
+			{viewed && <ListingViewBeacon itemId={item.id} itemType={viewed} />}
 
 			<div class={noMedia ? "evp-frame evp-frame--nomedia" : "evp-frame"}>
 				{

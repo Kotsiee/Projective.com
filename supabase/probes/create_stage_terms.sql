@@ -18,6 +18,7 @@ CREATE TEMP TABLE probe_pick ON COMMIT DROP AS
 SELECT p.id AS project_id, p.owner_user_id AS owner_id
 FROM projects.projects p
 WHERE NOT p.is_personal AND p.archived_at IS NULL AND p.format IN ('pipeline', 'one_off')
+  AND p.source_blueprint_id IS NULL
 ORDER BY p.created_at
 LIMIT 1;
 GRANT SELECT ON probe_pick TO authenticated;

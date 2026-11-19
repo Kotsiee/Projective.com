@@ -70,9 +70,11 @@ export async function readSchedulePage(
 	owner: ScheduleOwner,
 	meta: SchedulePageMeta,
 	window: { from: number; to: number },
-	client: SupabaseClient = getAnonClient(),
+	given?: SupabaseClient,
 ): Promise<SchedulePage | null | undefined> {
 	try {
+		// Resolved inside the try: a refused client (no database, `USE_MOCKS`) is "could not answer".
+		const client = given ?? getAnonClient();
 		const schedule = await client.schema("scheduling").from("schedules")
 			.select("id, timezone, is_published")
 			.eq("owner_type", owner.type)

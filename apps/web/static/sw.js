@@ -39,6 +39,15 @@
 const CACHE = "pj-shell-v1";
 
 /**
+ * Push-only mode (`/sw.js?mode=push`), registered by development builds when someone turns on alerts
+ * on this device (COMMS NT4). Development must never run the shell cache (see `ServiceWorkerBridge`),
+ * but a push subscription dies with its registration, so this mode keeps the worker for `push` and
+ * `notificationclick` and caches nothing: it handles no `fetch` and clears every shell bucket on
+ * activation. Production registers plain `/sw.js`, which does both.
+ */
+const PUSH_ONLY = new URL(self.location.href).searchParams.get("mode") === "push";
+
+/**
  * The offline fallback for a navigation with nothing cached.
  *
  * Inline rather than a cached URL: a fallback that has to be FETCHED to be shown is a fallback that
@@ -123,7 +132,7 @@ self.addEventListener("activate", (event) => {
 		// longer applies.
 		const names = await caches.keys();
 		await Promise.all(
-			names.filter((name) => name.startsWith("pj-shell-") && name !== CACHE)
+			names.filter((name) => name.startsWith("pj-shell-") && (PUSH_ONLY || name !== CACHE))
 				.map((name) => caches.delete(name)),
 		);
 		await self.clients.claim();
@@ -189,6 +198,7 @@ async function handleAsset(request) {
 }
 
 self.addEventListener("fetch", (event) => {
+	if (PUSH_ONLY) return;
 	const request = event.request;
 	const url = new URL(request.url);
 
@@ -205,3 +215,68 @@ self.addEventListener("fetch", (event) => {
 	// Everything else falls through to the network untouched — no `respondWith`, so the browser's own
 	// handling applies exactly as if this worker were not installed.
 });
+
+// #region Web Push (COMMS NT4; providers spec §8.2)
+/**
+ * The one path a notification click may open: a same-origin path that starts with a single "/".
+ * Anything else (an absolute URL, `//host`, a backslash a browser may read as one, junk) opens "/",
+ * so a crafted payload can never turn a notification into a redirect off-site.
+ */
+function safeNotificationPath(raw) {
+	if (
+		typeof raw !== "string" || !raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")
+	) {
+		return "/";
+	}
+	try {
+		const url = new URL(raw, self.location.origin);
+		return url.origin === self.location.origin ? url.pathname + url.search + url.hash : "/";
+	} catch {
+		return "/";
+	}
+}
+
+/**
+ * A push carries `{ title, url, id, tag }` (the dispatcher's payload: never a notification's body or
+ * payload). The system notification shows the title and a generic line, collapses by `tag` (the
+ * Topic), and keeps the path and id for the click.
+ */
+self.addEventListener("push", (event) => {
+	let data = {};
+	try {
+		data = event.data ? event.data.json() : {};
+	} catch {
+		data = {};
+	}
+	const title = typeof data.title === "string" && data.title.trim()
+		? data.title.slice(0, 200)
+		: "Projective";
+	const id = typeof data.id === "string" ? data.id : null;
+	const tag = typeof data.tag === "string" && data.tag ? data.tag : id ?? undefined;
+	event.waitUntil(
+		self.registration.showNotification(title, {
+			body: "Open Projective to see it.",
+			tag,
+			icon: "/icon-192.png",
+			badge: "/favicon-32.png",
+			data: { url: safeNotificationPath(data.url), id },
+		}),
+	);
+});
+
+/** A click opens (or focuses) only the same-origin path the push named; "/" for anything else. */
+self.addEventListener("notificationclick", (event) => {
+	event.notification.close();
+	const target =
+		new URL(safeNotificationPath(event.notification.data?.url), self.location.origin).href;
+	event.waitUntil((async () => {
+		const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+		const open = windows.find((w) => w.url === target);
+		if (open && "focus" in open) {
+			await open.focus();
+			return;
+		}
+		await self.clients.openWindow(target);
+	})());
+});
+// #endregion

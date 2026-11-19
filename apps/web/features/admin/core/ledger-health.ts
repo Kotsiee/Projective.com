@@ -1,3 +1,4 @@
+import type { AlertDeliveryView, AlertsRead } from "@projective/types/ops";
 import type {
 	ConservationCurrency,
 	EscrowAge,
@@ -21,6 +22,7 @@ export type LedgerSectionResult =
 	| { id: "conservation"; ok: true; data: LedgerConservation }
 	| { id: "drift"; ok: true; data: LedgerDrift }
 	| { id: "escrow_age"; ok: true; data: EscrowAge }
+	| { id: "alerts"; ok: true; data: AlertsRead }
 	| { id: LedgerSectionId; ok: false; message: string };
 
 /** Each section's heading and the one sentence that says what it is for. */
@@ -39,6 +41,11 @@ export const LEDGER_SECTION_COPY: Record<LedgerSectionId, { title: string; lede:
 		title: "Escrow age",
 		lede:
 			"How long held money has sat in the platform's Stripe balance, by what it is waiting on. The counsel brief on ruling M2 turns on these figures.",
+	},
+	alerts: {
+		title: "Alerts",
+		lede:
+			"Every money and job error, and a nightly check gone silent, reaches a person by webhook and by email within minutes. The same problem alerts once per window.",
 	},
 };
 // #endregion
@@ -131,6 +138,24 @@ export const ESCROW_AGE_KIND_COPY: Record<EscrowAgeKind, { label: string; clock:
 /** An age in days to one decimal, as the database rounds it ("9.9 d"). */
 export function daysText(days: number): string {
 	return `${days.toFixed(1)} d`;
+}
+// #endregion
+
+// #region Alerts
+/** A delivery's lifecycle status, as one toned Tag: sent, waiting, or retrying after a failed send. */
+export function alertStatus(row: Pick<AlertDeliveryView, "status" | "attempts">): {
+	label: string;
+	tone: "success" | "warning" | "danger";
+} {
+	if (row.status === "sent") return { label: "Sent", tone: "success" };
+	return row.attempts > 0
+		? { label: "Retrying", tone: "danger" }
+		: { label: "Pending", tone: "warning" };
+}
+
+/** The group an alert names, for a person: the dead-man switch, or its short id or code. */
+export function alertGroup(row: Pick<AlertDeliveryView, "fingerprint">): string {
+	return row.fingerprint === "silence" ? "Dead-man switch" : row.fingerprint || "—";
 }
 // #endregion
 

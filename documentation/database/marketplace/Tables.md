@@ -80,7 +80,7 @@ refused field-named, never masked; no CHECK or trigger enforces it. **Not yet en
 | `meeting_provider` | text             | The room provider a Session or Group Session books into: `google` · `outlook` · `zoom` · `microsoft_teams` · `discord` · `custom` (the `scheduling.events` set). NULL defers to the seller's connected default (`scheduling.fn_conferencing_provider`). |
 | `availability_preset_id` | uuid      | The scheduling preset a Session books against (Decision #217(c)); NULL means the owner schedule's default. Replaces the retired `catalogue.listing_availability`. Its FK (→ `scheduling.availability_presets`, SET NULL) is in `00000031`, because the presets table is created after this file. |
 | `cover_file_id`   | uuid → `files.items` | The card hero. For a catalogue listing it mirrors showcase slot 1 (rendition, else original), written by `catalogue.apply_listing_media`. |
-| `rating_average` / `rating_count` | numeric / integer | **Derived** from `reviews.entity_reviews` (`reviews.recalculate_entity_rating`). A client write is refused by `trg_service_blueprints_derived` (`security.fn_guard_derived_columns`). |
+| `rating_average` / `rating_count` | numeric / integer | **Derived** from the visible `reviews.entity_reviews` that carry the listing in `service_blueprint_id` — its provider's reviews bought through it (`reviews.recalculate_entity_rating`, Decision #487). A client write is refused by `trg_service_blueprints_derived` (`security.fn_guard_derived_columns`). |
 
 ## `marketplace.promoted_placements` — the promoted-placement ledger
 

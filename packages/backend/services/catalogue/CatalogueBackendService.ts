@@ -16,6 +16,7 @@ import type {
 } from "@projective/types/catalogue";
 import type { EntityView, SkillRef } from "@projective/types/explore";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import { isMocksForced, MOCKS_FORCED_MESSAGE } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { invalidateCatalog, loadCatalog } from "../explore/live-catalog.ts";
 import { resolveListing } from "../explore/listing-source.ts";
@@ -85,6 +86,8 @@ async function guarded<T>(
 	try {
 		return await run(actor);
 	} catch (error) {
+		// `USE_MOCKS`: the environment has no database, so nothing failed.
+		if (isMocksForced(error)) return fail(503, { message: MOCKS_FORCED_MESSAGE });
 		console.error(`[catalogue:${label}]`, error instanceof Error ? error.message : error);
 		return fail(503, { message: UNREACHABLE });
 	}

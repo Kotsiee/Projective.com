@@ -15,6 +15,7 @@ import {
 import { formatDate } from "../components/tabs/tab-shared.tsx";
 import type { ReviewEntry } from "../types/profile-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { ReviewReplyThread } from "@features/reviews/components/ReviewReplyThread.tsx";
 
 /**
  * ReviewsList — the Reviews section's rows behind a segmented stance filter: **All · As freelancer
@@ -88,7 +89,15 @@ function Review({ review }: { review: ReviewEntry }): JSX.Element {
 				<p class="pf-review__text">{review.body}</p>
 				{review.contextTitle
 					? <span class="pf-review__context">on {review.contextTitle}</span>
+					: review.listingTitle && review.listingSlug
+					? (
+						<a class="pf-review__context" href={`/view/${review.listingSlug}`}>
+							on {review.listingTitle}
+						</a>
+					)
 					: null}
+				{/* The reviewed side's one reply, and the viewer's own actions on it (Decision #487). */}
+				<ReviewReplyThread reviewId={review.id} reply={review.reply} viewer={review.viewer} />
 			</div>
 		</li>
 	);

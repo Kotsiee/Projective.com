@@ -28,6 +28,7 @@ import {
 	tree,
 } from "../core/files-state.ts";
 import type { FileSortKey } from "../types/file-types.ts";
+import { purchasesHref } from "@projective/types/catalogue";
 
 /**
  * FilesHeaderBand — the sticky strip above the `/files` workspace.
@@ -78,6 +79,11 @@ export interface FilesHeaderBandProps {
 	segments: string[];
 	/** What to call this library — "Library", or the acting workspace's handle. */
 	ownerLabel: string;
+	/**
+	 * The purchases view (`/files?source=purchases`, Decision #488): the band keeps only Browse, because
+	 * search, filters, sort and Details act on the library body, which is not mounted there.
+	 */
+	purchases?: boolean;
 }
 // #endregion
 
@@ -266,103 +272,119 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 									{node.label}
 								</button>
 							))}
+							<button
+								type="button"
+								class="fh-headerband__menu-item"
+								aria-current={props.purchases ? "location" : undefined}
+								onClick={() => {
+									browseOpen.value = false;
+									globalThis.location.assign(purchasesHref());
+								}}
+							>
+								<Icon name="basket" class="fh-headerband__menu-glyph" />
+								Purchases
+							</button>
 						</nav>
 					</Popover>
 				</Tooltip>
 			</span>
 
-			<span class="fh-headerband__search" ref={inlineSearch}>{searchField()}</span>
+			{!props.purchases && (
+				<span class="fh-headerband__search" ref={inlineSearch}>{searchField()}</span>
+			)}
 
-			<span class="fh-headerband__controls">
-				<span class="fh-headerband__searchtoggle">
-					<Tooltip content="Search files" placement="bottom">
+			{!props.purchases && (
+				<span class="fh-headerband__controls">
+					<span class="fh-headerband__searchtoggle">
+						<Tooltip content="Search files" placement="bottom">
+							<Popover
+								open={searchOpen}
+								placement="bottom-end"
+								label="Search files"
+								trigger={(api) => (
+									<button
+										type="button"
+										class="fh-headerband__icon"
+										ref={api.ref as Ref<HTMLButtonElement>}
+										data-on={query.value ? "true" : undefined}
+										aria-label={query.value ? `Search: ${query.value}` : SEARCH_LABEL}
+										aria-haspopup="dialog"
+										aria-expanded={api.expanded}
+										aria-controls={api.expanded ? api.panelId : undefined}
+										onClick={api.toggle}
+									>
+										<Icon name="search" />
+									</button>
+								)}
+							>
+								<div class="fh-headerband__panel">{searchField()}</div>
+							</Popover>
+						</Tooltip>
+					</span>
+
+					<Tooltip content="Filter files" placement="bottom">
 						<Popover
-							open={searchOpen}
+							open={filterOpen}
 							placement="bottom-end"
-							label="Search files"
+							label="Filter files"
 							trigger={(api) => (
 								<button
 									type="button"
 									class="fh-headerband__icon"
 									ref={api.ref as Ref<HTMLButtonElement>}
-									data-on={query.value ? "true" : undefined}
-									aria-label={query.value ? `Search: ${query.value}` : SEARCH_LABEL}
+									data-on={facets > 0 ? "true" : undefined}
+									aria-label={facets > 0 ? `Filter files, ${facets} active` : "Filter files"}
 									aria-haspopup="dialog"
 									aria-expanded={api.expanded}
 									aria-controls={api.expanded ? api.panelId : undefined}
 									onClick={api.toggle}
 								>
-									<Icon name="search" />
+									<Icon name="filter" />
+									{facets > 0 && <span class="fh-headerband__dot" aria-hidden="true" />}
 								</button>
 							)}
 						>
-							<div class="fh-headerband__panel">{searchField()}</div>
+							<FilesFilterPanel onCleared={() => (filterOpen.value = false)} />
 						</Popover>
 					</Tooltip>
-				</span>
 
-				<Tooltip content="Filter files" placement="bottom">
-					<Popover
-						open={filterOpen}
+					<span class="fh-headerband__sort">
+						<SortControl
+							options={SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+							value={sortKey.value}
+							direction={sortDir.value}
+							size="sm"
+							aria-label="Sort files"
+							onValueChange={(v) => {
+								sortKey.value = v as FileSortKey;
+								commitFiles();
+							}}
+							onDirectionChange={(d) => {
+								sortDir.value = d;
+								commitFiles();
+							}}
+						/>
+					</span>
+
+					<Tooltip
+						content={detailsKeys ? `Toggle details panel (${detailsKeys})` : "Toggle details panel"}
 						placement="bottom-end"
-						label="Filter files"
-						trigger={(api) => (
-							<button
-								type="button"
-								class="fh-headerband__icon"
-								ref={api.ref as Ref<HTMLButtonElement>}
-								data-on={facets > 0 ? "true" : undefined}
-								aria-label={facets > 0 ? `Filter files, ${facets} active` : "Filter files"}
-								aria-haspopup="dialog"
-								aria-expanded={api.expanded}
-								aria-controls={api.expanded ? api.panelId : undefined}
-								onClick={api.toggle}
-							>
-								<Icon name="filter" />
-								{facets > 0 && <span class="fh-headerband__dot" aria-hidden="true" />}
-							</button>
-						)}
 					>
-						<FilesFilterPanel onCleared={() => (filterOpen.value = false)} />
-					</Popover>
-				</Tooltip>
-
-				<span class="fh-headerband__sort">
-					<SortControl
-						options={SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-						value={sortKey.value}
-						direction={sortDir.value}
-						size="sm"
-						aria-label="Sort files"
-						onValueChange={(v) => {
-							sortKey.value = v as FileSortKey;
-							commitFiles();
-						}}
-						onDirectionChange={(d) => {
-							sortDir.value = d;
-							commitFiles();
-						}}
-					/>
+						<button
+							type="button"
+							class="fh-headerband__icon fh-headerband__icon--toggle"
+							data-on={detailsOpen ? "true" : undefined}
+							aria-label="Details panel"
+							aria-expanded={detailsOpen}
+							aria-controls={inflow ? "fh-details" : undefined}
+							aria-keyshortcuts={detailsKeys ? (apple.value ? "Meta+I" : "Control+I") : undefined}
+							onClick={toggleDetailsPanel}
+						>
+							<Icon name="panel-right" />
+						</button>
+					</Tooltip>
 				</span>
-
-				<Tooltip
-					content={detailsKeys ? `Toggle details panel (${detailsKeys})` : "Toggle details panel"}
-					placement="bottom-end"
-				>
-					<button
-						type="button"
-						class="fh-headerband__icon fh-headerband__icon--toggle"
-						data-on={detailsOpen ? "true" : undefined}
-						aria-label="Details panel"
-						aria-expanded={detailsOpen}
-						aria-controls={inflow ? "fh-details" : undefined}
-						aria-keyshortcuts={detailsKeys ? (apple.value ? "Meta+I" : "Control+I") : undefined}
-						onClick={toggleDetailsPanel}
-					>
-						<Icon name="panel-right" />
-					</button>
-				</Tooltip>
-			</span>
+			)}
 
 			<span class="ui-visually-hidden" role="status">{matchNote}</span>
 		</div>

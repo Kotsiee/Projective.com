@@ -266,3 +266,53 @@ WITH
     );
 
 -- #endregion
+
+-- #region Product versions and entitlements (Decision #488)
+-- Read-only to every client: a version is written by the publish definer
+-- (catalogue.fn_freeze_product_version) and an entitlement by finance.place_wallet_order, so there is
+-- no INSERT / UPDATE / DELETE policy on either and 00002520 grants no write.
+--
+-- An entitlement is its HOLDER's: the person who bought, or an active member of the team, business
+-- or enterprise that bought. Deliberately not finance.fn_owner_visible, whose operator arm would let
+-- an admin's session read — and the download route then stream — any buyer's purchase. The route
+-- also checks that the acting context IS the holder (ASSET §6 gate 4), so a business member acting
+-- personally does not download the business's purchase.
+CREATE POLICY "Holders read their entitlements" ON catalogue.entitlements FOR
+SELECT TO authenticated USING (
+        (holder_type = 'user'::files.owner_kind AND holder_id = auth.uid ())
+        OR (holder_type = 'team'::files.owner_kind AND org.is_active_team_member (holder_id))
+        OR (holder_type = 'business'::files.owner_kind AND org.is_active_business_member (holder_id))
+        OR (holder_type = 'enterprise'::files.owner_kind AND org.is_enterprise_member (holder_id))
+    );
+
+-- A version is readable by its product's seller (the creator, or an active member of the owning
+-- team) and by whoever holds an entitlement to it — RLS applies inside the EXISTS, so the holder rule
+-- is stated once, above. The manifest names no storage address, so neither learns where bytes live.
+CREATE POLICY "Sellers read their product versions" ON catalogue.product_versions FOR
+SELECT TO authenticated USING (
+        EXISTS (
+            SELECT 1
+            FROM catalogue.products p
+            WHERE
+                p.id = product_versions.product_id
+                AND (
+                    p.owner_user_id = auth.uid ()
+                    OR (
+                        p.owner_team_id IS NOT NULL
+                        AND org.is_active_team_member (p.owner_team_id)
+                    )
+                )
+        )
+    );
+
+CREATE POLICY "Holders read the version they bought" ON catalogue.product_versions FOR
+SELECT TO authenticated USING (
+        EXISTS (
+            SELECT 1
+            FROM catalogue.entitlements e
+            WHERE
+                e.version_id = product_versions.id
+        )
+    );
+
+-- #endregion

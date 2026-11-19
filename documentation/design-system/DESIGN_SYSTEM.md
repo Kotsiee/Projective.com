@@ -3624,6 +3624,33 @@ case is awaiting a response. A previewed case (the `disputeState` dev axis) is b
 `devDisputeCase` and never fetched. Model: `core/dispute-view.ts` (labels, tones, sentences, UTC
 times, the dev preview). Styles: `styles/session-disputes.css` (`sess-dispute*`, `dispute-dlg*`).
 
+**`ReviewDialog` + `ReviewReplyThread` + `ReviewsBlock` (`features/reviews/`, `features/projects/components/overview/`, Decision #487).**
+How a client reviews what they completed, and how the reviewed side answers. `ReviewsBlock` is the
+Overview's aside region "Reviews" (server component, `Block` + `pjd-row` links, no card of its own):
+one row per provider the viewer may review — avatar, name, and the state as inline Meta text
+(`MetaFacts`: Not reviewed yet · Open until … / Reviewed · Editable until … / Reviewed · Replied /
+Review withdrawn / Review window closed …) — each row a link to `?review=<slug>`; nothing renders
+while nothing is reviewable. `ReviewDialog` (`islands/`, props `slug`, `items: Reviewable[]`,
+`initialOpen`; `Dialog`, 36rem, a bottom sheet below `--bp-md`; `visible` a Signal, opened on first
+paint when the URL asks, `?review=` dropped with `replaceState` on close) branches on each item's
+`reviewStateOf`: **open** and **reviewed** write — a `SelectButton` picker when several providers are
+reviewable, `StarRatingInput` (half stars, not clearable), a headline `InputText` (120), the review
+`Textarea` (100–5,000) with a tabular counter that says how many characters are still needed —
+footer Cancel (tier 5) · **Post review** / **Save changes** (the one fill, teal primary: a core
+workflow commit), and for an editable review **Withdraw review** (tier 5, inline-start) which turns
+the dialog into its own confirm step (Keep it · **Withdraw review**, `danger`) — one dialog at a time;
+**locked** shows the review and its reply under one inline-start hairline and says why it is fixed;
+**withdrawn** and **closed** say so; their footer is Close alone. A refusal is the door's sentence in
+a `Message` above the footer. `ReviewReplyThread` (`components/`, rendered inside `ReviewsPanel` on
+`/view` and `ReviewsList` on `/@handle/reviews`; props `reviewId`, `reply`, `viewer`) is the
+reviewed side's one reply under a review — "Reply · <date> · edited" meta line, body at `--measure`,
+set off by one inline-start hairline, never boxed — and the viewer's tier-5 text actions: **Reply**
+or **Edit reply** (for whoever answers for the target; an inline composer: `Textarea` 1,000, tabular
+counter, Cancel · **Post reply** / **Save reply**) and **Edit review** (the author's link to the
+dialog). It renders nothing for a guest on an unreplied review. Model: `core/review-client.ts` (the
+one fetch), `core/review-state-sim.ts` (the `reviewState` dev axis, `pj.dev.review-state`). Styles:
+`styles/reviews.css` (`rv-thread*`, `rv-reply*`, `rv-composer*`, `rv-dialog*`).
+
 **`DisputeDesk` + `DisputeRulingDialog` (`features/admin/`, Decision #212).** The platform operator's
 dispute desk at `/admin/disputes` — rendered only for `security.is_admin()` (the controller 404s
 anyone else, so no ruling control ever reaches a non-operator, §3 gate 11). `DisputeDesk`
@@ -4417,6 +4444,17 @@ rail's commit region) and in Buy now's ledger: an unboxed `InlineNotice` (lock g
 server's own words; a line-scoped blocker links to its row on the basket step (_Fix in basket_). Its
 `id` is the commit's `aria-describedby`. It replaces the payment step's tinted blocker box and its
 translucent "Pay is off until…" box; `CheckoutBlockers` is retired.
+
+**`DeliveryTermsNotice` (`features/checkout/components/`, Decision #488, ruling A8).** The required
+disclosure above Buy Now whenever a paid line is a digital product: an unboxed `InlineNotice` (the
+non-refundable-once-downloaded sentence, `DELIVERY_TERMS_COPY`, pending counsel) and one unticked
+`Checkbox` whose sentence is its `<label>`. Buy Now stays disabled, `aria-describedby` this block,
+until it is ticked, and an express wallet button refuses with the same reason. Contained only as a
+required disclosure (§B.11); no fill, no border. A confirmation download line of a several-file
+bundle is one outlined `cko-order__act` link per file plus "Open in Purchases" (`DownloadAction`).
+`/files?source=purchases` (`PurchasesView`) composes roster pieces only: `MetaLine` facts, a
+`Tag` for a refunded purchase's lifecycle status, `InlineNotice` while files are prepared, and
+outlined neutral Download links — rows separated by one hairline, never cards.
 
 **`StagePicker` (`features/checkout/components/`, Decision #430).** Which of a ticket's stages to pay
 for — the one list `BuyNowModal` and `TicketBasketPicker` share. Props `quote` (the server's
@@ -6288,9 +6326,16 @@ clock in a background tab must not be able to draw an empty cohort as full (§8 
 body is the D.8.3 frame and track: one row per sitting — the seller's plan where written, extended to
 every scheduled sitting so none is dropped — each carrying its day and time (`SittingTime`: UTC in
 the first byte and labelled so, the viewer's own zone once hydrated). Lane ledger: remaining seats,
-cohort start, cadence; primary CTA **Reserve seat**, which opens the seat panel: the cohort's fixed
-sittings, a seat stepper, the note and the seller's intake questions, whose answers ride the seat to
-its order line (Decision #453).
+then the terms the cohort was opened on (Decision #498) as key-terms rows — **Starts** (the first
+sitting, with the cadence as its note: "Weekly · 3 sessions"), **Enrolment** ("Closes Mon 30 Nov,
+18:00") and, when the seller set one, **Minimum** (the seat count, with what happens below it as its
+note); below the lane they move, unduplicated, into one Meta-register sentence in `EntityBuyBar`
+(`.evp-buybar__terms`). Primary CTA **Reserve seat**, which opens the seat panel: the cohort's fixed
+sittings, the minimum restated under them, a seat stepper, the note and the seller's intake questions,
+whose answers ride the seat to its order line (Decision #453). The seller opens and cancels cohorts in
+the listing's Availability section (`CohortsBlock`): one hairline-separated row per cohort, its
+lifecycle status as the row's one container, its start, cadence, seats against its minimum and close in
+Meta text, and both dialogs addressed by `?cohort=` (ROUTING.md).
 
 **D.8.5 Digital products** (templates · 3D assets · audio stems · video presets · code kits). The
 16:10 canvas carries the **live** artefact, not a screenshot of it: `AudioVisualizer` for stems, a

@@ -57,7 +57,7 @@ DECLARE
 BEGIN
     SELECT p.id, s.id, p.owner_user_id INTO v_project, v_stage, v_host
       FROM projects.projects p JOIN projects.project_stages s ON s.project_id = p.id
-     WHERE p.owner_user_id IS NOT NULL ORDER BY p.id, s.id LIMIT 1;
+     WHERE p.owner_user_id IS NOT NULL AND p.source_blueprint_id IS NULL ORDER BY p.id, s.id LIMIT 1;
     SELECT b.id INTO v_blueprint FROM marketplace.service_blueprints b ORDER BY b.id LIMIT 1;
     UPDATE marketplace.service_blueprints SET meeting_provider = 'zoom' WHERE id = v_blueprint;
     SELECT sc.id INTO v_schedule FROM scheduling.schedules sc

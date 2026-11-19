@@ -30,6 +30,13 @@ export interface PortfolioBootstrap {
 	filter: PortfolioFilter;
 	/** Which workspaces the list spans — the one workspace's name, or "N workspaces". */
 	contextLabel: string;
+	/**
+	 * The feed read's refusal (a lapsed session, an unreachable database), or `null`. Set, the page
+	 * says the projects could not be loaded instead of "No projects yet" (PRD-B1).
+	 */
+	loadError: string | null;
+	/** This page's own address, for the failure's reload link. */
+	retryHref: string;
 }
 
 /** Resolve the portfolio for a request. */
@@ -52,5 +59,7 @@ export async function resolvePortfolio(
 		items,
 		filter: parsePortfolioFilter(url.searchParams.get(PORTFOLIO_PARAM)),
 		contextLabel: workspaces.size === 1 ? items[0].scopeLabel : `${workspaces.size} workspaces`,
+		loadError: feed.loadError,
+		retryHref: `${url.pathname}${url.search}`,
 	};
 }

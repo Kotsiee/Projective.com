@@ -16,9 +16,10 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 > verified by execution (`supabase db reset` + probes inside `BEGIN … ROLLBACK`; see root
 > `CLAUDE.md` §8 Decision #109). At the time the **editors** that fill them did not exist. Since the
 > catalogue rebuild (2026-10-14) the listing intake editor does (§1.1); no hire-intake settings
-> surface and no call-platform picker exists yet. The reads are wired and fixture-backed behind the existing gates
-> (`CATALOGUE_BACKEND_LIVE` · `PROFILE_BACKEND_LIVE` · `EXPLORE_BACKEND_LIVE`), so the day an editor
-> writes a row, the buyer surfaces show it with no shape change.
+> surface and no call-platform picker exists yet. The reads are wired behind the existing gates
+> (`CATALOGUE_BACKEND_LIVE` · `EXPLORE_BACKEND_LIVE`; the profile reads are always live, and their
+> dead `PROFILE_BACKEND_LIVE` gate was retired by LD3), so the day an editor writes a row, the buyer
+> surfaces show it with no shape change.
 >
 > **Status (2026-10-13) — pipeline instantiation is a real transaction (Decision #209).** "Add to
 > Projects" is one `marketplace.instantiate_service_blueprint` call

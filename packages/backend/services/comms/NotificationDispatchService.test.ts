@@ -35,6 +35,8 @@ function row(n: number, overrides: Record<string, unknown> = {}) {
 		action_url: "/projects/prj-abc123",
 		type: "escrow.funded",
 		category: "money",
+		urgency: "high",
+		group_key: null,
 		...overrides,
 	};
 }

@@ -97,6 +97,11 @@ export const SLUG_PREFIXES = {
 	 * not `slug`, which holds an entity channel's `#` name (Decision #306).
 	 */
 	thread: "cht",
+	/**
+	 * A bought product line's delivery address (`catalogue.entitlements`, Decision #488):
+	 * `/api/downloads/ent-…/{fileId}`.
+	 */
+	entitlement: "ent",
 } as const;
 
 /** An entity addressed by a prefixed slug. */

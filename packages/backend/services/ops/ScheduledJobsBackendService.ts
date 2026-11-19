@@ -1,5 +1,5 @@
 import { serverEnv } from "../../core/env.ts";
-import { getServiceClient, isSupabaseConfigured } from "../../core/supabase.ts";
+import { getServiceClient, isSupabaseConfigured, useMocks } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { JobRunReport, ScheduledJob } from "@projective/types/ops";
 import { JOB_NAME_PATTERN } from "@projective/types/ops";
@@ -33,9 +33,13 @@ function readProcessEnv(key: string): string | undefined {
  *
  * Service-role only: it reads the registry and calls `ops.run_job`, neither of which a user may reach.
  */
+/** Live-only: under `USE_MOCKS` (no database) there is no registry to read or job to run. */
+const NO_DATABASE = "Scheduled jobs aren't available in this environment (USE_MOCKS is on).";
+
 export class ScheduledJobsBackendService {
 	/** Every registry row, by name. */
 	static async listJobs(): Promise<ServiceResult<ScheduledJob[]>> {
+		if (useMocks()) return fail(503, { message: NO_DATABASE });
 		if (!isSupabaseConfigured()) return fail(503, { message: "Supabase is not configured." });
 		const { data, error } = await getServiceClient()
 			.schema("ops")
@@ -64,6 +68,7 @@ export class ScheduledJobsBackendService {
 		opts: JobRunOptions = {},
 	): Promise<ServiceResult<JobRunReport>> {
 		if (!JOB_NAME_PATTERN.test(name)) return fail(422, { message: `"${name}" is not a job name.` });
+		if (useMocks()) return fail(503, { message: NO_DATABASE });
 		if (!isSupabaseConfigured()) return fail(503, { message: "Supabase is not configured." });
 
 		const client = getServiceClient();

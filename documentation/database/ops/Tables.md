@@ -138,3 +138,16 @@ output, in the private `contact` bucket — [files Storage.md](../files/Storage.
 deleted. A link is what lets operators read a file (`files.fn_can_read`, the `contact` bucket
 policy): an unsent contact upload has none, and is taken back by Remove
 (`ops.discard_contact_attachment`) or the hourly sweep (`ops.fn_claim_stale_contact_attachments`).
+
+## `ops.alert_rules` · `ops.alert_deliveries` · `ops.alert_seen` — money and job alerts (MR4, Decision #461)
+
+Migration `00000013` (region `[alerts]`); functions `00001660`; triggers `00001897`; the rules seeded
+in `00005065`. RLS on, no client policy, no client grant: the claim and the record are service-role
+definers, and operators read through `ops.read_alert_deliveries` (`/admin/ledger`'s Alerts section).
+Zod: `@projective/types/ops` (`alerts.ts`).
+
+| Table | Purpose & key columns |
+| :---- | :-------------------- |
+| `ops.alert_rules` | What the sweep watches, one channel per row. `kind` `level` (every server row whose `scope` is LIKE `scope_pattern` at `min_level` `warn` / `error` or above; a `metric` row never alerts) or `silence` (a dead-man switch: no server row of the scope for `max_silence`, counted from the rule's `created_at` while the scope never wrote one). `channel` `webhook` / `email`; `dedupe_window` (≥ 5 minutes); `enabled`; `description`. Unique on (`kind`, `scope_pattern`, `channel`). Seeded: `finance.%` at `error` (36 h window) and `ops.scheduler` at `error` (24 h), each on both channels; `finance.reconcile_wallets` and `finance.conservation` silent for 26 h, on both. |
+| `ops.alert_deliveries` | One alert on one channel: a group (`group_key` = `scope` + `:` + `fingerprint`) inside one dedupe window, however many rows it folded (`count`, `first_seen` … `last_seen`, `window_ends_at`). `sample` holds the newest row's figures and 8-character ids only (`ops.fn_alert_sample`), never its message. `status` `pending` → `sent` (`sent_at` exactly when sent); a failed send stays `pending` with `attempts`, `last_error` (a status or class, ≤ 120 characters) and a backed-off `next_attempt_at`; `lease_until` keeps two sweeps from sending one alert twice. Never deleted (`trg_alert_deliveries_keep`, `trg_alert_deliveries_no_truncate`). |
+| `ops.alert_seen` | The claim's cursor: (`log_entry_id`, `rule_id`) → `delivery_id`, one row per log row each rule folded, so a re-run folds nothing twice. Never deleted. |

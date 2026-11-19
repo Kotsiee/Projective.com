@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
 import { PriceBlock, SeatSummary } from "../components/lane-parts.tsx";
@@ -9,6 +10,8 @@ import { seedSimulation, type SimulationFacts } from "../core/simulation.ts";
 import { signInHref } from "../core/view-model.ts";
 import { type EntityArchetype, offerFor, seatCapacityFor } from "../core/entity-archetype.ts";
 import { offerSummaryFor } from "../core/offer-summary.ts";
+import { cohortTermsSentence } from "../core/cohort-terms.ts";
+import { browserZone } from "../core/sitting-time.ts";
 import type { HeadlinePrice } from "../core/view-pricing.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
 import { purchasableKindOf } from "@web/features/checkout/core/purchasable.ts";
@@ -67,10 +70,14 @@ export default function EntityBuyBar(
 	const archetypeOffer = offerFor(archetype);
 	const added = basketIds.value.includes(item.id);
 	const capacity = seatCapacityFor(view, archetype);
+	// The reader's zone once the browser says it; the first byte prints a cohort's times in UTC.
+	const zone = useSignal<string | null>(null);
+	const cohortTerms = archetype === "cohort" ? cohortTermsSentence(offer.cohort, zone.value) : null;
 
 	// A simulation never reads the owner's own basket: what a buyer sees is an empty one.
 	useEffect(() => {
 		hydrateBasket(authed && !simulation);
+		zone.value = browserZone();
 	}, [authed]);
 
 	const purchaseKind = purchasableKindOf(item);
@@ -128,6 +135,7 @@ export default function EntityBuyBar(
 			/>
 
 			{capacity && <SeatSummary capacity={capacity} />}
+			{cohortTerms && <p class="evp-buybar__terms">{cohortTerms}</p>}
 
 			<BookingCtaRig
 				offer={offer}

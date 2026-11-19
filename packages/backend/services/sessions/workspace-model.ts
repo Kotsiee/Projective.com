@@ -1,21 +1,22 @@
 import {
-	type DisputeSummary,
 	DisputeStatus,
+	type DisputeSummary,
+	formatMoney,
 	type FundingState,
 	type FundingStatus,
-	formatMoney,
 } from "@projective/types/finance";
 import {
+	cancelOutcomeAt,
+	CohortCadenceSchema,
 	type CohortOffer,
 	type CohortView,
 	type CurriculumModule,
-	cancelOutcomeAt,
 	DEFAULT_SESSION_TERMS,
+	seatCount,
 	type SessionJoin,
 	type SessionSitting,
 	type SessionTerms,
 	type SessionWorkspace,
-	seatCount,
 	sittingPhase,
 } from "@projective/types/projects";
 
@@ -63,10 +64,16 @@ export interface RawWorkspace {
 	role: "host" | "attendee" | "prospect";
 	seat_price_minor: number | null;
 	currency: string;
-	terms: Partial<Record<
-		"seat_hold_minutes" | "join_lead_minutes" | "presence_minutes" | "cancel_notice_hours" | "payout_hours",
-		number
-	>>;
+	terms: Partial<
+		Record<
+			| "seat_hold_minutes"
+			| "join_lead_minutes"
+			| "presence_minutes"
+			| "cancel_notice_hours"
+			| "payout_hours",
+			number
+		>
+	>;
 	cohorts: {
 		id: string;
 		name: string;
@@ -87,7 +94,12 @@ export interface RawWorkspace {
 		first_start: string | null;
 	} | null;
 	hold: { id: string; seats: number; expires_at: string } | null;
-	host_escrows: { held_minor: number; held_count: number; released_minor: number; currency: string | null } | null;
+	host_escrows: {
+		held_minor: number;
+		held_count: number;
+		released_minor: number;
+		currency: string | null;
+	} | null;
 	curriculum: RawModule[];
 	join: {
 		event_id?: string;
@@ -136,6 +148,10 @@ export interface RawCohortOffer {
 	first_start: string | null;
 	sittings: RawSitting[] | null;
 	curriculum: RawModule[] | null;
+	/** The terms the cohort was opened on (Decision #498); absent on a cohort opened before them. */
+	min_seats?: number | null;
+	enrolment_closes_at?: string | null;
+	cadence?: string | null;
 }
 // #endregion
 
@@ -204,7 +220,9 @@ function fundingOf(f: SeatFundingInput): FundingStatus {
 
 /** Where a held seat escrow stands against the sittings it pays for. */
 function heldState(sittings: readonly SessionSitting[]): FundingState {
-	if (sittings.length > 0 && sittings.every((s) => s.phase === "ended" || s.phase === "cancelled")) {
+	if (
+		sittings.length > 0 && sittings.every((s) => s.phase === "ended" || s.phase === "cancelled")
+	) {
 		return "in_review"; // every sitting is over: the negative-consent window is running
 	}
 	return sittings.some((s) => s.phase === "live" || s.phase === "ended") ? "in_progress" : "funded";
@@ -217,16 +235,29 @@ function heldState(sittings: readonly SessionSitting[]): FundingState {
  * `in_review` after the last one ("Releases 24h after the session"); then `released` / `refunded`.
  * The host sees the engagement's held total on the same scale.
  */
-export function sessionFunding(raw: RawWorkspace, sittings: readonly SessionSitting[]): FundingStatus | null {
+export function sessionFunding(
+	raw: RawWorkspace,
+	sittings: readonly SessionSitting[],
+): FundingStatus | null {
 	const currency = (raw.currency || "USD").toUpperCase();
 	if (raw.role === "host") {
 		const h = raw.host_escrows;
 		if (!h) return null;
 		if (h.held_count > 0) {
-			return fundingOf({ state: heldState(sittings), amountMinor: h.held_minor, currency, nextAction: "none" });
+			return fundingOf({
+				state: heldState(sittings),
+				amountMinor: h.held_minor,
+				currency,
+				nextAction: "none",
+			});
 		}
 		return h.released_minor > 0
-			? fundingOf({ state: "released", amountMinor: h.released_minor, currency, nextAction: "none" })
+			? fundingOf({
+				state: "released",
+				amountMinor: h.released_minor,
+				currency,
+				nextAction: "none",
+			})
 			: null;
 	}
 	const m = raw.membership;
@@ -234,15 +265,35 @@ export function sessionFunding(raw: RawWorkspace, sittings: readonly SessionSitt
 		const amount = m.escrow.amount_minor;
 		const cur = (m.escrow.currency || currency).toUpperCase();
 		if (m.escrow.status === "released") {
-			return fundingOf({ state: "released", amountMinor: amount, currency: cur, nextAction: "none" });
+			return fundingOf({
+				state: "released",
+				amountMinor: amount,
+				currency: cur,
+				nextAction: "none",
+			});
 		}
 		if (m.escrow.status === "refunded") {
-			return fundingOf({ state: "refunded", amountMinor: amount, currency: cur, nextAction: "none" });
+			return fundingOf({
+				state: "refunded",
+				amountMinor: amount,
+				currency: cur,
+				nextAction: "none",
+			});
 		}
-		return fundingOf({ state: heldState(sittings), amountMinor: amount, currency: cur, nextAction: "none" });
+		return fundingOf({
+			state: heldState(sittings),
+			amountMinor: amount,
+			currency: cur,
+			nextAction: "none",
+		});
 	}
 	if (m?.escrow?.status === "refunded") {
-		return fundingOf({ state: "refunded", amountMinor: m.escrow.amount_minor, currency, nextAction: "none" });
+		return fundingOf({
+			state: "refunded",
+			amountMinor: m.escrow.amount_minor,
+			currency,
+			nextAction: "none",
+		});
 	}
 	if (raw.hold) {
 		const amount = raw.seat_price_minor === null ? null : raw.seat_price_minor * raw.hold.seats;
@@ -308,17 +359,18 @@ export function toSessionWorkspace(raw: RawWorkspace, now: number): SessionWorks
 	});
 
 	const j = raw.join;
-	const join: SessionJoin | null = j && j.state !== "not_party" && j.event_id && j.role && j.opens_at &&
+	const join: SessionJoin | null =
+		j && j.state !== "not_party" && j.event_id && j.role && j.opens_at &&
 			j.closes_at
-		? {
-			eventId: j.event_id,
-			role: j.role,
-			state: j.state,
-			opensAt: isoOf(j.opens_at) ?? j.opens_at,
-			closesAt: isoOf(j.closes_at) ?? j.closes_at,
-			url: j.state === "open" && j.room_slug ? `/meet/${j.room_slug}` : null,
-		}
-		: null;
+			? {
+				eventId: j.event_id,
+				role: j.role,
+				state: j.state,
+				opensAt: isoOf(j.opens_at) ?? j.opens_at,
+				closesAt: isoOf(j.closes_at) ?? j.closes_at,
+				url: j.state === "open" && j.room_slug ? `/meet/${j.room_slug}` : null,
+			}
+			: null;
 
 	const m = raw.membership;
 	const r = raw.reschedule;
@@ -346,12 +398,17 @@ export function toSessionWorkspace(raw: RawWorkspace, now: number): SessionWorks
 			: null,
 		funding: sessionFunding(raw, sittings),
 		vote: r && r.mode === "vote" && r.status === "voting"
-			? { prompt: `Reschedule proposal: ${r.sitting_title}`.slice(0, 200), accepted: r.votes, total: r.voters }
+			? {
+				prompt: `Reschedule proposal: ${r.sitting_title}`.slice(0, 200),
+				accepted: r.votes,
+				total: r.voters,
+			}
 			: null,
 		proposal: r && r.mode === "counterparty" && r.status === "awaiting_counterparty"
 			? (r.opened_by_host ? "host" : "attendee")
 			: null,
-		presetEnded: sittings.length > 0 && sittings.every((s) => s.phase === "ended" || s.phase === "cancelled"),
+		presetEnded: sittings.length > 0 &&
+			sittings.every((s) => s.phase === "ended" || s.phase === "cancelled"),
 		claimable: raw.role === "attendee" && raw.claimable_sitting_id
 			? sittings.find((s) => s.id === raw.claimable_sitting_id) ?? null
 			: null,
@@ -398,9 +455,16 @@ export function toCohortOffer(raw: RawCohortOffer | null): CohortOffer | null {
 		sittings: (raw.sittings ?? []).flatMap((s) => {
 			const startsAt = isoOf(s.starts_at);
 			const endsAt = isoOf(s.ends_at);
-			return startsAt && endsAt ? [{ id: s.id, title: s.title.slice(0, 200), startsAt, endsAt }] : [];
+			return startsAt && endsAt
+				? [{ id: s.id, title: s.title.slice(0, 200), startsAt, endsAt }]
+				: [];
 		}).slice(0, 200),
 		curriculum: curriculumOf(raw.curriculum),
+		minSeats: typeof raw.min_seats === "number" && raw.min_seats >= 1
+			? Math.min(raw.min_seats, 500)
+			: null,
+		enrolmentClosesAt: isoOf(raw.enrolment_closes_at),
+		cadence: CohortCadenceSchema.safeParse(raw.cadence).data ?? null,
 	};
 }
 // #endregion

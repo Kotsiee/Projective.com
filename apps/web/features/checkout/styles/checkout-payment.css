@@ -1385,3 +1385,29 @@
 	max-inline-size: 32rem;
 	margin-block-start: var(--space-4);
 }
+
+/* #region Download terms (Decision #488, ruling A8) */
+/*
+ * The required disclosure above Pay when a line delivers files: the notice, then one box whose
+ * sentence is its label. Spacing separates it from the commit below; it carries no border of its own.
+ */
+.cko-terms {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-block-end: var(--space-3);
+}
+
+.cko-terms__row {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+}
+
+.cko-terms__label {
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	cursor: pointer;
+}
+/* #endregion */

@@ -20,6 +20,8 @@ function delivery(overrides: Partial<ClaimedDelivery> = {}): ClaimedDelivery {
 		actionUrl: "/projects/prj-abc123",
 		type: "escrow.funded",
 		category: "money",
+		urgency: "high",
+		groupKey: null,
 		...overrides,
 	};
 }

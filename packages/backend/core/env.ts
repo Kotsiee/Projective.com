@@ -61,12 +61,15 @@ export interface ServerEnv {
 	 */
 	supabaseJwtSecret: string | undefined;
 	/**
-	 * The MASTER mock switch, and the only flag that can override every other gate.
+	 * The MASTER mock switch, and the only flag that can override every other gate. It means **no
+	 * database**.
 	 *
-	 * `true` forces every domain to its fixture path regardless of that domain's own
-	 * `*_BACKEND_LIVE` value. `false` — the default — changes nothing: each domain follows its own
-	 * gate exactly as before, so an environment that never sets this behaves identically to one that
-	 * predates it.
+	 * `true`: no request reaches Supabase. Every `*_BACKEND_LIVE` predicate reads false, so a gated
+	 * domain takes its fixture road whatever its own flag says, and every client factory
+	 * (`core/supabase.ts`) throws `MocksForcedError`, so a domain with no fixture road (one the
+	 * registry marks always-live, or the ungated parts of a gated one) answers its own 503 "isn't
+	 * available in this environment". `mocks/registry.ts` lists which domain does which. `false`, the
+	 * default, changes nothing: each domain follows its own gate.
 	 *
 	 * The direction is deliberate and one-way. It can only ever turn a database read OFF, never on.
 	 * A switch that could force a domain live would let one variable enable a half-wired mutation
@@ -131,12 +134,6 @@ export interface ServerEnv {
 	 * membership reads are implemented and verified, then flip per environment.
 	 */
 	projectsBackendLive: boolean;
-	/**
-	 * Master switch for LIVE profile-backend behaviour. Defaults **off**: {@link ProfileBackendService}
-	 * answers the `/[handle]` profile from deterministic fixtures until the RLS-scoped `org.users_public`
-	 * + profile tables are implemented and verified, then flip per environment.
-	 */
-	profileBackendLive: boolean;
 	/**
 	 * Master switch for LIVE messaging-backend behaviour. Defaults **off**: {@link MessagingBackendService}
 	 * answers the `/messages` inbox (conversations · settings) from deterministic fixtures until the
@@ -266,6 +263,20 @@ export interface ServerEnv {
 	 */
 	stripeConnectWebhookSecret: string | undefined;
 	/**
+	 * The hostnames `deno task stripe:domains` registers as Stripe payment method domains, from
+	 * `STRIPE_PAYMENT_METHOD_DOMAINS` (comma-separated: production, `www`, staging). Every host that
+	 * shows the Express Checkout Element must be registered for Apple Pay, Google Pay, Link and PayPal
+	 * to appear on it. Absent: the host of `APP_URL`. Not a secret; read by the script only.
+	 */
+	stripePaymentMethodDomains: string | undefined;
+	/**
+	 * The body of Apple Pay's domain association file, from `STRIPE_APPLE_PAY_DOMAIN_ASSOCIATION`,
+	 * served verbatim at `/.well-known/apple-developer-merchantid-domain-association`. Stripe's
+	 * current registration verifies Apple Pay without one; set it only when a domain's Apple Pay status
+	 * at Stripe asks for the file. Not a secret. Absent or the `XXXX-XXXX` placeholder: the path is 404.
+	 */
+	stripeApplePayDomainAssociation: string | undefined;
+	/**
 	 * The bearer token the scheduler presents to `POST /api/finance/cron/deposits` and
 	 * `POST /api/finance/cron/payouts`, from `FINANCE_CRON_SECRET`. The routes charge saved cards and
 	 * send transfers, so they answer 404 (not 401) to anything else — including every request while this
@@ -309,6 +320,26 @@ export interface ServerEnv {
 	 * placeholder or shorter than 32 characters; the dispatcher counts as not running until it is set.
 	 */
 	commsDispatchSecret: string | undefined;
+	/**
+	 * The bearer token the scheduler presents to `POST /api/ops/cron/alerts`, the `ops-deliver-alerts`
+	 * job (MR4, Decision #461), from `OPS_CRON_SECRET`. Vault holds the same value under the same name.
+	 * Like the other cron routes it answers 404 to anything else, including every request while this is
+	 * unset, the `XXXX-XXXX` placeholder or shorter than 32 characters.
+	 */
+	opsCronSecret: string | undefined;
+	/**
+	 * Where money and job alerts are posted, from `OPS_ALERT_WEBHOOK_URL` (Decision #461 (A)): an
+	 * incoming-webhook URL that takes Slack-compatible JSON (`{ text }`). Server-only; an `https://` URL
+	 * or the webhook channel stays off. The receiver sees figures, short ids and a link to
+	 * `/admin/ledger`, never a name, an email or a bank detail (#461 flag (d)).
+	 */
+	opsAlertWebhookUrl: string | undefined;
+	/**
+	 * Who receives the alert digest, from `OPS_ALERT_EMAIL` (Decision #461 (A)): one address, sent
+	 * through the Resend transport (`services/mail/transport.ts`). Unset, or no transport, keeps the
+	 * email channel off; its alerts wait pending until it is set.
+	 */
+	opsAlertEmail: string | undefined;
 	/**
 	 * The Google Web Risk API key a link's reputation is checked against (Decision #340, ruling T5),
 	 * from `LINK_SAFETY_API_KEY`. Server-only, sent only in the `x-goog-api-key` header. The
@@ -386,6 +417,17 @@ export interface ServerEnv {
 	 */
 	resendWebhookSecret: string | undefined;
 	/**
+	 * The Web Push VAPID keypair (COMMS NT4; providers spec §8.2), from `VAPID_PUBLIC_KEY` (the raw
+	 * 65-byte P-256 public key, base64url: served to the browser by `GET /api/notifications/push/config`)
+	 * and `VAPID_PRIVATE_KEY` (its 32-byte private scalar, base64url: server-only, it signs every push).
+	 * Push is configured only while both are well formed and `VAPID_SUBJECT` is set; the `XXXX-XXXX`
+	 * placeholder counts as absent, and then no push transport registers and nothing is offered.
+	 */
+	vapidPublicKey: string | undefined;
+	vapidPrivateKey: string | undefined;
+	/** The VAPID `sub` claim: `mailto:` an operator mailbox, or an https URL, from `VAPID_SUBJECT`. */
+	vapidSubject: string | undefined;
+	/**
 	 * The Cloudflare Turnstile site key (public), from `TURNSTILE_SITE_KEY` (Decision #447). It reaches
 	 * the widget only through a page handler or `GET /api/auth/captcha`. Absent: no widget renders.
 	 * Read through `resolveTurnstileKeys` (`core/turnstile.ts`), which drops the placeholder and, outside
@@ -419,7 +461,6 @@ export function serverEnv(): ServerEnv {
 		communityBackendLive: (firstEnv("COMMUNITY_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		contactBackendLive: (firstEnv("CONTACT_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		projectsBackendLive: (firstEnv("PROJECTS_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
-		profileBackendLive: (firstEnv("PROFILE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		messagingBackendLive: (firstEnv("MESSAGING_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		catalogueBackendLive: (firstEnv("CATALOGUE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		loggingBackendLive: (firstEnv("LOGGING_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
@@ -436,12 +477,17 @@ export function serverEnv(): ServerEnv {
 		stripeApiBase: firstEnv("STRIPE_API_BASE"),
 		stripeThinWebhookSecret: firstEnv("STRIPE_THIN_WEBHOOK_SECRET"),
 		stripeConnectWebhookSecret: firstEnv("STRIPE_CONNECT_WEBHOOK_SECRET"),
+		stripePaymentMethodDomains: firstEnv("STRIPE_PAYMENT_METHOD_DOMAINS"),
+		stripeApplePayDomainAssociation: firstEnv("STRIPE_APPLE_PAY_DOMAIN_ASSOCIATION"),
 		financeCronSecret: firstEnv("FINANCE_CRON_SECRET"),
 		accountCronSecret: firstEnv("ACCOUNT_CRON_SECRET"),
 		schedulingCronSecret: firstEnv("SCHEDULING_CRON_SECRET"),
 		contactCronSecret: firstEnv("CONTACT_CRON_SECRET"),
 		integrationsCronSecret: firstEnv("INTEGRATIONS_CRON_SECRET"),
 		commsDispatchSecret: firstEnv("COMMS_DISPATCH_SECRET"),
+		opsCronSecret: firstEnv("OPS_CRON_SECRET"),
+		opsAlertWebhookUrl: firstEnv("OPS_ALERT_WEBHOOK_URL"),
+		opsAlertEmail: firstEnv("OPS_ALERT_EMAIL"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 		zoomWebhookSecret: firstEnv("ZOOM_WEBHOOK_SECRET"),
 		encryptionKey: firstEnv("ENCRYPTION_KEY"),
@@ -461,6 +507,9 @@ export function serverEnv(): ServerEnv {
 		resendApiKey: firstEnv("RESEND_API_KEY"),
 		mailFrom: firstEnv("MAIL_FROM"),
 		resendWebhookSecret: firstEnv("RESEND_WEBHOOK_SECRET"),
+		vapidPublicKey: firstEnv("VAPID_PUBLIC_KEY"),
+		vapidPrivateKey: firstEnv("VAPID_PRIVATE_KEY"),
+		vapidSubject: firstEnv("VAPID_SUBJECT"),
 		turnstileSiteKey: firstEnv("TURNSTILE_SITE_KEY"),
 		turnstileSecretKey: firstEnv("TURNSTILE_SECRET_KEY"),
 	};

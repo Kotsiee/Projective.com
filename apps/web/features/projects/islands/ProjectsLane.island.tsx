@@ -2,7 +2,8 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { JSX } from "preact";
 import "../styles/projects-lane.css";
-import { Toast, useToast } from "@projective/ui/feedback";
+import { Message, Toast, useToast } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import {
 	LaneBar,
 	LaneCollapseButton,
@@ -165,6 +166,12 @@ export interface ProjectsLaneProps {
 	path: string;
 	/** The viewer is a restricted (13–17) account, as the server resolved it (Decision #192). */
 	restricted: boolean;
+	/**
+	 * Why the SSR read of the first page failed (a lapsed session, an unreachable database), or
+	 * `null`. While it is set and no row is on screen, the list says so with a retry rather than
+	 * "Nothing here yet" (PRD-B1).
+	 */
+	initialError?: string | null;
 }
 
 export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
@@ -173,6 +180,8 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	const payload = useSignal<ProjectFeedPayload>(props.initial);
 	const queryText = useSignal<string>(props.initialParams.q);
 	const loading = useSignal<boolean>(false);
+	/** The last feed read's refusal while the lane holds no rows to keep up — see {@link run}. */
+	const loadError = useSignal<string | null>(props.initialError ?? null);
 	const currentPath = useSignal<string>(props.path);
 	const createOpen = useSignal<boolean>(false);
 	// The Quick-Init modal's own state. Two signals rather than one nullable format, because the format
@@ -223,11 +232,18 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		loading.value = false;
 		if (res.ok && res.data) {
 			payload.value = res.data;
+			loadError.value = null;
 			return;
 		}
-		// The previous rows stay up — a blank lane would read as "you have no projects", which is a
-		// different and false statement — but the reader is told the filter they chose did not apply.
 		logger.error("Projects feed refine failed", { params: next, message: res.message });
+		// With no rows on screen the list itself says the read failed, with a retry: "Nothing here
+		// yet" would tell the reader they have no projects, which is a different and false statement.
+		if (payload.value.count === 0) {
+			loadError.value = res.message ??
+				"Your projects can't be loaded right now — please try again.";
+			return;
+		}
+		// Otherwise the previous rows stay up, and the reader is told the filter they chose did not apply.
 		notify("danger", res.message ?? "Couldn’t refresh your projects — please try again.");
 	}
 
@@ -567,7 +583,21 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 			</LaneHead>
 
 			<LaneList label="Projects" busy={loading.value}>
-				{feed.count === 0
+				{feed.count === 0 && loadError.value
+					? (
+						<div class="proj-lane__failure">
+							<Message severity="danger" variant="subtle" size="sm">{loadError.value}</Message>
+							<Button
+								label="Try again"
+								severity="neutral"
+								variant="outlined"
+								size="sm"
+								loading={loading.value}
+								onClick={() => void run(params.value)}
+							/>
+						</div>
+					)
+					: feed.count === 0
 					? (
 						<LaneEmpty
 							title="Nothing here yet"

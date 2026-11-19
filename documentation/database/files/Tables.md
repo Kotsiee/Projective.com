@@ -37,7 +37,7 @@ combination unrepresentable.
 | `files.file_status`      | `pending_upload` · `scanning` · `uploaded` · `error` · `quarantined` |
 | `files.link_scan_status` | `pending` · `safe` · `suspicious` · `blocked` · `unscannable`        |
 | `files.owner_kind`       | `user` · `team` · `business` · `enterprise`                        |
-| `files.download_via`     | `hub` · `share` · `picker` · `preview` · `api`                       |
+| `files.download_via`     | `hub` · `share` · `picker` · `preview` · `api` · `purchase` (Decision #488) |
 | `files.file_category`    | the 28 `FileCategory` literals (pre-existing)                        |
 | `files.asset_purpose`    | `library` · `avatar` · `showcase` · `contact` (Decision #276)        |
 | `files.variant_tier`     | `sm` · `md` · `lg`                                                   |
@@ -363,7 +363,7 @@ as `comms.notifications`).
 | `item_id`            | uuid                 | FK → `files.items.id`, `ON DELETE CASCADE`.                                                         |
 | `actor_user_id`      | uuid                 | FK → `auth.users.id`; NULL for an anonymous share download.                                         |
 | `device_fingerprint` | text                 | Answers the duplicate-download prompt server-side, so the client never guesses from `localStorage`. |
-| `via`                | `files.download_via` | `NOT NULL DEFAULT 'hub'`; `hub` · `share` · `picker` · `preview` · `api`.                           |
+| `via`                | `files.download_via` | `NOT NULL DEFAULT 'hub'`; `hub` · `share` · `picker` · `preview` · `api` · `purchase` (a bought product's file, written by `catalogue.fn_record_delivery`, Decision #488). |
 | `share_slug`         | text                 | Denormalised so an anonymous download stays attributable after the grant is revoked.                |
 | `downloaded_at`      | timestamptz          |                                                                                                     |
 

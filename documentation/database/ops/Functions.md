@@ -56,3 +56,25 @@ every shape, value and attachment refusal, a sender with no profile, operator re
 only sent — attachments and objects, moves, the guard, Remove, the sweep, the per-address and
 guest ceilings and the sweep's job row) — 81 PASS in a rolled-back run on the shared database with
 the on-disk definitions spliced in.
+
+## Money and job alerts (MR4, Decision #461)
+
+Migration [`00001660_functions_ops_alerts.sql`](../../../supabase/migrations/00001660_functions_ops_alerts.sql);
+triggers `00001897`; grants in `00002510` (region "Money and job alerts"). Every function has
+`search_path = ''`. The `ops-deliver-alerts` http job (every 5 minutes, `OPS_CRON_SECRET`) runs the
+sweep through `POST /api/ops/cron/alerts` (`OpsAlertService.deliver`), which sends each claimed alert
+(an incoming-webhook post per alert, one Resend email digest per sweep) and records the outcome.
+
+| Function | Returns | What it does |
+| :------- | :------ | :----------- |
+| `fn_claim_alerts(limit)` — **`service_role`** | `jsonb` | One pass, under an advisory lock: folds every new server row a `level` rule matches (written since the rule existed, not yet in `ops.alert_seen`) into the delivery its group opened inside the rule's window, or opens one; opens a dead-man delivery once per window for each silent `silence` scope; leases up to `limit` (1–500) due pending deliveries for 5 minutes. `{folded, opened, silent, deliveries: [{id, channel, scope, fingerprint, level, count, first_seen, last_seen, attempts, sample}]}`, fingerprints cut to 8 characters. |
+| `fn_record_alert_delivery(delivery, ok, error)` — **`service_role`** | `jsonb` | A success marks it `sent`; a failure keeps it `pending`, counts the attempt and backs the next one off 2, 4, 8 … minutes, at most 6 hours. Releases the lease. A delivery already `sent` answers `replayed` and changes nothing. |
+| `read_alert_deliveries()` — **operators** (`authenticated`, gated) | `jsonb` | `/admin/ledger`'s Alerts section: `security.is_admin()` only, else `42501` (the page answers 404). `{as_of, pending, rules, silence, deliveries}`: the rules, each dead-man scope's newest server row, the 50 newest deliveries. No message; short ids only. STABLE. |
+| `fn_alert_fingerprint(scope, data)` | `text` | The group: the row's wallet, payment, conversion, escrow or chargeback id, else a scheduler row's `job:reason`, else its currency, else `''`. Never a run id. Internal. |
+| `fn_alert_sample(data)` | `jsonb` | What a delivery may carry: every number, ids cut to 8 characters, and a code under `currency`, `job`, `reason`, `kind`, `problem`, `owner_type`, `status` or `outcome`. Internal. |
+| `fn_alert_short(value)` · `fn_alert_keep()` | `text` · trigger | An id cut to 8 characters for display; the keep-every-row trigger (`PL403`). Internal. |
+
+`finance.fn_reconcile_wallets` writes one `metric` row per run as its heartbeat (#461 flag (a)), so
+the dead-man switch can tell a clean night from no run. Probe: [`supabase/probes/ops_alerts.sql`](../../../supabase/probes/ops_alerts.sql)
+(grants, an idempotent claim, dedupe inside and after the window, the dead-man switch, retry with
+backoff, the operator gate, the kept record).

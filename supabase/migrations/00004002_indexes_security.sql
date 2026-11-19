@@ -16,6 +16,15 @@ CREATE INDEX idx_log_entries_level_created ON ops.log_entries (level, created_at
 CREATE INDEX idx_http_job_dispatches_unsettled ON ops.http_job_dispatches (dispatched_at) WHERE settled_at IS NULL;
 CREATE INDEX idx_http_job_dispatches_job ON ops.http_job_dispatches (job_name, dispatched_at DESC);
 
+-- #region [alerts] Money and job alerts (MR4, Decision #461)
+-- The claim's scan and the dead-man's "newest row of this scope": server rows by scope, newest first.
+CREATE INDEX idx_log_entries_server_scope_created ON ops.log_entries (scope, created_at DESC) WHERE source = 'server';
+-- An open group's delivery, and the due queue.
+CREATE INDEX idx_alert_deliveries_group ON ops.alert_deliveries (rule_id, group_key, window_ends_at DESC);
+CREATE INDEX idx_alert_deliveries_due ON ops.alert_deliveries (next_attempt_at) WHERE status = 'pending';
+CREATE INDEX idx_alert_seen_delivery ON ops.alert_seen (delivery_id);
+-- #endregion
+
 -- #region [contact] Contact requests (Decision #276)
 -- The operator queue: one status, oldest first or newest first.
 CREATE INDEX idx_contact_requests_status_created ON ops.contact_requests (status, created_at DESC);

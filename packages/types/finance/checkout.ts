@@ -1080,6 +1080,12 @@ export const CreateCheckoutSchema = z.object({
 	/** Which billing identity to invoice — `personal`, or the entity key (`business:{id}`). */
 	billingContextId: reference.optional(),
 	idempotencyKey: z.string().min(8).max(120),
+	/**
+	 * The buyer ticked, before Pay, that a file counts as downloaded once it has been delivered in full
+	 * (ruling A8, Decision #488). The page requires it whenever a line delivers files; the server records
+	 * it on those lines and refuses nothing without it.
+	 */
+	deliveryTermsAccepted: z.boolean().optional(),
 });
 export type CreateCheckout = z.infer<typeof CreateCheckoutSchema>;
 

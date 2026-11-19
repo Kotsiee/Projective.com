@@ -6,6 +6,7 @@ import {
 	ServiceItemSchema,
 } from "../explore/items.ts";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
+import { ReviewReplySchema, ReviewViewerSchema } from "../reviews/mod.ts";
 
 /**
  * profile.tabs — the Zod SSOT for the consolidated profile tab system.
@@ -186,6 +187,13 @@ export const ReviewEntrySchema = z.object({
 	body: z.string(),
 	/** The engagement the review is attached to. */
 	contextTitle: z.string().optional(),
+	/** The listing the engagement was bought from (always public), with its `/view` slug. */
+	listingTitle: z.string().optional(),
+	listingSlug: z.string().optional(),
+	/** The reviewed side's one public reply (Decision #487). */
+	reply: ReviewReplySchema.optional(),
+	/** What the viewer may do to this review; absent for a guest. */
+	viewer: ReviewViewerSchema.optional(),
 });
 export type ReviewEntry = z.infer<typeof ReviewEntrySchema>;
 // #endregion

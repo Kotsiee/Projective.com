@@ -202,12 +202,14 @@ export function stubRefundAllowance(actor: ReadActor, teamId: string | null): vo
 /**
  * The caller's proposal allowance — live through the definer door, or the fixture twin with the
  * finance backend off. Throws {@link AllowanceAccessError} for a team the caller is not in, and a plain
- * error for any other live failure.
+ * error for any other live failure — including a caller with no access token while the backend is on,
+ * who has no allowance the door could read and must not be shown the twin's full meter (PRD-B1).
  */
 export async function readProposalAllowance(
 	actor: ReadActor,
 	teamId: string | null,
 ): Promise<ProposalAllowanceStatus> {
-	if (isFinanceBackendLive() && canReadLive(actor)) return await readLive(actor, teamId);
-	return resolveProposalAllowance(stubRow(actor, teamId, Date.now()));
+	if (!isFinanceBackendLive()) return resolveProposalAllowance(stubRow(actor, teamId, Date.now()));
+	if (!canReadLive(actor)) throw new Error("The proposal allowance needs a signed-in session.");
+	return await readLive(actor, teamId);
 }

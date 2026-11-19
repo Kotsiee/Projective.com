@@ -82,6 +82,15 @@ SELECT 'finance-sweep-stale-payouts', 'http', '*/10 * * * *', NULL, '/api/financ
  WHERE pg_catalog.to_regprocedure('finance.fn_claim_stale_payouts(integer)') IS NOT NULL
 ON CONFLICT (name) DO NOTHING;
 
+-- The alert sweep (MR4, Decision #461) sends through the app (an incoming webhook and a Resend digest),
+-- so it is an http job on its own secret. Registered only where its claim function exists, so pg_cron
+-- is never pointed at a route that is not there.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
+SELECT 'ops-deliver-alerts', 'http', '*/5 * * * *', NULL, '/api/ops/cron/alerts?limit=50', 'OPS_CRON_SECRET',
+       'Folds new money and scheduler errors into alerts, raises a dead-man alert for a silent nightly check, and sends what is due by webhook and email (OpsAlertService.deliver).'
+ WHERE pg_catalog.to_regprocedure('ops.fn_claim_alerts(integer)') IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+
 -- Payout schedules (Decision #337, ruling M6): every due weekly, monthly or threshold schedule is paid
 -- out as its author through finance.begin_payout, then sent as a Stripe Transfer. An http job on the
 -- same secret, registered only where its claim function exists, beside its route
@@ -174,6 +183,15 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         NULL, '/api/comms/cron/dispatch?limit=200', 'COMMS_DISPATCH_SECRET',
         'Sends every outbound delivery (email, push, SMS) the trigger''s post missed and retries each failed one after 2^attempts minutes, up to 5 attempts and within 24 hours (NotificationDispatchService.dispatch). Claims nothing while comms.dispatch_webhook is off.')
 ON CONFLICT (name) DO NOTHING;
+
+-- The abandoned-basket nudge (CK5, Decision #492): once a day, mid-morning in the UK, the finder queues
+-- one basket.abandoned per idle personal basket and comms-process-queue sends it within the minute. It
+-- queues nothing while the comms.basket_nudge flag is off, which it is in every seed until counsel.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('comms-basket-nudges', 'sql', '17 10 * * *',
+        'SELECT comms.fn_enqueue_basket_nudges(500);', NULL, NULL,
+        'Queues one basket.abandoned (Marketing, email) for each personal default basket with a live line left untouched past its lead time, to an opted-in, reachable adult who has not ordered since: once per idle spell, never twice inside the group window. Queues nothing while comms.basket_nudge is off.')
+ON CONFLICT (name) DO NOTHING;
 -- #endregion
 
 -- #region [projects] Claim-TTL auto-release (Q0.3: #338 D1)
@@ -185,15 +203,6 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'SELECT projects.fn_release_expired_claims();', NULL, NULL,
         'Claim-TTL auto-release ("Ticket Parking"): a ticket claimed for longer than claim_ttl_minutes goes back to the backlog and its escrow is refunded to the client.',
         false)
-ON CONFLICT (name) DO NOTHING;
-
--- The abandoned-basket nudge (CK5, Decision #492): once a day, mid-morning in the UK, the finder queues
--- one basket.abandoned per idle personal basket and comms-process-queue sends it within the minute. It
--- queues nothing while the comms.basket_nudge flag is off, which it is in every seed until counsel.
-INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
-    ('comms-basket-nudges', 'sql', '17 10 * * *',
-        'SELECT comms.fn_enqueue_basket_nudges(500);', NULL, NULL,
-        'Queues one basket.abandoned (Marketing, email) for each personal default basket with a live line left untouched past its lead time, to an opted-in, reachable adult who has not ordered since: once per idle spell, never twice inside the group window. Queues nothing while comms.basket_nudge is off.')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 

@@ -18,7 +18,7 @@ import {
  *
  * Contract (module docblock): `null` is "no such row" (the caller's 404); a thrown `Error` naming the
  * table means a load-bearing query failed (project, stages, tickets) and the service's `liveRead`
- * falls back to fixtures; every SECONDARY lookup (currency, history, participants, assignments,
+ * answers `503`; every SECONDARY lookup (currency, history, participants, assignments,
  * parties) degrades to a neutral value instead of throwing. The provider-visibility filter is applied
  * on the READ, so it is asserted here against what a freelancer is handed.
  *

@@ -17,6 +17,8 @@ export function filesPanelDockFor(url: URL): ContextPanelDockOptions | null {
 	return onFiles(url) ? { dock: "selection" } : null;
 }
 
+/** A library page of `/files`: the purchases view (Decision #488) has no selection to inspect. */
 function onFiles(url: URL): boolean {
+	if (url.searchParams.get("source") === "purchases") return false;
 	return url.pathname === "/files" || url.pathname.startsWith("/files/");
 }

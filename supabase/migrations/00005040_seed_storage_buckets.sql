@@ -131,6 +131,24 @@ VALUES (
     ) ON CONFLICT (id) DO NOTHING;
 -- #endregion
 
+-- #region [originals] sale originals, frozen at publish (Decision #488, ruling A6)
+-- `{product_id}/{version_id}/{file_id}`: a published product version's files, copied here by the
+-- catalogue publish path as the service role and streamed to a buyer only by
+-- `/api/downloads/[entitlement]/[fileId]` after the entitlement gate. No storage policy at all
+-- (00002017), like `verification`: no JWT reaches a sale original by any path, a compromised seller
+-- session included. The 50 MiB ceiling and any type follow the seller's library, which is where the
+-- bytes come from; the sale-original whitelist and a larger ceiling are ASSET phase 2 (ruling A7).
+INSERT INTO
+    storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+        'originals',
+        'originals',
+        false,
+        52428800,
+        NULL
+    ) ON CONFLICT (id) DO NOTHING;
+-- #endregion
+
 -- #endregion
 
 -- #region Public edge-cached buckets

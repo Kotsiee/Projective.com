@@ -7,8 +7,9 @@
  * succeeded, so calendars stop syncing, rooms stop being made and notifications stop leaving, with
  * nothing to show why. A database rebuild empties Vault, which is why `db:reset` runs this.
  *
- * Only the integrations bearer and the dispatcher's (`COMMS_DISPATCH_SECRET`, Decision #344 (a)) go
- * in, each only when `.env.local` holds a well-formed one: the money sweeps stay on
+ * Only the integrations bearer, the dispatcher's (`COMMS_DISPATCH_SECRET`, Decision #344 (a)) and the
+ * alert sweep's (`OPS_CRON_SECRET`, Decision #461) go in, each only when `.env.local` holds a
+ * well-formed one; alerts move no money. The money sweeps stay on
  * `deno task cron:run`, so a dev server never moves money on a timer. Notifications move none, and
  * outbound delivery still waits for the `comms.dispatch_webhook` flag. Local only: a hosted database is
  * set by hand (SYSTEM_ARCHITECTURE §Scheduled jobs). It never fails a reset, and it prints names, never
@@ -24,7 +25,7 @@ const wellFormed = (value: string | undefined): value is string =>
 	!!value && value.trim().length >= 32;
 
 const bearers: Record<string, string> = {};
-for (const name of ["INTEGRATIONS_CRON_SECRET", "COMMS_DISPATCH_SECRET"]) {
+for (const name of ["INTEGRATIONS_CRON_SECRET", "COMMS_DISPATCH_SECRET", "OPS_CRON_SECRET"]) {
 	const value = local[name];
 	if (wellFormed(value)) bearers[name] = value.trim();
 	else console.log(`cron:vault: no ${name} in .env.local, so what it guards stays off.`);

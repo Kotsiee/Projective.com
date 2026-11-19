@@ -271,7 +271,7 @@ async function laneFor(
 	const projectId = projectIdOf(url.pathname);
 	if (projectId) {
 		// The viewer's lane activity is independent of the detail, so the two reads run side by side.
-		const [{ detail }, navActivity] = await Promise.all([
+		const [{ detail, loadError }, navActivity] = await Promise.all([
 			resolveProjectDetail(projectId, context, actor),
 			resolveNavActivity(state, projectId, actor),
 		]);
@@ -290,6 +290,7 @@ async function laneFor(
 			<ProjectSidebar
 				detail={detail}
 				slug={projectId}
+				loadError={loadError}
 				path={url.pathname}
 				sessionKind={sessionKind}
 				navActivity={navActivity}
@@ -309,6 +310,7 @@ async function laneFor(
 			defaultCurrency={feed.defaultCurrency}
 			path={url.pathname}
 			restricted={context.restricted}
+			initialError={feed.loadError}
 		/>
 	);
 }

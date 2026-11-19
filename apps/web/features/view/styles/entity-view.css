@@ -2811,6 +2811,15 @@ a.evp-cta__btn--accent:hover {
 	color: var(--success);
 }
 
+/* A cohort's start, cadence, close and minimum (Decision #498): the lane's key terms, moved here on a phone. */
+.evp-buybar__terms {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
 /* ============================================================================
  * Below the frame breakpoint — the duty TRANSFERS, it does not duplicate (§D.7.4)
  *

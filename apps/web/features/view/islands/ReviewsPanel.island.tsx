@@ -6,6 +6,7 @@ import { VerifiedBadge } from "@features/explore/components/VerifiedBadge.tsx";
 import { profileHref } from "@features/explore/core/routing.ts";
 import type { EntityReview, ReviewSummary } from "@projective/types/explore";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
+import { ReviewReplyThread } from "@features/reviews/components/ReviewReplyThread.tsx";
 
 /**
  * ReviewsPanel — the full reviews section (Part 3.3). The left aggregate column shows the average, a
@@ -234,6 +235,8 @@ function ReviewCard({ review }: { review: EntityReview }): JSX.Element {
 				{review.title && <h3 class="vw-review__reviewtitle">{review.title}</h3>}
 				<p class="vw-review__text">{review.body}</p>
 			</div>
+			{/* The reviewed side's one reply, and the viewer's own actions on the review (Decision #487). */}
+			<ReviewReplyThread reviewId={review.id} reply={review.reply} viewer={review.viewer} />
 			<div class="vw-review__badges">
 				{review.verifiedEngagement
 					? (

@@ -10,16 +10,19 @@ import type {
 	LedgerHealth,
 	WalletDrift,
 } from "@projective/types/finance";
+import type { AlertsRead } from "@projective/types/ops";
 import type { ReadActor } from "../read-actor.ts";
 import { readEscrowAge } from "./escrow-age.ts";
+import { readAlerts } from "../ops/OpsAlertService.ts";
 
 /**
  * LedgerHealthService — the reads behind `/admin/ledger`, one per section (FBP DB16; Decision #337,
  * ruling M2 (A)). Conservation and Wallet drift come from the operator door `finance.get_ledger_health()`
- * (00001200), Escrow age from `finance.read_escrow_age()` (MR7, Decision #473). Each door is the gate: it
+ * (00001200), Escrow age from `finance.read_escrow_age()` (MR7, Decision #473), Alerts from
+ * `ops.read_alert_deliveries()` (MR4, Decision #461). Each door is the gate: it
  * refuses anyone but a platform operator (`security.is_admin()`) with 42501, which maps to 403 and the
  * page answers with a 404, as `/admin/disputes` does (Decision #212). Nothing here decides or moves
- * money; the database computes every figure. MR3, MR4, MR5 and MR8b each add one read for their section.
+ * money; the database computes every figure. MR3, MR5 and MR8b each add one read for their section.
  */
 
 // #region Raw rows (the SQL jsonb, as written by the function)
@@ -231,6 +234,10 @@ export const LedgerHealthService = {
 	/** Escrow age: how long held money has sat in the platform balance (MR7, Decision #473). */
 	escrowAge(actor: ReadActor): Promise<ServiceResult<EscrowAge>> {
 		return readEscrowAge(actor);
+	},
+	/** Alerts: what the alert sweep raised and sent, and when each dead-man scope last wrote (MR4). */
+	alerts(actor: ReadActor): Promise<ServiceResult<AlertsRead>> {
+		return readAlerts(actor);
 	},
 };
 // #endregion

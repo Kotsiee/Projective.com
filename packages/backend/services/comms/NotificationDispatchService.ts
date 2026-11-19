@@ -141,6 +141,8 @@ function toClaimed(raw: unknown): ClaimedDelivery | null {
 		actionUrl: r.action_url,
 		type: r.type,
 		category: r.category,
+		urgency: r.urgency,
+		groupKey: r.group_key,
 	};
 }
 

@@ -731,6 +731,15 @@ receipt links the engagement by `project_id` (`OrderLine.engagementHref`, `/proj
 an escrow refund maps back to its line by `escrow_id`. Partial indexes
 `idx_order_lines_project` and `idx_order_lines_escrow` (`00004005`).
 
+**A product line's delivery (Decision #488).** `finance.order_lines.asset_id` is **reserved**: no
+door writes it and no reader reads it (it is kept, never dropped). A `digital_product` line's files
+are reached through its `catalogue.entitlements` row (`order_line_id` UNIQUE), which names the
+frozen version and the `ent-…` download address ([../catalogue/Tables.md](../catalogue/Tables.md)).
+`download_name` is the file's name when the bundle is one file and NULL for several; `download_bytes`
+is the bundle's total. The buyer's A8 tick rides the basket line as
+`finance.basket_items.metadata.deliveryTermsAccepted` (written by the checkout service under the
+buyer's session) and is stamped onto the entitlement by `place_wallet_order`.
+
 ### `finance.purchasable_item_kind`
 
 `digital_product` · `project_ticket` · `one_off_project` · `one_off_task` · `service_ticket` ·

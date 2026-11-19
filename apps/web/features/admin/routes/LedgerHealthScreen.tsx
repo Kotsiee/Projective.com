@@ -9,8 +9,8 @@ import type { LedgerSectionResult } from "../core/ledger-health.ts";
 import LedgerHealth from "../islands/LedgerHealth.island.tsx";
 
 /**
- * The page's sections, in order, each one `LedgerHealthService` read (FBP DB16). MR3, MR4, MR5 and
- * MR8b each add their section here and its read to the service.
+ * The page's sections, in order, each one `LedgerHealthService` read (FBP DB16; Alerts is MR4's). MR3,
+ * MR5 and MR8b each add their section here and its read to the service.
  */
 const SECTIONS: ReadonlyArray<
 	{ id: LedgerSectionId; read: (actor: ReadActor) => Promise<ServiceResult<unknown>> }
@@ -18,6 +18,7 @@ const SECTIONS: ReadonlyArray<
 	{ id: "conservation", read: LedgerHealthService.conservation },
 	{ id: "drift", read: LedgerHealthService.drift },
 	{ id: "escrow_age", read: LedgerHealthService.escrowAge },
+	{ id: "alerts", read: LedgerHealthService.alerts },
 ];
 
 /** A refusal or a missing database: there is no ledger page here for this caller. */

@@ -121,7 +121,8 @@ BEGIN
      WHERE finance.fn_freelancer_payout_ready(fp.user_id)
        AND fp.user_id <> v_owner
        AND NOT EXISTS (SELECT 1 FROM org.team_members m WHERE m.user_id = fp.user_id)
-       AND NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = fp.user_id)
+       AND NOT EXISTS (SELECT 1 FROM projects.projects p
+                        WHERE p.owner_user_id = fp.user_id AND p.source_blueprint_id IS NULL)
        AND NOT EXISTS (SELECT 1 FROM projects.stage_assignments sa
                         WHERE sa.freelancer_profile_id = fp.user_id
                           AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed'))

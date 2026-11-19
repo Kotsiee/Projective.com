@@ -12,7 +12,7 @@ import { matchesProjectKey } from "./project-identity.ts";
 
 /**
  * projects query — the pure, deterministic selectors behind the `/projects` feed. No RNG, no clock,
- * no DOM: identical on the server (SSR first paint) and as the fixture fallback for the live path, so
+ * no DOM: identical on the server (SSR first paint) and over the live rows (`getFeedFrom`), so
  * it swaps cleanly for the RLS-scoped `projects.*` ranking query later (mirrors `explore/query.ts`).
  */
 

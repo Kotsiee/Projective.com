@@ -808,7 +808,7 @@ async function fetchOnboardedCounts(
  * not visible.
  *
  * THROWS only when the PRIMARY project read fails, with the table named, so the calling service can
- * log it and fall back to fixtures. Stages, roles and attachments degrade to empty lists instead: a
+ * log it and answer `503`. Stages, roles and attachments degrade to empty lists instead: a
  * withheld join should cost a section, not the page.
  */
 export async function fetchProjectSetup(

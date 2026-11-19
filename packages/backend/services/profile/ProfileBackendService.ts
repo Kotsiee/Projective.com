@@ -1,5 +1,5 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { getAnonClient, getUserClient } from "../../core/supabase.ts";
+import { getAnonClient, getUserClient, useMocks } from "../../core/supabase.ts";
 import { ANONYMOUS_READER, canReadLive, type ReadActor } from "../read-actor.ts";
 import { ExploreBackendService } from "../explore/ExploreBackendService.ts";
 import { invalidateCatalog } from "../explore/live-catalog.ts";
@@ -269,6 +269,7 @@ export class ProfileBackendService {
 		actor: ReadActor = ANONYMOUS_READER,
 	): Promise<ServiceResult<{ callOffer: PublicCallOffer | null }>> {
 		if (!profile.owner) return ok({ callOffer: null });
+		if (useMocks()) return unavailable();
 		const client = canReadLive(actor) ? getUserClient(actor.accessToken) : getAnonClient();
 		const offer = await readPublicCallOffer(client, profile.owner);
 		if (offer === undefined) return unavailable();

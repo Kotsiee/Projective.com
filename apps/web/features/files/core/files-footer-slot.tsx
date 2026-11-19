@@ -27,7 +27,8 @@ import { filesLocationOf } from "./files-lane-slot.tsx";
  */
 export function filesFooterFor(url: URL, context: UserContext): ComponentChildren {
 	const loc = filesLocationOf(url, context);
-	if (!loc) return null;
+	// The rig's zoom and view options act on the library body, which the purchases view does not mount.
+	if (!loc || loc.purchases) return null;
 	return (
 		<FilesFooterRig
 			scope={loc.scope}

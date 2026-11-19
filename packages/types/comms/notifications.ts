@@ -240,6 +240,10 @@ export const ClaimedDeliveryRowSchema = z.object({
 	action_url: z.string().nullable(),
 	type: z.string(),
 	category: NotificationCategory,
+	/** The notification's urgency: Web Push's `Urgency` header (COMMS NT4). */
+	urgency: NotificationUrgency,
+	/** The notification's collapse key, or null: Web Push's `Topic` (else the notification id). */
+	group_key: z.string().nullable(),
 });
 export type ClaimedDeliveryRow = z.infer<typeof ClaimedDeliveryRowSchema>;
 
@@ -257,6 +261,8 @@ export interface ClaimedDelivery {
 	actionUrl: string | null;
 	type: string;
 	category: NotificationCategory;
+	urgency: NotificationUrgency;
+	groupKey: string | null;
 }
 
 /** The outcomes `comms.fn_record_delivery_result` accepts. */

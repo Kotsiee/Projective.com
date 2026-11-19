@@ -12,6 +12,7 @@ import {
 	LaneHead,
 	LaneList,
 	type MenuItem,
+	NavItem,
 	TreeNav,
 	type TreeNavNode,
 } from "@projective/ui/navigation";
@@ -63,6 +64,7 @@ import {
 } from "../core/files-state.ts";
 import { recentPress } from "../core/press-point.ts";
 import type { AssetNodeKind, FileScope } from "../types/file-types.ts";
+import { purchasesHref } from "@projective/types/catalogue";
 
 /**
  * FilesLane — the `/files` middle-nav lane: one tree, and the allowance.
@@ -101,6 +103,8 @@ export interface FilesLaneProps {
 	/** The folder path within the scope; `[]` is the scope root. */
 	segments: string[];
 	ownerId: string;
+	/** On the purchases view (`/files?source=purchases`, Decision #488): its lane row is the current page. */
+	purchases?: boolean;
 }
 // #endregion
 
@@ -433,6 +437,16 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 							/>
 						)}
 				</LaneList>
+
+				{/* What the acting account bought (Decision #488): a page of its own, not a folder. */}
+				<nav class="fh-lane__purchases" aria-label="Purchases">
+					<NavItem
+						href={purchasesHref()}
+						label="Purchases"
+						icon={<Icon name="basket" />}
+						active={props.purchases ? "page" : undefined}
+					/>
+				</nav>
 
 				{
 					/*

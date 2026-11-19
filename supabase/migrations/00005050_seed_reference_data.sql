@@ -88,7 +88,7 @@ INSERT INTO analytics.event_catalogue (name, domain, description, subject_kinds,
         '{user,freelancer,team,business,enterprise}',
         '{item_id,link_domain,scan_status,reason}'),
     -- Discovery — the ranking and placement substrate. Rows land in search.interest_events
-    -- (impression/click/rail_depth) and search.query_logs (search), not analytics.events; these
+    -- (impression/click/rail_depth/view) and search.query_logs (search), not analytics.events; these
     -- entries are the vocabulary those streams are rolled up under.
     ('discovery.search', 'discovery', 'A discovery query ran (first page only; paging is not a new search).',
         '{platform}', '{query,category,filters,result_count,duration_ms,matched_density}'),
@@ -97,7 +97,9 @@ INSERT INTO analytics.event_catalogue (name, domain, description, subject_kinds,
     ('discovery.click', 'discovery', 'A listing card''s own link was opened from a discovery surface.',
         '{listing,project,user,freelancer,team,business}', '{surface,rail,position,query,session_id}'),
     ('discovery.rail_depth', 'discovery', 'The furthest a reader scrolled one horizontal rail, as a 0-1 fraction.',
-        '{platform}', '{surface,rail,depth,items,session_id}')
+        '{platform}', '{surface,rail,depth,items,session_id}'),
+    ('discovery.view', 'discovery', 'A service or product listing''s own page was shown: at most one per viewer per listing per 30 minutes, never the seller''s own.',
+        '{listing}', '{surface,session_id}')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 

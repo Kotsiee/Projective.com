@@ -27,9 +27,10 @@
  * {@link ./registry.ts} — the inventory — imports nothing: listing what exists must not cost what
  * loading it costs. Ask `registry.ts` what is there; ask this module for the data.
  *
- * The app-side mock module (`shell/core/nav-fixtures.ts`) is deliberately absent. It is listed in
- * the registry but cannot be re-exported here, because it lives on island import paths and root
- * CLAUDE.md §2 forbids an island reaching this package.
+ * The app-side mock module (`shell/core/nav-fixtures.ts`) is deliberately absent, here and in the
+ * registry: it is not a service domain and reaches no database, and it cannot be re-exported here
+ * because it lives on island import paths and root CLAUDE.md §2 forbids an island reaching this
+ * package.
  */
 
 // #region Inventory & shared asset builders

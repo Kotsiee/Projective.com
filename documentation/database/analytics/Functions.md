@@ -63,6 +63,13 @@ team listing), else the owner's profile timezone, else UTC; an unknown zone name
 - **k-anonymity.** `listing.query_impressions` / `listing.query_clicks` exist only for a normalised
   query (lower-cased, whitespace collapsed) seen in **5 or more** distinct sessions
   (`KEYWORD_MIN_SESSIONS`, pinned to the SQL by `listing-rollups.contract.test.ts`).
+- **The console counters** (MARKETPLACE SC5). After the day's rows it rewrites
+  `catalogue.listings.view_count` and `order_count` for every listing the day wrote or removed a row
+  for: each is the listing's `listing.views` / `listing.orders` summed over every rolled-up day
+  (`dimensions = '{}'`), and a listing whose totals did not move is not updated. It is their only
+  writer: the derived-column guard (`trg_listings_derived`, `00001895`) refuses them to a client,
+  and this definer passes it. `listing.views` counts the `view` rows `search.trg_interest_events_view`
+  kept, so the counter excludes the seller's own views and repeats inside 30 minutes.
 - **Who runs it.** `service_role` only; scheduled as `analytics-listing-rollups`
   (`SELECT analytics.fn_rollup_listings(current_date - 1)`, daily 02:10 UTC, `00005060`).
 
@@ -70,7 +77,8 @@ team listing), else the owner's profile timezone, else UTC; an unknown zone name
 
 Runs `fn_rollup_listings` for every day in `[p_from, p_to]`, oldest first, and returns the total
 rows written; refuses an inverted range or one longer than two years (`22023`). `service_role` only.
-Use it after seeding or after a fix to the writer, and to repair a missed nightly run.
+Use it after seeding or after a fix to the writer, and to repair a missed nightly run. The seed's
+`13_analytics.sql` runs it over the 91 days it seeds traffic for.
 
 ---
 

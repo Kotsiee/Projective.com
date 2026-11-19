@@ -11,8 +11,8 @@ import type { BoardCard, BoardPage } from "@projective/types/projects";
  * the roster and every sibling card, not the ticket alone). HTTP parse + a shape guard, then delegate
  * to the fat {@link ProjectBackendService.ticket}.
  *
- * **Signed-in only, and that is an identity check rather than a capability one.** The sibling reads
- * answer a guest from the fixture corpus; this one does not, because its whole job is to open a
+ * **Signed-in only, and that is an identity check rather than a capability one.** With the gate off
+ * the sibling reads answer a guest from the fixture corpus; this one does not, because its whole job is to open a
  * modal on a page the viewer merely happened to be on, and a guest following a ticket link must be
  * sent to sign in rather than shown a fixture. Which tickets a signed-in viewer may open is decided
  * by the fat read (RLS on the live path, provider scoping on the stub one), never here.

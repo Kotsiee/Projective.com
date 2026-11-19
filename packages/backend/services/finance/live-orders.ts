@@ -16,8 +16,10 @@ import {
 	fulfilmentKindOf,
 } from "@projective/types/finance";
 import type { ExploreItem } from "@projective/types/explore";
+import { downloadHref, purchasesHref } from "@projective/types/catalogue";
 import { IntakeAnswersSchema } from "@projective/types/services";
 import { getUserClient } from "../../core/supabase.ts";
+import { entitlementsForLines, type LineEntitlement } from "../catalogue/delivery.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { ResolvedOwner } from "./commerce-owner.ts";
@@ -32,7 +34,9 @@ import type { ResolvedOwner } from "./commerce-owner.ts";
  * listing renamed after the purchase does not rewrite what was bought. Only DISPLAY facts that no
  * receipt stores (a cover image, the seller's name) are read from the live catalogue.
  *
- * **A line only offers an action it can honour.** A download needs a stored asset; an engagement
+ * **A line only offers an action it can honour.** A download needs an active entitlement whose frozen
+ * files are ready (`catalogue.entitlements`, Decision #488; `order_lines.asset_id` is reserved and never
+ * read); an engagement
  * needs a workspace to open; a session needs its time. Where the fact is missing the SSOT's
  * `fulfilmentKindOf` resolves the line to `pending` with a sentence saying why — never a link that
  * 404s. No room has been minted for a booked session here, so there is no join link to offer yet.
@@ -198,6 +202,8 @@ interface LineContext {
 	stages: Map<string, { slug: string; projectId: string; name: string; position: number }>;
 	/** A funded ticket's payee, by ticket id — who "can start now" on the confirmation. */
 	payees: Map<string, string>;
+	/** A product line's entitlement, by order line id (Decision #488) — what its download links name. */
+	entitlements: Map<string, LineEntitlement>;
 }
 
 /** A purchased project as its order lines read it. */
@@ -298,11 +304,14 @@ async function lineContext(actor: ReadActor & { accessToken: string }, lines: re
 		}
 	}
 
+	const productLines = lines.filter((l) => l.item_type === "digital_product").map((l) => l.id);
 	return {
 		catalog: await loadCatalog().catch(() => null),
 		projects,
 		stages,
 		payees: await payeesOf(actor, lines),
+		entitlements: await entitlementsForLines(getUserClient(actor.accessToken), productLines)
+			.catch(() => new Map<string, LineEntitlement>()),
 	};
 }
 
@@ -351,13 +360,49 @@ function icsPathFor(orderId: string, lineId: string): string {
 
 /**
  * Why a line has nothing to open yet, in the buyer's own terms — and only what is true. A download is
- * pending because no file is attached to the purchase; nothing will email the buyer when that changes,
- * so the note does not promise it.
+ * pending when its purchase has nothing to fetch now: it was refunded or withdrawn, the product
+ * delivers no file, or its files are still being copied in after publishing (Decision #488). Nothing
+ * emails the buyer when that changes, so the note promises nothing it cannot keep.
  */
-function pendingNoteFor(natural: FulfilmentKind): string {
+function pendingNoteFor(natural: FulfilmentKind, entitlement: LineEntitlement | undefined): string {
 	if (natural === "session") return "We'll confirm the time with the seller shortly.";
-	if (natural === "download") return "The seller hasn't attached the files yet — they'll appear here once they do.";
+	if (natural === "download") {
+		if (entitlement && entitlement.status !== "active") {
+			return "This purchase was refunded, so its files are no longer available.";
+		}
+		if (entitlement?.delivery === "preparing") {
+			return "Your files are being prepared — they'll be ready in a moment.";
+		}
+		return "This product came with no files to download. Message the seller if you expected some.";
+	}
 	return "Starts once the seller opens the workspace.";
+}
+
+/**
+ * A product line's download facts, from its entitlement: one file is fetched directly; a bundle opens
+ * the purchases view on this purchase, and lists each file with its own address. Nothing while the
+ * purchase is not active or its files are not ready.
+ */
+function downloadOf(entitlement: LineEntitlement | undefined): {
+	href: string;
+	name: string | null;
+	bytes: number;
+	files: OrderLine["downloadFiles"];
+} | null {
+	if (!entitlement || entitlement.status !== "active" || entitlement.delivery !== "ready") return null;
+	const files = entitlement.files.slice(0, 24).map((f) => ({
+		name: clip(f.name, 200),
+		href: downloadHref(entitlement.slug, f.fileId),
+		bytes: f.bytes,
+		sizeLabel: clip(byteLabel(f.bytes), 24),
+	}));
+	if (files.length === 0) return null;
+	return {
+		href: files.length === 1 ? files[0].href : clip(purchasesHref(entitlement.slug), 600),
+		name: files.length === 1 ? files[0].name : null,
+		bytes: files.reduce((sum, f) => sum + f.bytes, 0),
+		files,
+	};
 }
 
 function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
@@ -382,13 +427,16 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 		? { href: clip(`/projects/${ownProject.slug}`, 200), label: clip(ownProject.title, 120) }
 		: null;
 
-	const bytes = line.download_bytes === null ? null : Number(line.download_bytes);
-	const download = natural === "download" && line.asset_id
+	const entitlement = ctx.entitlements.get(line.id);
+	const delivered = natural === "download" ? downloadOf(entitlement) : null;
+	const bytes = delivered?.bytes ?? null;
+	const download = delivered
 		? {
-			href: clip(`/files?asset=${encodeURIComponent(line.asset_id)}`, 600),
-			name: line.download_name ? clip(line.download_name, 200) : null,
+			href: delivered.href,
+			name: delivered.name,
 			bytes,
 			label: bytes !== null && Number.isFinite(bytes) ? clip(byteLabel(bytes), 24) : null,
+			files: delivered.files,
 		}
 		: null;
 
@@ -424,11 +472,12 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 		platformFeeBp: line.platform_fee_bp,
 		fulfilment: natural,
 		pendingNote: null,
-		assetId: download ? line.asset_id : null,
+		assetId: null,
 		downloadHref: download?.href ?? null,
 		downloadName: download?.name ?? null,
 		downloadBytes: download?.bytes ?? null,
 		downloadSizeLabel: download?.label ?? null,
+		downloadFiles: download?.files ?? [],
 		downloadFormat: line.download_format ? clip(line.download_format, 80) : null,
 		licence: line.licence ? clip(line.licence, 80) : null,
 		engagementHref: engagement?.href ?? null,
@@ -450,7 +499,7 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 	return {
 		...draft,
 		fulfilment: resolved,
-		pendingNote: resolved === "pending" ? pendingNoteFor(natural) : null,
+		pendingNote: resolved === "pending" ? pendingNoteFor(natural, entitlement) : null,
 	};
 }
 

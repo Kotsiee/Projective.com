@@ -51,3 +51,9 @@ FOR EACH ROW EXECUTE FUNCTION projects.update_entity_project_counts();
 CREATE TRIGGER trg_interest_events_minor BEFORE INSERT ON search.interest_events
 FOR EACH ROW EXECUTE FUNCTION search.trg_interest_events_minor();
 -- #endregion
+
+-- #region A listing's page views count once per viewer per 30 minutes (MARKETPLACE SC5)
+-- Named after `_minor`, so a minor's view is dropped first (triggers fire in name order).
+CREATE TRIGGER trg_interest_events_view BEFORE INSERT ON search.interest_events
+FOR EACH ROW WHEN (NEW.event_type = 'view') EXECUTE FUNCTION search.trg_interest_events_view();
+-- #endregion

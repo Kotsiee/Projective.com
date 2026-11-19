@@ -1155,7 +1155,7 @@ function visibleTo(
  * Returns `null` when the engagement does not exist or is not visible to this caller; the two are
  * indistinguishable from here by design, and both are an ordinary 404 on this route. Throws only when
  * a query genuinely FAILS, naming the table so the calling service can log which read broke before it
- * falls back to the fixture corpus.
+ * answers `503`.
  *
  * The three `sim*` params are ignored, as {@link MemberRosterParams} documents: the real viewer role,
  * the real `project_format` and the real invitation table are authoritative here. Honouring a

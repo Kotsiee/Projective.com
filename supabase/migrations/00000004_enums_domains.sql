@@ -392,7 +392,9 @@ CREATE TYPE files.owner_kind AS ENUM ('user', 'team', 'business', 'enterprise');
 -- `download_via` — the route a download was served through, recorded on every
 -- files.download_events row. `share` is the anonymous share-slug path (the only one an
 -- unauthenticated actor can reach), which is why the two are never collapsed into one flag.
-CREATE TYPE files.download_via AS ENUM ('hub', 'share', 'picker', 'preview', 'api');
+-- `purchase` is a bought product's file streamed to its holder through `/api/downloads/*`
+-- (catalogue.fn_record_delivery): the row MONEY's refund rule reads as "downloaded" (ruling A8).
+CREATE TYPE files.download_via AS ENUM ('hub', 'share', 'picker', 'preview', 'api', 'purchase');
 
 -- `asset_purpose` — what an asset is FOR. `library` is a hub-native asset a person uploaded and can
 -- pick again from the media picker. The other members are RENDITIONS: a copy the media pipeline cut
@@ -446,6 +448,13 @@ CREATE TYPE catalogue.product_format AS ENUM (
 -- @projective/types/catalogue ListingLicence member for member. It was free text defaulting to
 -- 'standard', which named no terms a buyer could read; the old 'standard' rows became 'personal'.
 CREATE TYPE catalogue.product_licence AS ENUM ('personal', 'commercial', 'extended');
+
+-- `entitlement_status` — whether a bought product's files may still be fetched (catalogue.entitlements,
+-- ASSET_DELIVERY_ARCHITECTURE.md §10). `active` from the purchase on; `refunded` once its order line
+-- is refunded (MONEY's refund doors write it); `revoked` when an operator withdraws access (a takedown,
+-- a lost chargeback). A delivered file cannot be recalled, so the last two only close future access.
+-- Mirrors @projective/types/catalogue EntitlementStatus.
+CREATE TYPE catalogue.entitlement_status AS ENUM ('active', 'refunded', 'revoked');
 -- #endregion
 
 -- #region Cross-domain enums added with the catalogue / coordination / workspace tables

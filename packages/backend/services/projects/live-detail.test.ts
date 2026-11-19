@@ -9,7 +9,7 @@ import { fetchProjectDetail, isClientSideRole } from "./live-detail.ts";
  * Contract (module + `fetchProjectBySlug` docblocks): `null` for a slug this viewer cannot see, a
  * THROWN error naming the table when a load-bearing read fails (the project, its stages, its
  * channels), and graceful degradation for every secondary lookup (participants, hired teams, team
- * and business names). The fat service's `liveRead` catches the throw and falls back to fixtures.
+ * and business names). The fat service's `liveRead` catches the throw and answers `503`.
  *
  * The fake sits at `globalThis.fetch`, so the real supabase-js builder parses every answer.
  */
@@ -428,7 +428,7 @@ Deno.test("a failed DETAIL-row read drops the owner seat and viewerIsClient, whi
 });
 // #endregion
 
-// #region Load-bearing failures THROW (documented contract; the service falls back to fixtures)
+// #region Load-bearing failures THROW (documented contract; the service answers 503)
 Deno.test("fetchProjectDetail THROWS when the project read fails", async () => {
 	await withPostgrest(
 		happyRoutes({ "projects.projects": pgFail("PGRST301", "JWT expired", 401) }),

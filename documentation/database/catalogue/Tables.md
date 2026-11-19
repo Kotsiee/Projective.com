@@ -37,7 +37,7 @@ that could not carry a foreign key.
 | `price_cents` / `currency`       | bigint / text            | Integer minor units + ISO-4217, never a formatted string.                                         |
 | `licence`                        | `catalogue.product_licence` NOT NULL DEFAULT `personal` | `personal` · `commercial` · `extended` (Decision #217(i); the retired free-text `standard` became `personal`). The permission ledger the view page prints is platform policy (`licenceTerms` in `@projective/types/explore`), not seller text. |
 | `attribution_required`           | boolean                  |                                                                                                   |
-| `file_manifest`                  | jsonb                    | `[{ name, label, extension, bytes, fileId? }]` (`ProductManifestEntrySchema`; the workspace's `AttachmentRefSchema` adds `fileId`). `save_listing` refuses more than 24 entries and a `fileId` that is not the seller's file. Buyer delivery of these files is an open gap (Decision #217(i)). |
+| `file_manifest`                  | jsonb                    | `[{ name, label, extension, bytes, fileId? }]` (`ProductManifestEntrySchema`; the workspace's `AttachmentRefSchema` adds `fileId`). `save_listing` refuses more than 24 entries and a `fileId` that is not the seller's file. The seller's **draft**: publishing freezes the entries that name a library file into `catalogue.product_versions` (below, Decision #488), and a buyer receives the frozen version, never this column. |
 | `compatibility`                  | jsonb                    | `[{ label, supported }]` (`StoredProductCompatSchema`).                                           |
 | `specs`                          | jsonb                    | The seller-declared specification ledger, `[{ label, value }]` (`StoredProductSpecSchema`). `ck_products_specs_shape`: an array of ≤ 24. Stored as written, never derived from the category. |
 | `span`                           | smallint 1–3             | Masonry cell weight, seller-authored presentation.                                                |
@@ -99,6 +99,48 @@ PRD-I3).
 | `catalogue.listing_skills`       | Join to the controlled `org.skills` vocabulary — the terms discovery filters on.                           |
 | `catalogue.listing_tags`         | Free-text keywords (1–40 chars), deliberately separate from skills. **At most 10 per listing**: `trg_listing_tags_max` refuses the 11th with `PG422` `tags_max`. A change re-syncs the listing's search index row (`trg_listing_tags_touch`), where tags are weight B of the fts. |
 | `catalogue.collections` / `catalogue.collection_listings` | A seller's private groupings; slug unique per owner.                              |
+
+## Product versions and entitlements (Decision #488)
+
+What a buyer receives is never the seller's working copy (ASSET_DELIVERY_ARCHITECTURE.md §10, ruling
+A6). Publishing freezes the draft `file_manifest` into a numbered version; paying writes one
+entitlement per product line. Zod: `ProductVersionRowSchema` / `ProductEntitlementRowSchema`
+(`@projective/types/catalogue`, held to these tables by `entitlements.contract.test.ts`).
+
+### `catalogue.product_versions`
+
+| Column         | Type                     | Notes                                                                                                                                                                                                                                                      |
+| :------------- | :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`           | uuid PK                  |                                                                                                                                                                                                                                                            |
+| `product_id`   | uuid NOT NULL            | → `catalogue.products`, CASCADE.                                                                                                                                                                                                                          |
+| `version`      | integer NOT NULL > 0     | 1, 2, … per product (`product_versions_number_key`).                                                                                                                                                                                                       |
+| `manifest`     | jsonb NOT NULL           | `[{ fileId, name, label, extension, bytes, mime }]`, 1–24 entries (`ck_product_versions_manifest`), in the seller's order, one per library file. `bytes` and `mime` are the library file's own. **No storage address**: a file lives at `originals/{product_id}/{id}/{fileId}`, derived. |
+| `published_at` | timestamptz              | When this version was frozen.                                                                                                                                                                                                                              |
+| `ready_at`     | timestamptz NULL         | NULL until every file has been copied into `originals` (`catalogue.mark_product_version_ready`); until then the download route answers 503 + Retry-After.                                                                                                |
+| `created_at`   | timestamptz              |                                                                                                                                                                                                                                                            |
+
+### `catalogue.entitlements`
+
+| Column                       | Type                                 | Notes                                                                                                                                                                       |
+| :--------------------------- | :----------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                         | uuid PK                              |                                                                                                                                                                             |
+| `slug`                       | text UNIQUE NOT NULL                 | `ent-` + 10 symbols, minted by `security.fn_slug_guard('ent')` (`trg_entitlements_slug`), permanent (`ck_entitlements_slug_shape`). The download address `/api/downloads/ent-…/{fileId}`. |
+| `order_line_id`              | uuid UNIQUE NOT NULL                 | → `finance.order_lines` (no cascade: a receipt is never deleted).                                                                                                           |
+| `product_id`                 | uuid NULL                            | → `catalogue.products`, SET NULL (a receipt outlives its product, ruling A11).                                                                                              |
+| `version_id`                 | uuid NULL                            | → `catalogue.product_versions`, SET NULL. The newest version frozen when the line was bought; NULL when the product attached no library file.                               |
+| `holder_type` / `holder_id`  | `files.owner_kind` / uuid            | The order's owner: the person (a freelancer's wallet is their person's), or the team, business or enterprise.                                                               |
+| `licence`                    | `catalogue.product_licence`          | The product's licence when bought.                                                                                                                                          |
+| `seats`                      | integer 1–999                        | The line's quantity.                                                                                                                                                        |
+| `updates_until`              | timestamptz NULL                     | Reserved for the later-versions rule. Phase 0 always writes NULL and never reads it; an entitlement serves exactly `version_id`.                                             |
+| `status`                     | `catalogue.entitlement_status`       | `active` · `refunded` · `revoked`. MONEY's refund doors write `refunded`; the download route answers anything but `active` with its one 404.                                |
+| `delivery_terms_accepted_at` | timestamptz NULL                     | When the buyer ticked the A8 acknowledgement before Pay (`finance.basket_items.metadata.deliveryTermsAccepted`); NULL when the line had no file or was paid without it.        |
+| `first_delivered_at`         | timestamptz NULL                     | **The A8 fact**: the first response that streamed a whole file of the line to its last byte (`catalogue.fn_record_delivery`). Each delivery is also a `files.download_events` row (`via = 'purchase'`). |
+| `created_at` / `updated_at`  | timestamptz                          |                                                                                                                                                                             |
+
+Indexes (`00004012`): `ix_entitlements_holder (holder_type, holder_id, created_at DESC)` for the
+purchases view, plus `version_id` and `product_id` partial indexes. **`finance.order_lines.asset_id`
+is reserved**: no door writes it and no reader reads it; a product line's files are reached through
+its entitlement ([../finance/Tables.md](../finance/Tables.md)).
 
 ## Seed
 

@@ -156,6 +156,6 @@ Deno.test("toLedgerHealth of nothing is an empty, valid read", () => {
 	assertEquals(health.drift.lastLoggedAt, null);
 });
 
-Deno.test("the page's sections are conservation, drift and escrow age, in that order", () => {
-	assertEquals(LedgerSectionId.options, ["conservation", "drift", "escrow_age"]);
+Deno.test("the page's sections are conservation, drift, escrow age and alerts, in that order", () => {
+	assertEquals(LedgerSectionId.options, ["conservation", "drift", "escrow_age", "alerts"]);
 });

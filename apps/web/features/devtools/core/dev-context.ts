@@ -25,6 +25,8 @@ import {
 	type BusinessPageSim,
 } from "@features/profile/core/business-page-sim.ts";
 import { TEAM_PAGE_SIM_COOKIE, type TeamPageSim } from "@features/profile/core/team-page-sim.ts";
+import { REVIEW_STATE_SIM_COOKIE } from "@features/reviews/core/review-state-sim.ts";
+import type { ReviewState } from "@projective/types/reviews";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import {
@@ -54,6 +56,8 @@ import {
 	type DevAutoFundMode,
 	type DevAvailabilityConflict,
 	type DevBasketScenario,
+	type DevDelivery,
+	type DevEntitlement,
 	type DevPromotionState,
 	type DevBusinessKyb,
 	type DevBusinessPlanGates,
@@ -79,6 +83,7 @@ import {
 	type DevMessagingRole,
 	type DevMicPermission,
 	type DevEmailDeliverability,
+	type DevPushPermission,
 	type DevNotificationDelivery,
 	type DevNotifications,
 	type DevOperatorDesk,
@@ -131,6 +136,8 @@ export type DevProjectStatus = "auto" | ProjectStatus;
 export type DevBusinessPage = "auto" | BusinessPageSim;
 /** A simulated team `/:handle` state, or `auto` for the database's answer (Teams P1). */
 export type DevTeamPage = "auto" | TeamPageSim;
+/** A simulated state of the open engagement's reviews, or `auto` for the database's (Decision #487). */
+export type DevReviewState = "auto" | ReviewState;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
 	DevAccountLifecycle,
@@ -141,6 +148,8 @@ export type {
 	DevPromotionState,
 	DevFileAccess,
 	DevBasketScenario,
+	DevDelivery,
+	DevEntitlement,
 	DevBusinessKyb,
 	DevBusinessPlanGates,
 	DevCaptcha,
@@ -163,6 +172,7 @@ export type {
 	DevMessagingRole,
 	DevMicPermission,
 	DevEmailDeliverability,
+	DevPushPermission,
 	DevNotificationDelivery,
 	DevNotifications,
 	DevOperatorDesk,
@@ -288,6 +298,14 @@ export interface DevOverrides {
 	 * a profile page to apply it.
 	 */
 	teamPage: DevTeamPage;
+	/**
+	 * Simulated state of the open engagement's reviews (Decision #487): the Overview's Reviews block and
+	 * the review dialog restated as open (nothing written) · reviewed (editable) · locked (replied to, or
+	 * its window closed) · withdrawn · closed (never written). A page with nothing to review gets one
+	 * sample provider. Server-side, through the `pj.dev.review-state` cookie the Overview honours in
+	 * development only; the panel reloads a project page to apply it. A write still meets the doors.
+	 */
+	reviewState: DevReviewState;
 	/**
 	 * Simulated acting-member view for the Members tab (task §4) — the four access conditions the roster
 	 * rules branch on (Owner/Admin · Manager · Freelancer assigned · Freelancer unassigned). Consumed by
@@ -458,11 +476,28 @@ export interface DevOverrides {
 	 */
 	emailDeliverability: DevEmailDeliverability;
 	/**
+	 * Settings → Notifications' "Alerts on this device" (COMMS NT4): the real browser, or one state of
+	 * the control (never asked, subscribed, blocked, no Push API, iOS outside a Home-Screen app).
+	 * Client-side only; a press still uses the real browser.
+	 */
+	pushPermission: DevPushPermission;
+	/**
 	 * The header basket drawer: the real basket, an empty one, a switcher holding personal + team +
 	 * business baskets, or a basket with an unavailable line. Its own axis because a second paying
 	 * account and a delisted item both take other people's actions to reach.
 	 */
 	basketScenario: DevBasketScenario;
+	/**
+	 * A purchase's files on the purchases view and the confirmation (`pj.dev.delivery`, Decision #488):
+	 * ready, still being prepared after publishing, or a failed copy. Its own axis because the copy into
+	 * `originals` finishes in moments and never fails on demand.
+	 */
+	delivery: DevDelivery;
+	/**
+	 * A purchase's standing on the purchases view (`pj.dev.entitlement`, Decision #488): live, refunded,
+	 * or nothing bought. Its own axis because a refund waits on MONEY's refund doors and a seller.
+	 */
+	entitlement: DevEntitlement;
 	/**
 	 * A business checkout's gate on the payment step (Decision #243): a refusal offering Request
 	 * approval, a request waiting or approved, nobody else able to approve, the business wallet short,
@@ -633,6 +668,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	serviceSide: "auto",
 	businessPage: "auto",
 	teamPage: "auto",
+	reviewState: "auto",
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	hasPendingRequests: true,
@@ -666,7 +702,10 @@ export const DEV_DEFAULTS: DevOverrides = {
 	notifications: "auto",
 	notificationDelivery: "auto",
 	emailDeliverability: "auto",
+	pushPermission: "auto",
 	basketScenario: "auto",
+	delivery: "auto",
+	entitlement: "auto",
 	checkoutGate: "auto",
 	checkoutPayment: "ok",
 	fxCheckout: "auto",
@@ -793,6 +832,16 @@ export const DEV_TEAM_PAGES: ReadonlyArray<DevOption<DevTeamPage>> = [
 	{ value: "archived", label: "Archived" },
 	{ value: "invite_only", label: "Invite-only" },
 	{ value: "missing", label: "Missing (outsider)" },
+];
+
+/** Simulated review states in display order (Decision #487). `Auto` defers to the database. */
+export const DEV_REVIEW_STATES: ReadonlyArray<DevOption<DevReviewState>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "open", label: "Open" },
+	{ value: "reviewed", label: "Reviewed" },
+	{ value: "locked", label: "Locked" },
+	{ value: "withdrawn", label: "Withdrawn" },
+	{ value: "closed", label: "Closed" },
 ];
 
 /**
@@ -1024,12 +1073,38 @@ export const DEV_EMAIL_DELIVERABILITIES: ReadonlyArray<DevOption<DevEmailDeliver
 	{ value: "bounced", label: "Bounced" },
 ];
 
+/** Push permission states for Settings → Notifications' device control. `Browser` reads the real one. */
+export const DEV_PUSH_PERMISSIONS: ReadonlyArray<DevOption<DevPushPermission>> = [
+	{ value: "auto", label: "Browser" },
+	{ value: "prompt", label: "Not asked" },
+	{ value: "granted", label: "Granted" },
+	{ value: "denied", label: "Blocked" },
+	{ value: "unsupported", label: "Unsupported" },
+	{ value: "ios-not-installed", label: "iOS, not installed" },
+];
+
 /** Basket drawer scenarios. */
 export const DEV_BASKET_SCENARIOS: ReadonlyArray<DevOption<DevBasketScenario>> = [
 	{ value: "auto", label: "Auto" },
 	{ value: "empty", label: "Empty" },
 	{ value: "multi_owner", label: "Personal + team + business" },
 	{ value: "unavailable", label: "Unavailable item" },
+];
+
+/** Purchase delivery states (the purchases view, Decision #488). */
+export const DEV_DELIVERIES: ReadonlyArray<DevOption<DevDelivery>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "ready", label: "Ready" },
+	{ value: "rendering", label: "Preparing" },
+	{ value: "failed", label: "Failed" },
+];
+
+/** Purchase standings (the purchases view, Decision #488). */
+export const DEV_ENTITLEMENTS: ReadonlyArray<DevOption<DevEntitlement>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "active", label: "Active" },
+	{ value: "refunded", label: "Refunded" },
+	{ value: "none", label: "None bought" },
 ];
 
 /** Business checkout gate states (the payment step, Decision #243). */
@@ -1339,6 +1414,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devBusinessPage;
 		if (next.teamPage !== "auto") root.dataset.devTeamPage = next.teamPage;
 		else delete root.dataset.devTeamPage;
+		if (next.reviewState !== "auto") root.dataset.devReviewState = next.reviewState;
+		else delete root.dataset.devReviewState;
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devPendingRequests = String(next.hasPendingRequests);
@@ -1409,8 +1486,14 @@ function reflect(next: DevOverrides): void {
 		if (next.emailDeliverability !== "auto") {
 			root.dataset.devEmailDeliverability = next.emailDeliverability;
 		} else delete root.dataset.devEmailDeliverability;
+		if (next.pushPermission !== "auto") root.dataset.devPushPermission = next.pushPermission;
+		else delete root.dataset.devPushPermission;
 		if (next.basketScenario !== "auto") root.dataset.devBasketScenario = next.basketScenario;
 		else delete root.dataset.devBasketScenario;
+		if (next.delivery !== "auto") root.dataset.devDelivery = next.delivery;
+		else delete root.dataset.devDelivery;
+		if (next.entitlement !== "auto") root.dataset.devEntitlement = next.entitlement;
+		else delete root.dataset.devEntitlement;
 		if (next.checkoutGate !== "auto") root.dataset.devCheckoutGate = next.checkoutGate;
 		else delete root.dataset.devCheckoutGate;
 		if (next.checkoutPayment !== "ok") root.dataset.devCheckoutPayment = next.checkoutPayment;
@@ -1483,6 +1566,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devProjectStatus;
 		delete root.dataset.devBusinessPage;
 		delete root.dataset.devTeamPage;
+		delete root.dataset.devReviewState;
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devPendingRequests;
@@ -1513,7 +1597,10 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devNotifications;
 		delete root.dataset.devNotificationDelivery;
 		delete root.dataset.devEmailDeliverability;
+		delete root.dataset.devPushPermission;
 		delete root.dataset.devBasketScenario;
+		delete root.dataset.devDelivery;
+		delete root.dataset.devEntitlement;
 		delete root.dataset.devCheckoutGate;
 		delete root.dataset.devCheckoutPayment;
 		delete root.dataset.devFxCheckout;
@@ -1543,6 +1630,7 @@ function reflect(next: DevOverrides): void {
 	writeLandingCookie(next);
 	writeBusinessPageCookie(next);
 	writeTeamPageCookie(next);
+	writeReviewStateCookie(next);
 	writeDiscoveryCookie(next);
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
@@ -1700,6 +1788,17 @@ function writeTeamPageCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.teamPage !== "auto"
 		? `${TEAM_PAGE_SIM_COOKIE}=${next.teamPage}; path=/; samesite=lax`
 		: `${TEAM_PAGE_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/**
+ * Mirror the review-state axis into the `pj.dev.review-state` cookie — the only channel that reaches the
+ * SERVER-rendered Overview, which reads its reviewables before it renders (Decision #487). Written while
+ * simulation is on and the axis is not `auto`; removed otherwise.
+ */
+function writeReviewStateCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.reviewState !== "auto"
+		? `${REVIEW_STATE_SIM_COOKIE}=${next.reviewState}; path=/; samesite=lax`
+		: `${REVIEW_STATE_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Patch a subset of the overrides. */

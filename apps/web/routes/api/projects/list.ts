@@ -19,11 +19,11 @@ import type { ProjectFeedPayload } from "@projective/types/projects";
  * revalidation is identical on both. See that module for the caching and CORS decisions.
  *
  * **No session guard, deliberately, and the reason is worth stating.** `routes/api/` sits outside the
- * `(dashboard)` group, so that group's guest bounce never runs here; a signed-out caller reaches this
- * route and gets the fixture corpus, which belongs to nobody. Once `PROJECTS_BACKEND_LIVE` is on, the
- * live branch requires a resolvable actor and RLS under that actor's own JWT is the real gate —
- * `anon` holds no USAGE on the `projects` schema at all, so an unauthenticated live read cannot
- * return rows even by accident.
+ * `(dashboard)` group, so that group's guest bounce never runs here. With `PROJECTS_BACKEND_LIVE`
+ * off a signed-out caller gets the fixture corpus, which belongs to nobody. With it on, the service
+ * refuses a caller with no access token (`401`, so `apiFetch` can renew a lapsed session) and answers
+ * a failed query with `503` — never the fixtures (PRD-B1). RLS under the actor's own JWT is the real
+ * gate; `anon` holds no USAGE on the `projects` schema at all.
  */
 export const handler = define.handlers(
 	defineReadRoute<ProjectFeedPayload>({

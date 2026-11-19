@@ -310,3 +310,15 @@ INSERT INTO security.platform_params (key, value, description) VALUES
     ('service_draft_idle_days', '30'::jsonb,
         'Days of inactivity before an un-funded instantiated pipeline draft is soft-archived by projects.fn_archive_stale_service_drafts. Mirrored by DRAFT_IDLE_DAYS in @projective/types/services, which the interface reads to tell the buyer when their draft expires — the two must agree.')
 ON CONFLICT (key) DO NOTHING;
+
+-- #region Product delivery (Decision #488, ruling A8 ⚖️)
+-- The refund rule's consequence of a delivery, held OFF until counsel approves the A8 words. While
+-- off, a delivered product line is refunded exactly as an undelivered one; the facts it would read
+-- (catalogue.entitlements.first_delivered_at and delivery_terms_accepted_at) are recorded either way.
+-- Never switched on by a build: the owner turns it on per environment once counsel has signed off.
+INSERT INTO security.feature_flags (key, enabled, payload)
+VALUES ('finance.delivered_refund_refusal', false, jsonb_build_object(
+    'description', 'When enabled, a buyer-started refund of a digital product line is refused once its entitlement records a completed delivery (catalogue.entitlements.first_delivered_at) that the buyer accepted before Pay (delivery_terms_accepted_at); a non-delivery or defective-file dispute is unaffected. MONEY DB21''s refund door reads it. Off until counsel approves ruling A8 (Decision #488).'
+))
+ON CONFLICT (key) DO NOTHING;
+-- #endregion

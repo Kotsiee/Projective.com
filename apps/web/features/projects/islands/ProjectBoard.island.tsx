@@ -209,6 +209,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 * nothing else to wait for and no per-refine placeholder to draw.
 	 */
 	const skeleton = useSkeletonDelay();
+	/**
+	 * Why the board could not be read (a lapsed session, an unreachable database), or `null`. Set only
+	 * by a failed fallback read, so the empty columns below it are never mistaken for "no tickets"
+	 * (PRD-B1).
+	 */
+	const loadError = useSignal<string | null>(null);
 
 	const query = useSignal("");
 	const priorityFilter = useSignal<string[]>([]);
@@ -544,13 +550,17 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		skeleton.begin();
 		const res = await BoardService.list({ projectId: props.projectId, channelId: boardStageId });
 		// Cleared BEFORE the payload check, so a failed fallback lands on the board's own empty state
-		// rather than leaving the placeholder up for the life of the page.
+		// rather than leaving the placeholder up for the life of the page — under a notice that says
+		// the read failed, so the empty columns are not read as "no tickets".
 		skeleton.end();
 		if (res.ok && res.data) {
 			cards.value = res.data.page.cards;
 			stages.value = res.data.page.stages;
 			currency.value = res.data.page.currency;
+			loadError.value = null;
+			return;
 		}
+		loadError.value = res.message ?? "This board couldn't be loaded — please try again.";
 	}
 
 	/**
@@ -1227,6 +1237,18 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 							if (boardStageId) fundStageOpen.value = true;
 							else void doCheckout();
 						}}
+					/>
+				)
+				: null}
+			{loadError.value
+				? (
+					<InlineNotice
+						assertive
+						align="start"
+						text={loadError.value}
+						actionLabel="Try again"
+						busy={skeleton.visible.value}
+						onAction={() => void loadFallback()}
 					/>
 				)
 				: null}

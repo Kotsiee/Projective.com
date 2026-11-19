@@ -38,6 +38,7 @@ export const StorageBucket = z.enum([
 	"showcase",
 	"contact",
 	"data_exports",
+	"originals",
 ]);
 export type StorageBucket = z.infer<typeof StorageBucket>;
 
@@ -172,6 +173,14 @@ export const BUCKETS: Readonly<Record<StorageBucket, BucketMeta>> = {
 		anchor: "user_id",
 		purpose:
 			"A person's copy of their own data (Decision #450) — written and removed by the export job, downloaded through a link minted per read.",
+	},
+	originals: {
+		access: "service",
+		maxBytes: 50 * MiB,
+		allowedMime: null,
+		anchor: "product_id",
+		purpose:
+			"Sale originals frozen at publish (Decision #488, ruling A6) — copied in by the catalogue service, streamed only by the entitlement gate.",
 	},
 };
 
@@ -416,6 +425,20 @@ export function contactLocation(
 /** `data_exports/{userId}/{requestId}.zip` — service-role ONLY (Decision #450). */
 export function dataExportLocation(userId: string, requestId: string): StorageLocation {
 	return { bucket: "data_exports", path: join(userId, `${requestId}.zip`) };
+}
+
+/**
+ * Where one file of a published product version lives (Decision #488, ruling A6):
+ * `originals/{productId}/{versionId}/{fileId}` — service-role ONLY, no storage policy at all. The
+ * display name is not part of the key: the version's manifest carries it, and a buyer's download
+ * names the file from there, so no seller-typed string ever reaches a storage path.
+ */
+export function originalLocation(
+	productId: string,
+	versionId: string,
+	fileId: string,
+): StorageLocation {
+	return { bucket: "originals", path: join(productId, versionId, fileId) };
 }
 
 /**

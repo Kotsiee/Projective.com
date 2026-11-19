@@ -48,15 +48,16 @@ import { callOfferKindFor, offersCourtesyCall } from "../booking/call-offer.ts";
 import { hireIntakeFor } from "../booking/intake-fixtures.ts";
 
 /**
- * profile fixtures — the fat {@link ProfileBackendService}'s in-memory answer for a public profile
- * (`/[handle]`), while `PROFILE_BACKEND_LIVE` is off (thin-frontend pattern, root CLAUDE.md §10).
+ * profile fixtures — a deterministic corpus of public profiles (`/[handle]`). The fat
+ * {@link ProfileBackendService} no longer reads it: profiles are always live, and its old gate
+ * (`PROFILE_BACKEND_LIVE`) was retired as dead (LD3). It survives as the people the messaging
+ * fixtures talk to (`messaging/conversation-fixtures.ts` `findProfile`), and leaves with them.
  *
  * Rather than author a third parallel corpus, this DERIVES a rich {@link ProfileView} + tab payloads
  * deterministically from the existing discovery fixtures (`@projective/backend/services/explore`) — so
- * a profile always agrees with the explore card that linked to it, and the live path (RLS-scoped
- * `org.users_public` + the profile tables) replaces this builder behind the same gate with zero shape
- * churn (the projection is already the SSOT {@link ProfileViewSchema}). No RNG — a small handle hash
- * gives stable per-profile variation (SSR/resume safe).
+ * a profile always agrees with the explore card that linked to it, in the same SSOT
+ * {@link ProfileViewSchema} the live read answers. No RNG — a small handle hash gives stable
+ * per-profile variation (SSR/resume safe).
  */
 
 // #region Deterministic helpers

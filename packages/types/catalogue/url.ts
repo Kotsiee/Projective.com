@@ -65,6 +65,18 @@ export type ConsoleScope = z.infer<typeof ConsoleScope>;
 export const ClientKey = z.string().regex(/^@[a-z0-9_]{2,30}$/);
 export type ClientKey = z.infer<typeof ClientKey>;
 
+/**
+ * The workspace's cohort dialog on a group-session listing (Decision #498): `open` opens the next
+ * cohort; `cancel:<ssn-…>` confirms cancelling the cohort whose FIRST sitting has that slug. A cohort
+ * has no address of its own and a uuid never routes (Decision #88), but every opened cohort has a
+ * first sitting, minted with an opaque slug once.
+ */
+export const CohortDialog = z.union([
+	z.literal("open"),
+	z.string().regex(/^cancel:ssn-[23456789abcdefghjkmnopqrstuvwxyz]{10}$/),
+]);
+export type CohortDialog = z.infer<typeof CohortDialog>;
+
 /** The longest search string the console carries in its URL. */
 export const CONSOLE_SEARCH_MAX = 160;
 
@@ -343,6 +355,8 @@ export interface WorkspaceUrlState {
 	period: AnalyticsPeriod;
 	/** The client drawer's buyer (`tab=clients`). */
 	client?: ClientKey;
+	/** The cohort dialog over the Edit tab's Availability section (Decision #498). */
+	cohort?: CohortDialog;
 }
 
 /** The workspace state with nothing chosen. */
@@ -366,6 +380,8 @@ export function parseWorkspaceUrl(url: URL): WorkspaceUrlState {
 	if (team) state.team = team;
 	const client = pick(ClientKey, q.get("client"));
 	if (client) state.client = client;
+	const cohort = pick(CohortDialog, q.get("cohort"));
+	if (cohort) state.cohort = cohort;
 	return state;
 }
 
@@ -380,6 +396,7 @@ export function workspaceHref(slug: string, state: Partial<WorkspaceUrlState>): 
 		["device", device === WORKSPACE_DEFAULTS.device ? null : device],
 		["period", period === WORKSPACE_DEFAULTS.period ? null : period],
 		["client", state.client],
+		["cohort", state.cohort],
 	]);
 }
 // #endregion

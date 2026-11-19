@@ -17,7 +17,16 @@ export interface ProjectDetailBootstrap {
 	detail: ProjectDetail | null;
 	/** The routed slug (echoed so the sidebar can offer a Back link + retry even on a miss). */
 	slug: string;
+	/**
+	 * Why the detail could not be READ — a lapsed session's `401`, an unreachable database's `503` —
+	 * or `null`. A `404` is not a load error: the slug matched nothing. Set, the sidebar says the
+	 * project can't be loaded, never "Project not found" (PRD-B1).
+	 */
+	loadError: string | null;
 }
+
+/** The sidebar's words for a detail read that failed without a message of its own. */
+const DETAIL_UNAVAILABLE = "This project can't be loaded right now — please try again.";
 
 /** Resolve the Project Details sidebar bootstrap for a routed slug + the acting user context. */
 export async function resolveProjectDetail(
@@ -26,5 +35,9 @@ export async function resolveProjectDetail(
 	actor: ReadActor,
 ): Promise<ProjectDetailBootstrap> {
 	const res = await ProjectBackendService.detail(slug, actor);
-	return { detail: res.ok && res.data ? res.data.detail : null, slug };
+	return {
+		detail: res.ok && res.data ? res.data.detail : null,
+		slug,
+		loadError: res.ok || res.status === 404 ? null : res.message ?? DETAIL_UNAVAILABLE,
+	};
 }

@@ -119,9 +119,12 @@ aligned on time and location.
   and switched off (Decision #344 (a)). It sends a notice's title and a link back into Projective,
   never its contents, and does not send a notice more than a day old. Until a provider is connected
   for a channel, that channel's notices wait. Email is built (COMMS NT3, through the email provider)
-  and sends once the provider key and the dispatcher are switched on. The SMS setting shows only
-  once the SMS provider (Twilio) is configured. **Not built yet:** push and SMS, and the daily and
-  weekly digest emails (Decision #339, rulings P3 and N3).
+  and sends once the provider key and the dispatcher are switched on. Push to a browser is built too
+  (COMMS NT4). A person turns alerts on for each browser in Settings → Notifications → This device,
+  and is asked for permission only then, never on page load. On an iPhone or iPad, alerts need
+  Projective added to the Home Screen first, and Settings says so. A notification click opens only
+  a page inside Projective. The SMS setting shows only once the SMS provider (Twilio) is configured.
+  **Not built yet:** SMS, and the daily and weekly digest emails (Decision #339, rulings P3 and N3).
 - **Counter-proposals are bounded.** An attendee may hold at most three unapproved time proposals at
   once (the host's own are not counted), and a replacement slot keeps the original event's length: a
   move is a move, never an extension. No replacement runs longer than 24 hours, so an event longer
@@ -777,6 +780,24 @@ and an invited one that the seat is theirs and until when. The seller sees the q
 Clients tab: how many are waiting, who holds an invite and until when, who bought and whose invite
 lapsed. Notifying everyone at once and letting the first payer win was considered and refused: most
 buyers would be told of a seat already gone, which teaches them to ignore the notice.
+
+**A seller opens each cohort, and may cancel one that under-fills (Decision #498).** A group session
+sells seats only on a cohort that is taking bookings, so the seller opens one from the listing's
+Availability section. They set its seats (the listing's cohort size unless they change it), its first
+session, how the listing's other sessions follow (weekly, every two weeks, or dates they choose), when
+enrolment closes, and, if they want one, a minimum it runs with. Enrolment closes no later than the
+first session, and before it when there is a minimum, so there is time to decide. A listing has one
+cohort taking bookings at a time; the next may open once that one's enrolment closes or it is cancelled.
+Opening a cohort is what invites the waitlist. Every one of these terms — the start and the cadence,
+the close, the minimum and what happens below it — is shown to the buyer before they pay. Once enrolment
+closes nobody new can take a seat, and the seller is told if the cohort closed below its minimum. The
+seller may cancel a cohort any time before its first session, whatever its size: every seat is refunded
+in full (the provider-cancel rule above), the sessions leave everyone's calendar, and the seat-holders and
+the people waiting are told. The waitlist keeps its order: an invite on a cancelled cohort goes back to
+its place, and a refunded buyer who came through the waitlist is put back where they stood, first for
+the next cohort. A seller who leaves an under-filled cohort alone runs it. The listing's "let people join
+a cohort that has started" setting has no effect yet: every cohort's enrolment closes by its first
+session.
 
 **What every archetype must disclose before purchase.** These are business requirements, not
 presentation:
@@ -3200,6 +3221,23 @@ The commerce rules every order follows (Decision #337, ruling M8):
 - **A digital product is not refunded once it has been downloaded,** except for non-delivery or a
   defective file, which the buyer raises as a dispute; that recovery comes first from the seller's
   money still clearing (§Escrow, Wallets & Finance 5).
+  - **"Downloaded" means delivered in full** (Decision #393 ruling A8, ruled 2026-11-18 by #488): the
+    first time any file of the line has streamed to the buyer to its last byte. Starting a download,
+    a partial range or a cut connection is not a delivery. Once an in-app reader exists, opening an
+    entitled reader session counts too. **Built** (the fact is recorded on the purchase).
+  - **The buyer accepts this before paying.** Whenever a line delivers files, `/checkout/payment`
+    shows this notice and an unticked box that must be ticked before Pay, and the tick is recorded
+    with the purchase. The words, **pending counsel** (⚖️):
+    > **Digital files are non-refundable once downloaded.** You get these files straight after
+    > payment. Once a file has finished downloading in full, the order is no longer refundable,
+    > unless the file is defective or never arrives.
+    >
+    > ☐ I want the files now, and I understand I lose the right to a refund once one has downloaded
+    > in full.
+  - **The refusal itself waits for counsel.** Until the owner turns on the
+    `finance.delivered_refund_refusal` flag after counsel signs off, a delivered line is refunded
+    like any other; a line paid without the tick is never treated as downloaded. **Built behind the
+    flag, off.**
 - **An order is refunded line by line.** When an escrow behind a line is refunded, that line becomes
   refunded; the order becomes refunded only once every line is.
 - **An order's states are the ones it can reach.** An on-account order is **invoiced**; refunds and
@@ -3208,22 +3246,34 @@ The commerce rules every order follows (Decision #337, ruling M8):
 - **A promo code is recorded on the order,** and by default each account may redeem a code once; a
   code may allow more.
 
-These are **Not built yet**, except that an on-account order is already written as invoiced and a
-code is already recorded on its order.
+These are **Not built yet**, except that an on-account order is already written as invoiced, a
+code is already recorded on its order, and what "downloaded" means is recorded (above).
 
 #### 7. Asset Protection (Decision #393)
 
-**Not built yet,** and today no buyer can receive a purchased file at all
-(`ASSET_DELIVERY_ARCHITECTURE.md` §2). These rules come from the owner's brief of 2026-11-06. The
-design is in [`ASSET_DELIVERY_ARCHITECTURE.md`](../architecture/ASSET_DELIVERY_ARCHITECTURE.md) and
+**Delivery is built (phase 0, Decision #488); protection is not.** A buyer receives every file of a
+product they paid for, from their purchases (`/files?source=purchases`) and the order confirmation.
+These rules come from the owner's brief of 2026-11-06. The design is in
+[`ASSET_DELIVERY_ARCHITECTURE.md`](../architecture/ASSET_DELIVERY_ARCHITECTURE.md) and
 [`ANTI_PIRACY_ENGINE.md`](../architecture/ANTI_PIRACY_ENGINE.md), and the questions they leave open
 are that decision's rulings A1 to A11 and B1 to B10.
+
+- **What a buyer pays for is frozen at publish** (ruling A6, ruled 2026-11-18 by #488). Publishing a
+  product snapshots the files it delivers into a numbered version; a seller who renames, replaces or
+  deletes a library file afterwards cannot change what a buyer already bought. Publishing again with
+  different files makes a new version for later buyers; each buyer keeps the version they bought.
+  Whether a later version reaches earlier buyers is a later rule. **Built.**
+- **A purchase's files reach only its holder.** The person who bought, or, for a team, business or
+  enterprise purchase, its members while acting as that account; a refunded or withdrawn purchase
+  delivers nothing more, though what was already delivered cannot be recalled. **Built.**
 
 - **Protection deters and traces; it never promises prevention.** Anything shown to a person can be
   copied, so no surface tells a seller that a file cannot be copied.
 - **Originals stay private on every plan.** A stranger sees a lesser preview, and bytes reach a buyer
-  only through the platform, after it confirms the purchase. How this meets automatic elevation
-  (§Assets & Attachments) is ruling A6.
+  only through the platform, after it confirms the purchase. A sale original is a **third zone**
+  (ruling A6): never elevated to Link only or Public by being attached to a product, and copied
+  rather than shared (§Assets & Attachments). The bytes reach a buyer only after the purchase is
+  confirmed (**built**); the lesser preview is a later phase.
 - **A copy sold can be traced.** A file delivered to a buyer may carry an invisible fingerprint that
   resolves to the purchase, and buyers are told before they pay.
 - **The creator decides how a file is marked.** Heavy, Subtle or Disabled, with adjustable parameters
@@ -3375,10 +3425,31 @@ the purchasers.
 ##### Governance Rules
 
 - **Atomic Reviews:** A Project/Service must be completed, or a freelancer must have exited the
-  engagement, before a review can be submitted.
+  engagement, before a review can be submitted. Ruled concretely (Decision #487): the client party of
+  a **completed engagement** reviews each provider who held a seat on it, and the provider of the
+  listing it was bought from; on an engagement still running, a provider whose seat was **released
+  after work began** (they had submitted work). The attendee of a **completed sitting**, or of a
+  completed cohort membership, reviews the session's provider. A review of a provider bought through a
+  listing shows on that listing and on the provider's profile — the same review, read twice.
+- **No self-reviews, no minors:** nobody reviews themselves, their own team or their own business,
+  and a 13–17 account never writes a review.
+- **The window and edits:** a review can be written for **30 days** from its anchor's completion. Its
+  author may edit it until the window closes or the reviewed side replies, whichever comes first, and
+  may withdraw it at any time: a withdrawn review is hidden everywhere and kept, never deleted, and
+  the party does not get a second one on that engagement. An operator may hide a review (kept, with
+  a reason). A hidden or withdrawn review leaves every reader and every average.
+- **The reply:** the reviewed side posts **one public reply** under each review — the freelancer, or
+  the team's or business's owner or a member holding its profile or listing capability. It is 1–1,000
+  characters and editable for **7 days**. A review is at least 100 characters.
 - **Entity Consolidation:** A **Business** counts as a single entity. Individual members within a
   business cannot spam reviews; only one aggregate review per business-freelancer engagement is
-  permitted.
+  permitted. Ruled (Decision #487, closing #244 (e)): **one review per (anchor, reviewing party,
+  target)** — a business client is one party however many of its members took part, and any of its
+  members holding hiring authority on the engagement may write it.
+- **Products:** a product is reviewed once its purchase has been delivered at least once; until the
+  delivery record exists (CK1), product reviews stay closed.
+- **One reminder:** each client party and attendee is asked once per engagement or session to review
+  it, three days after it completed.
 - **Reciprocity:** Freelancers and Teams provide ratings for Clients and Businesses. These ratings
   contribute to the **Client Trust Score**.
 
@@ -4150,7 +4221,9 @@ full **Settings console** (`/settings`), one page per section. One search finds 
 Every file, image, recording and web link on the platform is one **asset**, owned by one principal
 (a user, team, business or enterprise) and reachable through one hub at `/files`. The same asset
 appears wherever it is used — a deliverable in a submission, a banner on a profile, an attachment in
-a channel — without being copied, so renaming or revoking it takes effect everywhere at once.
+a channel — without being copied, so renaming or revoking it takes effect everywhere at once. **The one
+exception is a sale original** (Decision #393 ruling A6, #488): publishing a product copies the files
+it delivers, so a buyer keeps what they paid for whatever later happens to the seller's library copy.
 
 ### Privacy scopes
 
@@ -4163,7 +4236,7 @@ already depends on.
 | **Private**   | The uploader only (plus entity members, for an entity-owned asset, unless its owner turned it away from them; plus a project's people, for a project's file) | The default for everything.                                                    |
 | **Restricted** ("Specific people") | The uploader, the people they sent it to as a link in a message, and the people, teams, businesses and projects they added in the file's Access tab | Chosen in the inspector's Access tab (Decision #402), or elevated automatically from Private when the owner shares their own file **as a link** in a conversation or a project room (Decision #401). Setting the file back to Private pauses every link share and every grant at once; choosing Restricted again brings them back. Never a folder. |
 | **Link only** | Anyone holding the opaque share slug                | Elevated automatically when attached inside a **semi-private** context — a channel, a direct message, a project submission. A recipient who can read the message must be able to open what it carries. |
-| **Public**    | Anyone                                              | Elevated automatically when attached to a **public** entity — a service, a product, a public profile, a banner. |
+| **Public**    | Anyone                                              | Elevated automatically when attached to a **public** entity — a service, a product, a public profile, a banner. **Except a product's sale files** (Decision #393 ruling A6, #488): a file a product delivers is never elevated by being attached; publishing copies it into a private sale-original zone, and buyers receive that copy (§Digital Marketplace 7). |
 
 **Sending a file to people (Decision #401).** A file sent in `/messages` or a project room goes one of
 two ways, chosen per file in the composer's tray and in the share modal:

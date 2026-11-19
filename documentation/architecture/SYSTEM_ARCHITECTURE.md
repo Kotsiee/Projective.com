@@ -758,6 +758,25 @@ that depends on feature-local pure helpers (the DoB age-gate, password-required-
 in the route per §2; it consolidates into `@projective/types` with the Zod schemas when that package
 lands. Everything downstream of a validated request belongs to the service.
 
+**A live gate never serves fixtures (PRD-B1, Decision #495).** The gate alone picks the road. With
+it off, the fixture road answers (`dev:mock`, tests). With it on, a read answers from Postgres
+under the caller's JWT or refuses: no access token (a guest, or a lapsed session not yet refreshed)
+is a `401`, so `apiFetch` can renew and retry; a query that throws is a `503`; a row RLS withholds
+is a `404`. A live failure never falls through to the fixture corpus, because that shows a real
+person someone else's invented projects as their own. Writes keep the same rule: `401` without a
+token, `502` on a thrown write, never the stub store. The projects domain carries this as
+`ProjectBackendService`'s three-valued `liveRead` (`{ road: "off" }` · `live` · `refused`), and
+`live-gate.test.ts` holds every public read and write to it. Messaging has carried the same rule
+since CAS M24. A load-bearing query that fails must **throw** for this to work. Answering `null`
+would turn a stopped database into a 404, so the shared resolvers in
+`services/projects/live-support.ts` throw on a query error and answer `null` only for a miss.
+Degrading to a **neutral** value (an empty list, `QUIET_NAV_ACTIVITY`, `{}` cooldowns) is not a
+fixture and stays allowed for secondary lookups. Surfaces render the refusal. The projects lane
+and `/projects` show the reason with Try again in place of "Nothing here yet"; the board shows the
+same notice above its empty columns. A project's own lane says "This project can't be loaded" for
+a `401` / `503` and keeps "Project not found" for a `404`. The project pages behind
+`resolveProjectAccess` still read a failed detail as a miss (PRD-B8).
+
 ### Discovery (Explore) services
 
 The Explore feature is the second, **read-only** implementation of the contract: `ExploreService`
@@ -867,6 +886,7 @@ package.
 | Signal | Client | Thin route | Fat service | Table | Gate |
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | Impressions · card clicks · rail depth (`discovery.*`) | `features/explore/islands/ImpressionTracker.island.tsx` | `POST /api/explore/events` | `services/search/InterestBackendService.ts` | `search.interest_events` | `EXPLORE_BACKEND_LIVE` |
+| A listing's page views (`discovery.view`, MARKETPLACE SC5) | `features/view/islands/ListingViewBeacon.island.tsx` (mounted by `EntityViewPage` on service and product pages) | `POST /api/explore/events` | `services/search/InterestBackendService.ts` | `search.interest_events` (`event_type = 'view'`), rolled up into `analytics.daily_rollups` and `catalogue.listings.view_count` | `EXPLORE_BACKEND_LIVE` |
 | Discovery queries (`discovery.search`) | (server-side) | `/explore` SSR · `GET /api/explore/search` | `ExploreBackendService.search` → `services/search/query-log.ts` → `search.fn_log_query` | `search.query_logs` | `EXPLORE_BACKEND_LIVE` |
 | Production `warn`/`error` logs | `utils/logger.ts` | `POST /api/logs` | `services/logging/LogBackendService.ingest` | `ops.log_entries` | `LOGGING_BACKEND_LIVE` |
 | Core Web Vitals (CLS · LCP · INP) | `features/shell/islands/WebVitalsBridge.island.tsx` (mounted in `_app`) | `POST /api/logs/vitals` | `LogBackendService.ingestVitals` | `ops.log_entries` (`level = 'metric'`) | `LOGGING_BACKEND_LIVE` |
@@ -877,6 +897,13 @@ package.
   in a visible tab counts once per placement (rail + item) per page view. Rails are the
   `[data-rail-id]` tracks `RailFrame` renders; their depth comes from one capturing `scroll` listener.
   Batches flush at 20 events, on a 10 s heartbeat, on `visibilitychange → hidden` and on `pagehide`.
+- **View definition.** A service or product page a reader evaluates (never the owner's preview or
+  buyer simulation, never a 13–17 account) sends ONE `discovery.view` after hydration, once the tab
+  is visible, as a batch of its own (`surface = "view.entity"`; the schema refuses a view from any
+  other surface). `search.trg_interest_events_view` keeps at most one per visitor (the signed-in
+  person, else the session) per listing per 30 minutes and drops the seller's own and the owning
+  team's; the service drops the seller's own too when the token has lapsed. `listing.views` is the
+  day's distinct sessions; `fn_rollup_listings` sums it into `catalogue.listings.view_count`.
 - **Transport.** `navigator.sendBeacon` with a JSON blob (same-origin, so the session cookie rides
   along and the route resolves the actor with `readActor`). The fallback, when the beacon is refused,
   is `fetch(…, { keepalive: true })` with `x-pj-background: 1`, which the offline guard never blocks.
@@ -888,10 +915,13 @@ package.
 - **Trust.** The client sends public slugs/handles; `InterestBackendService` resolves them against
   the cached public catalogue and drops any id that is not in it, taking the entity type from the
   catalogue, not the request. A per-process `SlidingWindowLimiter` (30 batches/min per user or
-  session) bounds a runaway tab.
+  session) bounds a runaway tab. The route answers a crawler, headless browser or scripted client
+  `202` and stores nothing (`utils/automated-agent.ts`, a `User-Agent` filter, which a missing header
+  also trips). Neither is abuse protection: `anon` may still INSERT into `search.interest_events`
+  directly with any session key (PRODUCTION_READINESS PRD-C36).
 - **Development.** The logger and `WebVitalsBridge` never call the server in development (vitals
-  go to the Dev Tools log inspector). The `ImpressionTracker` does beacon, and the service
-  acknowledges without writing unless `EXPLORE_BACKEND_LIVE` is on.
+  go to the Dev Tools log inspector). The `ImpressionTracker` and the `ListingViewBeacon` do beacon,
+  and the service acknowledges without writing unless `EXPLORE_BACKEND_LIVE` is on.
 - **Client render failures.** `ErrorBoundary` (`@projective/ui/feedback`) contains a broken island
   subtree and reports through `logger.error` (and so `/api/logs` in production). The
   `SearchDashboard` island is wrapped in one.
@@ -2525,8 +2555,8 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
   runs locally as it does when hosted. The http jobs skip (and log) until the Vault secrets below
   exist, and a skipped run still reads as succeeded in `cron.job_run_details`. Locally `CRON_APP_URL`
   is `http://host.docker.internal:<PORT>`, because pg_net runs inside the database container, and
-  `deno task db:reset` sets it with `INTEGRATIONS_CRON_SECRET` and `COMMS_DISPATCH_SECRET` from
-  `.env.local` (`cron:vault`, each only when well formed), because a rebuild empties Vault. The money
+  `deno task db:reset` sets it with `INTEGRATIONS_CRON_SECRET`, `COMMS_DISPATCH_SECRET` and
+  `OPS_CRON_SECRET` from `.env.local` (`cron:vault`, each only when well formed), because a rebuild empties Vault. The money
   sweeps stay on `deno task cron:run` locally.
 - **The comms Vault secrets.** The notification dispatcher (§The Notification Engine, Decision #344
   (a)) reads `CRON_APP_URL` and `COMMS_DISPATCH_SECRET` from Vault twice: the `comms.notifications`
@@ -2573,11 +2603,13 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `integrations-renew-channels`       | hourly :35                        | `POST /api/integrations/cron/channels?limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `IntegrationsBackendService.renewChannels` (#343 C4) | Claims each channel within 24 h of lapsing once (`expiring`, `SKIP LOCKED`); a third failure degrades its connection.
 | `integrations-calendar-sync`        | every 5 min                       | `POST /api/integrations/cron/sync?limit=50` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.syncDue` (#383 R3) | Claims each calendar a push marked due or an hour unread, under a 10-minute lease (`SKIP LOCKED`); a read lands in one call and only while its claim is held, so a repeat changes nothing.
 | `comms-dispatch-sweep`              | every minute                      | `POST /api/comms/cron/dispatch?limit=200` · `COMMS_DISPATCH_SECRET` | Comms — `NotificationDispatchService.dispatch` (Decision #344 (a)) | Claims through `comms.fn_claim_deliveries` (`SKIP LOCKED`, a 15-minute lease on a queued row, results recorded forward only), so an overlapping run sends nothing twice; claims nothing while `comms.dispatch_webhook` is off.
+| `ops-deliver-alerts`                | every 5 min                       | `POST /api/ops/cron/alerts?limit=50` · `OPS_CRON_SECRET` | Ops — `OpsAlertService.deliver` (MR4, Decision #461) | Folds under an advisory lock and records each fold (`ops.alert_seen`), leases a due alert for 5 minutes and records each send forward only, so an overlapping run sends nothing twice; a failed send stays pending and backs off. |
 | `newsletter-provider-sync`          | every 5 min, from :02             | `POST /api/newsletter/cron/sync?limit=50` · `COMMS_DISPATCH_SECRET` | Newsletter — `NewsletterProviderSync.run` (CD1 step 5, Decision #480 Q1 A) | Reads `community.newsletter_sync_batch` (no rows while `newsletter.provider_sync` is off) and stamps each provider call against the row version it read (`record_newsletter_sync`), so a re-run, or a change made during one, converges; the provider calls are idempotent by shape (a create of an existing address is answered by a lookup). Ends a pass at a 429 or after 60 s. |
 | `integrations-outbound-sync`        | every 5 min, from :02             | `POST /api/integrations/cron/sync?task=outbound&limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.pushDue` (#383 R3) | Claims each dirty copy under a 10-minute lease (`SKIP LOCKED`); writes are idempotent at the provider, and a copy changed during a write stays dirty.
 | `integrations-consent-sweep`        | daily 03:25                       | `integrations.fn_sweep_consent_states()`                                 | Integrations — the consent handshake (`00001500`)                 | Deletes consents a day past their window; repeat-safe.
 | `scheduling-reminders`              | every 5 min                       | `scheduling.fn_enqueue_due_reminders()`                                  | Scheduling                                                        | Queues the upcoming sitting, call and calendar-entry reminders (Decision #388); a repeat is a no-op on each reminder's dedupe key. |
 | `scheduling-presence-retention`     | daily 04:41                       | `scheduling.fn_prune_presence()`                                         | Scheduling — `finance-model.md` §17                               | Deletes room attendance records past their period, keeping whatever a dispute or a held payment still needs; repeat-safe. |
+| `reviews-reminders`                 | daily 09:21                       | `reviews.fn_send_review_reminders()`                                     | Reviews — Decision #487 ruling 6                  | Asks each client party and attendee once per completed engagement or session seat to review it (`review.reminder` → `/projects/<slug>?review=<slug>`), three days after it opened and inside its 30-day window, recorded in `reviews.review_reminders`; never writes a sitting's `review_asked_at`. Repeat-safe. |
 | `ops-prune-job-history`             | daily 04:53                       | `ops.fn_prune_job_history()`                                             | Ops — the registry itself                                         | Deletes pg_cron run history that ended more than 7 days ago; repeat-safe.                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 `finance-reconcile-wallets`, `finance-conservation-check` and `finance-mature-pending-releases` are
@@ -2731,8 +2763,25 @@ Resend's signed webhook (`POST /api/comms/webhooks/resend`, `DeliveryEventServic
   (`account.email_undeliverable`; Settings → Account offers **Confirm again**, which lifts it).
 - **A complaint** suppresses Marketing only.
 
-**Still to build:** push (COMMS NT4, VAPID) and SMS (NT5, Twilio), each a transport in the same
-registry with its provider credentials, and the daily and weekly digest emails (PRD-E15).
+**Push is built (COMMS NT4).** `transport-webpush.ts` sends to a browser's push service while the
+three VAPID keys are well formed (§Environment Variable Contract):
+- an ES256 VAPID JWT for the endpoint's origin, 12 hours long;
+- the payload `{ title, url, id, tag }`, never the body, encrypted with RFC 8291 `aes128gcm`;
+- `TTL` one day, `Urgency` from the notification's urgency, and `Topic` from its `group_key` (the
+  claim hands both over), so a newer push of a group replaces an undelivered older one;
+- an endpoint allowlist of the known push services, checked at registration and again at send,
+  so a crafted subscription cannot make the server POST elsewhere.
+
+A 404 or 410 records `gone`, which revokes the device; 429 and 5xx fail for the sweep's back-off.
+A person turns alerts on per browser in Settings → Notifications → This device
+(`PushDeviceBackendService` through `POST`/`DELETE /api/notifications/devices`, the caller's JWT on
+`comms.register_device`/`revoke_device`). Permission is asked only on that press. `static/sw.js`
+shows the notification and opens only a same-origin path on a click. The web app manifest lets
+iOS deliver to a Home-Screen app.
+
+**Still to build:** SMS (NT5, Twilio), a transport in the same registry with its provider
+credentials; the daily and weekly digest emails (PRD-E15); and device health for push
+(`failure_count` is never incremented, so `fn_reap_dead_devices` reaps nothing, PRD-E17).
 
 ---
 
@@ -3676,6 +3725,18 @@ It is a satellite of this section: where they differ, this section wins, and its
   (`LedgerHealthService`, one read per section). Every money flow adds its terms to the view in the
   same change. **B, a shadow double-entry journal written inside the money doors, is built before
   PROD** (Decision #463; MR8a → MR8b). Proven by `supabase/probes/conservation_identity.sql`.
+- **Alerts (Decision #461; MR4):** a check that finds a problem tells a person within minutes. Every
+  `finance.*` row at `error` (drift, an imbalance, a held settlement, an unrecovered refund, a failed
+  schedule) and every `ops.scheduler` failure becomes one alert per scope and fingerprint per dedupe
+  window (`ops.alert_rules`, seeded in `00005065`; a new scope is a row), and a nightly check that
+  wrote nothing for 26 hours raises a dead-man alert, which is why `fn_reconcile_wallets` now writes a
+  `metric` heartbeat each run. `ops.fn_claim_alerts` groups and leases; the `ops-deliver-alerts` job
+  (`POST /api/ops/cron/alerts`, `OPS_CRON_SECRET`) sends each by an incoming webhook
+  (`OPS_ALERT_WEBHOOK_URL`) and in one Resend digest (`OPS_ALERT_EMAIL`), two channels that fail
+  apart, and records every outcome; a failure stays pending and backs off. A payload carries figures,
+  short ids and a `/admin/ledger` link, never a name, an email or a bank detail. Stripe webhook errors
+  write no `ops.log_entries` row yet, so they do not alert (PRD-G7). Proven by
+  `supabase/probes/ops_alerts.sql`.
 - **The pending window (Decision #191):** earned credits (escrow releases and their team splits,
   fair-exit and seat payouts, product sales) go through `finance.fn_wallet_credit_pending`, which
   writes a `finance.pending_releases` row and no ledger line; `finance.fn_mature_pending_releases()`
@@ -3818,10 +3879,16 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
   be paid now, is quoted.
 - **Express wallets are Stripe's Express Checkout Element** (`provider: "express"`): mounted in
   deferred-intent mode for the `buyerCharge`, it shows whichever of Apple Pay, Google Pay and PayPal the
-  device, browser and account allow (HTTPS required; Apple Pay also needs the payment-method domain
-  registered). On confirm the server opens the PaymentIntent (automatic payment methods, matching the
-  deferred Elements group); a redirect-based wallet returns to `/checkout/payment?pay=<payment>&attempt=<key>`
-  and the page resumes that payment. The CSP is unchanged — the Element runs in Stripe's own frames.
+  device, browser and account allow (HTTPS required). Every wallet appears only on a registered payment
+  method domain: `deno task stripe:domains` lists and, with `--apply`, registers the hosts in test mode,
+  and the runbook (registering live domains, the device proofs and where they are recorded) is the
+  providers spec §4.3 F. On confirm the server opens the PaymentIntent (automatic payment methods,
+  matching the deferred Elements group); a redirect-based wallet returns to
+  `/checkout/payment?pay=<payment>&attempt=<key>` and the page resumes that payment once
+  (`features/checkout/core/express-return.ts`): the params leave the address first, and once the
+  webhook has settled the payment the page opens the order the webhook placed, or places it under the
+  attempt's own key when the browser got there first. The CSP is unchanged — the Element runs in
+  Stripe's own frames.
 - **Withdrawals debit first.** `begin_payout` debits the wallet (`payout`) before the Transfer is
   created, so money in flight cannot be spent twice; a definitive Stripe refusal credits it back
   (`payout_reversal`); a transient failure leaves the payout `pending` for `transfer.created` to settle.
@@ -4260,12 +4327,39 @@ The application relies on a strict set of environment variables. The canonical s
 > one-click unsubscribe (`/api/comms/unsubscribe`) suppresses it for Marketing only
 > (§The Notification Engine).
 
+> **Web Push — VAPID, off until it has keys (COMMS NT4).** `VAPID_PUBLIC_KEY` (the base64url raw
+> P-256 point, 65 bytes), `VAPID_PRIVATE_KEY` (its base64url scalar, 32 bytes) and `VAPID_SUBJECT`
+> (`mailto:` an operator mailbox, or an `https:` URL) are app env, read by `core/env.ts`. All three
+> well formed (a placeholder counts as absent) register the dispatcher's push transport; otherwise
+> push deliveries wait `pending`, `GET /api/notifications/push/config` answers 404 and Settings
+> offers no device control. The public key is public by design and served by that route; the
+> private key never leaves the server. Never rotate the pair casually: every subscription is bound
+> to the public key, so a rotation re-subscribes every device (EPI §8.2).
+
 > **`DENO_ENV` — unset means production (IW-M1 / K10).** `serverEnv().appEnv` and the web layer's
 > `apps/web/utils/app-env.ts` both read a missing `DENO_ENV` as `production`. Every development-only
 > switch (the Dev Context Switcher's server-side cookies, stub token trust, simulations, the
 > relaxed CSP, insecure cookies on plain HTTP) therefore needs `DENO_ENV=development` by name, so a
 > deploy that forgets the variable fails closed. `deno task dev` and `deno task dev:mock` set it
 > themselves; `deno task serve` / `start` set nothing and run as production.
+
+> **`USE_MOCKS` — no database (LD3, PRD-B4).** The master switch over every `*_BACKEND_LIVE` gate,
+> one-way: it can only take a domain off the database. `true` (`deno task dev:mock`) means no
+> request reaches Supabase. Every `isXBackendLive()` predicate reads false, so a gated domain takes
+> its fixture road, and every client factory in `core/supabase.ts` (`getUserClient`,
+> `getServiceClient`, `getAnonClient`, `getOAuthClient`) and the raw storage fetch
+> (`core/storage-stream.ts`) throws a typed `MocksForcedError`. A domain with no fixture road (an
+> always-live one, or the ungated part of a gated one) answers its own 503 "isn't available in this
+> environment", either up front (`useMocks()`, as `saved`, `quotes` and `ops` do) or from its catch.
+> `routes/_error.tsx` shows any refusal no service caught as that 503, unlogged, never as a 500. So
+> `dev:mock` runs with the database stopped. Which domain does which is
+> `packages/backend/mocks/registry.ts`, one entry per service directory that reaches the database:
+> its gate (or `null`, always live, and why), what the gate covers (`gated`), what reads live
+> regardless (`ungated`: EXPLORE, CATALOGUE and FILES each gate only a slice), and whether it has a
+> fixture road. `mocks/registry.test.ts` holds it to the code by scanning each directory for
+> database calls and the predicate it consults, and fails on a dead flag. `core/data-source.ts`
+> resolves a domain to `live` or one of three mock reasons and says what it then serves (`database`,
+> `fixtures` or `unavailable`); `npm run data:where` prints it, every count computed.
 
 ```env
 # Application
@@ -4373,6 +4467,15 @@ STRIPE_CONNECT_WEBHOOK_SECRET=XXXX-XXXX
 # reads with STRIPE_SECRET_KEY. Same mode as STRIPE_SECRET_KEY; a live one runs only under
 # DENO_ENV=production.
 STRIPE_PREFLIGHT_KEY=XXXX-XXXX
+# Read ONLY by `deno task stripe:domains` (CK6): the comma-separated hosts registered as Stripe payment
+# method domains, so the Express Checkout Element can show Apple Pay, Google Pay, Link and PayPal on them
+# (apex, www and every staging host). Absent → the host of APP_URL. Not a secret.
+STRIPE_PAYMENT_METHOD_DOMAINS=XXXX-XXXX
+# Apple Pay's domain association file, served verbatim at
+# /.well-known/apple-developer-merchantid-domain-association. Set it ONLY if a domain's Apple Pay status
+# at Stripe asks for the file (`deno task stripe:domains` prints it); Stripe's current registration
+# needs none. Not a secret. Absent or placeholder → the path answers 404.
+STRIPE_APPLE_PAY_DOMAIN_ASSOCIATION=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/finance/cron/deposits,
 # POST /api/finance/cron/payouts and POST /api/finance/cron/payout-schedules; anything else —
 # including an unset secret — gets a 404, so the endpoints do not advertise that they exist.
@@ -4393,6 +4496,15 @@ INTEGRATIONS_CRON_SECRET=XXXX-XXXX
 # trigger posts to POST /api/comms/dispatch with it, and the comms-dispatch-sweep job calls
 # POST /api/comms/cron/dispatch with it; 404 otherwise. Unset, the dispatcher counts as not running.
 COMMS_DISPATCH_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) of the alert sweep (MR4, Decision #461): the ops-deliver-alerts job calls
+# POST /api/ops/cron/alerts with it; 404 otherwise.
+OPS_CRON_SECRET=XXXX-XXXX
+# Where money and job alerts go (Decision #461 (A)): an incoming-webhook URL taking Slack-compatible JSON
+# ({ "text": … }; https://, or a localhost receiver in development) and one address for the email digest
+# (through RESEND_API_KEY + MAIL_FROM). Unset, that channel is off and its alerts wait pending. Figures,
+# short ids and a /admin/ledger link only; the receiver's data-processing terms are the owner's (#461 (d)).
+OPS_ALERT_WEBHOOK_URL=XXXX-XXXX
+OPS_ALERT_EMAIL=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
 # pg_net reads them inside the database to call the routes above; set them per environment with
 #   SELECT vault.create_secret('<value>', '<NAME>');   -- vault.update_secret(id, '<value>') to rotate
@@ -4405,6 +4517,7 @@ COMMS_DISPATCH_SECRET=XXXX-XXXX
 #   CONTACT_CRON_SECRET  the same value as the env key above
 #   INTEGRATIONS_CRON_SECRET  the same value as the env key above
 #   COMMS_DISPATCH_SECRET  the same value as the env key above (read by the dispatch trigger too)
+#   OPS_CRON_SECRET  the same value as the env key above
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 
@@ -4415,15 +4528,19 @@ COMMS_DISPATCH_SECRET=XXXX-XXXX
 # connection is reconnected: there is no rewrap yet.
 ENCRYPTION_KEY=XXXX-XXXX
 
-# Backend live gates — booleans, default false. Each flips ONE fat service from its deterministic
-# fixtures to its live Supabase path. They are separate switches on purpose: a half-wired query, a
+# The master switch over every gate below, one-way: true = no database (`deno task dev:mock`); each
+# gated domain serves its fixture road and every other one its 503. mocks/registry.ts says which.
+USE_MOCKS=false
+
+# Backend live gates — booleans, default false. Each flips the sub-features it covers from their
+# fixtures to their live Supabase path (packages/backend/mocks/registry.ts lists them per domain;
+# some domains have no gate and are always live). They are separate switches on purpose: a half-wired query, a
 # half-wired money mutation and a half-wired outbound call carrying someone else's token are three
 # different kinds of accident.
 AUTH_BACKEND_LIVE=false
 EXPLORE_BACKEND_LIVE=false
 NEWSLETTER_BACKEND_LIVE=false
 PROJECTS_BACKEND_LIVE=false
-PROFILE_BACKEND_LIVE=false
 MESSAGING_BACKEND_LIVE=false
 CATALOGUE_BACKEND_LIVE=false
 LOGGING_BACKEND_LIVE=false

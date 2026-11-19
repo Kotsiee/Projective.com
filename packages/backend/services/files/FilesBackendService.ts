@@ -35,6 +35,7 @@ import type {
 	UploadTicket,
 } from "@projective/types/files";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import { isMocksForced, MOCKS_FORCED_MESSAGE } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import {
 	canFileInto,
@@ -124,6 +125,8 @@ async function signedIn<T>(label: string, actor: ReadActor, run: (a: Actor) => P
 	try {
 		return await run(actor);
 	} catch (error) {
+		// `USE_MOCKS`: the environment has no database, so nothing failed.
+		if (isMocksForced(error)) return fail(503, { message: MOCKS_FORCED_MESSAGE }) as Result<T>;
 		console.error(`[files:${label}]`, error instanceof Error ? error.message : error);
 		return fail(503, { message: UNREACHABLE }) as Result<T>;
 	}
@@ -134,6 +137,7 @@ async function anyone<T>(label: string, run: () => Promise<Result<T>>): Promise<
 	try {
 		return await run();
 	} catch (error) {
+		if (isMocksForced(error)) return fail(503, { message: MOCKS_FORCED_MESSAGE }) as Result<T>;
 		console.error(`[files:${label}]`, error instanceof Error ? error.message : error);
 		return fail(503, { message: UNREACHABLE }) as Result<T>;
 	}

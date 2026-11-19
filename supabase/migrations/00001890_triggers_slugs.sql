@@ -61,6 +61,13 @@ CREATE TRIGGER trg_articles_slug
     BEFORE INSERT OR UPDATE ON catalogue.articles
     FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('art');
 
+-- A bought product's delivery address (`/api/downloads/ent-…/{fileId}`, Decision #488).
+-- finance.place_wallet_order never supplies one.
+DROP TRIGGER IF EXISTS trg_entitlements_slug ON catalogue.entitlements;
+CREATE TRIGGER trg_entitlements_slug
+    BEFORE INSERT OR UPDATE ON catalogue.entitlements
+    FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('ent');
+
 -- A room's address: what a join goes through, so a provider's link never leaves the server early.
 DROP TRIGGER IF EXISTS trg_rooms_slug ON scheduling.rooms;
 CREATE TRIGGER trg_rooms_slug

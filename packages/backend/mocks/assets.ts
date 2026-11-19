@@ -104,8 +104,8 @@ export function mockCover(id: string, w: number, h?: number, q = 80): string {
 }
 
 /**
- * A short, silent, CC0 showreel clip — the profile hero's auto-looping video showcase while
- * `PROFILE_BACKEND_LIVE` is off.
+ * A short, silent, CC0 showreel clip — the auto-looping video showcase of a fixture profile
+ * (`services/profile/profile-fixtures.ts`).
  *
  * Hosted on MDN's interactive-examples media bucket (public-domain "cc0-videos"), the same class of
  * open registry the Unsplash stills come from (`DESIGN_SYSTEM.md` §C.4). Two clips so a corpus of

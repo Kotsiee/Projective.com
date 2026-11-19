@@ -2066,6 +2066,16 @@ REVOKE ALL ON FUNCTION catalogue.delete_listing (uuid) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION catalogue.delete_listing (uuid) TO authenticated, service_role;
 
+-- Product versions and delivery (00001170, Decision #488). The freeze is reached from
+-- set_listing_status, an INVOKER, so the seller's role needs it; it re-checks the seller and the
+-- published status itself. The ready stamp and the delivery record are the service's word alone.
+REVOKE ALL ON FUNCTION catalogue.fn_freeze_product_version (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION catalogue.fn_freeze_product_version (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION catalogue.mark_product_version_ready (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION catalogue.mark_product_version_ready (uuid) TO service_role;
+REVOKE ALL ON FUNCTION catalogue.fn_record_delivery (uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION catalogue.fn_record_delivery (uuid, uuid, uuid) TO service_role;
+
 -- --- the Project Details sidebar's Teams group (00001100: get_viewer_hired_teams) ---
 --
 -- Answers only about the caller's own team memberships, so it needs a signed-in caller; a guest has
@@ -2432,7 +2442,7 @@ GRANT EXECUTE ON FUNCTION finance.auto_release_session_escrow (timestamptz) TO s
 -- 1-1 sessions (Decision #211). fn_book_session_slot mints an engagement, a seat and per-sitting escrows
 -- and debits whichever wallet it is handed, so only place_wallet_order reaches it; the helpers and the
 -- trigger functions are internal; the handshake sweep is pg_cron's, and the service role's by hand.
-REVOKE ALL ON FUNCTION projects.fn_session_engagement_for (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_session_engagement_for (uuid, text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_session_host_schedule (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_settle_membership_state (uuid, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_book_session_slot (uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid, timestamptz[]) FROM PUBLIC, anon, authenticated, service_role;
@@ -2448,6 +2458,16 @@ REVOKE ALL ON FUNCTION projects.retitle_sitting (uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.retitle_sitting (uuid, text) TO authenticated;
 REVOKE ALL ON FUNCTION projects.fn_sync_sitting_mirrors (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.trg_sitting_round_guard () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_write_group_sitting (uuid, text, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
+-- Opening and cancelling a group cohort (00001155 §4d, Decision #498). The two doors and the seller's
+-- read ask catalogue.fn_manages_listing themselves; the enrolment sweep is the waitlist job's.
+REVOKE ALL ON FUNCTION projects.open_cohort (uuid, timestamptz, text, timestamptz[], integer, integer, timestamptz, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.open_cohort (uuid, timestamptz, text, timestamptz[], integer, integer, timestamptz, text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.cancel_cohort (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.cancel_cohort (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.get_listing_cohorts (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_listing_cohorts (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fn_close_cohort_enrolment (timestamptz) FROM PUBLIC, anon, authenticated, service_role;
 -- #endregion
 
 -- #region Disputes (00001260, Decision #212)
@@ -2662,4 +2682,21 @@ REVOKE ALL ON FUNCTION finance.fn_check_conservation () FROM PUBLIC, anon, authe
 GRANT EXECUTE ON FUNCTION finance.fn_check_conservation () TO service_role;
 REVOKE ALL ON FUNCTION finance.get_ledger_health () FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.get_ledger_health () TO authenticated;
+-- #endregion
+
+
+-- #region Money and job alerts (00001660, MR4)
+-- The claim and the record move alerts forward: the service role (the ops-deliver-alerts route) and
+-- the pg_cron owner only. The operator read: signed-in callers reach it, and it refuses anyone but
+-- security.is_admin() (42501), which /admin/ledger answers with a 404. The helpers are internal.
+REVOKE ALL ON FUNCTION ops.fn_claim_alerts (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_claim_alerts (integer) TO service_role;
+REVOKE ALL ON FUNCTION ops.fn_record_alert_delivery (uuid, boolean, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.fn_record_alert_delivery (uuid, boolean, text) TO service_role;
+REVOKE ALL ON FUNCTION ops.read_alert_deliveries () FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION ops.read_alert_deliveries () TO authenticated;
+REVOKE ALL ON FUNCTION ops.fn_alert_fingerprint (text, jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION ops.fn_alert_sample (jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION ops.fn_alert_short (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION ops.fn_alert_keep () FROM PUBLIC, anon, authenticated;
 -- #endregion

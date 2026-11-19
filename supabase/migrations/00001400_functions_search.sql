@@ -837,3 +837,68 @@ BEGIN
 END;
 $$;
 -- #endregion
+
+-- #region A listing's page views count once per viewer per 30 minutes (MARKETPLACE SC5)
+-- The listing page beacons one 'view' when it is shown (`ListingViewBeacon`), through the same RLS
+-- insert as every discovery event, and the seller's analytics count those rows. So the rules that
+-- keep the count honest sit here, where every writer passes, and a view that breaks one is dropped
+-- rather than refused, like a minor's event above: a view with no visitor at all; a view by the
+-- listing's own seller or an active member of the team that owns it (the signed-in viewer, or the
+-- caller when the row was sent unattributed); and a repeat by the same visitor (the signed-in
+-- person, else the guest's session) within 30 minutes either side of one already stored. A definer,
+-- because it reads other people's events and the owning team's roster; the advisory lock makes two
+-- racing beacons from one visitor one view.
+CREATE OR REPLACE FUNCTION search.trg_interest_events_view()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_viewer uuid := COALESCE(NEW.user_id, auth.uid());
+    v_visitor text := COALESCE(NEW.user_id::text, NEW.session_id);
+BEGIN
+    IF NEW.event_type <> 'view' THEN
+        RETURN NEW;
+    END IF;
+    IF NEW.entity_id IS NULL OR v_visitor IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    IF v_viewer IS NOT NULL AND EXISTS (
+        SELECT 1
+          FROM catalogue.listings l
+         WHERE ((NEW.entity_type = 'service' AND l.service_blueprint_id = NEW.entity_id)
+             OR (NEW.entity_type = 'product' AND l.product_id = NEW.entity_id))
+           AND (l.owner_user_id = v_viewer
+                OR EXISTS (SELECT 1
+                             FROM org.team_members tm
+                            WHERE tm.team_id = l.owner_team_id
+                              AND tm.user_id = v_viewer
+                              AND tm.status = 'active'))
+    ) THEN
+        RETURN NULL;
+    END IF;
+
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended('search.view:' || NEW.entity_id::text || ':' || v_visitor, 0)
+    );
+    IF EXISTS (
+        SELECT 1
+          FROM search.interest_events e
+         WHERE e.event_type = 'view'
+           AND e.entity_id = NEW.entity_id
+           AND e.entity_type IS NOT DISTINCT FROM NEW.entity_type
+           AND COALESCE(e.user_id::text, e.session_id) = v_visitor
+           AND e.created_at > NEW.created_at - interval '30 minutes'
+           AND e.created_at < NEW.created_at + interval '30 minutes'
+    ) THEN
+        RETURN NULL;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION search.trg_interest_events_view() IS
+'BEFORE INSERT trigger on search.interest_events for event_type = view: drops a view with no visitor, a view by the listing''s seller or an active member of its owning team, and a repeat by the same visitor (user, else session) within 30 minutes of one already stored. The seller''s listing analytics count what is left.';
+-- #endregion

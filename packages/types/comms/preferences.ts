@@ -193,6 +193,35 @@ export const RegisterDeviceSchema = z.object({
 	userAgent: z.string().max(400).optional(),
 });
 export type RegisterDevice = z.infer<typeof RegisterDeviceSchema>;
+
+/** base64url, as a browser's `PushSubscription.toJSON()` writes its keys. */
+const b64url = z.string().regex(/^[A-Za-z0-9_-]+={0,2}$/);
+
+/**
+ * `POST /api/notifications/devices` (COMMS NT4): a browser's `PushSubscription.toJSON()`, plus an
+ * optional label. The endpoint must be a known push service over https
+ * (`transport-webpush.ts` `isPushEndpoint`), checked by the service.
+ */
+export const WebPushSubscriptionSchema = z.object({
+	endpoint: z.string().url().max(2048),
+	expirationTime: z.number().nullable().optional(),
+	keys: z.object({
+		/** The browser's P-256 public key: 65 raw octets, 87 base64url characters. */
+		p256dh: b64url.min(86).max(90),
+		/** The 16-octet auth secret: 22 base64url characters. */
+		auth: b64url.min(21).max(26),
+	}),
+	label: z.string().trim().max(120).optional(),
+});
+export type WebPushSubscription = z.infer<typeof WebPushSubscriptionSchema>;
+
+/** `DELETE /api/notifications/devices`: stop alerts on the browser that holds this endpoint. */
+export const RevokeWebPushSchema = z.object({ endpoint: z.string().url().max(2048) });
+export type RevokeWebPush = z.infer<typeof RevokeWebPushSchema>;
+
+/** `GET /api/notifications/push/config`: the VAPID public key a browser subscribes with. */
+export const PushConfigSchema = z.object({ publicKey: z.string() });
+export type PushConfig = z.infer<typeof PushConfigSchema>;
 // #endregion
 
 // #region The preference-centre projection

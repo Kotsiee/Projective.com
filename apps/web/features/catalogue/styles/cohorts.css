@@ -1,0 +1,106 @@
+/*
+ * The Cohorts block in a group-session listing's Availability section (Decision #498): each cohort as
+ * a row separated by spacing and one hairline, never a card; its lifecycle status in the one permitted
+ * container; every figure tabular.
+ */
+
+/* #region The block */
+.cat-coh__list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cat-coh__item {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block: var(--space-3);
+	border-block-start: 1px solid var(--hairline);
+}
+
+.cat-coh__item:first-child {
+	padding-block-start: 0;
+	border-block-start: 0;
+}
+
+.cat-coh__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.cat-coh__name {
+	margin: 0;
+	min-inline-size: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	overflow-wrap: anywhere;
+}
+
+.cat-coh__meta {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-coh__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+/* #endregion */
+
+/* #region The opening form */
+.cat-coh__form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.cat-coh__min {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.cat-coh__preview {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cat-coh__sitting {
+	display: flex;
+	gap: var(--space-2);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-coh__sitting-num {
+	min-inline-size: 1.5ch;
+	color: var(--text-secondary);
+}
+
+.cat-coh__disclosure {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: var(--leading-normal);
+}
+/* #endregion */

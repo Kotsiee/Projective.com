@@ -5,7 +5,12 @@ import {
 } from "@projective/types/scheduling";
 import { isSlug } from "@projective/types/slugs";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { getServiceClient, getUserClient, isIntegrationsBackendLive } from "../../core/supabase.ts";
+import {
+	getServiceClient,
+	getUserClient,
+	isIntegrationsBackendLive,
+	useMocks,
+} from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { IntegrationsBackendService } from "./IntegrationsBackendService.ts";
 import { ROOM_ADAPTERS, type RoomFacts, RoomProviderError } from "./rooms/adapters.ts";
@@ -241,6 +246,7 @@ export class RoomBackendService {
 	static async join(slug: string, actor: ReadActor): Promise<ServiceResult<RoomJoinAnswer>> {
 		if (!canReadLive(actor)) return fail(401, { message: "Sign in to join this meeting." });
 		if (!isSlug(slug, "room")) return ok(NOT_YOURS);
+		if (useMocks()) return fail(503, { message: "Meetings aren't available in this environment." });
 		const { data, error } = await getUserClient(actor.accessToken).schema("scheduling")
 			.rpc("room_join", { p_slug: slug });
 		if (error) {

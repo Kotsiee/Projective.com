@@ -4,6 +4,7 @@ import { EmptyState } from "@projective/ui/utils";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { LogBackendService } from "@server/services/logging/LogBackendService.ts";
+import { isMocksForced } from "@projective/backend/core/supabase.ts";
 
 interface ErrorCopy {
 	title: string;
@@ -26,7 +27,15 @@ const UNAVAILABLE: ErrorCopy = {
 		"We couldn’t check your sign-in just now. You’re still signed in — try again in a moment.",
 };
 
-function copyFor(status: number): ErrorCopy {
+/** `dev:mock` (`USE_MOCKS`): a live-only read the environment has no database for. Not an outage. */
+const NO_DATABASE: ErrorCopy = {
+	title: "Not available in this environment",
+	description:
+		"This part of Projective needs the live database, and this environment runs without one.",
+};
+
+function copyFor(status: number, mocksForced = false): ErrorCopy {
+	if (mocksForced) return NO_DATABASE;
 	if (status === 404) return NOT_FOUND;
 	if (status === 503) return UNAVAILABLE;
 	if (status >= 500) return SERVER_ERROR;
@@ -39,14 +48,19 @@ function copyFor(status: number): ErrorCopy {
  * stack, plus an `ops.log_entries` row when logging is live); 4xx are expected traffic and are not.
  * `/api/*` callers get the JSON failure envelope instead of a page.
  *
+ * A `MocksForcedError` (a Supabase client refused under `USE_MOCKS`) that no service turned into its own
+ * 503 lands here as a 503 "not available in this environment", unlogged: the environment chose to run
+ * without a database, so nothing failed.
+ *
  * The page is the root fallback — it renders outside every group layout (no shell), so its one `<h1>`
  * is the empty state's title, and `EmptyState`'s sheet is global (`client.ts`) because no island on
  * this page carries it. The public editorial routes answer their own 404s in their frames instead
  * (help, articles, legal, changelog).
  */
 export const handler = define.handlers(async (ctx) => {
-	const status = ctx.error instanceof HttpError ? ctx.error.status : 500;
-	if (status >= 500) {
+	const mocksForced = isMocksForced(ctx.error);
+	const status = mocksForced ? 503 : ctx.error instanceof HttpError ? ctx.error.status : 500;
+	if (status >= 500 && !mocksForced) {
 		await LogBackendService.recordServerError(
 			ctx.error,
 			{ path: ctx.url.pathname, method: ctx.req.method, status },
@@ -54,15 +68,15 @@ export const handler = define.handlers(async (ctx) => {
 		);
 	}
 	if (ctx.url.pathname.startsWith("/api/")) {
-		return Response.json({ ok: false, message: copyFor(status).title }, { status });
+		return Response.json({ ok: false, message: copyFor(status, mocksForced).title }, { status });
 	}
-	ctx.state.title = `${copyFor(status).title} · Projective`;
-	const retryHref = status === 503 ? ctx.url.pathname + ctx.url.search : null;
-	return page({ status, retryHref }, { status });
+	ctx.state.title = `${copyFor(status, mocksForced).title} · Projective`;
+	const retryHref = status === 503 && !mocksForced ? ctx.url.pathname + ctx.url.search : null;
+	return page({ status, retryHref, mocksForced }, { status });
 });
 
 export default define.page<typeof handler>(function ErrorPage({ data }) {
-	const { title, description } = copyFor(data.status);
+	const { title, description } = copyFor(data.status, data.mocksForced);
 	const href = data.retryHref ?? "/";
 	return (
 		<Container as="main" size="md" class="page">

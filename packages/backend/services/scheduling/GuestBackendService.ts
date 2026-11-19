@@ -8,7 +8,8 @@ import {
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { serverEnv } from "../../core/env.ts";
 import { SlidingWindowLimiter } from "../../core/rate-limit.ts";
-import { getServiceClient, getUserClient } from "../../core/supabase.ts";
+import { getServiceClient, getUserClient, isMocksForced } from "../../core/supabase.ts";
+import type { SupabaseClient } from "supabaseClient";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import {
 	guestCodeMessage,
@@ -41,7 +42,22 @@ type Door = (
 	args: Record<string, unknown>,
 ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
 
-const serviceDoor: Door = (name, args) => getServiceClient().schema("scheduling").rpc(name, args);
+/**
+ * A door through `client`. A refused client (`USE_MOCKS`: no database) answers as a door that could
+ * not be reached, so every entry below says its 503 rather than throwing.
+ */
+function doorOf(client: () => SupabaseClient): Door {
+	return (name, args) => {
+		try {
+			return client().schema("scheduling").rpc(name, args);
+		} catch (error) {
+			if (!isMocksForced(error)) throw error;
+			return Promise.resolve({ data: null, error: { message: error.message } });
+		}
+	};
+}
+
+const serviceDoor: Door = doorOf(getServiceClient);
 
 /** What {@link GuestBackendService.sendDue} reads from its surroundings. */
 export interface GuestMailDeps {
@@ -145,8 +161,10 @@ export class GuestBackendService {
 	/** Does the signed-in reader hold this link's address, verified? Offered a claim only if so. */
 	static async isMine(token: string, actor: ReadActor): Promise<boolean> {
 		if (!canReadLive(actor) || !GuestTokenSchema.safeParse(token).success) return false;
-		const { data, error } = await getUserClient(actor.accessToken).schema("scheduling")
-			.rpc("guest_seat_is_mine", { p_token: token });
+		const { data, error } = await doorOf(() => getUserClient(actor.accessToken))(
+			"guest_seat_is_mine",
+			{ p_token: token },
+		);
 		if (error) console.error("[guests:mine]", error.message);
 		return data === true;
 	}
@@ -160,8 +178,10 @@ export class GuestBackendService {
 			return fail(401, { message: "Sign in to add this to your calendar." });
 		}
 		if (!GuestTokenSchema.safeParse(token).success) return fail(404, { message: GONE });
-		const { data, error } = await getUserClient(actor.accessToken).schema("scheduling")
-			.rpc("claim_guest_seat", { p_token: token });
+		const { data, error } = await doorOf(() => getUserClient(actor.accessToken))(
+			"claim_guest_seat",
+			{ p_token: token },
+		);
 		return error ? writeRefusal(error) : ok({ eventId: data as string });
 	}
 

@@ -2,6 +2,8 @@ import { assertEquals } from "@std/assert";
 import { EscrowAgeKind, LedgerSectionId } from "@projective/types/finance";
 import type { ConservationCurrency } from "@projective/types/finance";
 import {
+	alertGroup,
+	alertStatus,
 	conservationGroups,
 	conservationStatus,
 	daysText,
@@ -63,6 +65,14 @@ Deno.test("every section and every escrow-age kind has copy", () => {
 	for (const kind of EscrowAgeKind.options) {
 		assertEquals(Boolean(ESCROW_AGE_KIND_COPY[kind].label), true);
 	}
+});
+
+Deno.test("an alert's status and group read as a person would say them", () => {
+	assertEquals(alertStatus({ status: "sent", attempts: 1 }).label, "Sent");
+	assertEquals(alertStatus({ status: "pending", attempts: 0 }).tone, "warning");
+	assertEquals(alertStatus({ status: "pending", attempts: 2 }).label, "Retrying");
+	assertEquals(alertGroup({ fingerprint: "silence" }), "Dead-man switch");
+	assertEquals(alertGroup({ fingerprint: "2f6a0b0e" }), "2f6a0b0e");
 });
 
 Deno.test("daysText and shortId", () => {

@@ -1765,7 +1765,8 @@ $$;
 -- reading finance.v_wallet_drift (00003004) in ONE statement, so a movement committing mid-run is seen
 -- whole or not at all.
 -- Each drifted wallet becomes an `error` row in ops.log_entries (scope `finance.reconcile_wallets`,
--- the figures in `data`) and the run raises a WARNING; returns the number of drifted wallets.
+-- the figures in `data`) and the run raises a WARNING; every run also writes one `metric` row, its
+-- heartbeat (Decision #461 flag (a)). Returns the number of drifted wallets.
 -- Read-only on finance: drift is reported for a human, never auto-corrected.
 CREATE OR REPLACE FUNCTION finance.fn_reconcile_wallets()
 RETURNS integer
@@ -1823,6 +1824,18 @@ BEGIN
     GET DIAGNOSTICS v_fx = ROW_COUNT;
     v_count := v_count + v_fx;
 
+    -- The run's heartbeat (Decision #461 flag (a)): one `metric` row each run, the counts in `data`, so
+    -- a clean night still shows that the reconciliation ran and the dead-man switch can tell silence
+    -- from health (`ops.alert_rules`, MR4). A `metric` row never alerts.
+    INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+    VALUES ('reconcile:' || v_run::text,
+            'metric',
+            pg_catalog.format('Reconciliation run %s: %s wallet(s) or conversion(s) drifted', v_run, v_count),
+            pg_catalog.now(),
+            'server',
+            'finance.reconcile_wallets',
+            pg_catalog.jsonb_build_object('run_id', v_run, 'drifted', v_count, 'conversions', v_fx));
+
     IF v_count > 0 THEN
         RAISE WARNING 'finance.fn_reconcile_wallets: % wallet(s) or conversion(s) drifted from the ledger (run %)', v_count, v_run;
     END IF;
@@ -1834,8 +1847,8 @@ COMMENT ON FUNCTION finance.fn_reconcile_wallets() IS
 'Nightly ledger reconciliation: flags every wallet whose balance_cents differs from the sum of its
 ledger rows or from its newest balance_after_cents, or whose pots drift from their movements or
 earmark more than it holds, and every FX conversion whose ledger legs or funded escrows do not add up
-(finance.v_fx_conversion_reconciliation, Decision #435), into ops.log_entries. Read-only on finance;
-service role / pg_cron only.';
+(finance.v_fx_conversion_reconciliation, Decision #435), into ops.log_entries, plus one metric row per
+run as its heartbeat (Decision #461). Read-only on finance; service role / pg_cron only.';
 
 -- Scheduled nightly at 03:40 UTC, after the 02:20 billing run, as `finance-reconcile-wallets` by the
 -- job registry (`ops.scheduled_jobs`, 00005060).

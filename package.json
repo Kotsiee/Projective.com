@@ -14,7 +14,7 @@
     "they belong in the `imports` map in deno.json.",
     "",
     "npm run dev       -> database  (USE_MOCKS=false)",
-    "npm run dev:mock  -> fixtures  (USE_MOCKS=true, overrides every per-domain gate)"
+    "npm run dev:mock  -> no database (USE_MOCKS=true): fixtures where a domain has them, its 503 where it has none"
   ],
   "scripts": {
     "dev": "deno task dev",

@@ -278,3 +278,24 @@ UK Children's Code: no behavioural profile of a minor. `search.record_view` reco
 (`trg_interest_events_minor` BEFORE INSERT on `search.interest_events`, `00001800`) drops a minor's
 events silently, and `search.fn_log_query` stores a minor's search with no `user_id` and no query
 vector. Personalised discovery therefore has nothing to read for a minor.
+
+## `search.trg_interest_events_view()` — a listing's page views (MARKETPLACE SC5)
+
+`SECURITY DEFINER`, `search_path = ''`, `00001400`; fired by `trg_interest_events_view` (BEFORE
+INSERT on `search.interest_events` `WHEN (NEW.event_type = 'view')`, `00001800`), after
+`trg_interest_events_minor` (triggers fire in name order). The seller's listing analytics count
+`view` rows (`analytics.fn_rollup_listings`), and every writer inserts them directly under RLS, so
+the rules that keep the count honest sit here. It returns NULL (the row is dropped, never refused)
+for:
+
+- a view with no `entity_id`, or no visitor at all (`user_id` and `session_id` both NULL);
+- a view by the listing's seller or an active member of the team that owns it — the viewer is
+  `user_id`, or `auth.uid()` when the row was sent unattributed — matched through
+  `catalogue.listings.service_blueprint_id` / `product_id` (`idx_listings_blueprint`,
+  `idx_listings_product`, `00004012`);
+- a repeat: a `view` of the same entity by the same visitor (`user_id`, else `session_id`) within 30
+  minutes either side of the new row's `created_at` (`idx_interest_events_views`, `00004004`). A
+  transaction-scoped advisory lock on (entity, visitor) makes two racing beacons one view.
+
+Every other event type passes untouched. A definer because it reads other people's events and the
+owning team's roster; no role is granted `EXECUTE` (a trigger needs none).

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "supabaseClient";
+import { ReviewsBackendService } from "../reviews/ReviewsBackendService.ts";
 import {
 	type CertificationEntry,
 	DEFAULT_PROFILE_SETTINGS,
@@ -584,13 +585,28 @@ interface RawReview {
 	author_name: string | null;
 	author_avatar: unknown;
 	context_title: string | null;
+	listing_title?: string | null;
+	listing_slug?: string | null;
+	reply_comment?: string | null;
+	replied_at?: string | null;
+	reply_edited_at?: string | null;
 }
 
-/** The reviews the profile received, newest first. */
+/** A month label for a reply's date (`Jun 2026`). */
+function replyMonth(iso: string): string {
+	return new Date(iso).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+/**
+ * The reviews the profile received, newest first, each with its reply and — for a signed-in viewer —
+ * what they may do to it (edit their own, reply for the profile; Decision #487).
+ */
 export async function fetchReviews(handle: string, actor: ReadActor): Promise<ReviewEntry[] | null | undefined> {
 	const raw = await orgRpc<RawReview[]>(actor, "get_profile_reviews", { p_handle: handle, p_limit: 60 });
 	if (raw === undefined) return undefined;
 	if (raw === null) return null;
+	const actions = await ReviewsBackendService.viewerActions(raw.map((r) => r.id), actor);
+	const viewers = actions.ok && actions.data ? actions.data : {};
 	return raw.map((r) => ({
 		id: r.id,
 		authorName: r.author_name?.trim() || (r.author_handle ?? "A Projective member"),
@@ -601,6 +617,17 @@ export async function fetchReviews(handle: string, actor: ReadActor): Promise<Re
 		date: r.created_at,
 		body: r.comment,
 		contextTitle: r.context_title ?? undefined,
+		listingTitle: r.listing_title ?? undefined,
+		listingSlug: r.listing_slug ?? undefined,
+		reply: r.reply_comment && r.replied_at
+			? {
+				body: r.reply_comment,
+				repliedAt: r.replied_at,
+				dateLabel: replyMonth(r.replied_at),
+				edited: !!r.reply_edited_at,
+			}
+			: undefined,
+		viewer: viewers[r.id],
 	}));
 }
 

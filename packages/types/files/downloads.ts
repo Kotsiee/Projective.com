@@ -30,8 +30,10 @@ import { z } from "zod";
  * - `picker`  — the attachment picker inside a composer or a form.
  * - `preview` — a save from the preview modal.
  * - `api`     — a programmatic pull (a plugin or an integration acting on the user's behalf).
+ * - `purchase` — a bought product's file streamed to its holder (`/api/downloads/*`, Decision #488):
+ *   the row the refund rule reads as "downloaded" (ruling A8).
  */
-export const DownloadVia = z.enum(["hub", "share", "picker", "preview", "api"]);
+export const DownloadVia = z.enum(["hub", "share", "picker", "preview", "api", "purchase"]);
 export type DownloadVia = z.infer<typeof DownloadVia>;
 
 // #endregion

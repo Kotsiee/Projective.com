@@ -65,7 +65,7 @@ import {
  *   because a rail reporting a status change as a closed ticket is worse than one that omits it.
  *
  * THROWS only on a genuine failure of a PRIMARY read (the project row), with the table named, so the
- * calling service can log it and fall back to fixtures. Every secondary lookup degrades to a neutral
+ * calling service can log it and answer `503`. Every secondary lookup degrades to a neutral
  * value instead, so one withheld join cannot take down a dashboard that otherwise resolved.
  */
 

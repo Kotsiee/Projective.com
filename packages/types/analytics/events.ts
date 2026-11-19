@@ -64,6 +64,7 @@ export const KnownAnalyticsEvent = z.enum([
 	"discovery.impression",
 	"discovery.click",
 	"discovery.rail_depth",
+	"discovery.view",
 ]);
 export type KnownAnalyticsEvent = z.infer<typeof KnownAnalyticsEvent>;
 // #endregion

@@ -19,6 +19,15 @@ import {
 } from "@features/projects/core/project-access.ts";
 import { projectsNoticeHref } from "@features/projects/core/project-notice.ts";
 import { STATUS_LABEL } from "@features/projects/core/portfolio-model.ts";
+import type { Reviewable } from "@projective/types/reviews";
+import { ReviewsBackendService } from "@server/services/reviews/ReviewsBackendService.ts";
+import {
+	applyReviewStateSim,
+	parseReviewStateSim,
+	REVIEW_STATE_SIM_COOKIE,
+} from "@features/reviews/core/review-state-sim.ts";
+import { isDevelopmentEnv } from "@web/utils/app-env.ts";
+import { readCookies } from "@web/utils/auth-cookies.ts";
 
 /**
  * `/projects/[slug]` — the engagement's **Overview**, and the dispatcher that decides who sees it
@@ -55,6 +64,8 @@ interface OverviewData {
 	changes: OverviewChange[];
 	/** The client's project files — the Overview's searchable attachments grid. */
 	attachments: FileListPage | null;
+	/** What the viewer may review here, and whether `?review=<slug>` opens the dialog (Decision #487). */
+	reviews: { items: Reviewable[]; open: boolean };
 }
 
 export const handler = define.handlers({
@@ -74,11 +85,17 @@ export const handler = define.handlers({
 
 		ctx.state.title = `${resolved.title} · Projective`;
 		const actor = readActor(ctx);
-		const [{ workspace }, activity, attachments] = await Promise.all([
+		const [{ workspace }, activity, attachments, reviewables] = await Promise.all([
 			resolveProjectWorkspace(slug, actor, landing.viewer),
 			resolveNavActivity(ctx.state, slug, actor),
 			resolveFilePage(slug, actor, null, true),
+			ReviewsBackendService.reviewables(slug, actor),
 		]);
+		// The Dev Context Switcher's review state, honoured in development only (review-state-sim.ts).
+		const reviewSim = isDevelopmentEnv()
+			? parseReviewStateSim(readCookies(ctx.req)[REVIEW_STATE_SIM_COOKIE])
+			: null;
+		const reviewItems = applyReviewStateSim(reviewables.ok ? reviewables.data ?? [] : [], reviewSim);
 		const shown = workspace && resolved.simulated
 			? withStatus(workspace, resolved.status)
 			: workspace;
@@ -89,6 +106,7 @@ export const handler = define.handlers({
 		slug,
 		changes: activity.overview.changes,
 		attachments: attachments.page,
+		reviews: { items: reviewItems, open: ctx.url.searchParams.get("review") === slug },
 	};
 		return page(data);
 	},
@@ -109,6 +127,7 @@ export default define.page<typeof handler>(function ProjectOverviewPage({ data }
 			slug={data.slug}
 			changes={data.changes}
 			attachments={data.attachments}
+			reviews={data.reviews}
 		/>
 	);
 });

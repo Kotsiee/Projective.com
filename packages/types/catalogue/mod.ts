@@ -21,4 +21,5 @@ export * from "./analytics.ts";
 export * from "./clients.ts";
 export * from "./batch.ts";
 export * from "./promotion.ts";
+export * from "./entitlements.ts";
 export * from "./rows.ts";

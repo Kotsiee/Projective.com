@@ -1296,6 +1296,13 @@
 	color: var(--text-secondary);
 }
 
+/* The retry under a detail read that failed (PRD-B1), centred like the copy above it. */
+.proj-detail__missing-action {
+	display: flex;
+	justify-content: center;
+	margin-block-start: var(--space-2);
+}
+
 /* #endregion */
 
 /* #region Motion */

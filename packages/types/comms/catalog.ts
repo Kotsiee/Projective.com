@@ -101,9 +101,11 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"session.scheduling_requested",
 	"session.scheduling_reminder",
 	"session.scheduling_lapsed",
+	"session.cohort_under_filled",
 	"availability.booking_request",
 	"waitlist.invited",
 	"waitlist.invite_expired",
+	"waitlist.cohort_cancelled",
 	// discovery
 	"catalogue.listing_published",
 	"catalogue.listing_paused",

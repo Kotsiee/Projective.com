@@ -69,6 +69,7 @@ import {
 } from "./live-buyer.ts";
 import { fileSpendRequest } from "./wallet-actions.ts";
 import { checkoutFxQuoteOf, lockQuote, readQuote } from "./fx-quotes.ts";
+import { acceptDeliveryTerms } from "../catalogue/delivery-terms.ts";
 
 /**
  * CheckoutBackendService — the FAT half of the payment surface: the whole server projection the
@@ -1200,6 +1201,15 @@ export class CheckoutBackendService {
 			if (normaliseCode(input.promoCode) !== normaliseCode(appliedCode)) {
 				const message = "Your promo code changed while you were paying. Review the total and try again.";
 				return refusal(message, [blocker("price_changed", message)]);
+			}
+
+			// The buyer's A8 tick (Decision #488), written onto their product lines before any money moves,
+			// so the purchase door stamps it on each entitlement — whichever rail completes the payment.
+			if (input.deliveryTermsAccepted && !sim) {
+				await acceptDeliveryTerms(
+					actor.accessToken,
+					eligible.filter((item) => item.itemType === "digital_product").map((item) => item.id),
+				);
 			}
 
 			// The unit price each line was shown in, in the listing's OWN currency (the order's) — what

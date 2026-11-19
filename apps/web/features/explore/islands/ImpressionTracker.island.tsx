@@ -1,17 +1,9 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
-import type {
-	DiscoveryEvent,
-	DiscoveryEventBatch,
-	DiscoverySurface,
-	ExploreEntity,
-} from "@projective/types/explore";
+import type { DiscoveryEvent, DiscoverySurface, ExploreEntity } from "@projective/types/explore";
 import { DISCOVERY_BATCH_MAX } from "@projective/types/explore";
-import { logger } from "@web/utils/logger.ts";
-import { readStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
 	depthAdvanced,
-	DISCOVERY_EVENTS_URL,
 	FLUSH_AT,
 	FLUSH_EVERY_MS,
 	IMPRESSION_DWELL_MS,
@@ -19,6 +11,7 @@ import {
 	placementKey,
 	railDepth,
 } from "../core/discovery-telemetry.ts";
+import { discoverySessionId, sendDiscoveryBatch } from "../core/discovery-beacon.ts";
 
 const CARD = "[data-item-id][data-item-type]";
 const RAIL = "[data-rail-id]";
@@ -50,14 +43,6 @@ export default function ImpressionTracker({ surface }: ImpressionTrackerProps): 
 	return null;
 }
 
-function sessionId(): string {
-	const stored = readStored("session", SessionKeys.DISCOVERY_SESSION);
-	if (stored) return stored;
-	const fresh = crypto.randomUUID();
-	writeStored("session", SessionKeys.DISCOVERY_SESSION, fresh);
-	return fresh;
-}
-
 function slotOf(card: HTMLElement): { rail?: string; position?: number } {
 	const track = card.closest<HTMLElement>(RAIL);
 	if (!track) {
@@ -72,28 +57,8 @@ function slotOf(card: HTMLElement): { rail?: string; position?: number } {
 	return { rail: track.dataset.railId, position: position >= 0 ? position : undefined };
 }
 
-function send(body: DiscoveryEventBatch): void {
-	const json = JSON.stringify(body);
-	if (
-		navigator.sendBeacon?.(DISCOVERY_EVENTS_URL, new Blob([json], { type: "application/json" }))
-	) {
-		return;
-	}
-	fetch(DISCOVERY_EVENTS_URL, {
-		method: "POST",
-		body: json,
-		keepalive: true,
-		headers: { "content-type": "application/json", "x-pj-background": "1" },
-	}).catch((error: unknown) =>
-		logger.warn("Discovery telemetry could not be sent", {
-			events: body.events.length,
-			reason: error instanceof Error ? error.message : String(error),
-		})
-	);
-}
-
 function track(surface: DiscoverySurface): () => void {
-	const session = sessionId();
+	const session = discoverySessionId();
 	const queue: DiscoveryEvent[] = [];
 	const seen = new Set<string>();
 	const visible = new Set<HTMLElement>();
@@ -114,7 +79,12 @@ function track(surface: DiscoverySurface): () => void {
 		}
 		const query = new URL(location.href).searchParams.get("q")?.trim().slice(0, 200) || undefined;
 		while (queue.length > 0) {
-			send({ sessionId: session, surface, query, events: queue.splice(0, DISCOVERY_BATCH_MAX) });
+			sendDiscoveryBatch({
+				sessionId: session,
+				surface,
+				query,
+				events: queue.splice(0, DISCOVERY_BATCH_MAX),
+			});
 		}
 	}
 

@@ -14,6 +14,13 @@ the three subject tables and INSERT/UPDATE/DELETE on the child tables to `authen
 | `articles`             | `status = 'published'`; authors see their own.                                                   | Same as listings.                                                                              |
 | `listing_media`, `listing_skills`, `listing_tags` | Visible exactly when their listing is — an `EXISTS` on `listings`, whose own policy applies inside the subquery. | The listing's owner manages them (`FOR ALL` with a matching `WITH CHECK`). |
 | `collections`, `collection_listings` | Owner only — there is no status saying a collection is public.                   | Owner only.                                                                                    |
+| `entitlements` (Decision #488) | `authenticated` only (`anon` is revoked in `00002520`): the holder — the person (`holder_type = 'user' AND holder_id = auth.uid()`), or an active member of the holding team, business or enterprise. Deliberately not `finance.fn_owner_visible`, whose operator arm would let an admin session read, and the download route then stream, any buyer's purchase. | **None.** Written only by `finance.place_wallet_order`. |
+| `product_versions` (Decision #488) | `authenticated` only: the product's seller (the creator, or an active member of the owning team), and whoever holds an entitlement to the version (an `EXISTS` on `entitlements`, whose policy applies inside). The manifest names no storage address. | **None.** Written by `fn_freeze_product_version` and stamped by `mark_product_version_ready`. |
+
+The download route also checks that the **acting context is the holder** (ASSET §6 gate 4), so a
+business member acting personally reads the business's entitlement under RLS but does not download it.
+The `originals` bucket the files are streamed from has **no storage policy at all**
+([../files/Storage.md](../files/Storage.md)).
 
 Team membership reuses `org.is_active_team_member`, the helper every other team-scoped policy keys
 on.
@@ -40,4 +47,7 @@ computes: `rating_average` / `rating_count` (from reviews) and the listing's `vi
 `00001895_triggers_derived_columns.sql`) refuses any `anon` / `authenticated` write that changes one
 of them, and any INSERT that starts one anywhere but zero, with `42501`. Definer functions, the
 service role and the seed pass. Verified by execution: a seller PATCHing their product to
-`rating_count = 50` is refused, a title edit on the same row succeeds.
+`rating_count = 50` is refused, a title edit on the same row succeeds. The definer that writes
+`view_count` / `order_count` is `analytics.fn_rollup_listings` (MARKETPLACE SC5);
+`supabase/probes/listing_view_events.sql` proves both halves: the rollup moves them, a seller's
+direct `view_count` UPDATE is `42501`.

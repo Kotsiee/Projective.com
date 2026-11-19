@@ -10,10 +10,13 @@ import type {
 	LedgerDrift,
 	WalletDrift,
 } from "@projective/types/finance";
+import type { AlertDeliveryView, AlertsRead } from "@projective/types/ops";
 import { type DataColumn, DataTable, MetaLine } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import { Message } from "@projective/ui/feedback";
 import {
+	alertGroup,
+	alertStatus,
 	conservationGroups,
 	conservationStatus,
 	daysText,
@@ -211,6 +214,57 @@ const overColumn = (index: number, days: number, priority: number): DataColumn<E
 	sortValue: (row) => row.over[index]?.totalMinor ?? 0,
 });
 
+const ALERT_COLUMNS: readonly DataColumn<AlertDeliveryView>[] = [
+	{
+		id: "scope",
+		header: "Alert",
+		type: "text",
+		fill: true,
+		minWidth: 200,
+		value: (r) => r.scope,
+		secondary: (r) => `${alertGroup(r)} · ${r.channel} · ${r.level}`,
+	},
+	{ id: "status", header: "Status", type: "status", width: 120, value: (r) => alertStatus(r) },
+	figure("count", "Rows", (r) => String(r.count), 72),
+	{
+		id: "first",
+		header: "First seen",
+		type: "date",
+		format: "datetime",
+		width: 168,
+		priority: 2,
+		value: (r) => r.firstSeen,
+	},
+	{
+		id: "last",
+		header: "Last seen",
+		type: "date",
+		format: "datetime",
+		width: 168,
+		priority: 3,
+		value: (r) => r.lastSeen,
+	},
+	{
+		id: "attempts",
+		header: "Sends",
+		type: "custom",
+		align: "end",
+		width: 128,
+		priority: 1,
+		render: (r) => (
+			<MetaLine
+				as="span"
+				size="xs"
+				items={[
+					{ text: `${r.attempts} ${r.attempts === 1 ? "try" : "tries"}`, tabular: true },
+					r.lastError ? { text: r.lastError, tabular: true } : null,
+				]}
+			/>
+		),
+		sortValue: (r) => r.attempts,
+	},
+];
+
 const ESCROW_AGE_COLUMNS: readonly DataColumn<EscrowAgeRow>[] = [
 	{
 		id: "kind",
@@ -404,6 +458,45 @@ function EscrowAgeSection({ data }: { data: EscrowAge }): JSX.Element {
 	);
 }
 
+function AlertsSection({ data }: { data: AlertsRead }): JSX.Element {
+	const silent = data.silence.map((s) => ({
+		text: s.lastRowAt
+			? `${s.scope} last wrote ${new Date(s.lastRowAt).toLocaleString("en-GB")}`
+			: `${s.scope} has not written yet`,
+		tabular: true,
+	}));
+	return (
+		<>
+			<MetaLine
+				items={[
+					{
+						text: plural(data.pending, "alert waiting to send", "alerts waiting to send"),
+						tabular: true,
+					},
+					{
+						text: plural(data.rules.filter((r) => r.enabled).length, "rule", "rules"),
+						tabular: true,
+					},
+				]}
+			/>
+			{silent.length > 0 ? <MetaLine items={silent} /> : null}
+			{data.deliveries.length === 0
+				? <p class="ledger-section__empty">No alert has been raised.</p>
+				: (
+					<DataTable
+						rows={data.deliveries}
+						rowKey={(r) => r.id}
+						columns={ALERT_COLUMNS}
+						aria-label="The newest alerts and whether they were sent"
+						virtualize={false}
+						columnChooser={false}
+						reorderable={false}
+					/>
+				)}
+		</>
+	);
+}
+
 function SectionBody({ section }: { section: LedgerSectionResult }): JSX.Element {
 	if (!section.ok) {
 		return <Message severity="danger" variant="subtle" size="sm">{section.message}</Message>;
@@ -415,6 +508,8 @@ function SectionBody({ section }: { section: LedgerSectionResult }): JSX.Element
 			return <DriftSection data={section.data} />;
 		case "escrow_age":
 			return <EscrowAgeSection data={section.data} />;
+		case "alerts":
+			return <AlertsSection data={section.data} />;
 	}
 }
 // #endregion
@@ -422,7 +517,8 @@ function SectionBody({ section }: { section: LedgerSectionResult }): JSX.Element
 /**
  * LedgerHealth — `/admin/ledger`, the operator's read-only view of the ledger (FBP DB16; Decision
  * #337, ruling M2 (A)): Conservation (the identity per currency and its last 30 nightly checks),
- * Wallet drift (what disagrees with its ledger now) and Escrow age (MR7, Decision #473). A list of
+ * Wallet drift (what disagrees with its ledger now), Escrow age (MR7, Decision #473) and Alerts (MR4,
+ * Decision #461: what was raised, and whether it was sent). A list of
  * sections, each filled by one `LedgerHealthService` read in the controller; a section whose read
  * failed says so in place and the rest still render. Every figure is exact in its own currency
  * (`MoneyView exact`) and `tabular-nums`; kinds and terms are inline meta text, statuses one Tag. It

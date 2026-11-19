@@ -96,7 +96,7 @@ One row per `(day, metric, subject)`. A new breakdown never needs a new column �
 | :-------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
 | `listing.impressions`       | —             | `search.interest_events` impressions of the listing's blueprint or product.                |
 | `listing.clicks`            | —             | Its clicks.                                                                                |
-| `listing.views`             | —             | Distinct sessions with a `view` event.                                                     |
+| `listing.views`             | —             | Distinct sessions with a `view` event (kept by `search.trg_interest_events_view`: never the seller's own, at most one per visitor per 30 minutes). Summed over all days, it is `catalogue.listings.view_count`. |
 | `listing.checkout_starts`   | —             | `finance.basket_items` added for it.                                                       |
 | `listing.orders`            | —             | Distinct `confirmed` / `invoiced` orders placed that day with a line for it.               |
 | `listing.gross_minor`       | `{currency}`  | Those lines' gross, in minor units, one row per currency.                                  |

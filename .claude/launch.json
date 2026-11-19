@@ -2,6 +2,26 @@
 	"version": "0.0.1",
 	"configurations": [
 		{
+			"name": "web-sc3-wt",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location 'C:\\Users\\Ahmed\\AppData\\Local\\Temp\\claude\\eea579e3c60765c3\\84ea9a42-2870-4c64-87c7-43bc33e3b6d3\\scratchpad\\wt-sc3'; $env:PORT = '13603'; deno task dev --port 13603 --strictPort"
+			],
+			"port": 13603
+		},
+		{
+			"name": "web-sc5-wt",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location 'C:\\Users\\Ahmed\\AppData\\Local\\Temp\\claude\\eea579e3c60765c3\\5c71f3a1-1e85-466d-b852-798900525e43\\scratchpad\\wtsc5'; $env:PORT = '13591'; deno task dev --port 13591 --strictPort"
+			],
+			"port": 13591
+		},
+		{
 			"name": "web-wallet",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [
@@ -463,6 +483,50 @@
 				"$env:PORT = '13540'; $env:NEWSLETTER_BACKEND_LIVE = 'true'; deno task dev --port 13540 --strictPort"
 			],
 			"port": 13540,
+			"autoPort": false
+		},
+		{
+			"name": "web-ld1",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13580'; $env:PROJECTS_BACKEND_LIVE = 'true'; deno task dev --port 13580 --strictPort"
+			],
+			"port": 13580,
+			"autoPort": false
+		},
+		{
+			"name": "web-ld1-nodb",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13581'; $env:PROJECTS_BACKEND_LIVE = 'true'; $env:SUPABASE_URL = 'http://127.0.0.1:54998'; $env:SUPABASE_PUBLIC_URL = 'http://127.0.0.1:54998'; deno task dev --port 13581 --strictPort"
+			],
+			"port": 13581,
+			"autoPort": false
+		},
+		{
+			"name": "web-nt4-push",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$p = (Get-Content -Raw (Join-Path $env:LOCALAPPDATA 'Temp/nt4-secrets.txt')).Trim().Split(' '); $env:VAPID_PUBLIC_KEY = $p[0]; $env:VAPID_PRIVATE_KEY = $p[1]; $env:COMMS_DISPATCH_SECRET = $p[2]; $env:VAPID_SUBJECT = 'mailto:dev@projective.test'; $env:PORT = '13621'; deno task dev --port 13621 --strictPort"
+			],
+			"port": 13621,
+			"autoPort": false
+		},
+		{
+			"name": "web-ck1",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13640'; deno task dev --port 13640 --strictPort"
+			],
+			"port": 13640,
 			"autoPort": false
 		}
 	]

@@ -132,6 +132,10 @@ export async function resolveProjectRef<T>(
  * The word `discussion` is the fifth form (`DISCUSSION_REF`), resolved by {@link resolveDiscussionRoom}
  * to the engagement's one primary conversation. It cannot be confused with the other four on shape:
  * it is neither a `stg-…` slug nor a uuid.
+ *
+ * `null` is a MISS — no such stage, no room, or a row RLS withholds. A query that fails THROWS, with
+ * the table named, so the service answers a `503` rather than reading a stopped database as "no such
+ * channel" (PRD-B1).
  */
 export async function resolveChannelRef(
 	actor: ReadActor & { accessToken: string },
@@ -150,7 +154,10 @@ export async function resolveChannelRef(
 			.is("archived_at", null)
 			.eq("slug", ref)
 			.maybeSingle();
-		if (stage.error || !stage.data) return null;
+		if (stage.error) {
+			throw new Error(`projects.project_stages slug read failed: ${stage.error.message}`);
+		}
+		if (!stage.data) return null;
 		return await stageRoomOf(actor, projectId, (stage.data as unknown as { id: string }).id);
 	}
 
@@ -180,7 +187,10 @@ async function stageRoomOf(
 		.order("visibility", { ascending: false })
 		.limit(1)
 		.maybeSingle();
-	if (room.error || !room.data) return null;
+	if (room.error) {
+		throw new Error(`comms.project_channels stage room read failed: ${room.error.message}`);
+	}
+	if (!room.data) return null;
 	return (room.data as unknown as { id: string }).id;
 }
 
@@ -208,7 +218,10 @@ async function resolveDiscussionRoom(
 		.select("format, structure_variation")
 		.eq("id", projectId)
 		.maybeSingle();
-	if (project.error || !project.data) return null;
+	if (project.error) {
+		throw new Error(`projects.projects shape read failed: ${project.error.message}`);
+	}
+	if (!project.data) return null;
 	const row = project.data as unknown as { format: string; structure_variation: string | null };
 	const format = ProjectFormat.safeParse(row.format);
 	const task = format.success &&
@@ -238,7 +251,10 @@ async function resolveDiscussionRoom(
 		.order("created_at", { ascending: true })
 		.limit(1)
 		.maybeSingle();
-	if (general.error || !general.data) return null;
+	if (general.error) {
+		throw new Error(`comms.project_channels general room read failed: ${general.error.message}`);
+	}
+	if (!general.data) return null;
 	return (general.data as unknown as { id: string }).id;
 }
 

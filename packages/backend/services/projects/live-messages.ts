@@ -494,12 +494,15 @@ async function fetchChannel(
  * The project uuid the route asked for, or `null` when it cannot be established.
  *
  * `MessagePageParams.projectId` is an opaque string that may be a uuid or a slug, so a uuid passes
- * through and anything else is looked up by slug. `null` is returned for BOTH "not found" and "read
- * failed", and the caller treats it as "unconstrained" rather than as a refusal — which matters,
- * because the two are routinely indistinguishable here: the SELECT policies on `projects.projects`
- * are owner-or-public, so a hired freelancer can hold channel access through
- * `comms.has_channel_access` while the project row itself is withheld from them. Refusing the read on
- * an unresolvable project would 404 exactly the people the channel gate just admitted.
+ * through and anything else is looked up by slug. `null` means the row did not come back, and the
+ * caller treats it as "unconstrained" rather than as a refusal — which matters, because a miss and a
+ * withheld row are routinely indistinguishable here: the SELECT policies on `projects.projects` are
+ * owner-or-public, so a hired freelancer can hold channel access through `comms.has_channel_access`
+ * while the project row itself is withheld from them. Refusing the read on an unresolvable project
+ * would 404 exactly the people the channel gate just admitted.
+ *
+ * A query that FAILS is neither, and throws: read as "unconstrained", a stopped database would
+ * resolve no stage room and answer "no such channel" instead of the `503` it is (PRD-B1).
  */
 async function resolveProjectId(
 	actor: ReadActor & { accessToken: string },
@@ -510,7 +513,8 @@ async function resolveProjectId(
 		.select("id")
 		.eq("slug", projectId)
 		.maybeSingle();
-	if (error || !data) return null;
+	if (error) throw new Error(`projects.projects slug read failed: ${error.message}`);
+	if (!data) return null;
 	return (data as unknown as { id: string }).id;
 }
 
@@ -653,8 +657,9 @@ function toChatMessage(row: MessageRow, ctx: MessageContext): ChatMessage {
  * than the route named. All three are a 404 to the caller and none is distinguishable from the others
  * by design: telling an outsider that a channel exists but is not theirs is itself a disclosure.
  *
- * THROWS only on a genuine query failure of a PRIMARY read (the channel row, the message page), with
- * the table named, so the calling service can log it and fall back to fixtures. Every SECONDARY
+ * THROWS only on a genuine query failure of a PRIMARY read (the project and channel addresses, the
+ * channel row, the message page), with the table named, so the calling service can log it and
+ * answer `503` (PRD-B1). Every SECONDARY
  * lookup — parties, attachments, reactions, favourites, pins, the total, the pin capability —
  * degrades to a neutral value instead, so one withheld join cannot take down a conversation that
  * otherwise resolved.

@@ -47,11 +47,39 @@ export interface ProjectPortfolioProps {
 	 * may still have proposals out.
 	 */
 	children?: ComponentChildren;
+	/**
+	 * Why the projects could not be read, or absent. With no rows to show, the page says this and
+	 * offers a reload, never "No projects yet" — that would tell a reader whose database is down that
+	 * they have no projects (PRD-B1).
+	 */
+	loadError?: string | null;
+	/** The page's own address, reloaded by the failure's Try again. */
+	retryHref?: string;
 }
 
 export function ProjectPortfolio(
-	{ items, filter, contextLabel, children }: ProjectPortfolioProps,
+	{ items, filter, contextLabel, children, loadError, retryHref }: ProjectPortfolioProps,
 ): JSX.Element {
+	if (items.length === 0 && loadError) {
+		return (
+			<div class="prj-port prj-port--empty">
+				<PortfolioStyleAnchor />
+				<EmptyState
+					title="Your projects couldn't be loaded"
+					description={loadError}
+					actions={
+						<a
+							class="ui-button ui-button--neutral ui-button--outlined ui-button--size-md ui-button--rounded"
+							href={retryHref ?? "/projects"}
+						>
+							<span class="ui-button__label">Try again</span>
+						</a>
+					}
+				/>
+				{children}
+			</div>
+		);
+	}
 	if (items.length === 0) {
 		return (
 			<div class="prj-port prj-port--empty">

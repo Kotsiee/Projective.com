@@ -9,7 +9,7 @@ import {
 } from "@projective/types/services";
 import { z } from "zod";
 import type { SupabaseClient } from "supabaseClient";
-import { getUserClient } from "../../core/supabase.ts";
+import { getUserClient, useMocks } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 
 /**
@@ -119,6 +119,9 @@ function failure<T>(error: { code?: string; message?: string }, what: string): S
 }
 // #endregion
 
+/** Quotes are live-only: under `USE_MOCKS` (no database) every entry answers this 503. */
+const OFFLINE = "Quotes aren't available in this environment.";
+
 // #region Reads
 function marketplace(token: string): SupabaseClient {
 	return getUserClient(token).schema("marketplace") as unknown as SupabaseClient;
@@ -217,6 +220,7 @@ export const QuoteBackendService = {
 	/** Every quote request between the caller and the person behind `handle`, in either role. */
 	async listWith(handle: string, actor: QuoteActor): Promise<ServiceResult<QuoteList>> {
 		if (!actor.userId || !actor.accessToken) return refuse(REFUSALS.not_signed_in);
+		if (useMocks()) return fail(503, { message: OFFLINE });
 		const counterpart = await userIdOf(actor.accessToken, handle);
 		if (counterpart === undefined) {
 			return fail(503, { message: "Quotes could not be loaded just now." });
@@ -237,6 +241,7 @@ export const QuoteBackendService = {
 		actor: QuoteActor,
 	): Promise<ServiceResult<QuoteActResult>> {
 		if (!actor.userId || !actor.accessToken) return refuse(REFUSALS.not_signed_in);
+		if (useMocks()) return fail(503, { message: OFFLINE });
 		const token = actor.accessToken;
 		const parties = await partiesOf(token, requestId);
 		if (!parties) return refuse(REFUSALS.quote_not_found);
@@ -275,6 +280,7 @@ export const QuoteBackendService = {
 		actor: QuoteActor,
 	): Promise<ServiceResult<{ id: string }>> {
 		if (!actor.userId || !actor.accessToken) return refuse(REFUSALS.not_signed_in);
+		if (useMocks()) return fail(503, { message: OFFLINE });
 		const { data, error } = await marketplace(actor.accessToken).rpc("request_quote", {
 			p_blueprint: input.blueprintId,
 			p_scope: input.scope,

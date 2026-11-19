@@ -1300,7 +1300,10 @@ CREATE OR REPLACE FUNCTION comms.fn_claim_deliveries(
     title text,
     action_url text,
     type text,
-    category comms.notification_category
+    category comms.notification_category,
+    -- Push reads these two (COMMS NT4): the Urgency header and the Topic (collapse key).
+    urgency comms.notification_urgency,
+    group_key text
 )
 LANGUAGE plpgsql
 VOLATILE
@@ -1405,14 +1408,14 @@ BEGIN
     )
     SELECT c.id, c.notification_id, c.user_id, c.channel, c.status, c.attempts, c.suppressed_reason,
            CASE WHEN c.status = 'queued' THEN c.destination END,
-           n.title, n.action_url, n.type, n.category
+           n.title, n.action_url, n.type, n.category, n.urgency, n.group_key
       FROM claimed c
       JOIN comms.notifications n ON n.id = c.notification_id;
 END;
 $$;
 
 COMMENT ON FUNCTION comms.fn_claim_deliveries(comms.notification_channel[], uuid, integer) IS
-    'Claims up to p_limit due outbound deliveries of p_channels (one notification''s, or any) with FOR UPDATE SKIP LOCKED, while comms.dispatch_webhook is on. A due row is pending, failed with attempts < 5 past its 2^attempts-minute backoff, or queued past a 15-minute lease, and younger than 24 hours (an older pending row is closed skipped/expired). Each is resolved to its destination (the primary verified org.user_emails address, the confirmed auth phone, or the unrevoked device) and marked queued (attempts + 1), skipped (no_target) or suppressed (suppressed_destination, through fn_is_suppressed). Returns every claimed row with its status; the destination only on a queued one. Service role only.';
+    'Claims up to p_limit due outbound deliveries of p_channels (one notification''s, or any) with FOR UPDATE SKIP LOCKED, while comms.dispatch_webhook is on. A due row is pending, failed with attempts < 5 past its 2^attempts-minute backoff, or queued past a 15-minute lease, and younger than 24 hours (an older pending row is closed skipped/expired). Each is resolved to its destination (the primary verified org.user_emails address, the confirmed auth phone, or the unrevoked device) and marked queued (attempts + 1), skipped (no_target) or suppressed (suppressed_destination, through fn_is_suppressed). Returns every claimed row with its status, its notification''s urgency and group_key (push''s Urgency and Topic); the destination only on a queued one. Service role only.';
 
 -- (d) The result of one send. Monotonic: a result moves a row only forward (queued → sent →
 -- delivered; queued or sent → failed), so a late or replayed answer cannot undo a later one.

@@ -105,10 +105,14 @@ async function withPostgrest<T>(
 
 		const key = `${schema}.${rpc ? "rpc." : ""}${name}`;
 		const route = key in routes ? routes[key] : (rpc ? null : []);
-		const answer = typeof route === "function"
+		const routed = typeof route === "function"
 			? (route as (r: FakeRequest) => unknown)(req)
 			: route;
-		if (isFailure(answer)) return json(answer.body, answer.status);
+		if (isFailure(routed)) return json(routed.body, routed.status);
+		// PostgREST applies `limit` to every read, so `.limit(1).maybeSingle()` never sees two rows.
+		// The filters stay unmodelled.
+		const limit = Number(url.searchParams.get("limit"));
+		const answer = Array.isArray(routed) && limit > 0 ? routed.slice(0, limit) : routed;
 
 		if ((request.headers.get("accept") ?? "").includes("vnd.pgrst.object")) {
 			const rows = Array.isArray(answer) ? answer : [answer];

@@ -11,10 +11,10 @@ import { currency, minorUnits, minorUnitsNonNeg, timestamp, uuid } from "./commo
 
 // #region Sections
 /**
- * The `/admin/ledger` sections, in page order. Each is one `LedgerHealthService` read; MR3, MR4, MR5
- * and MR8b each add theirs here (MONEY_BUILD_PROMPTS §1).
+ * The `/admin/ledger` sections, in page order. Each is one `LedgerHealthService` read; `alerts` is
+ * MR4's (Decision #461), and MR3, MR5 and MR8b each add theirs here (MONEY_BUILD_PROMPTS §1).
  */
-export const LedgerSectionId = z.enum(["conservation", "drift", "escrow_age"]);
+export const LedgerSectionId = z.enum(["conservation", "drift", "escrow_age", "alerts"]);
 export type LedgerSectionId = z.infer<typeof LedgerSectionId>;
 // #endregion
 

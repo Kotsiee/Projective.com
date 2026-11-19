@@ -7,6 +7,7 @@ import {
 	getUserClient,
 	isAuthBackendLive,
 	runWithClientAddress,
+	useMocks,
 } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
 import {
@@ -1160,6 +1161,13 @@ export class AuthBackendService {
 		error?: string;
 	}> {
 		const store = new CookieStore(input.cookies);
+		if (useMocks()) {
+			return {
+				isNewUser: true,
+				store,
+				error: "Google sign-in isn't available in this environment.",
+			};
+		}
 		const client = getOAuthClient(store);
 		const { data, error } = await client.auth.exchangeCodeForSession(input.code);
 		if (error || !data.session) {

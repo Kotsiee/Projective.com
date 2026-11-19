@@ -305,6 +305,7 @@ export function nextWorkspaceUrl(
 ): WorkspaceUrlState {
 	const next: WorkspaceUrlState = { ...current, ...patch };
 	if (next.tab !== "edit") delete next.section;
+	if (next.tab !== "edit" || !next.cohort) delete next.cohort;
 	if (patch.tab && patch.tab !== current.tab && patch.tab !== "clients" && !patch.client) {
 		delete next.client;
 	}

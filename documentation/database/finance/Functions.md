@@ -431,7 +431,9 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
   `latest_balance_after_cents`, `earmarked_cents`, `pot_drift_cents`). A wallet whose pots drift from
   their movements or earmark more than it holds is flagged the same way. The run raises a `WARNING`
   and returns the number of drifted
-  wallets. Read-only on `finance`: drift is reported for a human, never auto-corrected. Service role
+  wallets. Every run also writes one `metric` row (`data` = `run_id`, `drifted`, `conversions`), its
+  heartbeat for MR4's dead-man switch (Decision #461 flag (a)); a `metric` row never alerts. Read-only
+  on `finance`: drift is reported for a human, never auto-corrected. Service role
   only (`00002510`). Scheduled nightly at 03:40 UTC as `finance-reconcile-wallets`, a row of the job
   registry (`ops.scheduled_jobs`, Decision #203); `deno task cron:run finance-reconcile-wallets` runs it
   by hand.
@@ -996,11 +998,21 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    `PJ-YYYY-XXXXXX`, `platform_fee_minor` the summed per-line fees, `platform_fee_bp` the
    **payer's** effective rate, `fn_effective_platform_fee_bp(basket owner_type, owner_id)` — the
    rate the escrow lines are charged at release through `fn_escrow_fee_bp`), one
-   `finance.order_lines` row per line (fulfilment `download`, the first manifest entry's name, size
-   and format, the licence; the line's `promo_discount_minor` share, its commission
-   `platform_fee_minor` and rate `platform_fee_bp`; an escrow line records `0` and no rate), each
-   basket line stamped `purchased_at`, the basket's promo cleared, and `orders.promo_code` the code
-   redeemed in step 5 (`NULL` when no promo saved anything).
+   `finance.order_lines` row per line (fulfilment `download`; `download_name` the file's name when
+   the bundle is one file, else NULL; `download_bytes` the bundle's total; the format and the
+   licence — read from the product's newest frozen version, else its draft manifest; the line's
+   `promo_discount_minor` share, its commission `platform_fee_minor` and rate `platform_fee_bp`; an
+   escrow line records `0` and no rate), each basket line stamped `purchased_at`, the basket's promo
+   cleared, and `orders.promo_code` the code redeemed in step 5 (`NULL` when no promo saved
+   anything).
+9. **Each product line's entitlement** (Decision #488): one `catalogue.entitlements` row, inserted
+   right after its order line in the same transaction — the product's newest
+   `catalogue.product_versions` row (NULL when it froze no file), held by the order's owner (a
+   `freelancer` basket holds as `user`), the product's licence, `seats` = the line's quantity,
+   `active`, and `delivery_terms_accepted_at = now()` when the basket line carries
+   `metadata.deliveryTermsAccepted = true` and the version exists (ruling A8). A replayed key
+   writes none; `place_on_account_order` reaches it by paying through this function. Proved by
+   `product_delivery.sql` and, two checkouts at once, `product_delivery_race.sql`.
 
 Returns `{ order_id, reference, status, charged_minor, currency, replayed }` — the charge in the
 currency the wallet actually moved, never re-converted.

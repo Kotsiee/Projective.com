@@ -1710,8 +1710,8 @@ async function fetchViewerSeats(
  * The board page for one engagement, or `null` when there is no such project.
  *
  * `null` means "no such row" and is the caller's 404. A thrown {@link Error} — always naming the
- * table — means the query itself failed, which the service catches, logs and falls back to fixtures
- * for. Secondary lookups (parties, history, participants, stage rosters, currency) never throw:
+ * table — means the query itself failed, which the service catches, logs and answers `503` for
+ * (PRD-B1). Secondary lookups (parties, history, participants, stage rosters, currency) never throw:
  * each degrades to a neutral value, so one withheld join costs a face or a label rather than the
  * page that had already resolved around it.
  *

@@ -29,6 +29,7 @@
 		"./projects": "./projects/mod.ts",
 		"./messaging": "./messaging/mod.ts",
 		"./profile": "./profile/mod.ts",
+		"./reviews": "./reviews/mod.ts",
 		"./richtext": "./richtext/mod.ts",
 		"./scheduling": "./scheduling/mod.ts",
 		"./services": "./services/mod.ts",

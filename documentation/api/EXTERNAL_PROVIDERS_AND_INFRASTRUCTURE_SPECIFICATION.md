@@ -76,7 +76,7 @@ or Upwork-style platform that pipes every message through a hosted trust-and-saf
 | 11 | Google Drive                                            | Connector              | Growth               | **Wired · gated off**: consent, listing and the tree (#394)  | same                                                              | `services/integrations/adapters/GoogleDriveAdapter.ts`                                       |
 | 12 | Microsoft Graph (Outlook, Teams, OneDrive / SharePoint) | Connector              | MVP / Growth         | **Wired · gated off**: consent and refresh; no room or sync  | same                                                              | `IntegrationsBackendService.ts` · `adapters/OneDriveAdapter.ts`                              |
 | 13 | Zoom (OAuth + presence webhooks)                        | Conferencing           | MVP                  | Presence webhook **Shipped**; OAuth **Wired · gated off**    | `ZOOM_WEBHOOK_SECRET` present                                     | `services/sessions/presence/zoom.ts`                                                         |
-| 14 | Web Push (VAPID)                                        | Outbound               | MVP                  | **Planned (SSOT)**; `comms.device_tokens` shipped            | `security.feature_flags['comms.dispatch_webhook']`                | the dispatcher `POST /api/comms/dispatch` (built, #344 (a)); its push transport is NT4 |
+| 14 | Web Push (VAPID)                                        | Outbound               | MVP                  | **Built (COMMS NT4), no keys yet**                           | the three VAPID keys well formed + `security.feature_flags['comms.dispatch_webhook']` | `services/comms/transport-webpush.ts` (the dispatcher's push transport) · `PushDeviceBackendService.ts` · `static/sw.js` |
 | 15 | Apple Push Notification service                         | Outbound               | Growth (native app)  | **Planned (SSOT)**                                           | same                                                              | same                                                                                         |
 | 16 | Firebase Cloud Messaging (HTTP v1)                      | Outbound               | Growth (native app)  | **Planned (SSOT)**                                           | same                                                              | same                                                                                         |
 | 17 | Transactional email                                     | Outbound               | **MVP blocker**      | GoTrue → Mailpit locally; the app's transport is built (Resend, Decision #391) and has no key in any environment yet | none                                                              | `services/mail/transport.ts` `configuredTransport()`                               |
@@ -166,8 +166,8 @@ Inbound webhooks: Stripe ─► /api/finance/webhooks/* · Zoom, Google, Graph �
 | Zone           | What runs there                                              | Holds credentials for                                                                        | Never holds                                      |
 | :------------- | :----------------------------------------------------------- | :------------------------------------------------------------------------------------------- | :----------------------------------------------- |
 | A: browser     | Islands, Stripe.js, the Turnstile widget, the service worker | Publishable or site keys only, each delivered by a server response                           | Any secret or env value (islands never read env) |
-| B: app (Deno)  | Thin routes, fat services, the media worker pool             | The Stripe secret, Voyage, Web Risk, OAuth clients, cron bearers, STS, the vault key         | Plaintext DEKs beyond one request                |
-| C: Supabase    | Postgres, GoTrue, Storage, Edge Functions, Vault             | Vault cron and dispatch secrets, Edge secrets (VAPID, APNs, FCM, email), GoTrue SMTP/captcha | OAuth tokens in clear (envelope only)            |
+| B: app (Deno)  | Thin routes, fat services, the media worker pool             | The Stripe secret, Voyage, Web Risk, OAuth clients, cron bearers, the VAPID private key, STS, the vault key | Plaintext DEKs beyond one request                |
+| C: Supabase    | Postgres, GoTrue, Storage, Edge Functions, Vault             | Vault cron and dispatch secrets, GoTrue SMTP/captcha (no Edge secrets: the dispatcher reads the app env, #344 (a)) | OAuth tokens in clear (envelope only)            |
 | D: safety node | Presidio, NudeNet/OCR, ClamAV, a gateway                     | One inbound bearer or mTLS identity                                                          | Any payload after scoring (no volumes)           |
 | E: SaaS        | Third parties                                                | n/a                                                                                          | Private-zone content (§3.5)                      |
 
@@ -195,9 +195,9 @@ These are the hosts each runtime must reach. The table feeds the production fire
 
 | Runtime        | Hosts                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App (Zone B)   | `api.stripe.com` · `api.voyageai.com` · `webrisk.googleapis.com` · `challenges.cloudflare.com` · `oauth2.googleapis.com` · `www.googleapis.com` · `login.microsoftonline.com` · `graph.microsoft.com` · `zoom.us` · `api.zoom.us` · `api.resend.com` · `api.dropboxapi.com` · `content.dropboxapi.com` · `sts.{region}.amazonaws.com` · `kms.{region}.amazonaws.com` · the email API host · the safety node's private address · the Supabase origin |
+| App (Zone B)   | `api.stripe.com` · `api.voyageai.com` · `webrisk.googleapis.com` · `challenges.cloudflare.com` · `oauth2.googleapis.com` · `www.googleapis.com` · `login.microsoftonline.com` · `graph.microsoft.com` · `zoom.us` · `api.zoom.us` · `api.resend.com` · the Web Push services (NT4's allowlist, `isPushEndpoint`: `fcm.googleapis.com`, `android.googleapis.com`, `push.services.mozilla.com`, `notify.windows.com`, `push.apple.com` and their subdomains, https only) · `api.dropboxapi.com` · `content.dropboxapi.com` · `sts.{region}.amazonaws.com` · `kms.{region}.amazonaws.com` · the email API host · the safety node's private address · the Supabase origin |
 | App, exception | **Arbitrary hosts.** The link scanner (`link-fetch.ts`) and custom S3-compatible endpoints connect to a host a person chose, through a pinned, guarded socket. The app's `--allow-net` therefore cannot be a closed list while those paths are live. The guards (§6.5) are the control, not the permission flag.                                                                                                                 |
-| Edge Functions | `api.push.apple.com` · `fcm.googleapis.com` · `oauth2.googleapis.com` · the email API host · **arbitrary Web Push endpoints** (each browser vendor's push service). This is one reason dispatch runs in Zone C rather than in the app.                                                                                                                                                                                           |
+| Edge Functions | `api.push.apple.com` · `fcm.googleapis.com` · `oauth2.googleapis.com` (APNs and FCM, Growth, if they ever run here). Web Push no longer needs this row: the dispatcher is a Fresh route (#344 (a)), and its push transport (NT4) dials only the push services in the app row's allowlist, so a crafted subscription cannot make the server POST to an arbitrary host.                                                                                                                                                                                           |
 | Safety node    | `database.clamav.net` (freshclam) only. Everything else is denied. Models are baked into the images at build time.                                                                                                                                                                                                                                                                                                               |
 | Monitor (**Proposed**, Decision #393) | **Arbitrary hosts**, through guarded sockets, plus the search providers. It cannot live on the safety node, whose egress is closed, so it runs apart and holds no seeds, originals or storage credentials (`ANTI_PIRACY_ENGINE.md` §7.4). |
 
@@ -209,7 +209,7 @@ These are the hosts each runtime must reach. The table feeds the production fire
 
 | Store                                                                   | Holds                                                                                                                                                         | Read by                                       | Provisioned by                                                       | Rotation                               |
 | :---------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------- | :------------------------------------------------------------------- | :------------------------------------- |
-| App env (`.env.local` locally; the host's secret manager when deployed) | Stripe, Voyage, link safety, OAuth clients, cron bearers, the S3 principal, the vault key, Turnstile (#447), (**Proposed**) email and the safety-node bearer  | `packages/backend/core/env.ts` → fat services | Operator, per environment                                            | Redeploy                               |
+| App env (`.env.local` locally; the host's secret manager when deployed) | Stripe, Voyage, link safety, OAuth clients, cron bearers, the S3 principal, the vault key, Turnstile (#447), email (NT3), the VAPID keys (NT4), (**Proposed**) the safety-node bearer | `packages/backend/core/env.ts` → fat services | Operator, per environment                                            | Redeploy                               |
 | Supabase Vault (`vault.secrets`)                                        | `CRON_APP_URL`, `*_CRON_SECRET`, `COMMS_DISPATCH_SECRET` (#344 (a))                                                                                   | pg_net dispatchers inside Postgres            | `SELECT vault.create_secret('<value>', '<NAME>')` per environment    | `vault.update_secret(id, '<value>')`   |
 | Edge Function secrets                                                   | None planned: the dispatcher and its transports read the app env (#344 (a)); `scan-file` is a defect (§9.5)                                                 | Edge Functions (`Deno.env.get`)               | `supabase secrets set`                                               | Set again with `supabase secrets set`  |
 | Enveloped rows (`integrations.connection_secrets`)                      | Per-user OAuth access and refresh tokens; S3-compatible key pairs                                                                                             | `token-vault.ts`, service role only           | The consent callback                                                 | No rewrap yet: reconnect (§9.4)        |
@@ -449,11 +449,50 @@ The lists are not restated here. `deno task stripe:preflight` prints them and ch
 account against them: one destination per row, or rows 1 and 2 as one destination with events from
 both (`SYSTEM_ARCHITECTURE.md` §1.4, Decision #476).
 
-**F. Payment method domains** (Settings → Payment method domains). Register every production and
-staging origin for the Express Checkout Element (Apple Pay, Google Pay, PayPal). Apple Pay may also
-need Stripe's domain-association file served at
-`/.well-known/apple-developer-merchantid-domain-association`. Follow the Dashboard prompt, and add
-the static route if it asks for one.
+**F. Payment method domains and the express-pay proof (CK6).** Apple Pay, Google Pay, Link and
+PayPal appear in the checkout's Express Checkout Element only on a **registered payment method
+domain**, in test mode as in live. Register every host that serves `/checkout/payment`: the apex,
+`www` and every staging host (each subdomain separately). Checkout charges on the **platform**
+account (Separate Charges & Transfers, Decision #125), so no domain is registered per connected
+account. Stripe performs Apple's merchant validation itself, so there is no Apple Merchant ID or
+CSR.
+
+1. **Name the hosts.** Set `STRIPE_PAYMENT_METHOD_DOMAINS` to a comma-separated list. Unset, the
+   task reads the host of `APP_URL`. Stripe cannot verify `localhost`, `*.localhost`, `*.test` or an
+   IP: to test from a developer machine, use an HTTPS tunnel host.
+2. **Dry run:** `deno task stripe:domains`. It lists each host, whether Stripe holds it, and each
+   wallet's status (`active` / `inactive`, with Stripe's own `error_message`). It makes GET requests
+   only and prints no key.
+3. **Register (test mode):** `deno task stripe:domains --apply`. This registers a missing host and
+   re-validates one whose wallet is inactive. It never re-enables a domain someone disabled, never
+   deletes one, and a second run changes nothing. The task refuses a live key everywhere.
+4. **Register (live), before go-live:** in the Dashboard (Settings → Payment method domains), add
+   the same hosts. Stripe registers live domains in test mode too.
+5. **Apple Pay's association file, only if Stripe asks.** The current API verifies Apple Pay
+   without one. If a host's Apple Pay status stays `inactive` and its message asks for the file:
+   1. Set `STRIPE_APPLE_PAY_DOMAIN_ASSOCIATION` to the body Stripe gives.
+   2. Check that `/.well-known/apple-developer-merchantid-domain-association` answers it as
+      `text/plain` with no redirect. It answers 404 while the key is unset.
+   3. Run `--apply` again to re-validate.
+6. **Prove each wallet on a hosted test-mode deployment** (`FINANCE_BACKEND_LIVE=true`, test keys,
+   the event destinations of row E pointed at that host). Use a real card in each device wallet:
+   Stripe returns a test token for it and charges nothing.
+   - **iPhone, Safari, Apple Pay:** buy a product line at `/checkout/payment`. The page lands on
+     `/checkout/confirmation?order=…` once, and the order appears in recent orders.
+   - **Android, Chrome, Google Pay:** the same purchase, the same landing.
+   - **PayPal** (offered only where the account and currency allow it): a desktop browser. Approve
+     on Stripe's test page; the browser returns to `/checkout/payment` and lands on the confirmation
+     once. Locally the same journey is
+     `E2E_STRIPE_PAYPAL=1 deno test … apps/web/tests/e2e/express-return.spec.ts`, with `stripe listen`
+     forwarding to the webhook route. The suite's stubbed journeys prove the return's race without a
+     key.
+7. **Record each run** as a row of the table below (date, host, device and browser, wallet, order
+   id, result, who ran it). USER_FLOWS MK-23 flips to ✅ once each of the three wallets has a passing
+   row on a hosted domain.
+
+| Date | Host | Device · browser | Wallet | Order | Result | By |
+| :--- | :--- | :--------------- | :----- | :---- | :----- | :- |
+| —    | —    | —                | —      | —     | —      | —  |
 
 **G. Platform balance.** Transfers need **available** platform balance (`SYSTEM_ARCHITECTURE.md`
 §1.3, step 5). Set the platform's own payout schedule to **manual** (Settings → Payouts; Decision
@@ -1524,44 +1563,74 @@ implementation choice, not a contract change.
 
 ### 8.2 Web Push (VAPID)
 
+**Built (COMMS NT4); sends once the VAPID keys are set and the dispatcher is on.** The transport is
+`services/comms/transport-webpush.ts`, registered with the dispatcher's registry as `push` while
+all three keys are well formed (a placeholder counts as absent; unconfigured, push deliveries stay
+`pending`, NT2). The device routes are `GET /api/notifications/push/config` and
+`POST`/`DELETE /api/notifications/devices` (`PushDeviceBackendService`); the control is Settings →
+Notifications → This device.
+
 **Setup.**
 
 1. Generate a P-256 keypair, for example with `npx web-push generate-vapid-keys` or a Web Crypto
    script that exports the raw public key and the PKCS#8 private key as base64url.
-2. `VAPID_PRIVATE_KEY` → Edge Function secret. `VAPID_PUBLIC_KEY` → app env, served to the browser
-   by **Proposed** `GET /api/notifications/push/config`. `VAPID_SUBJECT` = `mailto:` an operator
-   mailbox.
+2. All three are app env (`packages/backend/core/env.ts`; the dispatcher is a Fresh route, #344
+   (a)). `VAPID_PRIVATE_KEY` is the base64url private scalar (`d`, 32 bytes) and stays on the
+   server. `VAPID_PUBLIC_KEY` is the base64url raw uncompressed point (65 bytes), served to the
+   browser by `GET /api/notifications/push/config` (404 while push is unconfigured).
+   `VAPID_SUBJECT` = `mailto:` an operator mailbox (or an `https:` URL).
 3. Never rotate the keypair casually. Every existing subscription is bound to the public key, so a
    rotation means re-subscribing every device.
 
 **Browser flow.**
 
-1. Ask for permission only from an explicit control in **Settings → Notifications**, never on page
-   load.
+1. Ask for permission only from an explicit control in **Settings → Notifications → This device**
+   ("Turn on alerts"), never on page load. The control renders only when push is configured and
+   the browser has the Push API.
 2. `registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })`.
-3. **Proposed** `POST /api/notifications/devices` writes `comms.device_tokens` through a definer
-   door: `platform 'web'`, `endpoint`, `p256dh`, `auth_key`, `label`, `user_agent`.
-4. `apps/web/static/sw.js` gains a `push` handler (`showNotification` with the title, a generic
-   body, `tag` = collapse key, `data.url`) and a `notificationclick` handler that opens **only a
-   same-origin relative path**, so a crafted payload cannot open a redirect.
+3. `POST /api/notifications/devices` writes `comms.device_tokens` through `comms.register_device`
+   (an invoker function, own rows by RLS) under the caller's JWT: `platform 'web'`, `provider
+   'web_push'`, `token` = `endpoint`, `p256dh`, `auth_key`, `label`, `user_agent`. The service
+   first refuses (422) an endpoint that is not one of the allowlisted push services, since the
+   server will POST to it. "Stop on this device" is `DELETE` → `comms.revoke_device`, then
+   `unsubscribe()`.
+4. `apps/web/static/sw.js` has a `push` handler (`showNotification` with the title, a generic
+   body, `tag` = the Topic, `data.url`) and a `notificationclick` handler that focuses a window
+   already at the path or opens **only a same-origin path starting with a single `/`**; anything
+   else opens `/`, so a crafted payload cannot open a redirect. In development the shell worker is
+   off, so the device control registers `/sw.js?mode=push`, a push-only worker that handles no
+   `fetch` and caches nothing (`ServiceWorkerBridge` keeps it).
+5. `apps/web/static/manifest.webmanifest` (linked from `_app.tsx`): `start_url` and `scope` `/`,
+   `display: standalone`, the 192 and 512 icons. A manifest is JSON and cannot read a CSS variable,
+   so its colours are copies of the default theme's light-mode tokens: `theme_color` = `--primary`
+   (`#007680`), `background_color` = `--bg` (`#fafdfd`), both from the seed `#288690`.
+   `manifest.test.ts` recomputes them from the theme engine, so a token change fails the test.
 
 **Sending.**
 
 - VAPID JWT: ES256, `aud` = the endpoint's origin, `exp` ≤ 24 h, `sub` = `VAPID_SUBJECT`.
-- Payload: `aes128gcm` (RFC 8291), ≤ 4 KB.
-- Headers: `TTL`, `Urgency` (mapped from `comms.notification_urgency`), and `Topic` as the collapse
-  key.
+- Payload: `{ title, url, id, tag }` (never the body), `aes128gcm` (RFC 8291) in one record, ≤ 4 KB;
+  `transport-webpush.test.ts` reproduces the RFC 8291 §5 test vector byte for byte.
+- Headers: `TTL: 86400`, `Urgency` (critical and high → `high`, medium → `normal`, low → `low`),
+  and `Topic` as the collapse key: the SHA-256 of the notification's `group_key` (base64url, 32
+  characters), else its id. `fn_claim_deliveries` hands the transport both (NT4).
 
 | Answer    | Action                                                      |
 | :-------- | :---------------------------------------------------------- |
 | 201       | Delivered                                                   |
 | 404 / 410 | Set `revoked_at` and `revoked_reason = 'gone'`; never retry |
 | 413       | A payload-construction bug; log it                          |
-| 429 / 5xx | Back off by `Retry-After`; increment `failure_count`        |
+| 429 / 5xx | `failed` (`push_<status>`), retried by the sweep's `2^attempts` back-off (NT2) |
 
 **iOS.** Safari supports Web Push only for a web app that has been added to the Home Screen (iOS
 16.4 and later), and only with a valid web app manifest. Tell the person so in Settings rather than
-showing a dead switch (root `CLAUDE.md` §3.11).
+showing a dead switch (root `CLAUDE.md` §3.11). Built: on an iPhone or iPad outside a Home-Screen
+app, Settings → This device says how to add Projective to the Home Screen instead of offering the
+control.
+
+**Not built.** `Retry-After` is not read (the sweep's back-off governs), and no send increments
+`comms.device_tokens.failure_count`, so `fn_reap_dead_devices` reaps nothing yet; a 404 or 410
+revokes the device at once, which covers the common case. Tracked as PRD-E17.
 
 ### 8.3 Apple Push Notification service (Growth: native iOS app)
 
@@ -2047,6 +2116,8 @@ removed.
 | `STRIPE_SECRET_KEY` · `STRIPE_WEBHOOK_SECRET` · `STRIPE_THIN_WEBHOOK_SECRET` · `STRIPE_CONNECT_WEBHOOK_SECRET` | In contract                       | `core/stripe.ts`                                              | secret                 |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`                                                                           | In contract                       | served by `GET /api/finance/cards/setup`                      | public                 |
 | `STRIPE_API_BASE`                                                                                              | In contract (dev)                 | `core/stripe.ts`                                              | config                 |
+| `STRIPE_PAYMENT_METHOD_DOMAINS`                                                                                | **In contract** (CK6)             | `scripts/stripe-domains.ts`                                   | config                 |
+| `STRIPE_APPLE_PAY_DOMAIN_ASSOCIATION`                                                                          | **In contract** (CK6), unset      | the `/.well-known/apple-developer-merchantid-domain-association` route | public                 |
 | `EMBEDDINGS_ENABLED` · `VOYAGE_API_KEY` · `VOYAGE_API_BASE`                                                    | In contract                       | `isEmbeddingsLive`, `voyage-client.ts`                        | gate · secret · config |
 | `LINK_SAFETY_API_KEY`                                                                                          | In contract                       | `link-reputation.ts`                                          | secret                 |
 | `GOOGLE_INTEGRATION_*` · `MICROSOFT_INTEGRATION_*` · `ZOOM_CLIENT_*` · `DROPBOX_*` · `FRAMEIO_*`               | In contract                       | `integrations/oauth.ts`                                       | secret                 |
@@ -2063,8 +2134,8 @@ removed.
 | `SUPABASE_AUTH_CAPTCHA_SECRET`                                                                                 | **In contract** (#447)            | `supabase/config.toml` `env(...)`                             | secret                 |
 | `SUPABASE_AUTH_SMTP_PASS` · `SUPABASE_AUTH_SMTP_ADMIN_EMAIL`                                                   | **Built** (#448), off locally     | `supabase/config.toml` `env(...)`                             | secret · config        |
 | `RESEND_API_KEY` · `MAIL_FROM` · `RESEND_WEBHOOK_SECRET` (NT3)                                                 | **Built, no key yet**             | `services/mail/transport.ts`, the dispatcher's email transport (NT3), the webhook route | secret · config        |
-| `VAPID_PUBLIC_KEY`                                                                                             | **Proposed**                      | app (served)                                                  | public                 |
-| `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`                                                                          | **Proposed**                      | app env (the dispatcher's push transport, NT4)                | secret · config        |
+| `VAPID_PUBLIC_KEY`                                                                                             | **Built, no key yet** (NT4)       | app (served by `/api/notifications/push/config`)              | public                 |
+| `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`                                                                          | **Built, no key yet** (NT4)       | app env (the dispatcher's push transport, NT4)                | secret · config        |
 | `APNS_KEY_ID` · `APNS_TEAM_ID` · `APNS_BUNDLE_ID` · `APNS_PRIVATE_KEY` · `APNS_ENVIRONMENT`                    | **Proposed** (Growth)             | app env (the dispatcher)                                      | secret · config        |
 | `FCM_PROJECT_ID` · `FCM_SERVICE_ACCOUNT_JSON`                                                                  | **Proposed** (Growth)             | app env (the dispatcher)                                      | config · secret        |
 | `MICROSOFT_INTEGRATION_TENANT`                                                                                 | In contract                       | the Microsoft identity URLs (`common` by default)             | config                 |
@@ -2084,8 +2155,6 @@ RESEND_API_KEY=XXXX-XXXX
 RESEND_WEBHOOK_SECRET=XXXX-XXXX
 MAIL_FROM=XXXX-XXXX                     # Projective <no-reply@notify.<domain>>
 
-# Web Push (§8.2). The public key is served to browsers; the private key is an Edge secret only.
-VAPID_PUBLIC_KEY=XXXX-XXXX
 ```
 
 ---

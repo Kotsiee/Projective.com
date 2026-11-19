@@ -16,7 +16,56 @@ import { hasVoyageKey, readEmbeddingsOverride, resolveEmbeddingsGate } from "./e
  *
  * Clients are created on demand (never at import) so a missing/partial environment can't crash app
  * boot — callers gate on {@link isSupabaseConfigured} first.
+ *
+ * Under `USE_MOCKS` no factory hands out a client: each throws {@link MocksForcedError}. That is what
+ * makes "`dev:mock` reaches no database" true of every service, gated or not. A service with a
+ * fixture road never gets here (its `isXBackendLive()` is already false); one without maps the error
+ * to its own 503 (`isMocksForced`, {@link mocksForcedResult}).
  */
+
+// #region Mocks forced
+/** The sentence a live-only service answers under `USE_MOCKS`, unless it has a better one of its own. */
+export const MOCKS_FORCED_MESSAGE = "This isn't available in this environment.";
+
+/**
+ * Thrown by every client factory (and the raw storage fetch) while `USE_MOCKS` is on. A typed error,
+ * not a configuration failure: the environment chose fixtures, so a live-only service answers 503
+ * "isn't available in this environment" instead of a 500 or a fixture `ok`.
+ */
+export class MocksForcedError extends Error {
+	/** Stable tag, so the check survives a second copy of this module in a bundle. */
+	readonly code = "MOCKS_FORCED";
+	/** The status a service should answer with. */
+	readonly status = 503;
+
+	constructor(readonly factory: string) {
+		super(`USE_MOCKS is on: ${factory} hands out no database client.`);
+		this.name = "MocksForcedError";
+	}
+}
+
+/** True for a {@link MocksForcedError}, from this module or a duplicate of it. */
+export function isMocksForced(error: unknown): error is MocksForcedError {
+	return error instanceof MocksForcedError ||
+		(error instanceof Error && (error as { code?: unknown }).code === "MOCKS_FORCED");
+}
+
+/**
+ * The 503 a live-only service answers when `error` is the mocks refusal, else `null`. Shaped like a
+ * failed `ServiceResult` without importing it (core does not depend on the service layer).
+ */
+export function mocksForcedResult(
+	error: unknown,
+	message: string = MOCKS_FORCED_MESSAGE,
+): { ok: false; status: 503; message: string } | null {
+	return isMocksForced(error) ? { ok: false, status: 503, message } : null;
+}
+
+/** Throws {@link MocksForcedError} while `USE_MOCKS` is on; every client factory starts here. */
+export function assertDatabaseAllowed(factory: string): void {
+	if (useMocks()) throw new MocksForcedError(factory);
+}
+// #endregion
 
 /** True when the minimum Supabase configuration (URL + anon key) is present. */
 export function isSupabaseConfigured(): boolean {
@@ -27,9 +76,10 @@ export function isSupabaseConfigured(): boolean {
 /**
  * True when the MASTER mock switch is on (`USE_MOCKS` / `VITE_USE_MOCKS`).
  *
- * Every `isXBackendLive()` predicate below is ANDed with `!useMocks()`, so one variable can send the
- * whole platform to its fixture corpus without touching thirteen per-domain flags — the single
- * control a developer, a demo environment or an offline CI run actually wants.
+ * It means no database. Every `isXBackendLive()` predicate below is ANDed with `!useMocks()`, so a
+ * gated domain takes its fixture road, and every client factory refuses with {@link MocksForcedError},
+ * so an always-live service answers its own 503 instead of reaching Supabase. One variable runs the
+ * whole platform with the database stopped: the control a developer, a demo or an offline CI run wants.
  *
  * It composes by AND rather than OR on purpose: this can only ever turn a database path OFF. Making
  * it able to force one ON would mean a single misconfigured variable could fire a half-wired money
@@ -79,11 +129,6 @@ export function isContactBackendLive(): boolean {
 /** True when LIVE projects-backend behaviour is enabled AND Supabase is configured. */
 export function isProjectsBackendLive(): boolean {
 	return !useMocks() && serverEnv().projectsBackendLive && isSupabaseConfigured();
-}
-
-/** True when LIVE profile-backend behaviour is enabled AND Supabase is configured. */
-export function isProfileBackendLive(): boolean {
-	return !useMocks() && serverEnv().profileBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE messaging-backend behaviour is enabled AND Supabase is configured. */
@@ -158,6 +203,7 @@ export function getUserClient(
 	accessToken: string,
 	headers: Record<string, string> = {},
 ): SupabaseClient {
+	assertDatabaseAllowed("getUserClient");
 	const env = serverEnv();
 	if (!env.supabaseUrl || !env.supabaseAnonKey) {
 		throw new Error("Supabase is not configured (SUPABASE_URL / SUPABASE_ANON_KEY).");
@@ -173,6 +219,7 @@ export function getUserClient(
  * administrative; prefer {@link getUserClient} everywhere else.
  */
 export function getServiceClient(): SupabaseClient {
+	assertDatabaseAllowed("getServiceClient");
 	const env = serverEnv();
 	if (!env.supabaseUrl || !env.supabaseServiceRoleKey) {
 		throw new Error("Supabase service role is not configured (SUPABASE_URL / service-role key).");
@@ -210,6 +257,7 @@ export function clientAddressHeaders(): Record<string, string> {
  * HttpOnly cookies itself. Inside {@link runWithClientAddress} it forwards the client's address.
  */
 export function getAnonClient(): SupabaseClient {
+	assertDatabaseAllowed("getAnonClient");
 	const env = serverEnv();
 	if (!env.supabaseUrl || !env.supabaseAnonKey) {
 		throw new Error("Supabase is not configured (SUPABASE_URL / SUPABASE_ANON_KEY).");
@@ -261,6 +309,7 @@ export class CookieStore {
  * the Google OAuth start→callback round-trip. `detectSessionInUrl` is off (we exchange explicitly).
  */
 export function getOAuthClient(store: CookieStore): SupabaseClient {
+	assertDatabaseAllowed("getOAuthClient");
 	const env = serverEnv();
 	if (!env.supabaseUrl || !env.supabaseAnonKey) {
 		throw new Error("Supabase is not configured (SUPABASE_URL / SUPABASE_ANON_KEY).");

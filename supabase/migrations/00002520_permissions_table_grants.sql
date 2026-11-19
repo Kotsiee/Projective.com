@@ -158,6 +158,18 @@ GRANT SELECT ON ops.contact_request_attachments TO authenticated, service_role;
 -- #endregion
 
 
+-- #region [alerts] ops.alert_rules / ops.alert_deliveries / ops.alert_seen (MR4, Decision #461)
+-- No client role reads or writes them: the claim and the record are service-role definers, and
+-- operators read through ops.read_alert_deliveries. The service role may read them by hand; a rule is
+-- added or paused by a migration or by hand as the service role.
+REVOKE ALL ON ops.alert_rules, ops.alert_deliveries, ops.alert_seen FROM PUBLIC, anon, authenticated;
+
+GRANT SELECT, INSERT, UPDATE ON ops.alert_rules TO service_role;
+
+GRANT SELECT ON ops.alert_deliveries, ops.alert_seen TO service_role;
+-- #endregion
+
+
 -- --- from 0219_search_engine_weights.sql ---
 
 GRANT SELECT ON search.search_weights TO authenticated;
@@ -877,6 +889,11 @@ catalogue.collections,
 catalogue.collection_listings TO authenticated;
 
 GRANT ALL ON ALL TABLES IN SCHEMA catalogue TO service_role;
+
+-- A bought product (Decision #488) is never a signed-out read: the schema-wide SELECT above reaches
+-- `anon` too, so it is taken back here. `authenticated` keeps SELECT only (00002020: the holder and
+-- the seller); every write is a definer.
+REVOKE ALL ON catalogue.product_versions, catalogue.entitlements FROM anon;
 
 
 -- --- editorial + community (Decision #274) ---

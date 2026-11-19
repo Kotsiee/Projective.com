@@ -2,6 +2,8 @@ import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { EntityViewPage } from "@features/view/components/EntityViewPage.tsx";
 import { resolveViewPage } from "@features/view/core/view-ssr.ts";
+import { withReviewViewers } from "@features/view/core/review-viewers.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
 import { sessionTokenOf } from "@features/view/core/booking-actor.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
@@ -23,10 +25,12 @@ export const handler = define.handlers({
 	async GET(ctx) {
 		const signIn = guestIntentRedirect(ctx.url, !!ctx.state.isAuthenticated);
 		if (signIn) return new Response(null, { status: 303, headers: { location: signIn } });
-		const { view, status, ranking } = await resolveViewPage(
+		const { view: read, status, ranking } = await resolveViewPage(
 			ctx.params.item,
 			semanticRankingFor(ctx.req),
 		);
+		// Who may edit or reply to each review is the viewer's, joined on per request (Decision #487).
+		const view = await withReviewViewers(read, readActor(ctx));
 		ctx.state.title = "Not found · Projective";
 		if (view) {
 			applyPageMeta(ctx.state, viewPageMeta(view.item, siteOrigin(ctx.url)));

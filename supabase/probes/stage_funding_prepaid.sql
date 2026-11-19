@@ -232,7 +232,7 @@ BEGIN
     SELECT p.id, p.owner_user_id INTO v_q, v_qowner
       FROM projects.projects p
      WHERE p.client_business_id IS NULL AND p.format = 'pipeline' AND p.structure_variation = 'standard'
-       AND p.owner_user_id <> v_fl
+       AND p.owner_user_id <> v_fl AND p.source_blueprint_id IS NULL
      ORDER BY p.id LIMIT 1;
     IF v_q IS NULL THEN RAISE EXCEPTION 'FAIL fixture: no individual pipeline project'; END IF;
     INSERT INTO projects.project_stages (project_id, name, sort_order, status, unit_price_cents)

@@ -879,6 +879,199 @@ of its kind · 22023 malformed slots or two items in one position · 23514 a vid
 PB404 no such listing.';
 -- #endregion
 
+-- #region Product versions and delivery (Decision #488, ASSET_DELIVERY_ARCHITECTURE.md §6, §10)
+-- Publishing a product freezes what it delivers (ruling A6). The seller's `file_manifest` is the
+-- draft; this writes the next catalogue.product_versions row from the entries that name a library
+-- file, in the seller's order, de-duplicated by file — unless the newest version already delivers
+-- exactly that, in which case it is answered and nothing is written. Bytes cannot be copied from SQL:
+-- the catalogue service copies each file into `originals` as the service role and then calls
+-- catalogue.mark_product_version_ready; a purchase made before then is answered 503 + Retry-After by
+-- the download route, which retries the copy itself.
+--
+-- A file the draft still names but the seller has since deleted, or that never finished uploading,
+-- refuses the publish (PG422) rather than freezing a bundle with a hole in it. A product whose draft
+-- names no library file freezes nothing and answers NULL: it sells a licence with nothing to fetch.
+--
+-- A definer, because no client writes a version. Reached from set_listing_status (an INVOKER, so the
+-- caller needs EXECUTE, 00002510); called directly it re-checks what that door checks — the caller
+-- created the listing, and the listing is published — so a direct call is a re-publish, nothing more.
+CREATE OR REPLACE FUNCTION catalogue.fn_freeze_product_version(p_listing uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_listing catalogue.listings;
+    v_product catalogue.products;
+    v_manifest jsonb;
+    v_missing text;
+    v_latest catalogue.product_versions;
+    v_id uuid;
+    v_version integer;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to publish a listing' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO v_listing FROM catalogue.listings l WHERE l.id = p_listing;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That listing no longer exists' USING ERRCODE = 'PB404';
+    END IF;
+    IF v_listing.owner_user_id <> v_uid THEN
+        RAISE EXCEPTION 'Only the seller who created this listing can publish it' USING ERRCODE = '42501';
+    END IF;
+    IF v_listing.kind <> 'product'::catalogue.listing_kind OR v_listing.product_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+    IF v_listing.status <> 'published'::catalogue.listing_status THEN
+        RAISE EXCEPTION 'Only a published listing freezes what it delivers' USING ERRCODE = 'PG409';
+    END IF;
+
+    -- Two publishes of one product queue here, so they cannot both write version N + 1.
+    SELECT * INTO v_product FROM catalogue.products p WHERE p.id = v_listing.product_id FOR UPDATE;
+
+    WITH entries AS (
+        SELECT m.e, m.ord,
+               CASE WHEN (m.e ->> 'fileId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                    THEN (m.e ->> 'fileId')::uuid END AS file_id
+          FROM pg_catalog.jsonb_array_elements(
+                   CASE WHEN pg_catalog.jsonb_typeof(v_product.file_manifest) = 'array'
+                        THEN v_product.file_manifest ELSE '[]'::jsonb END
+               ) WITH ORDINALITY AS m (e, ord)
+         WHERE m.e ? 'fileId'
+    ),
+    firsts AS (
+        SELECT DISTINCT ON (COALESCE(en.file_id::text, 'bad:' || en.ord::text)) en.e, en.ord, en.file_id
+          FROM entries en
+         ORDER BY COALESCE(en.file_id::text, 'bad:' || en.ord::text), en.ord
+    ),
+    resolved AS (
+        SELECT f.e, f.ord, fi.id, fi.display_name, fi.size_bytes, fi.mime_type
+          FROM firsts f
+          LEFT JOIN files.items fi
+            ON fi.id = f.file_id
+           AND fi.deleted_at IS NULL
+           AND fi.status = 'uploaded'::files.file_status
+           AND fi.source = 'supabase'::files.file_source
+           -- The same rule catalogue.fn_listing_file_ok applied when the seller attached it.
+           AND (fi.owner_user_id = v_product.owner_user_id
+                OR (v_product.owner_team_id IS NOT NULL
+                    AND fi.owner_type = 'team'::files.owner_kind
+                    AND fi.owner_entity_id = v_product.owner_team_id))
+    )
+    SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+               'fileId', r.id,
+               'name', COALESCE(NULLIF(pg_catalog.btrim(r.e ->> 'name'), ''), r.display_name),
+               'label', COALESCE(NULLIF(pg_catalog.btrim(r.e ->> 'label'), ''), ''),
+               'extension', COALESCE(NULLIF(pg_catalog.btrim(r.e ->> 'extension'), ''), ''),
+               'bytes', r.size_bytes,
+               'mime', r.mime_type
+           ) ORDER BY r.ord) FILTER (WHERE r.id IS NOT NULL),
+           pg_catalog.min(COALESCE(NULLIF(pg_catalog.btrim(r.e ->> 'name'), ''), 'an attachment'))
+               FILTER (WHERE r.id IS NULL)
+      INTO v_manifest, v_missing
+      FROM resolved r;
+
+    IF v_missing IS NOT NULL THEN
+        RAISE EXCEPTION 'Attach % again before publishing — it is no longer in your library', v_missing
+            USING ERRCODE = 'PG422', DETAIL = 'every file it delivers';
+    END IF;
+    IF v_manifest IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    SELECT * INTO v_latest FROM catalogue.product_versions pv
+     WHERE pv.product_id = v_product.id ORDER BY pv.version DESC LIMIT 1;
+    IF FOUND AND v_latest.manifest = v_manifest THEN
+        RETURN pg_catalog.jsonb_build_object('version_id', v_latest.id, 'version', v_latest.version,
+            'created', false, 'ready', v_latest.ready_at IS NOT NULL);
+    END IF;
+
+    INSERT INTO catalogue.product_versions (product_id, version, manifest)
+    VALUES (v_product.id, COALESCE(v_latest.version, 0) + 1, v_manifest)
+    RETURNING id, version INTO v_id, v_version;
+    RETURN pg_catalog.jsonb_build_object('version_id', v_id, 'version', v_version,
+        'created', true, 'ready', false);
+END;
+$$;
+
+COMMENT ON FUNCTION catalogue.fn_freeze_product_version(uuid) IS
+'Freeze a published product listing''s attached library files into the next catalogue.product_versions
+row (Decision #488, ruling A6), as the seller who created it; reached from set_listing_status''s publish
+arm. Answers { version_id, version, created, ready }, the newest version unchanged when it already
+delivers exactly these files, or NULL when the listing is not a product or names no library file.
+Refusals: 42501 signed out / not the seller · PB404 no such listing · PG409 not published · PG422 an
+attached file is gone from the seller''s library (DETAIL `every file it delivers`).';
+
+-- The service's word that every file of a version now sits in `originals`. Idempotent: the first
+-- stamp stands. Service role only — no client can claim bytes were copied.
+CREATE OR REPLACE FUNCTION catalogue.mark_product_version_ready(p_version uuid)
+RETURNS timestamptz
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    UPDATE catalogue.product_versions pv
+       SET ready_at = COALESCE(pv.ready_at, pg_catalog.now())
+     WHERE pv.id = p_version
+    RETURNING pv.ready_at;
+$$;
+
+COMMENT ON FUNCTION catalogue.mark_product_version_ready(uuid) IS
+'Stamp a product version ready once the catalogue service has copied every file of its manifest into
+the originals bucket (Decision #488). Returns ready_at (the first stamp), NULL for an unknown version.
+Service role only.';
+
+-- One completed delivery of a bought file (ruling A8): the response streamed the whole object to its
+-- last byte. Stamps the entitlement's `first_delivered_at` once — the fact MONEY's refund rule reads —
+-- and writes a files.download_events row (`via = 'purchase'`) for each delivery, while the seller's
+-- library row still exists (its FK cascades; the stamp on the entitlement does not). Service role
+-- only: "this was downloaded" is not a claim a browser gets to make (files.download_events).
+CREATE OR REPLACE FUNCTION catalogue.fn_record_delivery(p_entitlement uuid, p_file uuid, p_actor uuid)
+RETURNS timestamptz
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_first timestamptz;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM catalogue.entitlements e
+          JOIN catalogue.product_versions pv ON pv.id = e.version_id
+         WHERE e.id = p_entitlement
+           AND pv.manifest @> pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('fileId', p_file))
+    ) THEN
+        RAISE EXCEPTION 'That file is not part of this purchase' USING ERRCODE = 'PB404';
+    END IF;
+
+    UPDATE catalogue.entitlements e
+       SET first_delivered_at = COALESCE(e.first_delivered_at, pg_catalog.now()),
+           updated_at = CASE WHEN e.first_delivered_at IS NULL THEN pg_catalog.now() ELSE e.updated_at END
+     WHERE e.id = p_entitlement
+    RETURNING e.first_delivered_at INTO v_first;
+
+    IF EXISTS (SELECT 1 FROM files.items fi WHERE fi.id = p_file)
+       AND (p_actor IS NULL OR EXISTS (SELECT 1 FROM auth.users u WHERE u.id = p_actor)) THEN
+        INSERT INTO files.download_events (item_id, actor_user_id, via)
+        VALUES (p_file, p_actor, 'purchase'::files.download_via);
+    END IF;
+    RETURN v_first;
+END;
+$$;
+
+COMMENT ON FUNCTION catalogue.fn_record_delivery(uuid, uuid, uuid) IS
+'Record one completed delivery of a bought file (Decision #488, ruling A8): stamps
+catalogue.entitlements.first_delivered_at once and writes a files.download_events row (via purchase)
+while the seller''s library row exists. Returns first_delivered_at. Refusal: PB404 the file is not in
+the entitlement''s version. Service role only.';
+-- #endregion
+
 -- #region Status
 -- Move a listing through its lifecycle (draft · published · paused · archived — nothing is ever
 -- deleted). Publishing passes the gate the console shows — a title, a price, an image in showcase
@@ -898,6 +1091,7 @@ DECLARE
     v_row catalogue.listings;
     v_missing text[] := ARRAY[]::text[];
     v_rows integer;
+    v_version jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to change a listing' USING ERRCODE = '42501';
@@ -958,15 +1152,24 @@ BEGIN
         END IF;
     END IF;
 
-    RETURN pg_catalog.jsonb_build_object('listing_id', p_listing, 'status', p_status);
+    -- A product freezes what a buyer will receive (Decision #488, ruling A6): each publish, a first one
+    -- or a re-publish, writes a new version only when the attached files changed.
+    IF p_status = 'published' AND v_row.kind = 'product' THEN
+        v_version := catalogue.fn_freeze_product_version(p_listing);
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object('listing_id', p_listing, 'status', p_status, 'version', v_version);
 END;
 $$;
 
 COMMENT ON FUNCTION catalogue.set_listing_status(uuid, text) IS
 'Move a listing to draft / published / paused / archived, as the seller who created it; a service''s
-blueprint follows. Publishing needs a title, a price, a slot-1 cover image and (Pipeline) a stage. Refusals: 42501 not the
+blueprint follows. Publishing needs a title, a price, a slot-1 cover image and (Pipeline) a stage; a
+published product freezes its attached files (catalogue.fn_freeze_product_version, Decision #488).
+Returns { listing_id, status, version } — version is that freeze''s answer, NULL otherwise. Refusals: 42501 not the
 seller · 22023 unknown status · PB404 no such listing · PG422 the publish gate (DETAIL lists what is
-missing, separated by |) · PM403 the seller is under 18 (catalogue.trg_listings_publish_age_gate).';
+missing, separated by |), or an attached file gone from the seller''s library · PM403 the seller is
+under 18 (catalogue.trg_listings_publish_age_gate).';
 -- #endregion
 
 -- #region Sales

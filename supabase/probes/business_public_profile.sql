@@ -16,12 +16,12 @@
 --   E. Client proof. A completed project the business commissioned appears for a stranger only when
 --      it is public and its portfolio display is allowed.
 --   F. Reviews invariant. Every review of a business is about a project the business commissioned,
---      written by somebody who delivered on it, at most once per (project, reviewer) — the only rule
---      the schema enforces (`unique_review_per_project`) — and at most once per (project, provider
+--      written by somebody who delivered on it, at most once per (project, reviewer) — the schema's
+--      `uq_entity_reviews_one_per_party` (00004014) — and at most once per (project, provider
 --      entity: the freelancer, or the team they delivered with), BP1's "one aggregate per
---      engagement". That last check is a SEED tripwire, not a guarantee: no review writer exists,
---      and `get_profile_reviews` returns rows unaggregated (Decision #244 (e)). The read names the
---      author's side as `freelancer`.
+--      engagement". The review is written here: RV1's doors (Decision #487) write a client's review
+--      of its provider, and a provider's review of a business waits for RV2's door, so the seed holds
+--      none. The read names the author's side as `freelancer`.
 --   G. Regression. A draft team stays hidden; a public person stays visible to a guest; a team's
 --      view carries its own `workspace` facts and owner `contact` (Teams P1).
 --
@@ -356,6 +356,22 @@ DECLARE
     v_total int;
     v_roles text;
 BEGIN
+    -- Kwame, for North Loop, reviews Atlas Labs on the engagement it commissioned. The seed holds no
+    -- provider-to-client review until RV2's door (Decision #487), so the probe writes the one it reads.
+    INSERT INTO reviews.entity_reviews (target_entity_id, target_entity_type, reviewer_user_id, project_id,
+                                        window_closes_at, rating, comment)
+    SELECT b.id, 'business', k.user_id, pr.id, now() + interval '30 days', 5.0,
+           repeat('A client who reviews on time and answers every question. ', 3)
+      FROM projects.projects pr
+      JOIN org.business_profiles b ON b.id = pr.client_business_id AND b.slug = 'atlaslabs'
+      JOIN org.users_public k ON k.username = 'kwamemensah'
+     WHERE EXISTS (SELECT 1 FROM projects.project_stages ps
+                     JOIN projects.stage_assignments sa ON sa.project_stage_id = ps.id
+                     JOIN org.team_members tm ON tm.team_id = sa.team_id AND tm.user_id = k.user_id AND tm.status = 'active'
+                    WHERE ps.project_id = pr.id
+                      AND sa.status NOT IN ('declined', 'cancelled', 'pending_funding'))
+     ORDER BY pr.id
+     LIMIT 1;
     SELECT count(*) INTO v_total FROM reviews.entity_reviews WHERE target_entity_type = 'business';
     SELECT count(*) INTO v_bad
     FROM reviews.entity_reviews rv

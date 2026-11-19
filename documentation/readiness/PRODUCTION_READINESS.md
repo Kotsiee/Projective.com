@@ -43,21 +43,21 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
-| **Investor MVP** | **67%** |           13 |  9 |  0 |  4 |           3 |
-| **UAT**          | **63%** |           66 | 36 |  9 | 21 |           7 |
-| **Production**   | **43%** |          146 | 47 | 25 | 74 |          17 |
+| **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
+| **UAT**          | **65%** |           67 | 38 |  8 | 21 |           6 |
+| **Production**   | **44%** |          148 | 49 | 25 | 74 |          16 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
 | Area                               | Rows | ✅ | 🟡 | ❌ | Score |
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |   10 |  3 |  0 |  7 |   31% |
-| B. Live data paths & feature flags |    7 |  2 |  2 |  3 |   50% |
-| C. Security & access control       |   34 | 18 |  4 | 12 |   61% |
+| B. Live data paths & feature flags |    8 |  4 |  1 |  3 |   73% |
+| C. Security & access control       |   35 | 18 |  4 | 13 |   60% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   17 |  3 |  6 |  8 |   40% |
 | F. Money, ledger & reconciliation  |   22 |  6 |  5 | 11 |   43% |
-| G. Scheduled jobs & operations     |    8 |  1 |  0 |  7 |   11% |
+| G. Scheduled jobs & operations     |    8 |  1 |  1 |  6 |   17% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
 | J. Routing, URLs & SEO             |    5 |  3 |  1 |  1 |   75% |
@@ -67,8 +67,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
 **Critical path per tier** (the open Critical rows, in suggested order):
 
-- **MVP:** PRD-B1 (fixtures under a live gate) → PRD-E3 (chat live refresh; the send door landed, #508) →
-  PRD-A1 (`/home`).
+- **MVP:** PRD-E3 (chat live refresh; the send door landed, #508) → PRD-A1 (`/home`).
 - **UAT:** PRD-D3 (malware scan) → PRD-E4 + PRD-E5 + PRD-E6 (dispatcher, notification email, auth
   SMTP: built, a hosted send to prove) → PRD-G2 + PRD-F23 (claim sweep, ghosting timer) → PRD-G6
   (hosted cron secrets) → PRD-F5 (dispute freeze).
@@ -99,13 +98,14 @@ Work orders for every open row, with the run order:
 
 | ID     | Requirement                                                           | Status | Crit     | Gate | Evidence / what's missing                                                                                                                                                                                       | Track |
 | :----- | :-------------------------------------------------------------------- | :----- | :------- | :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---- |
-| PRD-B1 | A live-gated read never serves fixtures                               | ❌     | Critical | MVP  | With `PROJECTS_BACKEND_LIVE=true`, a failed live read or a tokenless caller returns the fixture feed as `ok` (`services/projects/ProjectBackendService.ts:517-535, 1089-1092`)                                  | LD1   |
+| PRD-B1 | A live-gated read never serves fixtures                               | ✅     | Critical | MVP  | LD1 (#495): with `PROJECTS_BACKEND_LIVE` on, every projects read answers from the database or refuses — `401` with no token, `503` on a failed query — and every write `401`s without a token (`liveRead`'s `off` · `live` · `refused` roads; `live-gate.test.ts` pins every public method). The lane and `/projects` show the failure with Try again, never fixtures or "Nothing here yet". The sweep found one other leak, the proposal-allowance stub meter, now closed | LD1   |
 | PRD-B2 | Every domain has a live database path                                 | ✅     | Critical | MVP  | Auth, Explore, Projects, Messaging, Catalogue, Finance, Files, Integrations, Workspace, Saved, Scheduling, Editorial, Community, Contact, Newsletter                                                            | —     |
 | PRD-B3 | `FINANCE_BACKEND_LIVE` gates every money write it claims to           | ✅     | High     | UAT  | LD2 (#497): one chokepoint, `services/finance/money-gate.ts`, runs after the signed-in check and before any read or door. With the flag off, every `/wallet` action, checkout orders and approvals, invoicing terms, billing controls, invoice payment, paid revisions, dispute writes and the Stripe rails answer 503; reads stay live. `money-gate.test.ts` (no request with it off) and the static `money-gate.gate.test.ts`; verified live (no new ledger row with it off). Code, `.env.example` and SA say the same thing | LD2 ✅ |
-| PRD-B4 | Flags are honest: none dead, each scoped as documented                | 🟡     | Normal   | UAT  | `PROFILE_BACKEND_LIVE` has no consumer; EXPLORE, CATALOGUE and FILES gate sub-features only; `USE_MOCKS` skips the live-only services (`core/env.ts:64-83`); `mocks/registry.ts` says 17 of 20 have no DB path  | LD3   |
+| PRD-B4 | Flags are honest: none dead, each scoped as documented                | ✅     | Normal   | UAT  | LD3 (#505): under `USE_MOCKS` every Supabase client factory throws `MocksForcedError` and every live-only service answers its own 503, so `dev:mock` reaches no database (a 366-page crawl as guest and stub persona: no 500, no "permission denied"; one FX read reached a sentinel on the Supabase port and is not reproduced, #505 (e)). `mocks/registry.ts` has one entry per DB-reaching service directory with its gate, what it covers and its fixture road, pinned by `mocks/registry.test.ts`; `PROFILE_BACKEND_LIVE` retired; counts computed by `describeDataSources()` | LD3   |
 | PRD-B5 | A gated-off surface refuses in production instead of serving fixtures | 🟡     | Normal   | PROD | Contact and Newsletter answer 503; Community serves fixtures and stores nothing (`services/community/community-source.ts`)                                                                                      | LD4   |
 | PRD-B6 | A worked ticket can be archived                                       | ❌     | Normal   | UAT  | Deleting a non-pristine ticket is refused because the archive is not built (`ProjectBackendService.ts:3229`); #338 ruled archive over delete                                                                    | PM    |
 | PRD-B7 | The money kill switch covers money a project's lifecycle moves      | ❌     | Normal   | PROD | Accepting a submission and approving or cancelling a stage release or refund escrow through `services/projects/live-settlement.ts` under `PROJECTS_BACKEND_LIVE`, whatever `FINANCE_BACKEND_LIVE` says (#497 (a)); the owner rules whether the switch should stop them too | 🧑 #497 (a) |
+| PRD-B8 | A project page whose read fails says so, not "Project does not exist" | ❌     | Normal   | UAT  | Found by LD1 (#495). `features/projects/core/project-access.ts:95-100` reads a refused detail (a lapsed session's 401, an unreachable database's 503) as a miss, so `[projectSlug]/{index,details,preview}.tsx` and its `_middleware.ts` 303 to `/projects?notice=project-not-found`. `ProjectOverviewScreen` and `ProjectSetupScreen` render "Project not found" on the same failure. No fixtures are shown, but the words are false. The lane, the board, `/projects` and the project lane were fixed in LD1 | —     |
 
 ## C. Security & access control
 
@@ -149,6 +149,7 @@ Work orders for every open row, with the run order:
 | PRD-C33 | A group newcomer reads only what was written after they joined                            | ❌     | High     | PROD | #482 (b) (owner ruling): `view_dm_messages_if_participant` and `comms.can_read_message` ask membership only, so anyone added to a group reads its whole history; the bound is `dm_participants.joined_at`, entity channels exempt; the thread preview, unread counts and attachment reads need it too | #482 (b)   |
 | PRD-C34 | A team listing's write doors ask the team's `publish_listings`                            | ❌     | High     | UAT  | #500 (A): `save_listing`, `apply_listing_media`, `set_listing_status`, `duplicate_listing` and `delete_listing` ask only the creator (`00001170:317`, `:810`, `:914`, `:1149`, `:1336`) and `create_listing` any active member (`:58`), so a plain member creates and publishes for the team with their own JWT (only the app's `?team=` scope asks `publish_listings`); `delete_listing`, a definer, lets a creator who has left the team hard-delete its listings with no buyer history | SC6 (#500) |
 | PRD-C35 | A sign-in submitted before the page hydrates never puts the password in the URL           | ❌     | High     | UAT  | Found by CK5 (#492): `CredentialsForm.tsx:130` is `<form onSubmit={onSubmit} noValidate>` with no `method`, so a Sign in pressed before the island hydrates (a slow network, a bundle that failed) is the browser's own GET to `/login?identifier=…&password=…&remember=on`: the password lands in the address bar, the history, the server's access log and any later `Referer`. Seen on a dev server whose build sent no module script. Fix: `method="post"` with a route that answers a non-JS post, or no `name` on the fields until the island hydrates (the reset form's fields carry none, so it is safe) | —          |
+| PRD-C36 | Discovery telemetry is written only through the events route                              | ❌     | Normal   | PROD | Found by SC5 (#506 (a)): `anon` and `authenticated` hold INSERT on `search.interest_events` (`00002520:125`; policy `user_id = auth.uid() OR user_id IS NULL`), so a script posting to PostgREST with fresh session keys and any `created_at` inflates any listing's impressions, clicks and page views, which the seller's analytics (MK-43) and `listings.view_count` read. The route's rate limit and bot filter and the view trigger's 30-minute rule bound honest traffic only. Fix as SAC2 did for `query_logs` (#462): a door the route calls after its limiter, INSERT revoked | —          |
 
 ## D. Trust, safety & moderation
 
@@ -206,7 +207,7 @@ Work orders for every open row, with the run order:
 | PRD-F6  | Ticket-funding and payout-ready gates                                         | 🟡     | High     | UAT  | DB14 step 1 only; DB15 open                                                                                                                                                                                                      | DB14, DB15       |
 | PRD-F7  | Conservation identity → reason CHECKs → the nine settlement currencies        | 🟡     | High     | PROD | DB16 built (#483): `finance.v_conservation_identity` per currency, checked nightly by `finance.fn_check_conservation` (`finance-conservation-check`, 03:50 UTC, one `ops.log_entries` row per currency); operators read it on `/admin/ledger`; the seed conserves (`conservation_identity.sql`). DB8 (reason CHECKs) and DB9 (settlement currencies) left; stops ruled in #423 | DB16 ✅ → DB8 → DB9 |
 | PRD-F8  | Stripe balance ↔ ledger reconciliation                                        | ❌     | Critical | PROD | Nothing calls `balance.retrieve`; FINANCE_AUDIT L5, L6                                                                                                                                                                           | MR5 |
-| PRD-F9  | Ledger drift surfaced and alerted                                             | 🟡     | High     | PROD | The reader is built (#483): `/admin/ledger` shows the open drift (`finance.v_wallet_drift`, which `fn_reconcile_wallets` now reads too, and the unbalanced conversions) and the last 30 nightly conservation checks. Nothing tells a human yet: the alert is MR4 (ruled #461) | DB16 ✅ + MR4 |
+| PRD-F9  | Ledger drift surfaced and alerted                                             | 🟡     | High     | PROD | Surfaced and alerted (#483, #507): `/admin/ledger` shows the open drift and the last 30 nightly conservation checks; every `finance.*` error and a nightly check silent for 26 hours alert by webhook and email digest (`ops.fn_claim_alerts`, `OpsAlertService`, `ops_alerts.sql`; a webhook post proven end to end locally). Left: a hosted send on both channels, once `OPS_CRON_SECRET` is in the hosted Vault (PRD-G6) and `OPS_ALERT_WEBHOOK_URL` / `OPS_ALERT_EMAIL` are set | DB16 ✅ + MR4 ✅; hosted send |
 | PRD-F10 | DB CHECKs on `escrows.status` and `wallets.owner_type`                        | ❌     | High     | PROD | `00000017_tables_finance.sql:16, 206`; the vocabulary lives in Zod only                                                                                                                                                          | DB8 |
 | PRD-F11 | Failed payouts handled                                                        | ❌     | High     | PROD | Not built                                                                                                                                                                                                                        | SV8              |
 | PRD-F12 | Platform-initiated card refunds and the order lifecycle                       | ❌     | High     | PROD | No `refunds.create`; refunds are recorded only from `charge.refunded`; buyer and provider refunds (DB21) and the order lifecycle (DB19) open                                                                                     | DB19, DB21, MR3 |
@@ -233,7 +234,7 @@ Work orders for every open row, with the run order:
 | PRD-G4 | Reschedule ballots settle                                                             | ❌     | High     | UAT  | The `scheduling-settle-votes` row exists; `scheduling.fn_settle_votes` does not                                                                   | SCH    |
 | PRD-G5 | Search query-log retention                                                            | ❌     | Normal   | PROD | The `search-query-log-retention` row exists; `search.fn_prune_query_logs` does not                                                                | —      |
 | PRD-G6 | Every HTTP job's bearer and `CRON_APP_URL` are in the hosted Vault                    | ❌     | Critical | UAT  | `cron:vault` provisions `INTEGRATIONS_CRON_SECRET` only (`scripts/cron-vault.ts:16, 36`); the finance, accounts, scheduling and contact jobs skip | —      |
-| PRD-G7 | Alerting on job failures, ledger drift and webhook errors                             | ❌     | High     | PROD | No alert routing in the repo                                                                                                                      | —      |
+| PRD-G7 | Alerting on job failures, ledger drift and webhook errors                             | 🟡     | High     | PROD | Job failures (`ops.scheduler` at `error`) and ledger drift (every `finance.*` error, a dead-man switch on the two nightly checks) alert by webhook and email digest (#507). Left: webhook errors write no `ops.log_entries` row, so they cannot alert; a hosted send | MR4 ✅; webhook errors |
 | PRD-G8 | Deployment config and runbook (hosting, Supabase project, domains, backups, rollback) | ❌     | Critical | PROD | No deployment config in the repo; `deno task share` (Cloudflare tunnels) is the only hosting path                                                 | —      |
 
 ## H. Secrets & configuration
@@ -306,6 +307,7 @@ Work orders for every open row, with the run order:
 | :------------------------------------------------------------------------------------- | :----------------- | :------------------------------------------------- |
 | Where the notification dispatcher runs (Edge Function or Fresh route + pg_cron)        | PRD-E4, E5, E7, E8 | Open (`COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md`)     |
 | Escrow holding period                                                                  | PRD-F15            | Pending counsel (#337); brief: `FOUNDER_QUESTIONNAIRE.md` Part D Q1 (#473) |
+| Is PRD-F9 done once the alert is built, or only after a hosted send? (MR4 says ✅; the readiness addendum says 🟡 while a hosted step is left) | PRD-F9 | Open (#507 (E)(3)): 🟡 for now |
 | CSAM hash matching vendor (PhotoDNA)                                                   | PRD-D14            | Pending counsel (T5)                               |
 | Does the money kill switch also stop money a project's lifecycle moves (accept, approve, cancel)? | PRD-B7             | Open (#497 (a)): today those follow `PROJECTS_BACKEND_LIVE` |
 | FX spread and live rate feed                                                           | PRD-F18            | Pending counsel (#435 (a)); brief: `FOUNDER_QUESTIONNAIRE.md` Part D Q3 (#473). Feed provider ruled (#471) |
@@ -393,12 +395,18 @@ Work orders for every open row, with the run order:
 | 2026-11-18 | SAC1 follow-up (#481): PRD-C26, C28, C29 ❌ → ✅ (party cards, a purchase owner's face and the free/busy helpers answer only what the caller may see; #481 (a) ruled A) | 58% | 58% |  40% |
 | 2026-11-18 | PRD-C27 (#482): PRD-C27 ❌ → ✅ (an inquiry takes nobody, so a DM or inquiry is only ever its pair's); new PRD-C33 ❌ (a group newcomer reads from joining, owner ruling) | 58% | 59% |  40% |
 | 2026-11-18 | SAC5 follow-up (#444 (c)): PRD-C25 ❌ → ✅ (sign-up asks the whole handle namespace; username shape left to the owner) | 58% | 60% |  41% |
+| 2026-11-18 | FBP DB16 (#483): PRD-F7 ❌ → 🟡 (the conservation identity, checked nightly; DB8, DB9 left), PRD-F9 ❌ → 🟡 (the `/admin/ledger` reader; MR4's alert left); PRD-F15 stays ❌ (its Escrow age section is built) | 58% | 60% | 42% |
+| 2026-11-18 | NT3 (#339 N3): PRD-E5 ❌ → 🟡 (notification email through Resend), PRD-E10 ❌ → 🟡 (signed bounces: a hard bounce blocks every category, Confirm again lifts it); new PRD-E15, PRD-E16 ❌ | 58% | 61% | 42% |
 | 2026-11-18 | CK4 step 0 (#490): no row flips; the tax model ruled (A split by kind, tax-exclusive, codes tabled) and CK4 waits for DB21; new PRD-M7 ❌ (tax on the platform's own fees) | 58% | 60% | 40% |
-| 2026-11-18 | NT3 (#339 N3): PRD-E5 ❌ → 🟡 (notification email through Resend), PRD-E10 ❌ → 🟡 (signed bounces: a hard bounce blocks every category, Confirm again lifts it); new PRD-E15, PRD-E16 ❌ | 58% | 61% |  41% |
-| 2026-11-18 | FBP DB16 (#483): PRD-F7 ❌ → 🟡 (the conservation identity, checked nightly; DB8, DB9 left), PRD-F9 ❌ → 🟡 (the `/admin/ledger` reader; MR4's alert left); PRD-F15 stays ❌ (its Escrow age section is built) | 58% | 61% | 42% |
-| 2026-11-18 | SC6 step 0 (#500): no row flips; who edits a team's listing ruled (A, tightened: any `publish_listings` holder, and creating needs it) and SC6 waits for CK1 and SC4; new PRD-C34 ❌ (a team listing's doors never ask `publish_listings`) | 58% | 60% | 42% |
+| 2026-11-18 | LD1 (#495): PRD-B1 ❌ → ✅ (with `PROJECTS_BACKEND_LIVE` on, every projects read answers from the database or refuses, 401 with no token and 503 on a failed query, and never fixtures; the lane, the board and `/projects` show the failure) | 67% | 63% | 43% |
 | 2026-11-18 | LD2 (#497): PRD-B3 ❌ → ✅ (every money write passes one chokepoint, 503 with `FINANCE_BACKEND_LIVE` off; reads stay live); new PRD-B7 ❌ (a project's lifecycle moves money outside the switch) | 58% | 62% | 42% |
+| 2026-11-18 | SC6 step 0 (#500): no row flips; who edits a team's listing ruled (A, tightened: any `publish_listings` holder, and creating needs it) and SC6 waits for CK1 and SC4; new PRD-C34 ❌ (a team listing's doors never ask `publish_listings`) | 67% | 64% | 43% |
+| 2026-11-18 | SC1 (#501): no row flips; PRD-I3 narrowed (`catalogue.listings` has its row schema; comms messages, `scheduling.events` and seven catalogue tables left) | 58% | 61% | 42% |
+| 2026-11-18 | LD3 (#505): PRD-B4 🟡 → ✅ (`USE_MOCKS` reaches no database; the registry matches the services, pinned by a test; `PROFILE_BACKEND_LIVE` retired; no stale counts). The tiers are recounted over every row, PRD-C34 (#500) included | 67% | 63% | 43% |
 | 2026-11-18 | CD1 step 5 (#502): PRD-E14 ❌ → 🟡 (the confirmation mail leaves from `newsletter_mail_from` on `news.`); PRD-E11 stays 🟡 (the Resend contacts sync, the provider's contact events and the per-topic unsubscribe are built; a hosted send left, CD2) | 58% | 62% |  42% |
 | 2026-11-18 | CK5 (#492): new PRD-C35 ❌ (a Sign in pressed before the page hydrates is a native GET that puts the password in the URL); no row flips | 58% | 61% | 42% |
+| 2026-11-18 | SC5 (#506): new PRD-C36 ❌ (`anon` may INSERT into `search.interest_events` directly, so a script inflates any listing's impressions, clicks and views); no row flips | 58% | 62% | 42% |
+| 2026-11-18 | MR4 (#507): PRD-G7 ❌ → 🟡 (job failures and ledger drift alert by webhook and email; webhook errors have no writer); PRD-F9 stays 🟡 (the alert is built; a hosted send is left) | 67% | 63% | 43% |
+| 2026-11-18 | LD1 follow-up (#495): new PRD-B8 ❌ (a project page whose read fails 303s as "Project does not exist"; the lane, the board, `/projects` and the project lane already say the read failed) | 67% | 63% | 43% |
 | 2026-11-18 | SC1 (#501): no row flips; PRD-I3 narrowed (`catalogue.listings` has its row schema; comms messages, `scheduling.events` and seven catalogue tables left) | 58% | 61% | 42% |
 | 2026-11-18 | MS2 (#508): PRD-E2 ❌ → ✅ (one send door for both stores; `cht-` is the only routed chat address); PRD-J1 narrowed; new PRD-E17 ❌ | 67% | 63% |  43% |

@@ -1,5 +1,10 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
-import { isDomainLive, resolveAllDataSources, resolveDataSource } from "./data-source.ts";
+import {
+	describeDataSources,
+	isDomainLive,
+	resolveAllDataSources,
+	resolveDataSource,
+} from "./data-source.ts";
 import { useMocks } from "./supabase.ts";
 import { MOCK_DOMAINS, MOCK_REGISTRY } from "../mocks/registry.ts";
 
@@ -9,7 +14,8 @@ import { MOCK_DOMAINS, MOCK_REGISTRY } from "../mocks/registry.ts";
  *   1. Absent or `false`, it changes NOTHING. Every domain resolves exactly as it did before the flag
  *      existed. This is the whole basis for calling the change non-breaking, so it is asserted rather
  *      than assumed.
- *   2. `true` forces every domain to fixtures, overriding a per-domain gate that says otherwise.
+ *   2. `true` takes every domain off the database, overriding a per-domain gate that says otherwise:
+ *      a domain with a fixture road serves fixtures, one without serves its unavailable state.
  *   3. It is one-way. There is no value of `USE_MOCKS` that turns a database path ON. A test that
  *      only checked (2) would pass against an implementation that ORed the flag in, which would let a
  *      single variable fire a half-wired money mutation at a real project.
@@ -42,7 +48,6 @@ const ALL_LIVE: Record<string, string> = {
 	SUPABASE_ANON_KEY: "anon-key",
 	AUTH_BACKEND_LIVE: "true",
 	EXPLORE_BACKEND_LIVE: "true",
-	PROFILE_BACKEND_LIVE: "true",
 	PROJECTS_BACKEND_LIVE: "true",
 	MESSAGING_BACKEND_LIVE: "true",
 	CATALOGUE_BACKEND_LIVE: "true",
@@ -80,7 +85,47 @@ Deno.test("USE_MOCKS=true overrides every gate, even all-live", () => {
 		for (const report of resolveAllDataSources()) {
 			assertFalse(report.isLive, `${report.domain} must be mocked when USE_MOCKS is on`);
 			assertEquals(report.status, "mock:forced");
+			assertEquals(
+				report.serves,
+				report.fixtureRoad ? "fixtures" : "unavailable",
+				`${report.domain}: off the database it serves its fixture road or its unavailable state`,
+			);
 		}
+	});
+});
+
+Deno.test("an always-live domain is live when configured and unavailable under USE_MOCKS", () => {
+	const always = MOCK_DOMAINS.find((d) => MOCK_REGISTRY[d].gate === null);
+	assert(always, "the registry has always-live domains");
+	withEnv({ ...ALL_LIVE, USE_MOCKS: "false" }, () => {
+		const report = resolveDataSource(always);
+		assertEquals(report.status, "live");
+		assertEquals(report.serves, "database");
+	});
+	withEnv({ ...ALL_LIVE, USE_MOCKS: "true" }, () => {
+		assertEquals(resolveDataSource(always).serves, "unavailable");
+	});
+});
+
+Deno.test("a gate that is off serves the domain's fixture road", () => {
+	const gated = MOCK_DOMAINS.find((d) => MOCK_REGISTRY[d].gate && MOCK_REGISTRY[d].fixtureRoad);
+	assert(gated, "the registry has a gated domain with a fixture road");
+	const gate = MOCK_REGISTRY[gated].gate!;
+	withEnv({ ...ALL_LIVE, USE_MOCKS: "false", [gate]: "false" }, () => {
+		const report = resolveDataSource(gated);
+		assertEquals(report.status, "mock:gate-off");
+		assertEquals(report.serves, "fixtures");
+	});
+});
+
+Deno.test("describeDataSources computes its counts", () => {
+	withEnv({ ...ALL_LIVE, USE_MOCKS: "false" }, () => {
+		const summary = describeDataSources();
+		assert(summary.startsWith(`${MOCK_DOMAINS.length} of ${MOCK_DOMAINS.length} domains`), summary);
+		for (const domain of MOCK_DOMAINS) assert(summary.includes(`  ${domain} `), domain);
+	});
+	withEnv({ ...ALL_LIVE, USE_MOCKS: "true" }, () => {
+		assert(describeDataSources().startsWith("USE_MOCKS is ON"));
 	});
 });
 
@@ -100,7 +145,8 @@ Deno.test("USE_MOCKS wins over the alias when both are set", () => {
 });
 
 Deno.test("the switch is ONE-WAY — it can never force a domain live", () => {
-	// Every gate off. No value of USE_MOCKS may produce a live domain.
+	// Every gate off. No value of USE_MOCKS may produce a live gated domain. (An always-live domain
+	// has no gate to close; the one-way property is about the gates.)
 	const allOff = Object.fromEntries(Object.keys(ALL_LIVE).map((k) => [k, "false"]));
 	for (const value of ["true", "false", "TRUE", "1", "yes", ""]) {
 		withEnv({
@@ -109,7 +155,7 @@ Deno.test("the switch is ONE-WAY — it can never force a domain live", () => {
 			SUPABASE_ANON_KEY: "k",
 			USE_MOCKS: value,
 		}, () => {
-			for (const domain of MOCK_DOMAINS) {
+			for (const domain of MOCK_DOMAINS.filter((d) => MOCK_REGISTRY[d].gate)) {
 				assertFalse(
 					isDomainLive(domain),
 					`USE_MOCKS="${value}" must not turn ${domain} live while its own gate is off`,

@@ -1,13 +1,15 @@
 # Asset Storage, Delivery & Proxy Architecture
 
-> **Proposed design. Nothing here is built, and it binds nothing until the rulings in §13 are
-> made.** Logged as Decision #393. Companion spec: [`ANTI_PIRACY_ENGINE.md`](ANTI_PIRACY_ENGINE.md)
+> **Phase 0 is built (Decision #488, 2026-11-18): entitlements, frozen versions, the `originals`
+> bucket, `/api/downloads/[entitlement]/[fileId]` and the purchases view.** Everything else here is
+> still a proposed design, binding nothing until its rulings in §13 are made. Logged as Decision #393. Companion spec: [`ANTI_PIRACY_ENGINE.md`](ANTI_PIRACY_ENGINE.md)
 > (watermarking, leak detection, takedowns, AI resistance). Business rules: `PRODUCT_SPEC.md`
 > §Digital Marketplace & IP Governance 7. Plan numbers: `finance-model.md` §16.8.
 >
 > Existing contracts stay where they live. This document links to
 > [`database/files/Storage.md`](../database/files/Storage.md) instead of restating the proxy, and
-> its schema is deliberately absent from `database/*`, which documents only what is migrated.
+> its schema is deliberately absent from `database/*`, which documents only what is migrated —
+> except Phase 0's, which is migrated and documented in `database/catalogue/Tables.md`.
 
 ## 1. Assessment
 
@@ -43,21 +45,27 @@ file nobody can download protects nothing.
 | Malware scan           | **Not built.** `scanning` is a magic-byte sniff.                                                                                      | `Storage.md` §Deferred                                            |
 | Elevation on attach    | **Specified, not built.** `PRODUCT_SPEC.md` says a file attached to a product becomes Public.                                         | `PRODUCT_SPEC.md` §Privacy scopes · `projects/live-files.ts` note |
 | CDN and sandbox origin | **Neither exists.** No CDN sits in front of the proxy.                                                                                | `Storage.md` §Deferred · EPI §9.2                                 |
-| Buyer delivery         | **Does not work.** See below.                                                                                                         | below                                                             |
+| Buyer delivery         | **Built (phase 0, Decision #488).** See below.                                                                                        | below                                                             |
 
-### The blocker: a buyer cannot receive a purchased file today
+### The blocker, closed by phase 0 (Decision #488)
 
-- `finance.place_wallet_order` inserts each product line without `asset_id`
-  (`00001210_functions_finance_kyc_wallet.sql:1892`), no other path writes that column, and
-  `services/finance/live-orders.ts:342` offers a download only when it is set.
-- The same insert reads `manifest -> 0`, so a bundle of up to 24 files keeps only its first entry's
+As it stood on 2026-11-18 (re-measured; the 2026-11-06 line numbers had moved):
+
+- `finance.place_wallet_order` inserted each product line without `asset_id`
+  (`00001210_functions_finance_kyc_wallet.sql:2153`), no other path wrote that column, and
+  `services/finance/live-orders.ts:386` offered a download only when it was set (its "the seller
+  hasn't attached the files" note was `:359`).
+- The same insert read `manifest -> 0`, so a bundle of up to 24 files kept only its first entry's
   name and size.
-- Setting `asset_id` would not be enough. The link is `/files?asset=…`, and `files.fn_can_read` has
-  no purchase arm, so a buyer cannot read a seller's private file.
-- No page lists what a person has bought. `AssetSource` has no purchases value.
+- Setting `asset_id` would not have been enough. The link was `/files?asset=…`, and
+  `files.fn_can_read` has no purchase arm, so a buyer could not read a seller's private file.
+- No page listed what a person had bought.
 
-`flows/CATALOGUE_REBUILD.md` logged this as an open gap under Decision #217(i). Everything below
-assumes §10 closes it.
+What closed it: the purchase door writes a `catalogue.entitlements` row per product line; the line's
+files are a frozen `catalogue.product_versions` row copied into `originals`; the confirmation and
+`/files?source=purchases` link each file to `/api/downloads/[entitlement]/[fileId]`. `asset_id` is
+reserved and `fn_can_read` keeps no purchase arm: the media proxy is never a door to a sale
+original. `flows/CATALOGUE_REBUILD.md` logged the gap under Decision #217(i).
 
 ## 3. Invariants
 
@@ -90,7 +98,7 @@ Each is written to be testable, and §14 names the check.
 | **`deliveries`** (new)                                                                                     | n/a     | Private, no policy at all; objects are swept   | Entitlement gate (§6) |
 
 ```text
-originals/{product_id}/{version_id}/{file_id}/{name}     sale originals, immutable once published
+originals/{product_id}/{version_id}/{file_id}            sale originals, immutable once published (built, #488)
 deliveries/{entitlement_id}/{delivery_id}/{name}         per-buyer copies, seven-day TTL
 ```
 
@@ -100,7 +108,10 @@ can reach a sale original through any path, including a compromised seller sessi
 a builder in `@projective/types/files` (`Storage.md` §Path builders), and `BUCKETS` mirrors the
 seed.
 
-**Sale originals are snapshots** (ruling A6). A published version is frozen, so a seller who
+**The object key carries no name** (as built, #488): the display name lives in the version's manifest
+and reaches a browser only in `Content-Disposition`, so no seller-typed string is ever a storage path.
+
+**Sale originals are snapshots** (ruling A6, **ruled 2026-11-18**, built by #488). A published version is frozen, so a seller who
 renames, replaces or deletes a library file cannot change what a buyer already paid for. This is a
 deliberate exception to "one asset, never copied" (`PRODUCT_SPEC.md` §Assets & Attachments), and to
 automatic elevation: a sale original is never `link` or `public`, whatever it is attached to.
@@ -276,6 +287,13 @@ forwarded and the abort signal wired. | `503` if storage is unreachable |
 
 **Reuse.** `fetchStoredObject`, `upstreamOutcome`, `forwardHeaders`, `contentDisposition` and
 `countsTowardLimit` are used as they stand. The new service owns gates 3 to 8 only.
+
+**As built in phase 0 (Decision #488).** Gates 1 to 6 and 9 run as tabled (gates 1 and 2 in the thin
+route). Gate 7 is the per-identity window only (120 fresh downloads a minute); the per-entitlement
+daily ceiling (`delivery_daily_limit`) is not built. Gate 8 has no per-buyer rendering yet, so it
+reads the **version's** readiness instead: a purchase made before publishing's copy into `originals`
+has landed retries the copy and, if it still cannot, answers `503` with `Retry-After`, never a
+broken file. The `303` while a fingerprinted copy renders arrives with phase 5.
 
 **Delivery evidence.** The refund rule depends on whether a file was delivered, so the stream
 records `bytes_sent` and sets `completed_at` when the body finishes. `first_delivered_at` is stamped
@@ -507,10 +525,22 @@ step 4), so these derivatives run on the protection worker. A 3D preview is a de
 downsampled textures and no rig or source. The existing `three` canvas renders it unchanged, and
 compression such as Draco is not protection.
 
-## 10. Data model (proposed, not migrated)
+## 10. Data model (phase 0 migrated; the rest proposed)
 
 Everything lands by editing the consolidated files in place. `documentation/database/*` and the Zod
 SSOT change only when this is actually migrated (root `CLAUDE.md` §1).
+
+**Migrated by #488:** `catalogue.entitlement_status`, `catalogue.product_versions`,
+`catalogue.entitlements`, `files.download_via` gaining `purchase`, the `ent-` slug, the
+`ix_entitlements_holder` index and the `originals` bucket — documented in
+`database/catalogue/Tables.md` and `database/files/Storage.md`. Where they differ from the sketch
+below: a version carries `ready_at` (NULL until its copy lands) and a manifest of
+`{ fileId, name, label, extension, bytes, mime }` (`sha256` and `category` wait for phase 2's
+pipeline); an entitlement carries `delivery_terms_accepted_at` (ruling A8's acceptance) and leaves
+`updates_until` NULL and unread (an entitlement serves exactly its own version until the
+later-versions rule); `licence_tokens`, `deliveries`, `delivery_status` and the
+`asset_purpose` / `variant_tier` members wait for the phases that write them, because a Zod-mirrored
+`variant_tier` member would make the image pipeline encode a fourth tier for every upload.
 
 ```sql
 -- 00000004_enums_domains.sql, edited in place, not ALTER TYPE
@@ -681,9 +711,9 @@ The recommended answer is what this document assumes.
 | A3  | Does `no-store` apply to all proxied bytes?                                                                                                                               | No. Marketplace bytes only (§5.4).                                                                                  | Owner    |
 | A4  | Does the sandbox serve entitled files?                                                                                                                                    | No. Public derivatives only, so no token is ever needed. CORP is `cross-origin` there.                              | Owner    |
 | A5  | Accept that `<ref>.supabase.co` cannot be intercepted?                                                                                                                    | Yes. Nothing is emitted on it, and private objects stay refused.                                                    | Owner    |
-| A6  | Sale originals as a third zone: exempt from auto-elevation, and snapshotted, not shared?                                                                                  | Yes. Both amend `PRODUCT_SPEC.md` §Assets & Attachments.                                                            | Owner    |
+| A6  | Sale originals as a third zone: exempt from auto-elevation, and snapshotted, not shared?                                                                                  | **Ruled 2026-11-18 as recommended (#488)**; `PRODUCT_SPEC.md` §Assets & Attachments amended. | Owner    |
 | A7  | Upload ceiling for sale originals?                                                                                                                                        | 2 GiB, subject to the checks in §8.4.                                                                               | Owner    |
-| A8  | What counts as "downloaded" for the refund rule? `PRODUCT_SPEC.md` says viewing is not downloading, so a whole PDF could be read in the reader and then refunded.         | First completed delivery, **or** opening an entitled reader session. Buyers must expressly accept this at checkout. | Owner ⚖️ |
+| A8  | What counts as "downloaded" for the refund rule? `PRODUCT_SPEC.md` says viewing is not downloading, so a whole PDF could be read in the reader and then refunded.         | **Ruled 2026-11-18 as recommended (#488)**: the first completed delivery (a reader session once one exists), accepted before Pay. Recorded; the refund refusal waits behind `finance.delivered_refund_refusal`, off, for counsel. | Owner ⚖️ |
 | A9  | Is the "instant delivery" promise kept when a large file must render?                                                                                                     | Reword it: instant access, with large files prepared in minutes. Failure policy in the engine spec §6.              | Owner    |
 | A10 | Are sale originals screened by the content classifier? Decision #148 has two zones, and a listing could pair a clean cover with a prohibited file.                        | Malware and whitelist always. Classifier on previews, and on originals only if the owner rules so.                  | Owner ⚖️ |
 | A11 | How long may a buyer re-download, and what happens when a seller erases their account? `finance-model.md` §17 erases files with the account, while a licence outlives it. | Keep `originals` while any active entitlement exists, with a stated re-download window.                             | Owner ⚖️ |
@@ -692,7 +722,7 @@ The recommended answer is what this document assumes.
 
 | Phase | Delivers                                                                        | Depends on                 | Done when                                                                                                                                      |
 | :---- | :------------------------------------------------------------------------------ | :------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0     | Entitlements, `product_versions`, `originals`, `/api/downloads`, purchases view | A6, A8                     | A real checkout delivers every file of a bundle. A refunded line answers `404`. A concurrency probe passes on `place_wallet_order`.            |
+| 0     | Entitlements, `product_versions`, `originals`, `/api/downloads`, purchases view | A6, A8 (ruled)             | A real checkout delivers every file of a bundle. A refunded line answers `404`. A concurrency probe passes on `place_wallet_order`. **Built (#488):** `product_delivery.sql`, `product_delivery_race.sql`. |
 | 1     | Close signed reads, retire `/api/files/object`                                  | A2 (ruled #499)            | A test finds no storage host in any read response.                                                                                             |
 | 2     | Upload whitelist, mandatory ClamAV, large files                                 | Safety node, A7            | EICAR is refused. A disallowed format is refused by sniffed type. A 1 GiB upload resumes.                                                      |
 | 3     | Edge host, `SUPABASE_PUBLIC_URL`, direct-link resolver, `clientKey` wiring      | Edge choice, A5            | Every row of §7.1 has a test. A signed URL's `token` never appears in a redirect.                                                              |

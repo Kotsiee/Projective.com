@@ -28,6 +28,7 @@ import {
 	simulating,
 } from "../core/simulation.ts";
 import { sittingLabel } from "../core/sitting-time.ts";
+import { cohortMinimumSentence } from "../core/cohort-terms.ts";
 import { useIntakeAnswers } from "../hooks/useIntakeAnswers.ts";
 import type { BookableSlot, SlotGrid, SlotPurpose } from "@projective/types/scheduling";
 import { addDaysInZone, firstOpenDay } from "@projective/types/scheduling";
@@ -261,6 +262,9 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 
 	const sittings = useComputed(() => offer.value?.cohort?.sittings ?? []);
 	const sittingsLine = useComputed(() => cohortLine(sittings.value, zone.value));
+	const minimumLine = useComputed(() =>
+		cohortMinimumSentence(offer.value?.cohort ?? null, zone.value)
+	);
 
 	const ready = useComputed(() =>
 		!!offer.value && (isCohort.value ? sittings.value.length > 0 : selectedSlots.value.length > 0)
@@ -408,17 +412,20 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 						? (
 							sittings.value.length > 0
 								? (
-									<ol class="sbk__sittings">
-										{sittings.value.map((s, i) => (
-											<li class="sbk__sitting" key={s.id}>
-												<span class="sbk__stagenum">{i + 1}</span>
-												<span class="sbk__sittingtitle">{s.title}</span>
-												<span class="sbk__sittingwhen">
-													{sittingLabel(s.startsAt, s.endsAt, zone.value)}
-												</span>
-											</li>
-										))}
-									</ol>
+									<>
+										<ol class="sbk__sittings">
+											{sittings.value.map((s, i) => (
+												<li class="sbk__sitting" key={s.id}>
+													<span class="sbk__stagenum">{i + 1}</span>
+													<span class="sbk__sittingtitle">{s.title}</span>
+													<span class="sbk__sittingwhen">
+														{sittingLabel(s.startsAt, s.endsAt, zone.value)}
+													</span>
+												</li>
+											))}
+										</ol>
+										{minimumLine.value && <p class="sbk__about">{minimumLine.value}</p>}
+									</>
 								)
 								: (
 									<p class="sbk__about">

@@ -1,5 +1,10 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { getAnonClient, getUserClient, isProjectsBackendLive } from "../../core/supabase.ts";
+import {
+	getAnonClient,
+	getUserClient,
+	isProjectsBackendLive,
+	useMocks,
+} from "../../core/supabase.ts";
 import type {
 	AskQuestionInput,
 	BookingOutcome,
@@ -182,8 +187,12 @@ async function profileOwner(handle: string): Promise<ScheduleOwner | null | unde
 	}
 }
 
-/** The public call offer of an owner; `undefined` when the database could not answer. */
+/**
+ * The public call offer of an owner; `undefined` when the database could not answer, as under
+ * `USE_MOCKS`, where no client is handed out.
+ */
 function callOfferOf(owner: ScheduleOwner): Promise<PublicCallOffer | null | undefined> {
+	if (useMocks()) return Promise.resolve(undefined);
 	return readPublicCallOffer(getAnonClient(), owner);
 }
 
@@ -1035,6 +1044,9 @@ export class BookingBackendService {
 	): Promise<ServiceResult<{ event: CalendarEvent | null }>> {
 		if (!actor.userId || !actor.accessToken) {
 			return fail(401, { message: "Sign in to answer this call." });
+		}
+		if (useMocks()) {
+			return fail(503, { message: "Discovery calls aren't available in this environment." });
 		}
 		const { error } = await callDoor(input, actor.accessToken);
 		if (error) {

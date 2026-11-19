@@ -115,6 +115,13 @@
 	padding: var(--space-3);
 	border-block-start: var(--hairline);
 }
+
+/* The purchases destination (Decision #488) sits under the tree, outside it: a page, not a folder. */
+.fh-lane__purchases {
+	flex: none;
+	padding: var(--space-1) var(--space-2);
+	border-block-start: var(--hairline);
+}
 /* #endregion */
 
 /* #region Lane — collapsed rail */

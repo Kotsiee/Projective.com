@@ -13,8 +13,9 @@ import { taskAbsentViewRedirect } from "./task-view-guard.ts";
  * "allowed", and it reads the engagement's type only. Access is the `(dashboard)` bounce, the route,
  * the fat service and RLS — so the answer is pinned identical for every viewer below.
  *
- * No request here carries an access token, so the read always takes the fixture corpus, whatever
- * `PROJECTS_BACKEND_LIVE` says — the guard is exercised end to end with no database.
+ * No request here carries an access token and `PROJECTS_BACKEND_LIVE` keeps its default (off), so
+ * the read takes the fixture corpus — the guard is exercised end to end with no database. (With the
+ * gate on, a tokenless read is a `401`, never the corpus: PRD-B1.)
  */
 
 // #region Fixtures

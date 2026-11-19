@@ -38,6 +38,7 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `catalogue`     | Public      | 10 MiB · img     | `{seller_id}`      | Marketplace storefront media (products, service showcase). **Service-role write.**    |
 | `contact`       | Private     | 10 MiB · img,pdf,txt | `{user_id}`    | Files attached to a `/contact` request (Decision #276). **Operator read; service-role write.** |
 | `data_exports`  | **Service** | 50 MiB · zip     | `{user_id}`        | A person's copy of their own data (Decision #450). **Service-role only;** downloaded through a link minted per read. |
+| `originals`     | **Service** | 50 MiB · any     | `{product_id}`     | Sale originals frozen at publish (Decision #488, ruling A6). **Service-role only;** streamed to a buyer only by `/api/downloads/[entitlement]/[fileId]`. |
 
 ---
 
@@ -292,6 +293,28 @@ data_exports/
     └── [request_id].zip
 ```
 
+### `originals` (Service-role only — Decision #488, ruling A6)
+
+A published product version's files. Publishing freezes the draft's library files into a
+`catalogue.product_versions` row; the catalogue service then copies each one here **as the service
+role**, from the seller's `personal` / `workspace` object, and stamps the version ready
+(`catalogue.mark_product_version_ready`). There is **no storage policy at all**, like
+`verification`: no JWT reaches a sale original by any path, a compromised seller session included,
+and no `files.items` row points here, so `files.fn_can_read` and the media proxy are never a second
+door. A buyer receives bytes only through `GET|HEAD /api/downloads/[entitlement]/[fileId]`, which
+reads the entitlement and its version under the buyer's own JWT first and only then streams from
+here (no signed URL, ruling A2's recommendation). The object key carries no seller-typed text: the
+display name lives in the version's manifest and reaches the browser only in `Content-Disposition`.
+The 50 MiB ceiling and any type follow the seller's library, which is where the bytes come from;
+the sale-original whitelist and a larger ceiling are ASSET phase 2 (ruling A7).
+
+```text
+originals/
+└── [product_id]/
+    └── [version_id]/
+        └── [file_id]
+```
+
 ### `quarantine` (Restricted)
 
 The entry point for **all** user uploads. Files are moved to their target bucket only after passing
@@ -462,6 +485,7 @@ what a policy would check.
 | `personalLocation(userId, ...segments)`                                       | `personal/users/{userId}/…`                  |
 | **`workspaceLocation(entityId, ...segments)`**                                | **`workspace/{entityId}/…`**                 |
 | `invoiceLocation(...)` · `verificationLocation(...)`                          | `invoices/…` · `verification/…`              |
+| `originalLocation(productId, versionId, fileId)` (Decision #488)              | `originals/{productId}/{versionId}/{fileId}` |
 | `avatarLocation(...)` · `catalogueLocation(...)` · `publicAssetLocation(...)` | the three public buckets                     |
 
 > **`workspaceLocation()` is the one builder whose misuse is silent.** It takes the **team /

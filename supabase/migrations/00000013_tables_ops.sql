@@ -190,3 +190,92 @@ CREATE TABLE ops.contact_request_attachments (
   CONSTRAINT contact_request_attachments_file_fkey FOREIGN KEY (file_id) REFERENCES files.items (id) ON DELETE RESTRICT
 );
 -- #endregion
+
+-- #region [alerts] Money and job alerts (MR4, Decision #461)
+-- What the alert sweep watches, and what it sent. `ops.log_entries` is where every money check and
+-- the scheduler report a problem; nothing read it, so an error waited until somebody opened
+-- /admin/ledger. A rule names a scope and a channel; `ops.fn_claim_alerts` (00001660) folds every new
+-- server row a rule matches into one delivery per scope and fingerprint per dedupe window, and the
+-- `ops-deliver-alerts` job sends what is due through `OpsAlertService`. Two channels that fail apart,
+-- an incoming webhook and an email digest through Resend (#461 (A)). Rules are seeded in 00005065;
+-- adding a scope is a row, not code. Definer-only (RLS on, no client policy), as the job registry is.
+
+-- One rule: `level` matches every server row whose scope is LIKE `scope_pattern` at `min_level` or
+-- above (`warn` < `error`; a `metric` row never alerts); `silence` is a dead-man switch, raised when no
+-- server row of the scope `scope_pattern` names has appeared for `max_silence` (counted from the
+-- rule's own `created_at` while the scope has never written one).
+CREATE TABLE ops.alert_rules (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  kind text NOT NULL,
+  scope_pattern text NOT NULL,
+  min_level text,
+  max_silence interval,
+  channel text NOT NULL,
+  -- A group alerts once per window: rows of the same scope and fingerprint inside it fold into the
+  -- delivery it opened, and the first one after it opens a new delivery.
+  dedupe_window interval NOT NULL DEFAULT interval '24 hours',
+  enabled boolean NOT NULL DEFAULT true,
+  description text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT alert_rules_pkey PRIMARY KEY (id),
+  CONSTRAINT alert_rules_kind_check CHECK (kind = ANY (ARRAY['level'::text, 'silence'::text])),
+  CONSTRAINT alert_rules_shape_check CHECK (
+    (kind = 'level' AND min_level = ANY (ARRAY['warn'::text, 'error'::text]) AND max_silence IS NULL)
+    OR (kind = 'silence' AND min_level IS NULL AND max_silence > interval '0')
+  ),
+  CONSTRAINT alert_rules_channel_check CHECK (channel = ANY (ARRAY['webhook'::text, 'email'::text])),
+  CONSTRAINT alert_rules_window_check CHECK (dedupe_window >= interval '5 minutes'),
+  CONSTRAINT alert_rules_unique UNIQUE (kind, scope_pattern, channel)
+);
+
+-- One alert on one channel: a group (`scope` + `fingerprint`) inside one dedupe window, however many
+-- rows it folded (`count`, `first_seen` … `last_seen`). `sample` is the newest row's figures and short
+-- ids only (`ops.fn_alert_sample`), never its message, a name, an email or a bank detail. Delivery
+-- runs forward only: `pending` until a send succeeds, then `sent`; a failed send stays `pending` and
+-- is tried again after `next_attempt_at` (backoff, `ops.fn_record_alert_delivery`). Never deleted
+-- (trg_alert_deliveries_keep, 00001897).
+CREATE TABLE ops.alert_deliveries (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  rule_id uuid NOT NULL,
+  channel text NOT NULL,
+  group_key text NOT NULL,
+  scope text NOT NULL,
+  fingerprint text NOT NULL,
+  level text NOT NULL,
+  first_seen timestamp with time zone NOT NULL,
+  last_seen timestamp with time zone NOT NULL,
+  window_ends_at timestamp with time zone NOT NULL,
+  count integer NOT NULL DEFAULT 1,
+  sample jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL DEFAULT 'pending',
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamp with time zone NOT NULL DEFAULT now(),
+  -- The send's lease: a claimed row is not claimed again until it lapses, so two overlapping sweeps
+  -- never send one alert twice.
+  lease_until timestamp with time zone,
+  -- The transport's status code or error class, never a response body.
+  last_error text,
+  sent_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT alert_deliveries_pkey PRIMARY KEY (id),
+  CONSTRAINT alert_deliveries_rule_fkey FOREIGN KEY (rule_id) REFERENCES ops.alert_rules (id) ON DELETE RESTRICT,
+  CONSTRAINT alert_deliveries_channel_check CHECK (channel = ANY (ARRAY['webhook'::text, 'email'::text])),
+  CONSTRAINT alert_deliveries_level_check CHECK (level = ANY (ARRAY['warn'::text, 'error'::text])),
+  CONSTRAINT alert_deliveries_status_check CHECK (status = ANY (ARRAY['pending'::text, 'sent'::text])),
+  CONSTRAINT alert_deliveries_sent_check CHECK ((status = 'sent') = (sent_at IS NOT NULL)),
+  CONSTRAINT alert_deliveries_count_check CHECK (count >= 1 AND attempts >= 0),
+  CONSTRAINT alert_deliveries_seen_check CHECK (last_seen >= first_seen AND window_ends_at > first_seen)
+);
+
+-- Which log rows each rule has already folded: the claim's cursor. A row is folded once per rule, so a
+-- re-run, or two overlapping runs, count and send nothing twice. Never deleted.
+CREATE TABLE ops.alert_seen (
+  log_entry_id uuid NOT NULL,
+  rule_id uuid NOT NULL,
+  delivery_id uuid NOT NULL,
+  seen_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT alert_seen_pkey PRIMARY KEY (log_entry_id, rule_id),
+  CONSTRAINT alert_seen_rule_fkey FOREIGN KEY (rule_id) REFERENCES ops.alert_rules (id) ON DELETE RESTRICT,
+  CONSTRAINT alert_seen_delivery_fkey FOREIGN KEY (delivery_id) REFERENCES ops.alert_deliveries (id) ON DELETE RESTRICT
+);
+-- #endregion

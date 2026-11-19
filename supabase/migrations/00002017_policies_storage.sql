@@ -17,6 +17,7 @@
 --   invoices      - read: owner on {owner_id}
 --   verification  - NO authenticated policy at all → service-role ONLY (RLS-bypass)
 --   data_exports  - NO authenticated policy at all → service-role ONLY; links minted per read (#450)
+--   originals     - NO policy at all → service-role ONLY; streamed only after the entitlement gate (#488)
 --   public_assets - public read
 --   avatars       - public read
 --   showcase      - public read
@@ -151,6 +152,15 @@ SELECT TO authenticated USING (
 -- service_role (which bypasses RLS in Edge Functions) can read/write. Client uploads land in
 -- `quarantine` and are promoted into `verification` by a SECURITY DEFINER / service-role move, so a
 -- user's JWT never touches this bucket directly. Do NOT add an `authenticated` policy.
+-- #endregion
+
+
+-- #region originals — sale originals frozen at publish: service-role ONLY (Decision #488, ruling A6)
+-- Deliberately NO policy here, for the reason `verification` has none: a buyer reaches these bytes
+-- only through `/api/downloads/[entitlement]/[fileId]`, which reads the entitlement under the
+-- buyer's JWT first and only then streams as the service role. A seller does not read them either:
+-- their working copy stays in `personal` / `workspace`. Do NOT add a policy, nor a files.items row
+-- that files.fn_can_read could open: the proxy would become a second door to a sale original.
 -- #endregion
 
 

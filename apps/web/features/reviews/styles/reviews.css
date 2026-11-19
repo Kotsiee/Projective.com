@@ -1,0 +1,156 @@
+/*
+ * reviews.css — the review dialog, and the reply under a review on `/view` and `/@handle/reviews`
+ * (Decision #487; DESIGN_SYSTEM.md §C.1 ReviewDialog · ReviewReplyThread).
+ *
+ * Token-only. The reply is set off by ONE inline-start hairline and the spacing before it — never a
+ * box (§B.4): it is the reviewed side's text under the review, not a card inside one. Every count and
+ * date that changes is tabular.
+ */
+
+/* #region The reply under a review */
+.rv-thread {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.rv-reply {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding-inline-start: var(--space-3);
+	border-inline-start: var(--hairline);
+}
+
+.rv-reply__meta {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.rv-reply__body {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+	white-space: pre-line;
+}
+
+.rv-thread__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.rv-composer {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.rv-composer__foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+
+.rv-composer__count {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.rv-composer__buttons {
+	display: flex;
+	gap: var(--space-2);
+}
+/* #endregion */
+
+/* #region The review dialog */
+.rv-dialog__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.rv-dialog__lead {
+	margin: 0;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+}
+
+.rv-dialog__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.rv-dialog__label {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.rv-dialog__note {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.rv-dialog__count {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	text-align: end;
+}
+
+.rv-dialog__count[data-short="true"] {
+	color: var(--on-surface);
+}
+
+.rv-dialog__quote {
+	margin: 0;
+	padding-inline-start: var(--space-3);
+	border-inline-start: var(--hairline);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.rv-dialog__quotetitle {
+	margin: 0;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.rv-dialog__quotebody {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	white-space: pre-line;
+}
+
+.rv-dialog__actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.rv-dialog__actions-start {
+	margin-inline-end: auto;
+}
+/* #endregion */

@@ -23,6 +23,17 @@ import { IS_DEV } from "@web/utils/dev.ts";
  * those is a perfectly good state for this app — the offline shell is an enhancement, and the queue
  * in `features/projects/core/offline-queue.ts` works without it.
  */
+/** Whether a registration runs the push-only worker (`/sw.js?mode=push`), which caches nothing. */
+function isPushOnly(registration: ServiceWorkerRegistration): boolean {
+	const script = registration.active?.scriptURL ?? registration.waiting?.scriptURL ??
+		registration.installing?.scriptURL ?? "";
+	try {
+		return new URL(script).searchParams.get("mode") === "push";
+	} catch {
+		return false;
+	}
+}
+
 export default function ServiceWorkerBridge(): null {
 	useEffect(() => {
 		// `serviceWorker` is absent on an insecure origin and in some embedded webviews. Absence is not
@@ -30,9 +41,15 @@ export default function ServiceWorkerBridge(): null {
 		if (!("serviceWorker" in navigator)) return;
 
 		if (IS_DEV) {
-			// See the docblock: remove, do not skip.
+			// See the docblock: remove, do not skip. The one exception is the push-only worker
+			// (`/sw.js?mode=push`) a developer registered by turning on alerts on this device
+			// (COMMS NT4): it caches nothing, and removing it would cancel that device's subscription.
 			void navigator.serviceWorker.getRegistrations()
-				.then((registrations) => Promise.all(registrations.map((r) => r.unregister())))
+				.then((registrations) =>
+					Promise.all(
+						registrations.filter((r) => !isPushOnly(r)).map((r) => r.unregister()),
+					)
+				)
 				.catch(() => {});
 			return;
 		}

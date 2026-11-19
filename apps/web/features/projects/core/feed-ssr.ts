@@ -37,7 +37,18 @@ export interface FeedBootstrap {
 	 * denomination nobody on the request ever chose.
 	 */
 	defaultCurrency: string;
+	/**
+	 * Why the first page could not be read, or `null` when it was.
+	 *
+	 * Set only when the feed read refused — a lapsed session's `401`, an unreachable database's `503`
+	 * (PRD-B1). The payload is then empty, and the lane says this sentence with a retry instead of
+	 * "Nothing here yet", which would tell the reader they have no projects.
+	 */
+	loadError: string | null;
 }
+
+/** The lane's words for a feed read that failed without a message of its own. */
+const FEED_UNAVAILABLE = "Your projects can't be loaded right now — please try again.";
 
 const EMPTY_PAYLOAD: ProjectFeedPayload = {
 	count: 0,
@@ -101,5 +112,6 @@ export async function resolveProjectsFeed(
 		activeContextLabel,
 		canOfferServices,
 		defaultCurrency: toDisplayCurrency(displayCurrency ?? context.displayCurrency),
+		loadError: res.ok ? null : res.message ?? FEED_UNAVAILABLE,
 	};
 }
