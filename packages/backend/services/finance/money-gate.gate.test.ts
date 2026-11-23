@@ -32,6 +32,10 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
 		"A read-only quote left at the default volatility; fund_stage and fund_with_conversion re-check it at the commit, behind the switch.",
 	"ticket-funding.ts#get_ticket_funding_quote":
 		"A read-only quote left at the default volatility; the ticket's funding doors re-check it at the commit, behind the switch.",
+	"TaxReportingService.ts#mark_tax_document":
+		"A seller marks their own uploaded file a tax residence certificate (files.items.metadata) and makes it private; moves no money (LEGAL LG6, #527).",
+	"TaxReportingService.ts#share_tax_document":
+		"A seller shows their own certificate to one project's client through files.set_item_access; writes file access, never money (LEGAL LG6, #527).",
 	"live-payments.ts#serviceRpc":
 		"Service role: the doors only the signature-verified Stripe webhook and the FINANCE_CRON_SECRET crons reach. Not user-initiated; those entry points refuse while the switch is off (PaymentBackendService.liveSettings).",
 	"live-payments.ts#claim_unsettled_card_payments":

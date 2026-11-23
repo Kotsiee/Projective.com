@@ -201,18 +201,26 @@ function refusal<T>(error: { code?: string; message: string }): ServiceResult<T>
 	return fail(502, { message: "That couldn't be done just now. Please try again." });
 }
 
-/** One finance rpc as the signed-in caller, mapped through `map`. Never throws into the route. */
+/** The caller's `finance` schema client. */
+const financeAs = (accessToken: string) => getUserClient(accessToken).schema("finance");
+type FinanceClient = ReturnType<typeof financeAs>;
+
+/**
+ * One finance door as the signed-in caller, mapped through `map`. Never throws into the route. Each
+ * caller names its door literally in `call`, so the money gate's scan can classify it
+ * (`money-gate.gate.test.ts`): the reads are `STABLE`, and the two certificate doors are allowlisted
+ * there because they write file access, never money.
+ */
 async function callFinance<T>(
 	actor: ReadActor,
-	fn: string,
-	args: Record<string, unknown> | undefined,
+	call: (db: FinanceClient) => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>,
 	map: (data: unknown) => T,
 	logScope: string,
 ): Promise<ServiceResult<T>> {
 	if (!isFinanceBackendLive()) return fail(503, { message: "This needs the live database." });
 	if (!actor.accessToken) return fail(401, { message: "Sign in to continue." });
 	try {
-		const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(fn, args);
+		const { data, error } = await call(financeAs(actor.accessToken));
 		if (error) return refusal<T>(error);
 		return ok(map(data));
 	} catch (error) {
@@ -227,8 +235,7 @@ export const TaxReportingService = {
 	sellerTaxReport(actor: ReadActor, year: number | null): Promise<ServiceResult<SellerTaxReport>> {
 		return callFinance(
 			actor,
-			"read_seller_tax_report",
-			{ p_year: year },
+			(db) => db.rpc("read_seller_tax_report", { p_year: year }),
 			(data) => toSellerTaxReport(data as RawSellerTaxReport | null, year ?? 0),
 			"report",
 		);
@@ -237,8 +244,7 @@ export const TaxReportingService = {
 	listTaxDocuments(actor: ReadActor): Promise<ServiceResult<TaxDocuments>> {
 		return callFinance(
 			actor,
-			"list_tax_documents",
-			undefined,
+			(db) => db.rpc("list_tax_documents"),
 			(data) => toTaxDocuments(data as RawTaxDocuments | null),
 			"list",
 		);
@@ -247,8 +253,7 @@ export const TaxReportingService = {
 	markTaxDocument(actor: ReadActor, fileId: string): Promise<ServiceResult<TaxDocument | null>> {
 		return callFinance(
 			actor,
-			"mark_tax_document",
-			{ p_file_id: fileId },
+			(db) => db.rpc("mark_tax_document", { p_file_id: fileId }),
 			(data) => toTaxDocument(data as RawDocument | null),
 			"mark",
 		);
@@ -261,8 +266,7 @@ export const TaxReportingService = {
 	): Promise<ServiceResult<TaxDocument | null>> {
 		return callFinance(
 			actor,
-			"share_tax_document",
-			{ p_file_id: fileId, p_project_id: projectId },
+			(db) => db.rpc("share_tax_document", { p_file_id: fileId, p_project_id: projectId }),
 			(data) => toTaxDocument(data as RawDocument | null),
 			"share",
 		);
