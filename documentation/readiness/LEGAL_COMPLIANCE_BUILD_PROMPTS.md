@@ -158,7 +158,7 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
    - (d) "deed" in code, "Transfer record" in the UI until counsel rules (⚖️, E2.17);
    - (e) a public check that answers only "valid, issued <date>" or "not valid";
    - (f) every IP setting issues a record, which names the setting;
-   - (g) LG4 builds after FINANCE DB6, LG2's brief and LG3.
+   - (g) LG4 builds after FINANCE DB6 (landed, #532), LG2's brief and LG3.
 6. **LG5:** ruled (#530): A. The client party gets the whole project, with every consolidated
    invoice that carries a line for it. A payee gets their own records, the agreements they are party
    to and their own payout statement, never a client invoice. An operator produces either through an
@@ -404,7 +404,7 @@ Readiness rows (§1.1): **PRD-M2**'s evidence gains "the Escrow Terms and the de
 
 ### LG4 — A signed transfer record on each final release
 
-> **Status 2026-11-23:** open; its stops are ruled (#530). It builds once FINANCE DB6 has landed,
+> **Status 2026-11-23:** open; its stops are ruled (#530). FINANCE DB6 has landed (#532); it builds once
 > LG2's brief is sent (not answered) and LG3 has landed (#530 (g)). Step 1 was run red in the ruling
 > session and lands with step 2, so peers' gates stay green.
 

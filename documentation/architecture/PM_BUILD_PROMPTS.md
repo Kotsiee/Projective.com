@@ -64,7 +64,7 @@ the rows its session updates (§1's readiness duty).
 
 | Prompt                                      | Waits for                                | Why                                                                                                                                                                                                                                                                                                                                |
 | :------------------------------------------ | :--------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| WP4a, WP4b                                  | F·DB6 merged                             | DB6 freezes a payee's pending rows on a dispute. (DB3 landed in `44382c08`: `finance.fn_assert_no_open_dispute` makes the release and Fair Exit doors refuse an open dispute.) While these run they hold `00001200` and `00001240`; F's later serial money prompts on those files go before them or after them, never beside them. |
+| WP4a, WP4b                                  | F·DB6 merged ✅ (#532)                    | DB6 freezes a payee's pending rows on a dispute. (DB3 landed in `44382c08`: `finance.fn_assert_no_open_dispute` makes the release and Fair Exit doors refuse an open dispute.) While these run they hold `00001200` and `00001240`; F's later serial money prompts on those files go before them or after them, never beside them. |
 | GH1                                         | its turn in the money lane               | It releases through `fn_release_ticket_escrow` (`00001200`) into the pending window (`00001240`). DB3 and the comms worker (`comms-process-queue`) have landed. The lane runs GH1 before DB6, which supersedes the DB6 wait this file once gave it: record that as a resolved contradiction in your decision row.                  |
 | WP4a step 6 (the contest)                   | PROJECTS EX2                             | EX2 designs the dispute subject (`subject_kind`) and widens the dispute doors; the contest reuses them and adds none of its own.                                                                                                                                                                                                   |
 | WP4b                                        | PROJECTS ST2                             | ST2 wires setup's Remove to a door for a pristine stage; WP4b gives a touched stage its archive through the same control.                                                                                                                                                                                                          |
@@ -401,8 +401,8 @@ Evidence Vault; with no stage deadline, a submission on file earns 50 % and an a
 the owner and the acting reviewer are told (as built); a multi-stage ticket on the ended stage is
 cancelled (as built). Ruling P2 (a) needs a ticket-level door, which this prompt builds and PM-WP4b
 uses. F·DB3 has landed (44382c08: fn_fair_exit_release refuses an open dispute through
-finance.fn_assert_no_open_dispute). WAIT for F·DB6, and for PROJECTS EX2 before step 6. It runs in
-the money lane (PM_BUILD_PROMPTS §0.2), after DB6 and EX2.
+finance.fn_assert_no_open_dispute), and F·DB6 has (#532). WAIT for PROJECTS EX2 before step 6. It runs in
+the money lane (PM_BUILD_PROMPTS §0.2), after EX2.
 
 🧑 DECISION — how a contest holds money (STOP before step 6; PM §0.5 #3). The dispute engine acts
 only on held escrow (PRODUCT_MANAGEMENT §3.8: one row contests ONE held escrow; PRODUCT_SPEC
@@ -545,7 +545,7 @@ once step 6's contest runs (EX4 closes it).
 > ticket only on a pristine ticket, through `ticketDeletable`, `DeleteTicketSchema`,
 > `POST /api/projects/ticket/delete` and `DeleteTicketDialog`), and step 8's column and readers in
 > `a80ce2f5` (#328 (a)). Every SQL step (1–6, 7's readers and server flag, 8's policy, 9) is open.
-> Waits for F·DB6, PM-WP4a and PROJECTS ST2.
+> Waits for PM-WP4a and PROJECTS ST2 (F·DB6 landed, #532).
 
 ```text
 PROMPT PM-WP4b: Removal and deletion follow the work; nothing with history is destroyed
@@ -572,7 +572,7 @@ documented 'refunded' is never written (S13). delete_ticket is granted to authen
 form never sends PUT, so delete_stage is unreachable from the product: PROJECTS ST2 wires Remove to
 a door for a pristine stage first, and this prompt gives a touched stage its archive through the
 same control. Depends on PM-WP4a (the ticket-level door). It edits 00001200 and 00001240, so it
-runs in the money lane (PM_BUILD_PROMPTS §0.2), after F·DB6. DB19 (#511, 3041e5ef) made
+runs in the money lane (PM_BUILD_PROMPTS §0.2); F·DB6 has landed (#532). DB19 (#511, 3041e5ef) made
 fn_refund_ticket_escrow call fn_record_order_line_refund: keep that call and its line states.
 
 FILES:

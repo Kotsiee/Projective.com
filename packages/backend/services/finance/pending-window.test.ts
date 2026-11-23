@@ -64,6 +64,7 @@ const row = {
 	state: "pending",
 	maturedAt: null,
 	transactionId: null,
+	holdChargebackId: null,
 	createdAt: "2026-10-13T10:00:00.000Z",
 };
 
@@ -84,4 +85,13 @@ Deno.test("PendingReleaseSchema refuses no source, two sources and an over-recov
 	assertEquals(PendingReleaseSchema.safeParse({ ...row, escrowId: null }).success, false);
 	assertEquals(PendingReleaseSchema.safeParse({ ...row, orderId: row.walletId }).success, false);
 	assertEquals(PendingReleaseSchema.safeParse({ ...row, recoveredCents: 10_001 }).success, false);
+});
+
+Deno.test("PendingReleaseSchema refuses a row on hold that names no dispute", () => {
+	assertEquals(PendingReleaseSchema.safeParse({ ...row, state: "on_hold" }).success, false);
+	assertEquals(
+		PendingReleaseSchema.safeParse({ ...row, state: "on_hold", holdChargebackId: row.walletId })
+			.success,
+		true,
+	);
 });

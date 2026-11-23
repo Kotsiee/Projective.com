@@ -1430,7 +1430,10 @@ CREATE TABLE finance.buyer_details (
 --
 -- `state` is where the row stands: `pending` inside the window, `available` once closed — matured
 -- (`transaction_id` names the credit) or fully recovered by a lost chargeback (`recovered_cents =
--- amount_cents`, no credit). `on_hold` is reserved for a dispute freezing a release mid-window.
+-- amount_cents`, no credit) — or `on_hold` while a card dispute against the payment that funded it is
+-- open (Decision #337, ruling M3): finance.fn_open_chargeback freezes it, the sweep skips it, and
+-- finance.record_dispute_closed recovers from it first when the dispute is lost, or returns it to
+-- `pending` at its unchanged `available_at` when it is won.
 CREATE TABLE finance.pending_releases (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     escrow_id uuid REFERENCES finance.escrows (id) ON DELETE RESTRICT,
@@ -1448,8 +1451,12 @@ CREATE TABLE finance.pending_releases (
     state finance.fund_state NOT NULL DEFAULT 'pending',
     matured_at timestamptz,
     transaction_id uuid REFERENCES finance.transactions (id) ON DELETE RESTRICT,
+    -- The card dispute that last froze this row (ruling M3), kept after it resolves as the record of
+    -- what froze it and, when lost, what recovered from it. NULL on a row no dispute has reached.
+    hold_chargeback_id uuid REFERENCES finance.chargebacks (id) ON DELETE RESTRICT,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT ck_pending_releases_one_source CHECK (num_nonnulls (escrow_id, order_id) = 1),
+    CONSTRAINT ck_pending_releases_hold_case CHECK (state <> 'on_hold' OR hold_chargeback_id IS NOT NULL),
     CONSTRAINT ck_pending_releases_recovered CHECK (recovered_cents BETWEEN 0 AND amount_cents),
     CONSTRAINT ck_pending_releases_window CHECK (available_at >= released_at),
     CONSTRAINT ck_pending_releases_closed CHECK (

@@ -346,6 +346,8 @@ export const PendingReleaseSchema = z.object({
 	state: FundState,
 	maturedAt: timestamp.nullable(),
 	transactionId: uuid.nullable(),
+	/** The card dispute that last froze this row (Decision #337, ruling M3); kept once it resolves. */
+	holdChargebackId: uuid.nullable(),
 	createdAt: timestamp,
 }).refine((r) => (r.escrowId === null) !== (r.orderId === null), {
 	message: "A pending release is keyed to exactly one source: an escrow or an order",
@@ -353,6 +355,9 @@ export const PendingReleaseSchema = z.object({
 }).refine((r) => r.recoveredCents <= r.amountCents, {
 	message: "recoveredCents cannot exceed amountCents",
 	path: ["recoveredCents"],
+}).refine((r) => r.state !== "on_hold" || r.holdChargebackId !== null, {
+	message: "A row on hold names the dispute that froze it",
+	path: ["holdChargebackId"],
 });
 export type PendingRelease = z.infer<typeof PendingReleaseSchema>;
 // #endregion

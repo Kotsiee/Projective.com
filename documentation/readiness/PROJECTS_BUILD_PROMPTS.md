@@ -85,7 +85,7 @@ PJ-74 are ⏸ (§0.4).
 | PJ-15 | ✅ · Crit · MVP   | PJZ (stale note); NO1 (email, 🧑) | The note says what is true: push is built locally, the hosted send is CD2's   |
 | PJ-17 | 🟡 · Crit · MVP   | **NO1** (⚖️) + CD2                | An address with no account receives its invitation; a hosted send is recorded |
 | PJ-20 | ✅ · High · UAT   | **ST5**                           | Seats and participants are written only through doors (note clears)           |
-| PJ-21 | 🟡 · Crit · UAT   | PM-WP4b step 3 (⏳ DB6, WP4a)     | A removal refunds or splits the held escrow by the state of the work          |
+| PJ-21 | 🟡 · Crit · UAT   | PM-WP4b step 3 (⏳ WP4a)          | A removal refunds or splits the held escrow by the state of the work          |
 
 **Tickets & delivery** (59%)
 
@@ -211,8 +211,8 @@ in the worktree `.claude/worktrees/wave2-p-wp8-c305ac` (PM-WP8's status line).
 **Queue M — the money lane** (FBP §0.1, serial). This file adds four turns to that lane; ask the
 lane's coordinator before taking one.
 
-1. **PM-GH1** (PJ-31). The lane runs it before DB6.
-2. FBP **DB6**, the lane's own turn. WP4a, WP4b and EX2 all wait for it.
+1. **PM-GH1** (PJ-31). The lane ran DB6 first (#532).
+2. FBP **DB6** ✅ (#532): WP4a, WP4b and EX2 no longer wait for it.
 3. **EX2** (PJ-43). It designs the dispute subject that FBP DB21 and PM-WP4a step 6 reuse, so it
    runs before both.
 4. **PM-WP4a** (PJ-39, PJ-46's half), then **PM-WP4b** (PJ-09, PJ-21, PJ-34). They run right after
@@ -274,7 +274,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001110` / `00001120` (ticket guards and doors)        | TK1; PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
 | `00001140` (claims, capacity, workload)                  | ST3, ST4; PM WP5a, D7b                                       | —                                                                 |
 | `00002011` (projects policies)                           | ST5; PM WP4b, WP5a, WP9                                      | —                                                                 |
-| `00000017` + `00001260` (disputes)                       | EX2, EX3; PM-WP4a step 6                                     | FBP DB6, DB21; MR3                                                |
+| `00000017` + `00001260` (disputes)                       | EX2, EX3; PM-WP4a step 6                                     | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3, CH4                                           | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
@@ -994,7 +994,7 @@ PROMPT EX2: The client or the freelancer can raise a dispute on a ticket's held 
 the other side responds, either can make an offer, and a ruling or an accepted offer moves the
 money through its doors
 
-ROLE: Full-stack engineer (money). Queue M, after FBP DB6: 00000017, 00001260, 00005010,
+ROLE: Full-stack engineer (money). Queue M (FBP DB6 landed, #532): 00000017, 00001260, 00005010,
 00002510 (by name). It calls the 00001200 primitives and never edits them.
 
 CONTEXT (verified at e1ff027b; re-check every line):
@@ -1031,7 +1031,7 @@ CONTEXT (verified at e1ff027b; re-check every line):
 
 🧑 DECISION (before step 2). Put all of these to me at once:
   1. What is contestable. Recommended: held escrow (§3.8), plus money released into the 7-day
-     pending window, once DB6 can freeze it.
+     pending window, which DB6 freezes on a card dispute (#532).
   2. Who raises, and when. Recommended: either party, while the ticket's stage is in review or
      submitted, or within the pending window after approval.
   3. The Phase-1 offer. Recommended: either side proposes the payee's share in basis points;

@@ -103,6 +103,9 @@ CREATE INDEX IF NOT EXISTS idx_ledger_audit_wallet ON finance.ledger_audit (wall
 
 CREATE INDEX IF NOT EXISTS idx_pending_releases_wallet ON finance.pending_releases (wallet_id, state);
 CREATE INDEX IF NOT EXISTS idx_pending_releases_due ON finance.pending_releases (available_at) WHERE state = 'pending';
+-- The rows a card dispute froze, which its close recovers from or returns (ruling M3).
+CREATE INDEX IF NOT EXISTS idx_pending_releases_hold ON finance.pending_releases (hold_chargeback_id)
+    WHERE hold_chargeback_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_statements_owner ON finance.statements (owner_type, owner_id, period_start DESC);
 CREATE INDEX IF NOT EXISTS idx_chargebacks_wallet ON finance.chargebacks (wallet_id, status);
 CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expiry ON finance.idempotency_keys (expires_at);

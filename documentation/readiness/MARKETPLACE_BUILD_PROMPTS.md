@@ -57,7 +57,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | MK-27 | ⏸                  | — (#435, counsel)                       | Excluded                                                                                                                               |
 | MK-28 | 🟡 · Normal · PROD | FBP DB17 → UI5                          | A live feed with a staleness mark                                                                                                      |
 | MK-29 | 🟡 · Crit · UAT    | CK1 ✅ + the live run (§0.4)            | The live run is recorded                                                                                                               |
-| MK-31 | ❌ · Crit · UAT    | FBP DB6 → DB21 → MR3                    | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
+| MK-31 | ❌ · Crit · UAT    | FBP DB6 ✅ → DB21 → MR3                 | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
 
 Two rows of the **Listing view** section are left to live runs of prompts that landed here (§0.4):
 **MK-16** (a quote offer is paid at its price; CK7, #491) and **MK-12** (reserve a cohort seat; SC3,
@@ -102,7 +102,7 @@ finance SQL lane (FINANCE §0); FINANCE's order wins on a conflict.
 
 1. **CK2** — runs now: CK1, CK7 and FBP DB16 have landed, and DB19 built its per-account cap.
 2. **SC10**'s money half — no wait, but never beside CK2 (`00001210`).
-3. FBP **DB21 → MR3** — ⏳ DB6.
+3. FBP **DB21 → MR3** — DB6 landed (#532).
 4. **CK4** — ⏳ DB21 (a refund reverses the tax); ⚖️ counsel before the switch. LEGAL LG8 follows
    it.
 5. **SC7** — ⏳ DB21 (a refund reverses the royalty too, #493 (D)); ⚖️ counsel before the grant
@@ -125,7 +125,7 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 | File                                             | Writers here          | Writers elsewhere (never at the same time)                        |
 | :----------------------------------------------- | :-------------------- | :---------------------------------------------------------------- |
 | `00001210` (`place_wallet_order`, promo, orders) | CK2, CK4, SC7, SC10   | FBP DB9, DB10, DB11, DB13, DB15; SCH-WP6                          |
-| `00000017` (finance tables)                      | CK2, CK4, SC7         | FBP DB6, DB8, DB21, MR3, MR5                                      |
+| `00000017` (finance tables)                      | CK2, CK4, SC7         | FBP DB8, DB21, MR3, MR5                                           |
 | `00001170` (catalogue doors, `save_listing`)     | SC6, SC10, SC12       | —                                                                 |
 | `00001155` (sessions, cohorts)                   | SC10, SC11            | every SCH package; FBP DB15                                       |
 | `00005060` (jobs)                                | RV2, SC11             | FBP DB17, MR5; PM-GH1                                             |

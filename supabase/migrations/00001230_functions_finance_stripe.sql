@@ -1744,8 +1744,18 @@ $$;
 -- it, so a late `charge.dispute.created` finds the case and changes nothing. Without `p_freeze` the
 -- case is only recorded: a dispute Stripe has already closed freezes nothing. A dispute against a
 -- charge Projective did not create is recorded unlinked. The caller has checked the dispute id, amount
--- and currency. Returns `{chargeback_id, payment_id, frozen_escrow_ids}`, or NULL when a concurrent
--- delivery recorded the same dispute first (one row per dispute, uq_chargebacks_provider_ref).
+-- and currency. Returns `{chargeback_id, payment_id, frozen_escrow_ids, held_release_ids}`, or NULL
+-- when a concurrent delivery recorded the same dispute first (one row per dispute,
+-- uq_chargebacks_provider_ref).
+--
+-- The freeze also reaches the payee's money the payment funded that is still clearing (Decision #337,
+-- ruling M3): the `pending` rows of the escrows it locked (each team share, finder fee and vault cut
+-- of a release is one) and of the order it placed — its product sales and the escrows bought on its
+-- lines (finance.fn_order_line_of_escrow) — oldest first, `pending` → `on_hold` keyed to the case,
+-- until they cover the disputed amount the frozen escrows do not. Only rows in the case's
+-- currency, so a converted payment freezes none and is recovered from the payer as before. A row that
+-- has cleared is never touched, and a plain top-up locked and placed nothing, so it freezes no row.
+-- Each person whose money froze is told.
 CREATE OR REPLACE FUNCTION finance.fn_open_chargeback(
     p_dispute_ref text,
     p_provider_ref text,
@@ -1764,6 +1774,9 @@ DECLARE
     v_payment finance.inbound_payments;
     v_chargeback uuid;
     v_frozen uuid[] := '{}';
+    v_held uuid[] := '{}';
+    v_row record;
+    v_uncovered bigint;
     v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
 BEGIN
     SELECT * INTO v_payment
@@ -1797,6 +1810,30 @@ BEGIN
         )
         SELECT COALESCE(pg_catalog.array_agg(id ORDER BY id), '{}') INTO v_frozen FROM frozen;
 
+        v_uncovered := GREATEST(p_amount - COALESCE((
+            SELECT pg_catalog.sum(e.amount_cents) FROM finance.escrows e
+             WHERE e.id = ANY (v_frozen) AND pg_catalog.upper(e.currency) = v_currency), 0), 0);
+        FOR v_row IN
+            SELECT pr.id, pr.amount_cents - pr.recovered_cents AS left_cents
+              FROM finance.pending_releases pr
+             WHERE pr.state = 'pending' AND pr.recovered_cents < pr.amount_cents
+               AND pg_catalog.upper(pr.currency) = v_currency
+               AND (pr.escrow_id = ANY (v_payment.locked_escrow_ids)
+                    OR (v_payment.order_id IS NOT NULL AND pr.order_id = v_payment.order_id)
+                    OR (v_payment.order_id IS NOT NULL AND pr.escrow_id IS NOT NULL
+                        AND pr.released_at >= (SELECT o.created_at FROM finance.orders o WHERE o.id = v_payment.order_id)
+                        AND EXISTS (SELECT 1 FROM finance.order_lines l
+                                     WHERE l.id = finance.fn_order_line_of_escrow(pr.escrow_id)
+                                       AND l.order_id = v_payment.order_id)))
+             ORDER BY pr.released_at, pr.id
+               FOR UPDATE
+        LOOP
+            EXIT WHEN v_uncovered <= 0;
+            UPDATE finance.pending_releases SET state = 'on_hold', hold_chargeback_id = v_chargeback WHERE id = v_row.id;
+            v_held := v_held || v_row.id;
+            v_uncovered := v_uncovered - v_row.left_cents;
+        END LOOP;
+
         PERFORM comms.fn_notify(
             v_payment.created_by, 'chargeback.opened', 'Card payment disputed',
             'A card payment you made has been disputed with your bank. Any escrow it funded is on hold while it is resolved.',
@@ -1804,11 +1841,25 @@ BEGIN
             pg_catalog.jsonb_build_object('amount_cents', p_amount, 'currency', v_currency, 'frozen_escrows', pg_catalog.cardinality(v_frozen)),
             NULL, NULL, NULL, NULL, NULL, 'high'::comms.notification_urgency
         );
+        PERFORM comms.fn_notify(
+            p.owner_id, 'chargeback.opened', 'Earnings on hold',
+            'A card payment for your work has been disputed with the payer''s bank. The part of it still clearing is on hold until the dispute is resolved. Money that has cleared is yours.',
+            'chargebacks', v_chargeback,
+            pg_catalog.jsonb_build_object('amount_cents', p.held_cents, 'currency', v_currency),
+            NULL, NULL, NULL, NULL, NULL, 'high'::comms.notification_urgency
+        )
+          FROM (
+            SELECT w.owner_id, pg_catalog.sum(pr.amount_cents - pr.recovered_cents)::bigint AS held_cents
+              FROM finance.pending_releases pr
+              JOIN finance.wallets w ON w.id = pr.wallet_id
+             WHERE pr.id = ANY (v_held) AND w.owner_type IN ('user', 'freelancer')
+             GROUP BY w.owner_id
+          ) p;
     END IF;
 
     RETURN pg_catalog.jsonb_build_object(
         'chargeback_id', v_chargeback, 'payment_id', v_payment.id,
-        'frozen_escrow_ids', pg_catalog.to_jsonb(v_frozen));
+        'frozen_escrow_ids', pg_catalog.to_jsonb(v_frozen), 'held_release_ids', pg_catalog.to_jsonb(v_held));
 END;
 $$;
 

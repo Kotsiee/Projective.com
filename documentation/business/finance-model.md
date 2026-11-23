@@ -315,14 +315,22 @@ Projective uses a tiered ledger, not a single monolithic wallet:
 > a card payment is the payer's own money and is spent from the wallet the moment it settles
 > (PRODUCT_SPEC §5); refunds, transfers and returned payouts are immediate too.
 >
-> **Disputes inside the window** (Decision #337, ruling M3; it closes #126's flag once built) —
-> **Not built yet**. A payment dispute freezes the payee's still-pending rows for the disputed money
-> (`on_hold`). A lost dispute recovers from those rows first, then from the payer, and only the rest
-> is a platform loss; a won dispute restores each row's original `available_at`. It reaches only
-> money still inside the 7 days — money that has cleared is never clawed back. The published line:
-> _"Money that has cleared is yours; money still clearing can be held while a payment dispute is
-> open."_ Today a lost card chargeback recovers from the **payer's** wallet only — its pending money
-> first, then Available — and `on_hold` has no writer.
+> **Disputes inside the window** (Decision #337, ruling M3; it closes #126's flag; FBP DB6). A
+> payment dispute freezes the payee's still-pending rows that the disputed payment funded (the
+> escrows it locked, with every team share, finder fee and vault cut of their releases, and the
+> order it placed: its product sales and the escrows bought on its lines): `pending` → `on_hold`,
+> oldest first, until they cover the disputed amount that
+> the escrows it still holds do not. A lost dispute refunds those escrows to the payer, recovers
+> the rest from the frozen rows first (`recovered_cents`; no ledger line, because the money never
+> cleared), then from the payer's wallet (its pending money first, then Available), and only what
+> is left is a platform loss (`unrecovered_cents`). A frozen row the recovery does not empty clears
+> again at its own date. A won dispute returns each row to `pending` with its original
+> `available_at`, and a row whose date has passed matures on the next sweep. It reaches only money
+> still inside the 7 days — money that has cleared is never clawed back. Only rows in the
+> dispute's currency freeze, so a payment converted at checkout is recovered from the payer as
+> before. The published line: _"Money that has cleared is yours; money still clearing can be held
+> while a payment dispute is open."_ Each person whose money freezes, clears again or is taken back
+> is told.
 
 **Worked example — £1,000 stage approval with a 10% team vault cut:**
 

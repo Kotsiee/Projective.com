@@ -97,7 +97,7 @@ it.
 | `00001060` (erasure)                 | ERA1–ERA4, MFA2                        | SEC G16                                           | G16 is folded into ERA1, so the T track never writes this file.                                                                             |
 | `00001300` (comms)                   | none directly                          | SEC L2/L4–L8, CAS messaging                       | ERA1's message clause lives in `00001060` but reads comms tables: its probe is the contract (§0.4). MIN1 edits `00001310`, M's notify file. |
 | `00002510` (grants)                  | ERA1, ERA2, ERA4, MFA2, MFA3, MIN2     | many                                              | One writer at a time; rebase on the latest main before editing.                                                                             |
-| `stripe-webhook.ts` + `00001230`     | MFA3 (`finance.record_payout_account`) | FBP DB6; SBP S4                                   | MFA3 after DB6, and never at the same time as S4.                                                                                           |
+| `stripe-webhook.ts` + `00001230`     | MFA3 (`finance.record_payout_account`) | SBP S4 (FBP DB6 landed, #532)                     | MFA3 never at the same time as S4.                                                                                                       |
 | `live-wallet.ts` / `wallet-scope.ts` | RLS1 (its `users_public` reads)        | FBP SV5; RED WP2                                  | RLS1 after both.                                                                                                                            |
 | `features/devtools` + `dev-seam.ts`  | SSO1 (IDG F6), MFA1, MIN1              | FBP UI3; SBP S4, S6                               | One writer at a time.                                                                                                                       |
 
@@ -124,7 +124,7 @@ Shared files outside §B.0 that still collide:
   / `00001240`): ARC1 writes the helper, F writes the call site.
 - **MFA2 ⏳ F·UI2/UI3** for the withdrawal dialog's submit hook (`WalletDialogs.tsx`,
   `WalletHome.island.tsx`), or MFA2 hands them the helper.
-- **MFA3 ⏳ the F·DB phase**: the `00001240` serial chain, and `00001230` after DB6, never with SBP
+- **MFA3 ⏳ the F·DB phase**: the `00001240` serial chain, and `00001230` (DB6 landed, #532), never with SBP
   S4.
 - **F·E1 ⏳ MFA2/MFA3.** The money-lifecycle E2E must step up before it withdraws (TOTP codes
   generated from the secret enrolled in the test).
@@ -1193,7 +1193,7 @@ PROMPT MFA3: AAL2 inside the payout doors
 
 ROLE: Postgres payments engineer. SQL lane, inside the F track's DB window on 00001240 and
 00001230: run only when the coordinator hands this prompt the slot (§0.3).
-⏳ MFA2 (the helper), F·DB6 (00001230), and the F track's serial chain on 00001240.
+⏳ MFA2 (the helper) and the F track's serial chain on 00001240 (F·DB6 landed, #532).
 
 CONTEXT:
   Findings: IW-M12.

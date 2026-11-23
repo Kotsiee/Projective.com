@@ -2085,8 +2085,9 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   moment the dispute opens. A lost dispute is recovered from those frozen rows first, then from the
   payer's wallet as above, then as the platform's loss; a won dispute returns them to Pending with
   their original release date. Money that has become Available is never clawed back, and nothing
-  outside the 7-day clearing window is frozen. **Not built yet:** today a dispute is recovered from
-  the payer only (closes the question left open by Decision #126).
+  outside the 7-day clearing window is frozen. An escrow the payment still holds covers its own
+  part first, so only the rest of the disputed amount is frozen from the payee (FBP DB6; this
+  closes the question left open by Decision #126).
 - **Freelancers must be _payout-ready before they earn_.** Identity verification (KYC) **and** a
   verified payout account are **onboarding gates**: a freelancer cannot apply for or accept paid
   work, be assigned or claim a ticket, or create or join a team until both are in place (Decision

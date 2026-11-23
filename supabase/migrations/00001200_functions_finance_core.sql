@@ -2021,7 +2021,7 @@ $$;
 --   reserved      a later ticket stage paid for ahead (#430) — no clock at all
 --   disputed      frozen by a dispute (#212) — ends at the operator's ruling
 --   pending       released, inside `pending_release_days` (#191); counted as amount − recovered
---   on_hold       a pending release a dispute froze (ruling M3; no writer until FBP DB6)
+--   on_hold       a pending release a card dispute froze (ruling M3, fn_open_chargeback) — ends at its close
 -- Age runs from when the money entered that state: an escrow's `created_at` (a reservation the stage
 -- activates in place keeps it), a pending release's `released_at`. Release therefore starts a second
 -- clock, and the time in the platform balance is the two added together. `p_now` is the clock to age

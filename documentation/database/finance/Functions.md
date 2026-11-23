@@ -1927,8 +1927,15 @@ The case-opening body every dispute door shares. Inserts the `finance.chargeback
 payment `p_provider_ref` names (`ON CONFLICT` on `uq_chargebacks_provider_ref`, so a concurrent
 delivery of another event of the same dispute returns NULL instead of a second row). With
 `p_freeze` it also freezes the payment's still-`held` escrows and notifies `chargeback.opened`; without
-it (a dispute Stripe has already closed) it only records the case. Returns
-`{chargeback_id, payment_id, frozen_escrow_ids}`. No grant: called only from inside the doors.
+it (a dispute Stripe has already closed) it only records the case. The freeze also reaches the payee
+(Decision #337, ruling M3; FBP DB6): the payment's `pending_releases` rows still `pending` — those of
+the escrows it locked (team shares, finder fees and vault cuts included) and of the order it placed
+(its product sales, and the escrows bought on its lines by `fn_order_line_of_escrow`) — in the case's
+currency go `on_hold` with `hold_chargeback_id`, oldest first, until they cover the
+disputed amount the frozen escrows do not; a cleared row is never touched, a plain top-up freezes no
+row, and each person whose money froze is notified. Returns
+`{chargeback_id, payment_id, frozen_escrow_ids, held_release_ids}`. No grant: called only from inside
+the doors.
 
 #### `finance.record_dispute_updated(p_event_id, p_event_type, p_dispute_ref, p_provider_ref, p_amount, p_currency, p_reason, p_status, p_livemode)` → jsonb
 
@@ -2014,10 +2021,15 @@ close without those facts and without a case stays `unmatched`. `lost` → each 
 (`escrow_refund`, its ticket back to `unpaid`), then the disputed amount is recovered from that wallet —
 first from its money still in the pending window (`fn_recover_from_pending`, Decision #191), then
 debited from its Available balance (`chargeback`); what the wallet can no longer cover is
-`unrecovered_cents` (never a negative balance). The outcome reports `recovered_cents` (both parts) and
-`recovered_pending_cents`. Idempotent on the event and on the case. An escrow already RELEASED to the
-freelancer is not clawed back from them, not even from their pending window (Decision #126 flag, kept
-open by #191: only the payer's own wallet is recovered from).
+`unrecovered_cents` (never a negative balance). Between the escrow refunds and the payer comes the
+payee (Decision #337, ruling M3; FBP DB6): what the refunded escrows do not cover is taken first from
+the `pending_releases` rows the case froze (`hold_chargeback_id`; for a late case, the payment's
+still-`pending` rows), oldest first, as `recovered_cents` with no ledger line; a row emptied this way
+closes `available`, the rest return to `pending` at their own `available_at`, and each person whose
+money was taken is told (`chargeback.lost`). `won` returns the case's `on_hold` rows to `pending` at
+their unchanged `available_at` and tells their owners (`chargeback.won`). Cleared money is never
+touched. The outcome reports `recovered_cents` (all three parts), `recovered_payee_cents`,
+`recovered_pending_cents` and, when won, `unheld_releases`. Idempotent on the event and on the case.
 
 ### Withdrawals
 

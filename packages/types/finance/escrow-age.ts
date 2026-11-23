@@ -14,7 +14,7 @@ import { currency, minorUnitsNonNeg, timestamp } from "./common.ts";
  * What the money is waiting on, one kind per clock (00001200 names each one's source):
  * `held_bound` waits on approval (no timer today), `held_prepaid` on the prepaid TTL (#428),
  * `held_seat` on its sitting (#171, #211), `reserved` on nothing (#430), `disputed` on a ruling
- * (#212), `pending` on the 7-day window (#191), `on_hold` on a dispute (ruling M3; no writer yet).
+ * (#212), `pending` on the 7-day window (#191), `on_hold` on a card dispute's close (ruling M3).
  */
 export const EscrowAgeKind = z.enum([
 	"held_bound",

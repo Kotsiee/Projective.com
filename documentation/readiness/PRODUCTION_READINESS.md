@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
-| **UAT**          | **71%** |           70 | 43 |  9 | 18 |           4 |
-| **Production**   | **47%** |          155 | 55 | 27 | 73 |          14 |
+| **UAT**          | **71%** |           71 | 44 |  8 | 19 |           4 |
+| **Production**   | **48%** |          156 | 56 | 26 | 74 |          14 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -56,7 +56,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | C. Security & access control       |   36 | 18 |  4 | 14 |   59% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   18 |  3 |  7 |  8 |   42% |
-| F. Money, ledger & reconciliation  |   23 |  7 |  5 | 11 |   45% |
+| F. Money, ledger & reconciliation  |   24 |  8 |  4 | 12 |   46% |
 | G. Scheduled jobs & operations     |   10 |  5 |  2 |  3 |   63% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
@@ -70,8 +70,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 - **MVP:** PRD-E3 (chat live refresh; the send door landed, #508) → PRD-A1 (`/home`).
 - **UAT:** PRD-D3 (malware scan) → PRD-E4 + PRD-E5 + PRD-E6 (dispatcher, notification email, auth
   SMTP: built, a hosted send to prove) → PRD-F23 (ghosting timer; the claim sweep runs, #516) → PRD-G6
-  (hosted cron secrets: the tool and check are built, #514, and OPS7 runs them) → PRD-F5 (dispute
-  freeze).
+  (hosted cron secrets: the tool and check are built, #514, and OPS7 runs them).
 - **PROD:** PRD-C17 (MFA + step-up) · PRD-C19 (erasure) · PRD-D9 / D10 / D14 (moderation loop,
   publication gate, CSAM hashing) · PRD-F8 (Stripe ↔ ledger reconciliation) · PRD-F15 (holding
   period) · PRD-F17 (live Stripe run; #476) · PRD-G8 (deployment) · PRD-K4 (CI) · PRD-M1
@@ -213,7 +212,7 @@ Work orders for every open row, with the run order:
 | PRD-F2  | Money doors lock their rows and gate on state                                 | ✅     | Critical | MVP  | `fund_stage`, `fund_ticket`, `approve_stage`, `begin_payout`, `settle_card_payment` (`00001150`, `00001230`, `00001240`)                                                                                                         | —                |
 | PRD-F3  | An idempotency key on every money-moving Stripe call                          | ✅     | Critical | UAT  | `services/finance/stripe-rails.ts`; absent only on `accountLinks` and `setupIntents`, which move no money                                                                                                                        | —                |
 | PRD-F4  | Seller commission, per-currency thresholds, payout schedules, pots            | ✅     | High     | UAT  | DB11, DB10, DB4, DB5                                                                                                                                                                                                             | FINANCE          |
-| PRD-F5  | Release refuses an open dispute; the dispute freeze                           | 🟡     | Critical | UAT  | DB3 landed (`44382c08`): `fn_assert_no_open_dispute` guards the release doors (`00001200:1358, 1601`); the freeze and payee clawback (DB6, M3) are not built                                                                     | DB6              |
+| PRD-F5  | Release refuses an open dispute; the dispute freeze                           | ✅     | Critical | UAT  | DB3 (`44382c08`): `fn_assert_no_open_dispute` guards the release doors. DB6 (#532): a card dispute freezes the payee's still-clearing rows the payment funded (`fn_open_chargeback`, `on_hold` + `hold_chargeback_id`); a lost one recovers from them first, then the payer, then a loss; a won one restores each row's date. `supabase/probes/dispute_window.sql` | DB6 ✅           |
 | PRD-F6  | Ticket-funding and payout-ready gates                                         | 🟡     | High     | UAT  | DB14 step 1 only; DB15 open                                                                                                                                                                                                      | DB14, DB15       |
 | PRD-F7  | Conservation identity → reason CHECKs → the nine settlement currencies        | 🟡     | High     | PROD | DB16 built (#483): `finance.v_conservation_identity` per currency, checked nightly by `finance.fn_check_conservation` (`finance-conservation-check`, 03:50 UTC, one `ops.log_entries` row per currency); operators read it on `/admin/ledger`; the seed conserves (`conservation_identity.sql`). DB8 (reason CHECKs) and DB9 (settlement currencies) left; stops ruled in #423 | DB16 ✅ → DB8 → DB9 |
 | PRD-F8  | Stripe balance ↔ ledger reconciliation                                        | ❌     | Critical | PROD | Nothing calls `balance.retrieve`; FINANCE_AUDIT L5, L6                                                                                                                                                                           | MR5 |
@@ -234,6 +233,7 @@ Work orders for every open row, with the run order:
 | PRD-F23 | Held escrow cannot strand: a silent client's delivery auto-approves           | ❌     | Critical | UAT  | No `submitted_at` or timer (PRODUCT_SPEC §Escrow 5, "No Forever-Escrow"): delivered work a client never answers can sit held indefinitely                                                                                         | PM-GH1           |
 | PRD-F24 | A bought service's unclaimed escrow is refunded, never paid out               | ✅     | Critical | UAT  | #474 (MR1, ruling #466): no payee binds until somebody holds the ticket, on every kind of project (`fn_ticket_payee`), so the prepaid TTL, `approve_stage` and a stage Fair Exit refund an unclaimed escrow whole; an unclaimed ticket can't enter work (`PF402` `unclaimed`). `service_unclaimed_escrow.sql` + a live run | MR1 (#466)       |
 | PRD-F25 | An agreed custom quote is charged at its frozen terms, with a record both parties read | ✅     | High     | UAT  | #522: an offer's terms never change once sent (`trg_quote_offers_kept`, every role) and carry a SHA-256 `terms_hash` stamped from the row; every move is one append-only `marketplace.quote_events` row and a quote card in the pair's conversation; checkout re-hashes the offer before charging (`terms_mismatch`), the paid line links it (`order_lines.quote_offer_id`, one per offer) and `get_dispute` carries the agreed terms. Probe `quote_evidence.sql` (47 checks); `quote_offers` and `quote_checkout` re-run green |
+| PRD-F26 | A card-paid checkout's still-held escrows freeze on a card dispute         | ❌     | High     | UAT  | Found by DB6 (#532 (f)): a checkout paid by card is a top-up that placed an order, so `inbound_payments.locked_escrow_ids` is empty and `fn_open_chargeback` freezes none of the escrows its lines bought (a One-Off, a seat, a paid revision); a lost dispute refunds none of them, recovers from the payer's wallet, and the escrow still releases later. DB6 freezes those escrows' released rows; the held ones need a ruling on what a lost dispute does to a seat or a revision | —                |
 
 ## G. Scheduled jobs & operations
 
@@ -475,6 +475,7 @@ Work orders for every open row, with the run order:
 | 2026-11-19 | #522: PRD-F25 added ✅ (an agreed custom quote is charged at its frozen, hashed terms; an append-only record and quote cards both parties read; the engagement links the offer and a dispute shows the agreed terms; probe `quote_evidence`) | 76% | 70% | 48% |
 | 2026-11-23 | LG2 (#528): no row flips; the counsel brief for the legal library and every open ⚖️ item outside Part D is written (`FOUNDER_QUESTIONNAIRE.md` Part E), PRD-M1's evidence names it, and twelve ⚖️ items get rows under §Decisions awaiting a human | 76% | 70% | 48% |
 | 2026-11-23 | CK3 (#517): no row flips; new PRD-J6 ❌ (an order's receipt and history links carry its raw uuid, a Decision #88 gap; the `ord-` slug takes a Queue M turn on `00000017`) | 76% | 70% | 48% |
+| 2026-11-23 | DB6 (#532): PRD-F5 🟡 → ✅ (a card dispute freezes the payee's still-clearing money the payment funded; a lost one recovers from it first, then the payer, then a loss); new PRD-F26 ❌ (a card-paid checkout's held escrows never freeze) | 76% | 71% | 48% |
 | 2026-11-23 | R1 (#533): no row flips; PRD-D9 narrows (the reason vocabulary and the `ops.reports` sink with its filing doors and reports service are built; the reviewer, penalties, Standing link and report route remain) | 76% | 70% |  48% |
 | 2026-11-23 | LG1 (#531): no row flips; the six legal drafts brought in line with the product and the Cookie Policy with what the code stores (PRD-M1's evidence); new PRD-M8 ❌ (non-essential browser storage without consent) and PRD-C37 ❌ (a 13–17 account's wallet row is unguarded) | 76% | 70% | 47% |
 | 2026-11-23 | LG6 (#527, ruled A: Stripe first): no row flips; PRD-M5 narrowed (the payout half: an operator CSV over the ledger per seller and quarter, and a private tax residence certificate shown to one client; 1099 / W-9 not built, no Stripe path); 🟡 waits for CK4 | 76% | 70% | 47% |

@@ -22,15 +22,21 @@
 
 -- #region 1. Dispute resolution (processor door)
 -- `charge.dispute.closed`. `won` (and `warning_closed`, an inquiry that never became a chargeback)
--- returns the frozen escrows to `held` — the capital was never lost. `lost` means the processor has
--- kept the disputed amount, so the platform recovers it from the payer:
+-- returns the frozen escrows to `held` and the payee rows the case froze to `pending` at their
+-- unchanged `available_at` — the capital was never lost, and a row whose date has passed matures on
+-- the next sweep. `lost` means the processor has kept the disputed amount, so the platform recovers it
+-- (Decision #337, ruling M3):
 --
 --   * every escrow the disputed payment funded that is still frozen is returned to the payer's wallet
 --     (reason `escrow_refund`, exactly as finance.fn_refund_ticket_escrow returns one) — the work it
 --     was holding for is no longer paid for — and its ticket drops back to `unpaid`;
---   * the disputed amount is then recovered from that wallet: first from its money still in the
---     pending window (finance.fn_recover_from_pending, Decision #191), then debited from its Available
---     balance with reason `chargeback`. Whatever the wallet can no longer cover (the payer spent it) is
+--   * what those escrows do not cover is taken back first from the payee rows the case froze
+--     (`recovered_cents`, oldest first; a row emptied this way closes `available` with no credit, the
+--     rest return to `pending` at their own date). That money was still clearing, so no ledger line
+--     moves and money that had cleared is never touched;
+--   * the rest of the disputed amount is recovered from the payer's wallet: first from its money still
+--     in the pending window (finance.fn_recover_from_pending, Decision #191), then debited from its
+--     Available balance with reason `chargeback`. Whatever is still uncovered (the payer spent it) is
 --     recorded on the case as `unrecovered_cents`, the platform's loss, never forced into a negative
 --     balance.
 --
@@ -38,16 +44,13 @@
 -- yet, so this door records one from the closed dispute's own facts (finance.fn_open_chargeback,
 -- without the freeze), resolves it at once and says so in `resolution_note`; the late `.created` then
 -- finds it resolved and freezes nothing. Nothing was frozen for it, so a won one thaws nothing, and a
--- lost one takes the payment's still-held escrows as the frozen ones — what the in-order events would
--- have refunded.
+-- lost one takes the payment's still-held escrows and still-pending payee rows as the frozen ones —
+-- what the in-order events would have refunded and recovered.
 --
 -- A thaw that would give a ticket a second held base escrow (the ticket was funded again while the
 -- dispute froze the first, uq_escrows_ticket_base_held, FA E3) leaves that escrow `disputed`, notes it
 -- in `resolution_note` and writes one ops.log_entries error for a human. It never raises out of the
 -- webhook, which would otherwise answer 5xx for every redelivery.
---
--- An escrow the payment funded that was ALREADY RELEASED to the freelancer before the dispute is not
--- clawed back from the freelancer here: that recourse is a product decision (flagged in Decision #126).
 CREATE OR REPLACE FUNCTION finance.record_dispute_closed(
     p_event_id text,
     p_dispute_ref text,
@@ -81,6 +84,11 @@ DECLARE
     v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
     v_recover bigint := 0;
     v_from_pending bigint := 0;
+    v_from_payee bigint := 0;
+    v_uncovered bigint := 0;
+    v_take bigint;
+    v_row finance.pending_releases;
+    v_unheld integer := 0;
     v_short bigint := 0;
     v_notify uuid;
 BEGIN
@@ -157,6 +165,22 @@ BEGIN
             );
         END IF;
 
+        UPDATE finance.pending_releases SET state = 'pending'
+         WHERE hold_chargeback_id = v_case.id AND state = 'on_hold';
+        GET DIAGNOSTICS v_unheld = ROW_COUNT;
+        IF v_unheld > 0 THEN
+            PERFORM comms.fn_notify(
+                p.owner_id, 'chargeback.won', 'Earnings released from hold',
+                'The dispute on a card payment for your work was resolved in the payment''s favour. Your money on hold is clearing again, on its original date.',
+                'chargebacks', v_case.id, '{}'::jsonb
+            )
+              FROM (SELECT DISTINCT w.owner_id
+                      FROM finance.pending_releases pr
+                      JOIN finance.wallets w ON w.id = pr.wallet_id
+                     WHERE pr.hold_chargeback_id = v_case.id AND pr.state = 'pending'
+                       AND w.owner_type IN ('user', 'freelancer')) p;
+        END IF;
+
         UPDATE finance.chargebacks
            SET status = 'won', resolved_at = pg_catalog.now(), resolution_note = v_note
          WHERE id = v_case.id;
@@ -179,11 +203,11 @@ BEGIN
         RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
             'outcome', 'applied', 'chargeback_id', v_case.id, 'status', 'won', 'late', v_late,
             'unfrozen_escrow_ids', pg_catalog.to_jsonb(v_touched),
-            'still_disputed_escrow_ids', pg_catalog.to_jsonb(v_stuck)));
+            'still_disputed_escrow_ids', pg_catalog.to_jsonb(v_stuck), 'unheld_releases', v_unheld));
     END IF;
 
-    -- LOST. A case this door just recorded froze nothing, so the payment's still-held escrows stand in
-    -- for the frozen ones.
+    -- LOST. A case this door just recorded froze nothing, so the payment's still-held escrows and
+    -- still-pending payee rows stand in for the frozen ones.
     FOR v_escrow IN
         SELECT * FROM finance.escrows
          WHERE id = ANY (v_escrow_ids) AND (status = 'disputed' OR (v_late AND status = 'held'))
@@ -199,12 +223,43 @@ BEGIN
         v_touched := v_touched || v_escrow.id;
     END LOOP;
 
+    -- What the refunded escrows do not cover comes back first from the payee money still clearing
+    -- that the case froze, oldest first; a row it does not empty clears again at its own date.
+    v_uncovered := GREATEST(v_case.amount_cents - COALESCE((
+        SELECT pg_catalog.sum(e.amount_cents) FROM finance.escrows e
+         WHERE e.id = ANY (v_touched) AND pg_catalog.upper(e.currency) = pg_catalog.upper(v_case.currency)), 0), 0);
+    FOR v_row IN
+        SELECT pr.* FROM finance.pending_releases pr
+         WHERE (pr.state = 'on_hold' AND pr.hold_chargeback_id = v_case.id)
+            OR (v_late AND v_payment.id IS NOT NULL AND pr.state = 'pending' AND pr.recovered_cents < pr.amount_cents
+                AND pg_catalog.upper(pr.currency) = pg_catalog.upper(v_case.currency)
+                AND (pr.escrow_id = ANY (v_payment.locked_escrow_ids)
+                     OR (v_payment.order_id IS NOT NULL AND pr.order_id = v_payment.order_id)
+                     OR (v_payment.order_id IS NOT NULL AND pr.escrow_id IS NOT NULL
+                         AND pr.released_at >= (SELECT o.created_at FROM finance.orders o WHERE o.id = v_payment.order_id)
+                         AND EXISTS (SELECT 1 FROM finance.order_lines l
+                                      WHERE l.id = finance.fn_order_line_of_escrow(pr.escrow_id)
+                                        AND l.order_id = v_payment.order_id))))
+         ORDER BY pr.released_at, pr.id
+           FOR UPDATE
+    LOOP
+        v_take := LEAST(v_uncovered, v_row.amount_cents - v_row.recovered_cents);
+        v_uncovered := v_uncovered - v_take;
+        v_from_payee := v_from_payee + v_take;
+        UPDATE finance.pending_releases
+           SET recovered_cents = recovered_cents + v_take,
+               state = CASE WHEN recovered_cents + v_take = amount_cents THEN 'available' ELSE 'pending' END::finance.fund_state,
+               matured_at = CASE WHEN recovered_cents + v_take = amount_cents THEN pg_catalog.now() END,
+               hold_chargeback_id = CASE WHEN v_take > 0 THEN v_case.id ELSE hold_chargeback_id END
+         WHERE id = v_row.id;
+    END LOOP;
+
     IF v_case.wallet_id IS NOT NULL THEN
         SELECT * INTO v_wallet FROM finance.wallets WHERE id = v_case.wallet_id FOR UPDATE;
     END IF;
     IF v_wallet.id IS NOT NULL AND pg_catalog.upper(v_wallet.currency) = pg_catalog.upper(v_case.currency) THEN
-        v_from_pending := finance.fn_recover_from_pending(v_wallet.id, v_case.amount_cents);
-        v_recover := LEAST(v_wallet.balance_cents, v_case.amount_cents - v_from_pending);
+        v_from_pending := finance.fn_recover_from_pending(v_wallet.id, v_case.amount_cents - v_from_payee);
+        v_recover := LEAST(v_wallet.balance_cents, v_case.amount_cents - v_from_payee - v_from_pending);
         IF v_recover > 0 THEN
             PERFORM finance.fn_wallet_debit(
                 v_wallet.owner_id, v_wallet.owner_type, v_wallet.currency, v_recover,
@@ -212,7 +267,7 @@ BEGIN
             );
         END IF;
     END IF;
-    v_short := v_case.amount_cents - v_from_pending - v_recover;
+    v_short := v_case.amount_cents - v_from_payee - v_from_pending - v_recover;
 
     UPDATE finance.chargebacks
        SET status = 'lost', resolved_at = pg_catalog.now(), unrecovered_cents = v_short, resolution_note = v_note
@@ -221,18 +276,33 @@ BEGIN
     IF v_notify IS NOT NULL THEN
         PERFORM comms.fn_notify(
             v_notify, 'chargeback.lost', 'Dispute closed against the payment',
-            'Your bank upheld the dispute on a card payment. The disputed amount has been taken back from your wallet, and any stage it funded is no longer paid for.',
+            CASE WHEN v_from_pending + v_recover > 0
+                 THEN 'Your bank upheld the dispute on a card payment. What the work it paid for had not yet cleared has been taken back, the rest from your wallet, and any stage it funded is no longer paid for.'
+                 ELSE 'Your bank upheld the dispute on a card payment. It was recovered from the work it paid for, which had not yet cleared, and any stage it funded is no longer paid for.'
+            END,
             'chargebacks', v_case.id,
             pg_catalog.jsonb_build_object('amount_cents', v_case.amount_cents, 'currency', v_case.currency,
                 'recovered_cents', v_from_pending + v_recover, 'refunded_escrows', pg_catalog.cardinality(v_touched))
         );
     END IF;
+    IF v_from_payee > 0 THEN
+        PERFORM comms.fn_notify(
+            p.owner_id, 'chargeback.lost', 'Earnings taken back',
+            'The payer''s bank upheld a dispute on a card payment for your work. The part of it still clearing has been taken back. Money that had cleared is yours.',
+            'chargebacks', v_case.id, '{}'::jsonb
+        )
+          FROM (SELECT DISTINCT w.owner_id
+                  FROM finance.pending_releases pr
+                  JOIN finance.wallets w ON w.id = pr.wallet_id
+                 WHERE pr.hold_chargeback_id = v_case.id AND pr.recovered_cents > 0
+                   AND w.owner_type IN ('user', 'freelancer')) p;
+    END IF;
 
     RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
         'outcome', 'applied', 'chargeback_id', v_case.id, 'status', 'lost', 'late', v_late,
         'refunded_escrow_ids', pg_catalog.to_jsonb(v_touched),
-        'recovered_cents', v_from_pending + v_recover, 'recovered_pending_cents', v_from_pending,
-        'unrecovered_cents', v_short));
+        'recovered_cents', v_from_payee + v_from_pending + v_recover, 'recovered_payee_cents', v_from_payee,
+        'recovered_pending_cents', v_from_pending, 'unrecovered_cents', v_short));
 END;
 $$;
 -- #endregion
