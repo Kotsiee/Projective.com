@@ -225,16 +225,27 @@ export function PromoCodeDialog(
 					)}
 				</FormControl>
 
-				<FormControl label="Redemptions in total" hint="Optional. Leave empty for no cap.">
+				<FormControl label="Redemptions in total">
 					{({ id, describedBy }) => (
-						<NumberInput
-							id={id}
-							aria-describedby={describedBy}
-							value={d.maxRedemptions}
-							min={1}
-							maxFractionDigits={0}
-							onValueChange={(n) => patch({ maxRedemptions: n ?? null })}
-						/>
+						<div class="cat-promo__scope">
+							<ToggleSwitch
+								value={d.maxRedemptions !== null}
+								label="Cap the total"
+								onValueChange={(on) => patch({ maxRedemptions: on ? 100 : null })}
+							/>
+							{d.maxRedemptions !== null && (
+								<NumberInput
+									id={id}
+									aria-describedby={describedBy}
+									value={d.maxRedemptions}
+									min={1}
+									max={1_000_000}
+									maxFractionDigits={0}
+									suffix="uses"
+									onValueChange={(n) => patch({ maxRedemptions: Math.max(1, Math.round(n ?? 1)) })}
+								/>
+							)}
+						</div>
 					)}
 				</FormControl>
 
