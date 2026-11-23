@@ -1,5 +1,11 @@
-import { toMinorUnits } from "@projective/types/finance";
-import type { FormArchetype, ListingPricing } from "@projective/types/catalogue";
+import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
+import {
+	extraRevisionCap,
+	type FormArchetype,
+	type ListingPricing,
+	revisionsUnlimited,
+	sellsRevisions,
+} from "@projective/types/catalogue";
 import { INTENSITY_PRICE_MULTIPLIER } from "@projective/types/projects";
 
 /**
@@ -12,6 +18,23 @@ import { INTENSITY_PRICE_MULTIPLIER } from "@projective/types/projects";
 /** A stored whole-unit price in minor units. */
 export function minorOf(whole: number | null, currency: string): number | null {
 	return toMinorUnits(whole, currency);
+}
+
+/**
+ * A signed minor-unit amount in whole units, for a money field that edits a minor-unit value (a
+ * buyer question's guide price per unit, which may lower the guide as well as raise it).
+ */
+export function signedMajorOf(minor: number | null, currency: string): number | null {
+	if (minor === null || !Number.isFinite(minor)) return null;
+	const whole = toMajorUnits(Math.abs(minor), currency);
+	return whole === null ? null : Math.sign(minor) * whole;
+}
+
+/** The inverse of {@link signedMajorOf}: a signed whole-unit amount in minor units. */
+export function signedMinorOf(whole: number | null, currency: string): number | null {
+	if (whole === null || !Number.isFinite(whole)) return null;
+	const minor = toMinorUnits(Math.abs(whole), currency);
+	return minor === null ? null : Math.sign(whole) * minor;
 }
 
 /** A picked currency as the ISO-4217 code a listing stores, or `null` when it is not one. */
@@ -84,15 +107,30 @@ export function ticketRange(minor: number): { low: number; high: number } {
 // #endregion
 
 // #region Revisions
-/** The free revisions a newly declared allowance starts at. */
-export const DEFAULT_FREE_REVISIONS = 2;
+/**
+ * `pricing` with unlimited revisions switched on (extra rounds free, `0`) or off (extra rounds
+ * unpriced again, `null`, until the seller prices them). The free count is kept either way, so
+ * switching back restores it.
+ */
+export function withUnlimitedRevisions(pricing: ListingPricing, on: boolean): ListingPricing {
+	if (on) return { ...pricing, extraRevisionPrice: 0 };
+	return revisionsUnlimited(pricing) ? { ...pricing, extraRevisionPrice: null } : pricing;
+}
 
 /**
- * `pricing` with its free revisions declared or withdrawn. Withdrawing stores `null`, meaning the
- * corpus default applies — not `0`, which is the distinct claim that no rounds are included.
+ * `pricing` with its extra-round price held inside the cap its price sets (Decision #525): lowered
+ * to half the price when the price drops below twice it, cleared when there is no price left to
+ * halve. A free round, an unpriced one and an archetype that sells no revisions are left alone.
  */
-export function withRevisionsDeclared(pricing: ListingPricing, declared: boolean): ListingPricing {
-	if (!declared) return { ...pricing, freeRevisions: null };
-	return { ...pricing, freeRevisions: pricing.freeRevisions ?? DEFAULT_FREE_REVISIONS };
+export function withRevisionCap(
+	pricing: ListingPricing,
+	archetype: FormArchetype,
+	currency: string,
+): ListingPricing {
+	const extra = pricing.extraRevisionPrice;
+	if (extra === null || extra === 0 || !sellsRevisions(archetype)) return pricing;
+	const cap = extraRevisionCap(pricing, archetype, currency);
+	if (cap === null) return { ...pricing, extraRevisionPrice: null };
+	return extra > cap ? { ...pricing, extraRevisionPrice: cap } : pricing;
 }
 // #endregion

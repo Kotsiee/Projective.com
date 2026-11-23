@@ -16,9 +16,8 @@ import {
 	newTeamRole,
 	offerEditorFor,
 	sanitiseOffer,
-	switchSessionFormat,
 } from "./offer-model.ts";
-import { withAskedPrice, withRevisionsDeclared } from "./pricing-model.ts";
+import { withAskedPrice } from "./pricing-model.ts";
 
 const T0 = "2026-10-14T09:00:00.000Z";
 
@@ -138,27 +137,28 @@ function blank(archetype: ListingOffer["archetype"]): ListingOffer {
 		case "session":
 			return { archetype, minutes: 60, count: 1, meetingProvider: null, plan: [], rolling: false };
 		case "cohort":
-			return switchSessionFormat({
-				archetype: "session",
+			return {
+				archetype,
 				minutes: 60,
 				count: 1,
 				meetingProvider: null,
 				plan: [],
-				rolling: false,
-			}, "cohort");
+				maxSeatsPerCohort: 10,
+				continuousEnrollment: false,
+			};
 	}
 }
 
 Deno.test("every archetype renders its matrix sections and its own offer form", () => {
 	const rows: [ServiceType | null, string[], boolean][] = [
-		[null, ["basics", "media", "offer", "pricing", "seo"], false],
-		["One-Off", ["basics", "media", "offer", "pricing", "questions", "seo"], false],
-		["Direct Deliverable", ["basics", "media", "offer", "pricing", "questions", "seo"], true],
-		["Pipeline", ["basics", "media", "offer", "pricing", "questions", "seo"], false],
-		["Session", ["basics", "media", "offer", "pricing", "availability", "questions", "seo"], false],
+		[null, ["basics", "offer", "pricing", "media", "seo"], false],
+		["One-Off", ["basics", "offer", "pricing", "media", "questions", "seo"], false],
+		["Direct Deliverable", ["basics", "offer", "pricing", "media", "questions", "seo"], true],
+		["Pipeline", ["basics", "offer", "pricing", "media", "questions", "seo"], false],
+		["Session", ["basics", "offer", "pricing", "availability", "media", "questions", "seo"], false],
 		[
 			"Group Session",
-			["basics", "media", "offer", "pricing", "availability", "questions", "seo"],
+			["basics", "offer", "pricing", "availability", "media", "questions", "seo"],
 			false,
 		],
 	];
@@ -199,7 +199,7 @@ Deno.test("each offer editor's edit becomes one valid offer section patch", () =
 
 Deno.test("the price and revision fields patch the pricing section alone", () => {
 	const saved = listingFor("one_off", blank("one_off"));
-	const priced = withRevisionsDeclared(withAskedPrice(saved.pricing, "amount", 1200), true);
+	const priced = { ...withAskedPrice(saved.pricing, "amount", 1200), freeRevisions: 2 };
 	const draft: ListingDetail = { ...saved, pricing: priced };
 	const patch = buildPatch(draft, diffFields(saved, draft), saved.updatedAt);
 	assert(UpdateListingInputSchema.safeParse(patch).success);

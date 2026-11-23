@@ -401,6 +401,38 @@ export function workspaceHref(slug: string, state: Partial<WorkspaceUrlState>): 
 }
 // #endregion
 
+// #region Listing sub-pages
+/**
+ * The Edit tab's dedicated pages under a listing (Decision #525): the session plan
+ * (`/catalogue/:slug/plan`, Session and Group Session only) and the buyer-questions builder
+ * (`/catalogue/:slug/questions`, services only).
+ */
+export const ListingSubPage = z.enum(["plan", "questions"]);
+export type ListingSubPage = z.infer<typeof ListingSubPage>;
+
+/** The address of a listing's sub-page, in `team`'s catalogue when given. */
+export function listingSubPageHref(slug: string, page: ListingSubPage, team?: string): string {
+	return `${catalogueBase(team)}/${encodeURIComponent(slug)}/${page}`;
+}
+
+/** The listing and sub-page a path addresses, or `null` when it is not a sub-page path. */
+export function listingSubPageOf(
+	pathname: string,
+): { slug: string; page: ListingSubPage; team?: string } | null {
+	const path = parseCataloguePath(pathname);
+	if (!path || path.rest.length !== 2 || !isListingSlug(path.rest[0])) return null;
+	const page = pick(ListingSubPage, path.rest[1]);
+	if (!page) return null;
+	return path.team ? { slug: path.rest[0], page, team: path.team } : { slug: path.rest[0], page };
+}
+
+/** The Edit section a sub-page belongs to, which its way back returns to. */
+export const SUB_PAGE_SECTION: Readonly<Record<ListingSubPage, EditSection>> = {
+	plan: "offer",
+	questions: "questions",
+};
+// #endregion
+
 // #region Listing scope redirect
 /** Whether `id` is a listing's address — a service or product slug. */
 export function isListingSlug(id: string): boolean {

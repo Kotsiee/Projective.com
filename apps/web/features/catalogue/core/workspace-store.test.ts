@@ -31,6 +31,7 @@ import {
 	flush,
 	flushBeacon,
 	hydrateWorkspace,
+	markSubPage,
 	overwriteWithMine,
 	reloadTheirs,
 	notice,
@@ -41,6 +42,7 @@ import {
 	saved,
 	saveState,
 	setAutoSave,
+	setWorkspaceUrl,
 	UPDATE_URL,
 	type WorkspaceTransport,
 } from "./workspace-store.ts";
@@ -528,4 +530,32 @@ Deno.test("activeSectionOf: the last section past the reading line, or the last 
 	assertEquals(activeSectionOf(tops, 270, true), "seo");
 	assertEquals(activeSectionOf([{ section: "media", top: 400 }], 270, false), "media");
 	assertEquals(activeSectionOf([], 270, false), null);
+});
+
+Deno.test("on a sub-page every workspace move navigates to the workspace itself", () => {
+	const assigned: string[] = [];
+	const port = {
+		href: "http://localhost/catalogue/svc-23456789ab/plan",
+		pathname: "/catalogue/svc-23456789ab/plan",
+		search: "",
+		assign: (url: string) => assigned.push(url),
+		reload: () => {},
+	};
+	const before = Object.getOwnPropertyDescriptor(globalThis, "location");
+	Object.defineProperty(globalThis, "location", { value: port, configurable: true });
+	try {
+		resetWorkspace();
+		hydrateWorkspace(listing(), WORKSPACE_DEFAULTS);
+		markSubPage();
+		setWorkspaceUrl({ tab: "preview" }, "push");
+		setWorkspaceUrl({ section: "pricing" }, "replace");
+		assertEquals(assigned, [
+			"/catalogue/svc-23456789ab?tab=preview",
+			"/catalogue/svc-23456789ab?section=pricing",
+		]);
+	} finally {
+		resetWorkspace();
+		if (before) Object.defineProperty(globalThis, "location", before);
+		else Reflect.deleteProperty(globalThis, "location");
+	}
 });

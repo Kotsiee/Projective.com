@@ -1386,6 +1386,201 @@ routes; SYSTEM_ARCHITECTURE.md §Environment Variable Contract and .env.example 
 
 §1.2 rows: **MK-47** → ✅ once every ASSET and ANTI_PIRACY phase has landed, with SC8.
 
+### Added by Decision #525 — the editor items the owner deferred
+
+Decision #525 (2026-11-20) rebuilt the listing editor and gave the session plan and the buyer
+questions their own pages (`/catalogue/:slug/plan`, `/catalogue/:slug/questions`). The owner deferred
+four of its brief's items, each to a work order below (rulings R1–R3). None closes an existing
+row: each adds its PRODUCT_SPEC text and its own USER_FLOWS row in the change that lands it. Read
+the #525 row (`reference/decisions/decisions-122-126.md`) first.
+
+### SC10 — A session sold by the hour, with sittings of their own length
+
+```text
+PROMPT SC10: A Session or Group Session priced per hour, with sittings of their own length
+
+ROLE: Postgres + money-path engineer. Queue M (place_wallet_order), then the app lane.
+
+CONTEXT (verified at 862a4b14 with #525 applied):
+  - A session sells per sitting today, and checkout prices it in ONE place,
+    finance.place_wallet_order (00001210:2032 a seat line, session_price × held seats; :2089 a 1-1
+    or block line, session_price × session_count). Card checkout replays it (00001230:1025). The
+    basket's units come from packages/backend/services/finance/live-basket.ts:562-569, and every
+    line is re-checked against them (PC409 "The price of … changed"). Escrow is held per sitting
+    (projects.fn_book_session_slot, 00001155:683, its length at :747) and per seat
+    (projects.reserve_seat, :275).
+  - One length per listing: service_blueprints.session_minutes. A plan entry
+    (BlueprintSessionPlanEntrySchema, packages/types/explore/stored.ts:87) holds a title and a
+    description only. The slot grid (BookingBackendService.slots) books every sitting at that one
+    length.
+  - #525 ruling R1 deferred this because a stored per_hour that checkout ignores would misprice
+    buyers. Build the money path first and the controls last.
+
+🧑 DECISION (before any code): (1) rounding: a sitting's price is rate × minutes / 60 in minor
+units; round half up per sitting, or per booking? (2) may a per-session listing vary its sittings'
+lengths, or does a varying length force per hour (the #525 brief's rule)? (3) is a Group Session's
+seat priced per hour × the sitting's length too?
+
+STEPS:
+  1. Red first: supabase/probes/session_hourly.sql books a 90-minute sitting of a £60/hour listing
+     through place_wallet_order and expects 9000 held. It fails today.
+  2. Schema, additively and Zod first: marketplace.service_blueprints.pricing_unit
+     ('per_session' default | 'per_hour') and an optional per-entry duration_minutes in
+     session_plan (15-600, multiples of 5), mirrored through catalogue.save_listing.
+     SessionOfferSchema / CohortListingOfferSchema gain pricingUnit and hasVariableSessionLengths
+     (a refine forcing per_hour while lengths vary); the plan entry gains durationMinutes.
+  3. One pure price per sitting in @projective/types (sittingPriceMinor(rate, unit, minutes)),
+     mirrored exactly in SQL (finance.fn_sitting_price) and used by place_wallet_order, the basket
+     units, fn_book_session_slot's per-sitting hold, reserve_seat and the receipt lines.
+  4. The slot grid books each sitting at its own length; a block's later sittings keep theirs.
+  5. Display: resolveListingPricing captions "per hour"; /view's lane, ledger and booking dialog
+     state the rate and each sitting's price; the card agrees.
+  6. Only now the controls: Pricing's Per session · Per hour SelectButton (locked to Per hour with
+     an InlineNotice while lengths vary), and /plan's Variable session lengths toggle with a
+     minutes NumberInput per sitting.
+
+ACCEPTANCE: the probe is green for 1-1, block and seat lines, by wallet and by card; a regression
+probe shows a per-session listing's totals byte-identical to before; `deno task test` is green.
+
+SAME CHANGE: PRODUCT_SPEC (sessions, checkout); finance-model.md if the rounding rule is a number;
+documentation/database/{marketplace,finance,projects}; DESIGN_SYSTEM §C.1 for a new control;
+USER_FLOWS (a new MK row); the decision row closing #525 flag (a) for this item.
+```
+
+§1.2 rows: a new **MK** row (a seller prices a session by the hour) ❌ → ✅.
+
+### SC11 — Rolling weekly templates for a group session
+
+```text
+PROMPT SC11: A group session runs on rolling weekly templates, each buyer starting on the next
+open chain
+
+ROLE: Postgres + scheduling engineer. Queue C (00001155), then the app lane.
+
+CONTEXT (verified at 862a4b14 with #525 applied):
+  - Cohorts: projects.cohorts (00000015:829: cadence weekly · fortnightly · fixed, min_seats,
+    enrolment_closes_at), opened one at a time by projects.open_cohort (00001155:1243; a sitting
+    per occurrence at :1297 and :1370), seats held by reserve_seat (:275), the waitlist (#455),
+    cancel_cohort (#498). The seller's dialog is
+    features/catalogue/components/edit/availability/OpenCohortDialog.tsx.
+  - allow_continuous_enrollment renders and does nothing (MK-59).
+  - #525's design: a template per session position (weekday, start minute, timezone, seat
+    capacity). Each occurrence of session 1 starts one chain whose session k is the next
+    occurrence of template k after session k-1, so chains never share a sitting. A template
+    schedule is therefore a generator of ordinary cohorts: open the next weeks' chains as cohorts
+    and seats, holds, escrow, refunds, the waitlist and cancellation all work unchanged.
+
+🧑 DECISION (before any code): (1) the horizon (how many weeks of chains stay open) and what opens
+them (a scheduled job in the registry, or a save); (2) one capacity per chain (the smallest
+template's) or per sitting; (3) what happens to a generated chain that closes empty (it holds no
+money: cancel it quietly?); (4) whether the mode replaces Open cohort or sits beside it.
+
+STEPS:
+  1. Red first: a probe in which a saved template schedule yields cohorts whose sittings follow
+     the chain rule, across a daylight-saving change.
+  2. Schema, Zod first: catalogue- or marketplace-side listing_session_templates (blueprint,
+     position, weekday, start_minute, timezone, seat_capacity) and
+     service_blueprints.group_schedule_mode ('fixed_cohorts' default | 'rolling_templates').
+  3. projects.fn_open_template_cohorts(p_now, p_limit): FOR UPDATE SKIP LOCKED, idempotent per
+     chain start, in the job registry (the OPERATIONS pattern, #514, #518).
+  4. /plan for a Group Session: Fixed cohorts · Rolling weekly, and a template row per session
+     (weekday Select, time, timezone, capacity NumberInput); Availability keeps Open cohort in
+     fixed mode.
+  5. /view shows the next chain starts; a buyer lands on the earliest open one.
+
+ACCEPTANCE: the probe is green; a generated cohort refunds and cancels exactly as a manual one
+(the cohort probes re-run green); a booking lands on the earliest open chain.
+
+SAME CHANGE: PRODUCT_SPEC (group sessions); PRODUCT_MANAGEMENT only if a cohort state is added
+(none planned); documentation/database/*; ROUTING for any API; a Dev Context Switcher control for
+the mode; USER_FLOWS (a new MK row, and MK-59 re-read).
+```
+
+§1.2 rows: a new **MK** row (a seller runs a group session on weekly templates) ❌ → ✅.
+
+### SC12 — Files on a session plan, revealed by policy
+
+```text
+PROMPT SC12: A session plan's files reach the buyer when their reveal policy allows
+
+ROLE: Postgres + app engineer. Queue C.
+
+CONTEXT (verified at 862a4b14 with #525 applied):
+  - A product's files reach its buyer through entitlements (CK1, #488:
+    /api/downloads/[entitlement]/[fileId], originals frozen at publish). A session has no files of
+    its own; a plan entry is a title and a description.
+  - A reveal policy that renders but is not enforced on the buyer's read is a dead control (root
+    CLAUDE.md §3 item 11), which is why #525 ruling R2 deferred it.
+  - #525's design: plan entry attachments [{ fileId, revealPolicy: on_booking | at_session_start |
+    on_session_complete | manual }]; the file stays the seller's; the buyer reads it through a door
+    that checks the booking and the policy at read time, never a public URL; a manual reveal is a
+    seller act on the session.
+
+🧑 DECISION (before any code): (1) a file frozen at publish like a product original (A6), or read
+live from the seller's library; (2) whether a manual reveal tells the buyer (a notification type);
+(3) whether a revealed file stays readable after a refund or a cancellation.
+
+STEPS:
+  1. Red first: a probe in which a buyer reads a file before its policy allows (refused) and after
+     (served).
+  2. Schema, Zod first: the plan entry's attachments; save_listing checks each file is the
+     seller's (file_manifest's 42501 precedent).
+  3. The door (projects.fn_session_file_visible(session, file, now)) and a route under
+     /api/sessions/.
+  4. /plan: attach from the files AssetPicker, with a revealPolicy Select (On booking · At session
+     start · After session · Manual reveal); the buyer's session page lists the revealed files;
+     the seller's Reveal now.
+
+ACCEPTANCE: the probe is green for each policy; a stranger and an unbooked buyer get a 404.
+
+SAME CHANGE: ASSET_DELIVERY_ARCHITECTURE.md if delivery changes; ROUTING; documentation/database/*;
+PRODUCT_SPEC (sessions); the notification catalogue if (2); USER_FLOWS (a new MK row).
+```
+
+§1.2 rows: a new **MK** row (a buyer receives a session's files on its schedule) ❌ → ✅.
+
+### SC13 — File-upload questions and numeric follow-ups
+
+```text
+PROMPT SC13: A buyer question may take a file, and a follow-up may follow a number
+
+ROLE: TypeScript engineer, then Postgres for any column. App lane.
+
+CONTEXT (verified at 862a4b14 with #525 applied):
+  - IntakeFieldKind (packages/types/services/intake.ts:40) has nine kinds and no file;
+    IntakeAnswerSchema (:292) holds strings, numbers, booleans and lists; IntakeConditionSchema
+    (:89) matches anyOf on a yes/no or choice source.
+  - The buyer answers in IntakeFields (features/profile/components/hire/IntakeFields.tsx) on
+    /view's booking, quote and Service Detail dialogs; intakeRefusal checks every write; the
+    answers ride basket lines, invitations and quote requests.
+  - #525 ruling R3 built /catalogue/:slug/questions on IntakeField and deferred both items; the
+    builder is features/catalogue/components/questions/.
+
+🧑 DECISION (before any code): (1) where an uploaded answer lives (the buyer's library, shared
+with the seller only once bought?), its size and type limits, and the safety scan (T&S SN2);
+(2) whether a greater-than or less-than follow-up reads a number's starting value when the buyer
+leaves it.
+
+STEPS:
+  1. Red first: intake.test cases for a file answer and a numeric follow-up.
+  2. Types: a `file` kind (answer [{ fileId }], maxFiles) and greaterThan / lessThan conditions on
+     a number source (CONDITION_SOURCE_KINDS gains number), through visibleIntakeIds,
+     intakeRefusal, intakeAnswerLines and the publish lock (a new kind is locked like the rest).
+  3. The buyer control (FileUpload over the files upload path) and the server's check that each
+     fileId is the buyer's.
+  4. The builder: a seventh palette tile (File upload, the `upload` glyph) and the number trigger
+     in FollowUpRule.
+  5. Where the seller reads it: the brief and the quote card.
+
+ACCEPTANCE: an upload answer survives a basket line and a quote request; the publish lock refuses
+a kind change; `deno task test` is green.
+
+SAME CHANGE: flows/ServiceCreation.md §1.1; PRODUCT_SPEC; documentation/database/* for any column;
+DESIGN_SYSTEM §C.1 for a control; USER_FLOWS (MK-36's note).
+```
+
+§1.2 rows: **MK-36**'s note.
+
 ---
 
 ## 6. Last — the sweep

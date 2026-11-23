@@ -81,36 +81,42 @@ export function hasTeamRoles(serviceType: ServiceType | null): boolean {
 // #endregion
 
 // #region Edit sections
-/** The workspace Edit tab's sections, in page order (the `?section=` anchor). */
+/**
+ * The workspace Edit tab's sections, in page order (the `?section=` anchor). What is sold and what
+ * it costs come before how it looks (Decision #525, amending #304 (A)).
+ */
 export const EditSection = z.enum([
 	"basics",
-	"media",
 	"offer",
 	"pricing",
 	"availability",
+	"media",
 	"questions",
 	"seo",
 ]);
 export type EditSection = z.infer<typeof EditSection>;
 
-const PRODUCT_SECTIONS: readonly EditSection[] = ["basics", "media", "offer", "pricing", "seo"];
+const PRODUCT_SECTIONS: readonly EditSection[] = ["basics", "offer", "pricing", "media", "seo"];
 const DELIVERY_SECTIONS: readonly EditSection[] = [
 	"basics",
-	"media",
 	"offer",
 	"pricing",
+	"media",
 	"questions",
 	"seo",
 ];
 const SESSION_SECTIONS: readonly EditSection[] = [
 	"basics",
-	"media",
 	"offer",
 	"pricing",
 	"availability",
+	"media",
 	"questions",
 	"seo",
 ];
+
+/** The sections that open folded, as a disclosure under their heading. */
+export const COLLAPSED_SECTIONS: readonly EditSection[] = ["seo"];
 
 /**
  * The sections an archetype's Edit tab renders, per the plan §4.3 matrix. Buyer questions are a

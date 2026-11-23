@@ -271,7 +271,7 @@ missing line (Decision #310).
 
 | Tab | Canvas | Panel (docked ≥1280; a `Drawer` from a header button below that) |
 | :-- | :-- | :-- |
-| `edit` | Basics first, then the media showcase, then archetype-driven sections (§4.3; Decision #304), beside the sticky `EditSectionNav` rail, laid out as the project setup shell: the rail flush at the start, the stack centred at 44rem (a scrolling tab strip below a 52rem canvas; Decisions #309, #310). | Live feed card and publish-readiness list. |
+| `edit` | Basics, the Offer, Pricing and (for a session) Availability, then the media showcase, Buyer questions and a folded SEO & reach (§4.3; Decisions #304, #525), beside the sticky `EditSectionNav` rail, laid out as the project setup shell: the rail flush at the start, the stack centred at 44rem (a scrolling tab strip below a 52rem canvas; Decisions #309, #310). | Live feed card and publish-readiness list. |
 | `preview` | `<iframe src="/catalogue/[id]/simulate?device=">` with a device toggle. | None; the canvas takes the full width. |
 | `analytics` | Per-item tiles, funnel, revenue area, keyword table, booking heatmap (sessions), churn. An empty window still draws every chart (axes, gridlines, zero baseline) under a centred `InlineNotice`; a failed read never does (Decision #220). | None. |
 | `clients` | This listing's pipeline lanes. | Client drawer (`?client=@handle`). |
@@ -336,23 +336,25 @@ features/catalogue/
 | Basics (title, CREATE, delivery model, description, skills — #305) | ● | ● | ● | ● | ● | `listings.*`, `listing_skills`, `create_category` |
 | Media showcase | ● | ● | ● | ● | ● | `catalogue.listing_media`, `blueprint.cover_file_id` |
 | Format, licence, attribution, attachments | ● | | | | | `products.format`, `licence`, `attribution_required`, `file_manifest` |
-| Milestones (StageFlow showcase, #45) | | ● | | | | `blueprint.stage_template` |
+| Milestones (StageFlow showcase, #45); none on a Direct Deliverable (#525) | | ● (not direct) | | | | `blueprint.stage_template` |
 | Turnaround (`MilestoneSlider`) | | ● | per stage | | | `blueprint.turnaround_days` (new) |
 | Scope checklist | | ● | per stage | | | `blueprint.deliverables` |
 | Team roles | | direct only | ● | | | `blueprint.team_roles` |
 | Stage blueprint (sequence, price, roles, trigger, chain) | | | ● | | | `blueprint.stage_template` (extended, §7.1) |
-| Revisions (free and extra price) | | ● | ● (per stage) | | | `listings.free_revisions`, `extra_revision_price_cents` |
-| Format toggle (solo or cohort) | | | | ● | ● | `delivery_model` (`session` ↔ `group_session`) |
-| Duration (15, 30, 45, 60 or 90 minutes) and session count | | | | ● | ● | `blueprint.session_minutes`, `session_count` |
+| Revisions, in Pricing: Unlimited (a free extra round), or a free count and an extra round of at most half the price (#525) | | ● | ● (per stage) | | | `listings.free_revisions`, `extra_revision_price_cents` |
+| Format toggle (solo or cohort): retired by #525, Basics' delivery model is the choice | | | | | | — |
+| Session length (a `Slider` beside a minutes `NumberInput`, #525) and the plan summary, linking to `/catalogue/[id]/plan` for the count, order, titles and descriptions | | | | ● | ● | `blueprint.session_minutes`, `session_count`, `session_plan` |
 | Seats and enrolment | | | | | ● | `seats_per_session`, `max_seats_per_cohort`, `allow_continuous_enrollment` |
 | Conferencing provider | | | | ● | ● | `blueprint.meeting_provider` (new; NULL means `fn_conferencing_provider`) |
 | Availability scheduler | | | | ● | ● | `blueprint.availability_preset_id` and presets (§5) |
-| Buyer questions | | ● | ● | ● | ● | `blueprint.intake_fields` |
+| Buyer questions: a summary here, the builder at `/catalogue/[id]/questions` (#525) | | ● | ● | ● | ● | `blueprint.intake_fields` |
 | SEO and reach | ● | ● | ● | ● | ● | `listings.seo_title`, `seo_description`, `listing_tags` (≤10) |
 
 Section-level UX rules:
 - **One column of sections**, each a `<section aria-labelledby>` heading in the section-header
-  register, separated by spacing (`--space-8`). There are **no boxed section cards** (§3.6).
+  register, separated by spacing (`--space-7` above a heading, `--space-3` below it, `--space-4`
+  between rows, #525). There are **no boxed section cards** (§3.6). SEO & reach opens folded: a
+  flush `Accordion` whose `h2` header is the heading.
 - **Unboxed rows.** The scope checklist is a list of `Icon('check')` rows with inline edit,
   drag-reorder through `@projective/ui/dnd`, and Enter to add a row below. Milestones and stages
   render as a numbered `Timeline` with inline fields. Only interactive controls carry borders.

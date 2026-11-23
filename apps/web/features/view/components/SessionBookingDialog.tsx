@@ -571,6 +571,8 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 									step={1}
 									maxFractionDigits={0}
 									placeholder={seatCap.value > 1 ? `1–${seatCap.value}` : "1"}
+									icon="members"
+									enableIconScrub
 									buttonLayout="split"
 									onValueChange={() => (seatsRefused.value = null)}
 									class="sbk__seatsfield"

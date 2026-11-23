@@ -4,9 +4,14 @@ import { EntityPricingSchema } from "../explore/view.ts";
 import { INTAKE_FIELDS_MAX, IntakeFieldSchema, intakeListRefusal } from "../services/intake.ts";
 import { CreateCategory } from "../org/standing.ts";
 import { INTENSITY_PRICE_MULTIPLIER } from "../projects/board.ts";
-import { formArchetypeOf } from "./archetype.ts";
+import { toMajorUnits, toMinorUnits } from "../finance/wallet.ts";
+import { type FormArchetype, formArchetypeOf } from "./archetype.ts";
 import { coverOf, ListingMediaSlotsSchema } from "./media.ts";
-import { ListingAvailabilityBindingSchema, ListingOfferSchema } from "./offer.ts";
+import {
+	ListingAvailabilityBindingSchema,
+	type ListingOffer,
+	ListingOfferSchema,
+} from "./offer.ts";
 import { ListingSeoSchema, ListingTagsSchema } from "./seo.ts";
 
 // Re-export the reused delivery-model enum so `@projective/types/catalogue` is self-sufficient for the
@@ -196,7 +201,9 @@ export const ListingPricingSchema = z.object({
 	freeRevisions: z.number().int().min(0).max(99).nullable(),
 	/**
 	 * The per-round cost once the free allowance is spent, in the listing's currency. `0` means further
-	 * rounds are free — a real offer, and not the same as `null`, which means nothing was priced.
+	 * rounds are free — a real offer, and not the same as `null`, which means nothing was priced. `0` is
+	 * how the editor's **Unlimited revisions** is stored ({@link revisionsUnlimited}); a positive price
+	 * is at most half the price it revises ({@link revisionPriceRefusal}, Decision #525).
 	 */
 	extraRevisionPrice: z.number().min(0).nullable(),
 });
@@ -252,6 +259,100 @@ export const ListingDetailSchema = ListingSummarySchema.extend({
 	publishedAt: z.string().nullable().default(null),
 });
 export type ListingDetail = z.infer<typeof ListingDetailSchema>;
+// #endregion
+
+// #region Revision and delivery-model rules (Decision #525)
+/** Why a positive extra-round price is refused. */
+export const EXTRA_REVISION_CAP_MESSAGE =
+	"An extra revision round can cost at most half the price.";
+
+/** Why an extra-round price is refused before the listing has a price to halve. */
+export const EXTRA_REVISION_UNPRICED_MESSAGE =
+	"Set the price before pricing an extra revision round.";
+
+/** Why a Direct Deliverable's offer is refused when it carries milestones. */
+export const DIRECT_DELIVERABLE_MILESTONES_MESSAGE =
+	"A Direct Deliverable is one piece of work, delivered once, so it has no milestones.";
+
+/**
+ * Whether the allowance is unlimited: further rounds cost nothing, so the free count no longer
+ * matters. The same reading `revisionAllowanceKind` gives the `/view` ledger and the one the stage
+ * instantiation copies (`extra_revision_price_cents = 0`).
+ */
+export function revisionsUnlimited(pricing: Pick<ListingPricing, "extraRevisionPrice">): boolean {
+	return pricing.extraRevisionPrice === 0;
+}
+
+/**
+ * The price a revision round revises, in whole units: a Pipeline's baseline ticket, a One-Off's or a
+ * Direct Deliverable's fee. Archetype `null` takes the larger of the two (the archetype-blind check a
+ * patch can make on its own). `null` when there is no price yet, or the archetype sells no revisions.
+ */
+export function revisionBasePrice(
+	pricing: Pick<ListingPricing, "amount" | "ticketPrice">,
+	archetype: FormArchetype | null,
+): number | null {
+	if (archetype === "pipeline") return pricing.ticketPrice;
+	if (archetype === "one_off") return pricing.amount > 0 ? pricing.amount : null;
+	if (archetype !== null) return null;
+	const base = Math.max(pricing.amount, pricing.ticketPrice ?? 0);
+	return base > 0 ? base : null;
+}
+
+/**
+ * The most one extra round may cost, in whole units: half the price it revises, floored to the
+ * currency's minor unit (`floor(baseMinor / 2)`). `null` while there is no price to halve.
+ */
+export function extraRevisionCap(
+	pricing: Pick<ListingPricing, "amount" | "ticketPrice">,
+	archetype: FormArchetype | null,
+	currency: string,
+): number | null {
+	const base = toMinorUnits(revisionBasePrice(pricing, archetype), currency);
+	return base === null || base <= 0 ? null : toMajorUnits(Math.floor(base / 2), currency);
+}
+
+/** Whether a form archetype sells revision rounds (a One-Off, a Direct Deliverable, a Pipeline). */
+export function sellsRevisions(archetype: FormArchetype): boolean {
+	return archetype === "one_off" || archetype === "pipeline";
+}
+
+/**
+ * Why the extra-round price cannot be saved, or `null`. Unpriced (`null`) and free (`0`, unlimited)
+ * always save; a positive price needs a price to revise and may be at most half of it. An archetype
+ * that sells no revisions is not judged. Checked by the Pricing section, the update schema,
+ * `CatalogueBackendService` and `catalogue.save_listing`.
+ */
+export function revisionPriceRefusal(
+	pricing: Pick<ListingPricing, "amount" | "ticketPrice" | "extraRevisionPrice">,
+	archetype: FormArchetype | null,
+	currency: string,
+): string | null {
+	if (archetype !== null && !sellsRevisions(archetype)) return null;
+	const extra = toMinorUnits(pricing.extraRevisionPrice, currency);
+	if (extra === null || extra === 0) return null;
+	const base = toMinorUnits(revisionBasePrice(pricing, archetype), currency);
+	if (base === null || base <= 0) return EXTRA_REVISION_UNPRICED_MESSAGE;
+	return extra > Math.floor(base / 2) ? EXTRA_REVISION_CAP_MESSAGE : null;
+}
+
+/**
+ * Why an offer does not fit its delivery model, or `null`. A Direct Deliverable shares the One-Off
+ * form but instantiates as one Delivery stage (`instantiate_service_blueprint`), so milestones on it
+ * would promise checkpoints the buyer never gets.
+ */
+export function offerModelRefusal(
+	offer: ListingOffer,
+	serviceType: ServiceType | null,
+): string | null {
+	if (
+		serviceType === "Direct Deliverable" && offer.archetype === "one_off" &&
+		offer.milestones.length > 0
+	) {
+		return DIRECT_DELIVERABLE_MILESTONES_MESSAGE;
+	}
+	return null;
+}
 // #endregion
 
 // #region List params + page
@@ -416,7 +517,16 @@ export const UpdateListingInputSchema = z.object({
 }).refine((p) => p.intake === undefined || intakeListRefusal(p.intake) === null, {
 	message: "A follow-up question must follow a yes/no or choice question above it.",
 	path: ["intake"],
-});
+}).refine(
+	(p) =>
+		p.pricing === undefined || revisionPriceRefusal(p.pricing, null, p.currency ?? "USD") === null,
+	{ message: EXTRA_REVISION_CAP_MESSAGE, path: ["pricing", "extraRevisionPrice"] },
+).refine(
+	(p) =>
+		p.offer === undefined || p.serviceType === undefined ||
+		offerModelRefusal(p.offer, p.serviceType) === null,
+	{ message: DIRECT_DELIVERABLE_MILESTONES_MESSAGE, path: ["offer", "milestones"] },
+);
 export type UpdateListingInput = z.infer<typeof UpdateListingInputSchema>;
 
 /** The Set-Status payload — the lifecycle transition (publish / pause / archive / restore). */
@@ -533,7 +643,8 @@ export function hasBeenPublished(listing: Pick<ListingDetail, "publishedAt">): b
 /**
  * The publish gate. A listing goes live only with a title (which the SEO title falls back to), a
  * still in cover slot 1, a price the card can show, and its archetype's minimum: a Pipeline needs a
- * stage, and a Session or Group Session needs availability with a window in the next 30 days.
+ * stage, and a Session or Group Session needs availability with a window in the next 30 days. What
+ * is missing is listed in the Edit page's order (Decision #525).
  * Shared by the client (to explain what is missing) and the server (defence in depth on every
  * status write).
  */
@@ -545,7 +656,8 @@ export function publishReadiness(
 	const archetype = formArchetypeOf(detail.kind, detail.serviceType);
 	if (!detail.title.trim()) missing.push("Add a title");
 	if (detail.kind === "service" && !detail.serviceType) missing.push("Choose a delivery model");
-	if (!coverOf(detail.media)) missing.push("Add a cover image");
+	const stages = detail.offer.archetype === "pipeline" ? detail.offer.stages : [];
+	if (archetype === "pipeline" && stages.length === 0) missing.push("Add at least one stage");
 	const price = resolveListingPricing({
 		kind: detail.kind,
 		serviceType: detail.serviceType,
@@ -553,13 +665,12 @@ export function publishReadiness(
 		currency: detail.currency,
 	});
 	if (price.mode === "quote") missing.push("Set a price");
-	const stages = detail.offer.archetype === "pipeline" ? detail.offer.stages : [];
-	if (archetype === "pipeline" && stages.length === 0) missing.push("Add at least one stage");
 	if (archetype === "session" || archetype === "cohort") {
 		const noWindows = context.upcomingWindows === 0;
 		if (!detail.availabilityBinding) missing.push("Choose availability");
 		else if (noWindows) missing.push("Open a bookable time in the next 30 days");
 	}
+	if (!coverOf(detail.media)) missing.push("Add a cover image");
 	return { ready: missing.length === 0, missing };
 }
 // #endregion

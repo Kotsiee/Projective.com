@@ -2830,6 +2830,13 @@ for them (Decision #337, ruling P3).
     before its escrow is held. A bought round
     does not consume the free allotment. A verdict on the submission cancels a round still awaiting
     payment. A stage whose price is unstated after its free rounds cannot be sent back again.
+  - **The extra round is capped (Decision #525).** A listing's stated extra-round price is at most
+    half the price it revises (a Pipeline's baseline ticket, a One-Off's or a Direct Deliverable's
+    fee), floored to the currency's minor unit; the editor lowers it with the price, and
+    `catalogue.save_listing` refuses one above it. **Unlimited revisions** is a free extra round
+    (`0`): every round costs nothing, so the free count no longer matters. An unstated extra price
+    still falls back to the stage's ticket price when an engagement is created (Decision #525 flag
+    (c), open).
 
 ##### Escrow Lifecycle for Tickets
 
@@ -4489,7 +4496,9 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               | `/connections`            | `index`                  | View network connections                                                                       |
 |               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |
 |               | `/catalogue`              | `index`                  | Seller console — the listings (cards or rows by zoom, facets, a batch bar for the selection) and the Analytics and Clients views (`?view=`). A listing is created in the `?create=` Quick-Init modal, never on a page of its own |
-|               | `/catalogue/[listing slug]` | `edit`                 | One listing's workspace — the Edit tab (basics, media showcase, SEO and reach, with the live feed card and the publish checklist beside it), then Preview, Analytics and Clients. Autosaves; the footer holds the save status, the publish gate and the lifecycle actions (Decision #304) |
+|               | `/catalogue/[listing slug]` | `edit`                 | One listing's workspace — the Edit tab (basics, the offer, pricing, availability for a session, the media showcase, buyer questions and a folded SEO and reach, Decision #525, with the live feed card and the publish checklist beside it), then Preview, Analytics and Clients. A Direct Deliverable is one piece of work delivered once, so its offer lists no milestones. Autosaves; the footer holds the save status, the publish gate and the lifecycle actions (Decision #304) |
+|               | `/catalogue/[listing slug]/plan` | `plan`            | A Session's or Group Session's session plan (Decision #525) — how many sessions one booking holds, in order, and what each one covers, added, removed, written and dragged into order on the listing's own draft. Any other listing is sent back to its Offer section |
+|               | `/catalogue/[listing slug]/questions` | `questions`  | A service's buyer questions (Decision #525) — question types dragged onto the list or pressed to add, each follow-up drawn under the question it follows. A product is sent back to its workspace |
 |               | `/catalogue/[listing slug]/simulate` | `simulate`    | The owner's buyer simulation (Decision #217(j)) — the real listing page, framed by the Preview tab with no shell; every buyer action shows what would happen and nothing is booked or charged. Owner only; anyone else gets a 404 |
 |               | `/messages`               | `index`                  | The inbox with no conversation open — the conversation list is the lane                        |
 |               | `/messages/[conversation]` | `index`                  | The conversation's Chat. A conversation is addressed by its opaque `cht-…` slug, and `/messages/dm-<handle>` answers 303 to the conversation with that person (Decision #339, ruling N1) |

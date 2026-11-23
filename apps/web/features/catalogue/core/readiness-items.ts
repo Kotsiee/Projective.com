@@ -51,12 +51,12 @@ export function readinessItems(
 	const required = [
 		"Add a title",
 		...(listing.kind === "service" ? ["Choose a delivery model"] : []),
-		"Add a cover image",
-		"Set a price",
 		...(archetype === "pipeline" ? ["Add at least one stage"] : []),
+		"Set a price",
 		...(archetype === "session" || archetype === "cohort"
 			? [CHOOSE_AVAILABILITY, BOOKABLE_SOON]
 			: []),
+		"Add a cover image",
 	];
 	const extra = readiness.missing.filter((m) => !required.includes(m));
 	const blocked = readiness.missing.includes(CHOOSE_AVAILABILITY);

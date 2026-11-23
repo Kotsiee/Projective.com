@@ -301,6 +301,9 @@ DECLARE
     v_name text;
     v_collection uuid;
     v_tiered boolean;
+    v_next_model marketplace.service_delivery_model;
+    v_extra bigint;
+    v_base bigint;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to edit a listing' USING ERRCODE = '42501';
@@ -432,6 +435,41 @@ BEGIN
         IF v_row.published_at IS NOT NULL AND pg_catalog.upper(v_patch ->> 'currency') <> v_row.currency THEN
             RAISE EXCEPTION 'A listing keeps its currency once it has been published' USING ERRCODE = '22023',
                 DETAIL = 'currency';
+        END IF;
+    END IF;
+
+    -- The listing as it will stand after this save (Decision #525): an extra revision round costs at most
+    -- half the price it revises (a Pipeline's baseline ticket, a One-Off's or Direct Deliverable's fee),
+    -- floored to the minor unit; unpriced (NULL) and free (0, unlimited) always pass, and a model that
+    -- sells no revisions is not judged. A Direct Deliverable instantiates as one Delivery stage, so it
+    -- takes no milestones.
+    IF v_row.kind = 'service' THEN
+        v_next_model := CASE WHEN v_patch ? 'delivery_model'
+            THEN (v_patch ->> 'delivery_model')::marketplace.service_delivery_model ELSE v_model END;
+        IF v_patch ?| ARRAY['extra_revision_price_cents', 'amount_cents', 'ticket_price_cents']
+           AND v_next_model IN ('one_off', 'direct_deliverable', 'pipeline') THEN
+            v_extra := CASE WHEN v_patch ? 'extra_revision_price_cents'
+                THEN (v_patch ->> 'extra_revision_price_cents')::bigint ELSE v_row.extra_revision_price_cents END;
+            v_base := CASE WHEN v_next_model = 'pipeline'
+                THEN CASE WHEN v_patch ? 'ticket_price_cents'
+                    THEN (v_patch ->> 'ticket_price_cents')::bigint ELSE v_row.ticket_price_cents END
+                ELSE CASE WHEN v_patch ? 'amount_cents'
+                    THEN COALESCE((v_patch ->> 'amount_cents')::bigint, 0) ELSE v_row.amount_cents END
+            END;
+            IF COALESCE(v_extra, 0) > 0 AND COALESCE(v_base, 0) <= 0 THEN
+                RAISE EXCEPTION 'Set the price before pricing an extra revision round' USING ERRCODE = '22023',
+                    DETAIL = 'extra_revision_price_cents';
+            END IF;
+            IF COALESCE(v_extra, 0) > 0 AND v_extra > v_base / 2 THEN
+                RAISE EXCEPTION 'An extra revision round can cost at most half the price' USING ERRCODE = '22023',
+                    DETAIL = 'extra_revision_price_cents';
+            END IF;
+        END IF;
+        IF v_next_model = 'direct_deliverable' AND v_patch ? 'stage_template'
+           AND pg_catalog.jsonb_typeof(v_patch -> 'stage_template') = 'array'
+           AND pg_catalog.jsonb_array_length(v_patch -> 'stage_template') > 0 THEN
+            RAISE EXCEPTION 'A Direct Deliverable is one piece of work, delivered once, so it has no milestones'
+                USING ERRCODE = '22023', DETAIL = 'stage_template';
         END IF;
     END IF;
 

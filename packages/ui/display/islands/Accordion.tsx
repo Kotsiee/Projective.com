@@ -12,6 +12,8 @@ import { Icon } from "../../icons/mod.ts";
 export interface AccordionTabProps {
 	/** Header content (clickable trigger label). */
 	header: string | VNode;
+	/** The header button's id, for a page that links or moves focus to it; generated when absent. */
+	headerId?: string;
 	disabled?: boolean;
 	children?: ComponentChildren;
 }
@@ -31,6 +33,7 @@ export function AccordionTab(_props: AccordionTabProps): VNode | null {
 /** Imperative alternative to `AccordionTab` children — pass a pre-built array of tab descriptors. */
 export interface AccordionTabModel {
 	header: string | VNode;
+	headerId?: string;
 	disabled?: boolean;
 	content: ComponentChildren;
 }
@@ -42,11 +45,15 @@ function tabsFromChildren(children: ComponentChildren): AccordionTabModel[] {
 			const props = (c as VNode<AccordionTabProps>).props;
 			return {
 				header: props.header,
+				headerId: props.headerId,
 				disabled: props.disabled,
 				content: props.children,
 			};
 		});
 }
+
+/** The heading levels a header may sit at. */
+export type AccordionHeadingLevel = 2 | 3 | 4 | 5 | 6;
 // #endregion
 
 export interface AccordionProps {
@@ -67,6 +74,11 @@ export interface AccordionProps {
 	 * inset, for one inside a dialog or a panel, where a tonal region would be a card in a card (§B.4.2).
 	 */
 	variant?: "filled" | "flush";
+	/**
+	 * The heading level each header sits at (default `3`), so a disclosure that IS a page section keeps
+	 * the outline the sections around it set.
+	 */
+	headingLevel?: AccordionHeadingLevel;
 	id?: string;
 	class?: string;
 }
@@ -89,9 +101,11 @@ export function Accordion(props: AccordionProps): JSX.Element {
 		activeIndex,
 		onTabChange,
 		variant = "filled",
+		headingLevel = 3,
 		id,
 		class: className,
 	} = props;
+	const Heading = `h${headingLevel}` as const;
 
 	const rootId = useId(id, "accordion");
 	const model = useMemo(() => tabs ?? tabsFromChildren(children), [tabs, children]);
@@ -150,7 +164,7 @@ export function Accordion(props: AccordionProps): JSX.Element {
 			id={rootId}
 		>
 			{model.map((tab, i) => {
-				const headerId = `${rootId}-header-${i}`;
+				const headerId = tab.headerId ?? `${rootId}-header-${i}`;
 				const panelId = `${rootId}-panel-${i}`;
 				const open = isOpen(i);
 				return (
@@ -158,7 +172,7 @@ export function Accordion(props: AccordionProps): JSX.Element {
 						class={cx("ui-accordion__tab", open && "ui-accordion__tab--open")}
 						key={i}
 					>
-						<h3 class="ui-accordion__heading">
+						<Heading class="ui-accordion__heading">
 							<button
 								ref={(el) => {
 									headerRefs.current[i] = el;
@@ -178,7 +192,7 @@ export function Accordion(props: AccordionProps): JSX.Element {
 								<span class="ui-accordion__header-label">{tab.header}</span>
 								<Icon name="chevron-down" class="ui-accordion__chevron" />
 							</button>
-						</h3>
+						</Heading>
 						<div
 							id={panelId}
 							role="region"

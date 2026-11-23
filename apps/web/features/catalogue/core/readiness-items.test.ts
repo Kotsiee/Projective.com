@@ -12,10 +12,10 @@ Deno.test("a session lists availability and a bookable window as explicit lines"
 		[
 			"✓ Add a title",
 			"✓ Choose a delivery model",
-			"✓ Add a cover image",
 			"✓ Set a price",
 			"✓ Choose availability",
 			"✓ Open a bookable time in the next 30 days",
+			"✓ Add a cover image",
 		],
 	);
 });
@@ -25,23 +25,23 @@ Deno.test("the bookable window is never ticked before availability is chosen", (
 		{ kind: "service", serviceType: "Group Session" },
 		{ ready: false, missing: ["Choose availability"] },
 	);
-	assertEquals(labels(items).slice(-2), [
+	assertEquals(labels(items).slice(-3, -1), [
 		"○ Choose availability",
 		"○ Open a bookable time in the next 30 days",
 	]);
 });
 
-Deno.test("a pipeline lists its stage; a product lists no delivery model", () => {
+Deno.test("a pipeline lists its stage before its price; a product lists no delivery model", () => {
 	assertEquals(
 		labels(readinessItems({ kind: "service", serviceType: "Pipeline" }, {
 			ready: false,
 			missing: ["Add at least one stage"],
-		})).at(-1),
-		"○ Add at least one stage",
+		})).slice(2, 4),
+		["○ Add at least one stage", "✓ Set a price"],
 	);
 	assertEquals(
 		labels(readinessItems({ kind: "product", serviceType: null }, { ready: true, missing: [] })),
-		["✓ Add a title", "✓ Add a cover image", "✓ Set a price"],
+		["✓ Add a title", "✓ Set a price", "✓ Add a cover image"],
 	);
 });
 

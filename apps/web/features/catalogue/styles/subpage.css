@@ -1,0 +1,28 @@
+.cat-sub {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	inline-size: 100%;
+	max-inline-size: 44rem;
+	min-inline-size: 0;
+	margin-inline: auto;
+}
+
+.cat-sub--wide {
+	max-inline-size: 60rem;
+}
+
+.cat-sub__head {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+}
+
+.cat-sub__back {
+	margin-block-end: var(--space-2);
+}
+
+.cat-sub__head .cat-sec__title:focus {
+	outline: none;
+}

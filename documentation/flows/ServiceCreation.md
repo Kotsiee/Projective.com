@@ -52,9 +52,11 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 
 ### 1.1 Intake editor (catalogue console) — BUILT (Decision #217)
 
-- **Where:** the "Questions for the buyer" Edit section of a service's workspace,
-  `/catalogue/[id]?tab=edit&section=questions` (`components/edit/IntakeSection.tsx`, its builder
-  under `components/edit/intake/`, the pure rules in `core/intake-model.ts`). It is offered for every
+- **Where:** the listing's own builder, `/catalogue/[id]/questions` (Decision #525;
+  `components/questions/`: a palette of question types beside the canvas, each follow-up drawn as a
+  branch under the question it follows), summarised by the Buyer questions Edit section at
+  `/catalogue/[id]?tab=edit&section=questions` (`components/edit/IntakeSection.tsx`). The pure rules
+  are in `core/intake-model.ts`. It is offered for every
   service archetype and never for a product (`sectionsFor`, `@projective/types/catalogue`). It
   edits `ListingDetail.intake` and sends it wholesale through `POST /api/catalogue/update` as
   `UpdateListingInput.intake` — **order is meaning**, so the patch is the whole list, never a diff.
@@ -64,8 +66,9 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 - **Follow-ups, starting values and guide pricing (Decision #522).** A question below a yes/no or a
   choice may carry a `condition` (`fieldId`, `anyOf` answers, `effect` show or hide): the buyer is asked
   it only while that earlier answer matches (`visibleIntakeIds`), a hidden follow-up is never
-  required, and its answer is dropped on the way in (`normaliseIntakeAnswers`). The builder's "Ask this
-  only when an earlier answer matches" toggle edits it; `intakeConditionRefusal` refuses a follow-up of
+  required, and its answer is dropped on the way in (`normaliseIntakeAnswers`). In the builder a follow-up
+  is added with Add follow-up on the question it follows and drawn under it as a branch (Decision
+  #525; `intakeNodes`, `toBranchOrder`), where Ask or Skip and the answers it follows are edited; `intakeConditionRefusal` refuses a follow-up of
   nothing above it or of an answer the question no longer offers, and `UpdateListingInputSchema` holds
   the same rule at the route (`intakeListRefusal`). A `number` may take a `defaultValue` (the form opens
   on it, the slider rests on it) and `pricing` (`linear` only: `perUnitMinor` per unit past

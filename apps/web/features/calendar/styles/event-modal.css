@@ -823,10 +823,6 @@ label.evm-meta__k {
 	inline-size: calc(var(--space-8) + var(--space-5));
 }
 
-.evm-repeat__interval .ui-number-input__input {
-	text-align: center;
-}
-
 /* A person's alerts: each row fits a narrow column, so the two selects share the width. */
 .evm-remind {
 	display: flex;

@@ -269,35 +269,6 @@ export function deliveryLabel(offer: ListingOffer): string | null {
 	}
 }
 
-/** A seat cap a new cohort starts from. */
-export const DEFAULT_COHORT_SEATS = 10;
-
-/**
- * The same session offer in the other format. One-to-one ↔ cohort keeps the length, the count, the
- * session plan and the provider; a cohort gains a seat cap and enrolment, a one-to-one session drops
- * them and starts as a fixed number of sessions. Only a one-to-one session can be rolling.
- */
-export function switchSessionFormat(
-	offer: Extract<ListingOffer, { archetype: "session" | "cohort" }>,
-	to: "session" | "cohort",
-): Extract<ListingOffer, { archetype: "session" | "cohort" }> {
-	const base = {
-		minutes: offer.minutes,
-		count: offer.count,
-		meetingProvider: offer.meetingProvider,
-		plan: offer.plan,
-	};
-	if (to === "session") return { archetype: "session", ...base, rolling: false };
-	return {
-		archetype: "cohort",
-		...base,
-		maxSeatsPerCohort: offer.archetype === "cohort"
-			? offer.maxSeatsPerCohort
-			: DEFAULT_COHORT_SEATS,
-		continuousEnrollment: offer.archetype === "cohort" ? offer.continuousEnrollment : false,
-	};
-}
-
 /** Which offer form a listing shows, and whether it carries the team block. */
 export interface OfferEditor {
 	archetype: FormArchetype;

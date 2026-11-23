@@ -11,6 +11,7 @@ import { consolePanelOf } from "./client-model.ts";
 import { workspacePanelOf } from "./workspace-model.ts";
 import {
 	isListingSlug,
+	listingSubPageOf,
 	parseConsoleUrl,
 	parseWorkspaceUrl,
 	publishReadiness,
@@ -24,7 +25,8 @@ import {
  *   buyer, and nothing on any other view;
  * - the item workspace (`/catalogue/[id]`): the live card and publish checklist on the Edit tab, or
  *   the client drawer when `?client=` is set; nothing on Preview, whose frame takes the full width,
- *   nor on a tab without a panel.
+ *   nor on a tab without a panel. The Edit sub-pages (`/plan`, `/questions`, Decision #525) carry
+ *   the same live card; the buyer simulation (`/simulate`) carries none.
  *
  * Each decision is a pure resolver (`consolePanelOf`, `workspacePanelOf`), so the first byte and the
  * islands' own client-side switches agree. `/teams/:handle/catalogue*` gets the same panels, read as
@@ -46,7 +48,8 @@ export async function cataloguePanelFor(
 		return <ClientDrawer surface="console" scope={{ filter: state.scope }} client={state.client} />;
 	}
 
-	if (scope.rest.length !== 1 || !isListingSlug(id)) return null;
+	const onSubPage = scope.rest.length === 2 && listingSubPageOf(url.pathname) !== null;
+	if ((scope.rest.length !== 1 && !onSubPage) || !isListingSlug(id)) return null;
 	const state = parseWorkspaceUrl(url);
 	if (workspacePanelOf(state) === null) return null;
 

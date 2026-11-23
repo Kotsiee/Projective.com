@@ -20,7 +20,9 @@ import {
 	intakePriceAdjustment,
 	type ServiceBookingOffer,
 } from "@projective/types/services";
-import { FormControl, InputText, MoneyInput, Textarea } from "@projective/ui/fields";
+import { FormControl, InputText, NumberInput, Textarea } from "@projective/ui/fields";
+import { toMinorUnits } from "@projective/types/finance";
+import { MONEY_FIELD, moneyDigits } from "@web/utils/money-field.ts";
 import { displayLocale, MoneyView } from "@projective/ui/display/money";
 import { IntakeFields } from "@web/features/profile/components/hire/IntakeFields.tsx";
 import type { OfferSummary } from "../core/offer-summary.ts";
@@ -82,8 +84,10 @@ export default function QuoteRequestModal(
 	const open = useComputed(() => openPanel.value === "quote");
 
 	const scope = useSignal("");
-	/** Integer MINOR units, read in the viewer's locale by `MoneyInput`; `null` = no budget given. */
+	/** Integer MINOR units, from the whole units typed in the budget field; `null` = no budget given. */
 	const budget = useSignal<number | null>(null);
+	/** The budget field's own value, in whole units of the listing's currency. */
+	const budgetField = useSignal<number | null>(null);
 	const timeline = useSignal("");
 	const error = useSignal<string | null>(null);
 	const cta = useCtaFeedback();
@@ -95,6 +99,7 @@ export default function QuoteRequestModal(
 		}
 		scope.value = "";
 		budget.value = null;
+		budgetField.value = null;
 		timeline.value = "";
 		error.value = null;
 		intakeState.reset();
@@ -218,16 +223,17 @@ export default function QuoteRequestModal(
 						collapseHint
 					>
 						{(a) => (
-							<MoneyInput
+							<NumberInput
+								{...MONEY_FIELD}
+								{...moneyDigits(currency)}
 								id={a.id}
 								aria-describedby={a.describedBy}
-								value={budget.value}
-								currency={currency}
+								value={budgetField}
 								placeholder={summary
 									? quotePlaceholder(summary.price, currency, displayLocale.value || undefined)
 									: BUDGET_PLACEHOLDER}
 								fluid
-								onValueChange={(minor) => (budget.value = minor)}
+								onValueChange={(whole) => (budget.value = toMinorUnits(whole, currency))}
 							/>
 						)}
 					</FormControl>

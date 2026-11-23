@@ -1,0 +1,223 @@
+.cat-qb {
+	display: grid;
+	grid-template-columns: minmax(0, 12rem) minmax(0, 1fr);
+	gap: var(--space-6);
+	align-items: start;
+}
+
+.cat-qb[data-locked] {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.cat-qb__palette {
+	position: sticky;
+	inset-block-start: calc(var(--shell-frame-inset-block, var(--shell-topbar-h)) + var(--space-5));
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.cat-qb__palette-head {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+}
+
+.cat-qb__tiles {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cat-qb__tile[data-dragging="true"] {
+	opacity: var(--fld-loading-alpha);
+}
+
+.cat-qb__tile-button {
+	--cat-press-scale: var(--btn-press-scale);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-3);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	background: var(--surface);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--text-sm);
+	text-align: start;
+	cursor: grab;
+	touch-action: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.cat-qb__tile-button:hover:not(:disabled) {
+	background: var(--surface-1);
+}
+
+.cat-qb__tile-button:active:not(:disabled) {
+	transform: scale(var(--cat-press-scale));
+}
+
+.cat-qb__tile-button:focus-visible {
+	outline: none;
+	box-shadow: none;
+	border-color: var(--primary);
+}
+
+.cat-qb__tile-button:disabled {
+	color: var(--text-secondary);
+	cursor: not-allowed;
+}
+
+.cat-qb__tile-label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cat-qb__canvas {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+.cat-qb__list,
+.cat-qb__branch {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cat-qb__list > .cat-qb__item + .cat-qb__item {
+	padding-block-start: var(--space-5);
+	border-block-start: var(--hairline);
+}
+
+.cat-qb__branch {
+	margin-block-start: var(--space-4);
+	margin-inline-start: var(--space-2);
+	padding-inline-start: var(--space-5);
+	border-inline-start: 2px solid var(--hairline-strong-color);
+}
+
+.cat-qb__item {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.cat-qb__question {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.cat-qb__question[data-dragging="true"] {
+	opacity: var(--fld-loading-alpha);
+}
+
+.cat-qb__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.cat-qb__lead,
+.cat-qb__tools {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.cat-qb__glyph {
+	flex: none;
+	color: var(--text-secondary);
+}
+
+.cat-qb__number {
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.cat-qb__rule {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.cat-qb__rule-text {
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cat-qb__end {
+	min-block-size: var(--space-6);
+}
+
+.cat-qb__ghost {
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+	box-shadow: var(--elevation-medium);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+}
+
+@container cat-edit (max-width: 44rem) {
+	.cat-qb {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-4);
+	}
+
+	.cat-qb__palette {
+		position: static;
+	}
+
+	.cat-qb__tiles {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.cat-qb__tile-button {
+		inline-size: auto;
+	}
+
+	.cat-qb__branch {
+		margin-inline-start: 0;
+		padding-inline-start: var(--space-3);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cat-qb__tile-button:active:not(:disabled) {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .cat-qb__tile-button:active:not(:disabled) {
+	transform: none;
+}

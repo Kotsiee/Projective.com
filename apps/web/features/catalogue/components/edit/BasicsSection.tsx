@@ -1,7 +1,13 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { RichTextEditor } from "@projective/ui/editor";
-import { AutoComplete, InputText, SelectButton, type Suggestion } from "@projective/ui/fields";
+import {
+	AutoComplete,
+	InputText,
+	Select,
+	SelectButton,
+	type Suggestion,
+} from "@projective/ui/fields";
 import { ServiceType } from "@projective/types/catalogue";
 import { CreateCategory } from "@projective/types/org";
 import type { ListingDetail, SkillRef } from "../../types/catalogue-types.ts";
@@ -16,6 +22,7 @@ const NOT_YET = "none";
 
 const TITLE_ID = "cat-basics-title";
 const DESC_ID = "cat-basics-desc";
+const CREATE_ID = "cat-basics-create";
 const CREATE_LABEL = "CREATE category";
 const CREATE_HINT_ID = "cat-basics-create-hint";
 const SKILLS_ID = "cat-basics-skills";
@@ -29,8 +36,8 @@ const MODEL_FIXED_HINT =
 	"Fixed once published, because bookings and projects depend on it. To offer this another way, archive it and create a new listing.";
 
 const CREATE_OPTIONS = [
-	...CREATE_CATEGORY_OPTIONS.map((c) => ({ label: c.label, value: c.value })),
-	{ label: "Not yet", value: NOT_YET },
+	...CREATE_CATEGORY_OPTIONS.map((c) => ({ label: c.label, value: c.value, description: c.hint })),
+	{ label: "Not yet", value: NOT_YET, description: "Decide later; it counts towards no category." },
 ];
 
 const MODEL_OPTIONS = SERVICE_MODELS.map((m) => ({ label: m, value: m }));
@@ -106,20 +113,20 @@ export function BasicsSection(props: { listing: ListingDetail }): JSX.Element {
 			<div class="cat-sec__field">
 				<FieldHead
 					label={CREATE_LABEL}
-					decorative
+					htmlFor={CREATE_ID}
 					hint={category?.hint ?? CREATE_HINT}
 					hintId={CREATE_HINT_ID}
 				/>
-				<SelectButton
+				<Select
+					id={CREATE_ID}
 					options={CREATE_OPTIONS}
 					value={listing.createCategory ?? NOT_YET}
 					onValueChange={(v) => {
-						if (typeof v !== "string") return;
 						const parsed = CreateCategory.safeParse(v);
 						edit("createCategory", parsed.success ? parsed.data : null);
 					}}
-					aria-label={CREATE_LABEL}
 					aria-describedby={CREATE_HINT_ID}
+					fluid
 				/>
 			</div>
 

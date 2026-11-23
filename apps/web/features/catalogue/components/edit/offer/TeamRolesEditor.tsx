@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { Button, InputText, NumberStepper } from "@projective/ui/fields";
+import { Button, InputText, NumberInput } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { STAGES_MAX } from "@projective/types/catalogue";
 import type { TeamRole } from "../../../types/catalogue-types.ts";
@@ -60,16 +60,18 @@ function RoleRow(
 			/>
 			<div class="cat-sec__field">
 				<label class="cat-sec__label" for={`${base}-count`}>People</label>
-				<div class="cat-offer__compact">
-					<NumberStepper
-						id={`${base}-count`}
-						value={role.count}
-						onValueChange={(n) => props.onPatch({ count: n ?? 1 })}
-						min={1}
-						max={20}
-						unit={role.count === 1 ? "person" : "people"}
-					/>
-				</div>
+				<NumberInput
+					id={`${base}-count`}
+					class="cat-offer__count"
+					value={role.count}
+					onValueChange={(n) => props.onPatch({ count: Math.round(n ?? 1) })}
+					min={1}
+					max={20}
+					maxFractionDigits={0}
+					icon="user"
+					enableIconScrub
+					suffix={role.count === 1 ? "person" : "people"}
+				/>
 			</div>
 			<SkillTags
 				id={`${base}-skills`}

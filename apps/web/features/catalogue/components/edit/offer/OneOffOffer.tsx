@@ -9,33 +9,41 @@ import { useGatedDraft } from "../../../hooks/useGatedDraft.ts";
 import { MilestoneEditor } from "./MilestoneEditor.tsx";
 import { ScopeChecklist } from "./ScopeChecklist.tsx";
 import { TurnaroundSlider } from "./TurnaroundSlider.tsx";
-import { RevisionFields } from "./RevisionFields.tsx";
 import { TeamRolesEditor } from "./TeamRolesEditor.tsx";
 import { OfferGroup } from "./OfferGroup.tsx";
 
 /**
  * OneOffOffer — a One-Off's (and a Direct Deliverable's) offer: its milestones, delivery time, what
- * is included, the revision allowance and, for a Direct Deliverable, the team that delivers it.
+ * is included and, for a Direct Deliverable, the team that delivers it. A Direct Deliverable is one
+ * piece of work delivered once (it instantiates as a single Delivery stage), so it has no milestones
+ * and its draft starts without any (Decision #525).
  */
 export function OneOffOffer(
 	props: { listing: ListingDetail; offer: OneOffOfferValue; withTeam: boolean },
 ): JSX.Element {
-	const gated = useGatedDraft(props.offer, checkOffer, commitOffer);
+	const direct = props.listing.serviceType === "Direct Deliverable";
+	const gated = useGatedDraft(
+		direct ? { ...props.offer, milestones: [] } : props.offer,
+		checkOffer,
+		commitOffer,
+	);
 	const offer = gated.value.value as OneOffOfferValue;
 	const update = (patch: Partial<OneOffOfferValue>) => gated.set({ ...offer, ...patch });
 
 	return (
 		<>
-			<OfferGroup
-				title="Milestones"
-				hint="The points at which the buyer receives something. A short job can have just one."
-			>
-				<MilestoneEditor
-					milestones={offer.milestones}
-					onChange={(milestones) => update({ milestones: [...milestones] })}
-					problemAt={problemRow(gated.problem.value, "milestones")}
-				/>
-			</OfferGroup>
+			{!direct && (
+				<OfferGroup
+					title="Milestones"
+					hint="The points at which the buyer receives something. A short job can have just one."
+				>
+					<MilestoneEditor
+						milestones={offer.milestones}
+						onChange={(milestones) => update({ milestones: [...milestones] })}
+						problemAt={problemRow(gated.problem.value, "milestones")}
+					/>
+				</OfferGroup>
+			)}
 
 			<OfferGroup title="Delivery">
 				<TurnaroundSlider
@@ -53,10 +61,6 @@ export function OneOffOffer(
 					maxLength={140}
 					placeholder="Add a line, then press Enter"
 				/>
-			</OfferGroup>
-
-			<OfferGroup title="Revisions">
-				<RevisionFields listing={props.listing} perStage={false} />
 			</OfferGroup>
 
 			{props.withTeam && (

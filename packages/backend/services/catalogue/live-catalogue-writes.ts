@@ -9,8 +9,10 @@ import {
 	type ListingDetail,
 	type ListingMediaSlot,
 	type ListingStatus,
+	offerModelRefusal,
 	type ReorderListingMediaInput,
 	reorderSlots,
+	revisionPriceRefusal,
 	type SaveListingShowcaseInput,
 	type ServiceType,
 	type SetListingStatusInput,
@@ -93,11 +95,41 @@ export async function createListing(
 // #endregion
 
 // #region Update
-/** What a patch is applied to: the listing's kind, currency and current form. */
+/** What a patch is applied to: the listing's kind, currency, delivery model and current form. */
 export interface PatchTarget {
 	kind: "product" | "service";
 	currency: string;
 	archetype: FormArchetype;
+	/** The stored delivery model; `null` for a product. */
+	serviceType?: ServiceType | null;
+}
+
+/**
+ * Why a patch breaks a rule that depends on the listing it lands on, or `null` (Decision #525): an
+ * extra revision round above half the price it revises, or milestones on a Direct Deliverable. Both
+ * are judged against the listing as it will stand after the patch.
+ */
+export function patchRefusal(
+	patch: UpdateListingInput,
+	target: PatchTarget,
+): { field: string; message: string } | null {
+	const serviceType = target.kind === "service"
+		? patch.serviceType ?? target.serviceType ?? null
+		: null;
+	const archetype = serviceType ? formArchetypeOf("service", serviceType) : target.archetype;
+	if (patch.pricing !== undefined) {
+		const message = revisionPriceRefusal(
+			patch.pricing,
+			archetype,
+			patch.currency ?? target.currency,
+		);
+		if (message) return { field: "pricing.extraRevisionPrice", message };
+	}
+	if (patch.offer !== undefined) {
+		const message = offerModelRefusal(patch.offer, serviceType);
+		if (message) return { field: "offer.milestones", message };
+	}
+	return null;
 }
 
 /**
@@ -164,10 +196,12 @@ async function patchTarget(db: SupabaseClient, l: CatalogueListingRow): Promise<
 		.select("delivery_model").eq("id", l.service_blueprint_id).maybeSingle();
 	if (error) throw new Error(`marketplace.service_blueprints read failed: ${error.message}`);
 	const model = (data as { delivery_model?: string } | null)?.delivery_model;
+	const serviceType = serviceTypeOfRow(model);
 	return {
 		kind: "service",
 		currency: l.currency,
-		archetype: formArchetypeOf("service", serviceTypeOfRow(model)),
+		archetype: formArchetypeOf("service", serviceType),
+		serviceType,
 	};
 }
 
@@ -182,7 +216,12 @@ export async function updateListing(
 ): Promise<Result<{ listing: ListingDetail }>> {
 	const l = await ownedListing(db, patch.id, actor);
 	if (!l) return notFound();
-	const body = savePatchBody(patch, await patchTarget(db, l));
+	const target = await patchTarget(db, l);
+	const refused = patchRefusal(patch, target);
+	if (refused) {
+		return fail(422, { message: refused.message, errors: { [refused.field]: refused.message } });
+	}
+	const body = savePatchBody(patch, target);
 	const { error } = await db.schema("catalogue").rpc("save_listing", {
 		p_listing: l.id,
 		p_patch: body,

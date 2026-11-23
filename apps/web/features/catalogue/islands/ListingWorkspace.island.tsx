@@ -1,5 +1,4 @@
 import type { JSX } from "preact";
-import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
 import {
 	formArchetypeOf,
@@ -15,20 +14,14 @@ import { ClientsCanvas } from "../components/clients/ClientsCanvas.tsx";
 import { AnalyticsCanvas } from "../components/analytics/AnalyticsCanvas.tsx";
 import { PreviewCanvas } from "../components/preview/PreviewCanvas.tsx";
 import {
-	flushBeacon,
-	holdsUnsavedEdits,
-	hydrateAutoSave,
-	hydrateWorkspace,
 	liveListing,
-	resume,
 	revision,
 	setWorkspaceUrl,
-	startWorkspaceSync,
 	workspaceReady,
 	workspaceUrl,
 } from "../core/workspace-store.ts";
 import { WORKSPACE_PANEL_ID, workspaceTabId } from "../core/workspace-model.ts";
-import { catalogueApiPath } from "../core/api-scope.ts";
+import { useWorkspacePersistence } from "../hooks/useWorkspacePersistence.ts";
 
 /** Props for {@link ListingWorkspace}. */
 export interface ListingWorkspaceProps {
@@ -40,42 +33,14 @@ export interface ListingWorkspaceProps {
 	restricted: boolean;
 }
 
-function sendBeacon(url: string, body: string): boolean {
-	const blob = new Blob([body], { type: "application/json" });
-	return navigator.sendBeacon?.(catalogueApiPath(url), blob) ?? false;
-}
-
 /**
  * ListingWorkspace — the item workspace's canvas: the tab router for Edit · Preview · Analytics ·
  * Clients, rendered as the one `role="tabpanel"` the header's tab strip controls (named by that tab
- * across hydration roots). It owns the workspace store's hydration and the page's persistence:
- * under auto-save, unsaved edits are flushed through a beacon when the page is hidden or left; with
- * it off, leaving with unsaved edits asks first. A stale save raises the conflict choice.
+ * across hydration roots). It owns the workspace store's hydration and the page's persistence
+ * ({@link useWorkspacePersistence}). A stale save raises the conflict choice.
  */
 export default function ListingWorkspace(props: ListingWorkspaceProps): JSX.Element {
-	useEffect(() => {
-		hydrateWorkspace(props.initial, props.url);
-		hydrateAutoSave();
-		startWorkspaceSync();
-		const onHide = () => void flushBeacon(sendBeacon);
-		const onBeforeUnload = (e: BeforeUnloadEvent) => {
-			if (!holdsUnsavedEdits()) return;
-			e.preventDefault();
-			e.returnValue = "";
-		};
-		const onVisibility = () => {
-			if (document.visibilityState === "hidden") onHide();
-			else resume();
-		};
-		globalThis.addEventListener("pagehide", onHide);
-		globalThis.addEventListener("beforeunload", onBeforeUnload);
-		document.addEventListener("visibilitychange", onVisibility);
-		return () => {
-			globalThis.removeEventListener("pagehide", onHide);
-			globalThis.removeEventListener("beforeunload", onBeforeUnload);
-			document.removeEventListener("visibilitychange", onVisibility);
-		};
-	}, []);
+	useWorkspacePersistence(props.initial, props.url);
 
 	const listing = liveListing(props.initial);
 	const tab: WorkspaceTab = workspaceReady.value ? workspaceUrl.value.tab : props.url.tab;

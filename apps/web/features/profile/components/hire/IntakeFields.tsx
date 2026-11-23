@@ -189,6 +189,8 @@ function NumberIntake({ field, answer, refused, disabled, id, onChange }: Intake
 						maxFractionDigits={Number.isInteger(field.step ?? 1) ? 0 : undefined}
 						suffix={field.unit}
 						placeholder={numberPlaceholder(field)}
+						icon={slider ? undefined : "list-numbers"}
+						enableIconScrub={!slider}
 						disabled={disabled}
 						fluid={!slider}
 						class={slider ? "pf-intake__numberinput" : undefined}

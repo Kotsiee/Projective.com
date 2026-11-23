@@ -24,7 +24,6 @@ import {
 	problemRow,
 	sanitiseOffer,
 	SCOPE_MAX,
-	switchSessionFormat,
 } from "./offer-model.ts";
 
 const ONE_OFF: OneOffOffer = {
@@ -148,33 +147,6 @@ Deno.test("deliveryLabel follows the offer and stays silent where the offer deci
 		deliveryLabel({ archetype: "pipeline", stages: [], allowTieredIntensity: false, teamRoles: [] }),
 		null,
 	);
-});
-
-Deno.test("switchSessionFormat keeps the sitting and the plan, and adds or drops the cohort facts", () => {
-	const plan = [{ title: "Discovery", description: "" }, {
-		title: "Build",
-		description: "Ship it.",
-	}];
-	const session = {
-		archetype: "session",
-		minutes: 90,
-		count: 4,
-		meetingProvider: "zoom",
-		plan,
-		rolling: false,
-	} as const;
-	const cohort = switchSessionFormat(session, "cohort");
-	assertEquals(cohort, {
-		archetype: "cohort",
-		minutes: 90,
-		count: 4,
-		meetingProvider: "zoom",
-		plan,
-		maxSeatsPerCohort: 10,
-		continuousEnrollment: false,
-	});
-	assertEquals(switchSessionFormat(cohort, "session"), session);
-	assert(ListingOfferSchema.safeParse(cohort).success);
 });
 
 Deno.test("normaliseSessionPlan keeps one entry per sitting, drops trailing blanks, and empties a rolling offer", () => {

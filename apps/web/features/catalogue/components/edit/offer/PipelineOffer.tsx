@@ -16,7 +16,6 @@ import { ToggleHint } from "../FieldHead.tsx";
 import { OfferGroup } from "./OfferGroup.tsx";
 import { StageBlueprintEditor } from "./StageBlueprintEditor.tsx";
 import { StageFlowPreview } from "./StageFlowPreview.tsx";
-import { RevisionFields } from "./RevisionFields.tsx";
 import { TeamRolesEditor } from "./TeamRolesEditor.tsx";
 
 const TIERED_LABEL = "Tiered intensity pricing";
@@ -52,7 +51,8 @@ function BaselineLine(
 /**
  * PipelineOffer — a Pipeline's stage blueprint: the baseline ticket every stage starts from (set in
  * Pricing, named here), how the stages sell (one fixed intensity and price each, or tiered), the
- * stages themselves, how buyers will see them, the revision allowance per stage, and the team's roles.
+ * stages themselves, how buyers will see them, and the team's roles. The revision allowance per stage
+ * is priced in Pricing (Decision #525).
  */
 export function PipelineOffer(
 	props: { listing: ListingDetail; offer: PipelineOfferValue },
@@ -98,10 +98,6 @@ export function PipelineOffer(
 					baselineMinor={baselineMinor}
 					tiered={tiered}
 				/>
-			</OfferGroup>
-
-			<OfferGroup title="Revisions">
-				<RevisionFields listing={listing} perStage />
 			</OfferGroup>
 
 			<OfferGroup title="Team" hint="The roles that staff these stages.">

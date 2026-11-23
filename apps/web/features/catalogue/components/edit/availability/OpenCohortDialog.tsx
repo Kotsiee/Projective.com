@@ -5,7 +5,7 @@ import {
 	Button,
 	DateTimePicker,
 	FormControl,
-	NumberStepper,
+	NumberInput,
 	SelectButton,
 	ToggleSwitch,
 } from "@projective/ui/fields";
@@ -192,17 +192,19 @@ export function OpenCohortDialog(props: { listing: string; data: ListingCohorts 
 
 				<FormControl label="Seats" error={errors.value.maxSeats}>
 					{({ id, describedBy }) => (
-						<div class="cat-offer__compact">
-							<NumberStepper
-								id={id}
-								aria-describedby={describedBy}
-								value={d.maxSeats}
-								min={1}
-								max={500}
-								unit="seats"
-								onValueChange={(n) => patch({ maxSeats: n ?? 1 })}
-							/>
-						</div>
+						<NumberInput
+							id={id}
+							class="cat-offer__count"
+							aria-describedby={describedBy}
+							value={d.maxSeats}
+							min={1}
+							max={500}
+							maxFractionDigits={0}
+							icon="members"
+							enableIconScrub
+							suffix="seats"
+							onValueChange={(n) => patch({ maxSeats: Math.round(n ?? 1) })}
+						/>
 					)}
 				</FormControl>
 
@@ -224,17 +226,19 @@ export function OpenCohortDialog(props: { listing: string; data: ListingCohorts 
 									})}
 							/>
 							{d.minSeats !== null && (
-								<div class="cat-offer__compact">
-									<NumberStepper
-										id={id}
-										aria-describedby={describedBy}
-										value={d.minSeats}
-										min={1}
-										max={d.maxSeats}
-										unit="seats"
-										onValueChange={(n) => patch({ minSeats: n ?? 1 })}
-									/>
-								</div>
+								<NumberInput
+									id={id}
+									class="cat-offer__count"
+									aria-describedby={describedBy}
+									value={d.minSeats}
+									min={1}
+									max={d.maxSeats}
+									maxFractionDigits={0}
+									icon="members"
+									enableIconScrub
+									suffix="seats"
+									onValueChange={(n) => patch({ minSeats: Math.round(n ?? 1) })}
+								/>
 							)}
 						</div>
 					)}

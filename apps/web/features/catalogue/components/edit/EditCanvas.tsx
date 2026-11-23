@@ -24,6 +24,8 @@ export interface EditSectionProps {
 	listing: ListingDetail;
 	/** The seller is a restricted (13–17) account (Decision #208). */
 	restricted: boolean;
+	/** The team whose catalogue this is, so a section's links stay in it (Decision #312). */
+	team?: string;
 }
 
 /** The Edit sections this canvas renders, by section. */
@@ -69,8 +71,9 @@ function whenLaidOut(run: () => void): () => void {
 }
 
 /**
- * EditCanvas — the Edit tab: the listing's sections in page order for its form archetype, one
- * column, separated by spacing, beside the sticky {@link EditSectionNav}. A scroll-spy keeps
+ * EditCanvas — the Edit tab: the listing's sections in page order for its form archetype (Basics ·
+ * Offer · Pricing · Availability · Media · Buyer questions · SEO & reach, Decision #525), one column,
+ * separated by spacing, beside the sticky {@link EditSectionNav}. A scroll-spy keeps
  * `?section=` (replaced, never pushed), and with it the rail's active row, on the section being
  * read; `?section=` on load scrolls to that section and focuses its heading.
  */
@@ -125,7 +128,14 @@ export function EditCanvas(
 			<div class="cat-sec-stack">
 				{sections.map((section) => {
 					const View = SECTION_VIEWS[section];
-					return <View key={section} listing={listing} restricted={props.restricted} />;
+					return (
+						<View
+							key={section}
+							listing={listing}
+							restricted={props.restricted}
+							team={props.team}
+						/>
+					);
 				})}
 			</div>
 		</div>

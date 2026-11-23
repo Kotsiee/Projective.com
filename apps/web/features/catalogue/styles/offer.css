@@ -306,25 +306,74 @@
 	background: var(--surface-1);
 }
 
-.cat-offer__price {
+.cat-offer__duration {
 	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
+	align-items: center;
 	gap: var(--space-2);
-	margin: 0;
+	min-inline-size: 0;
 }
 
-.cat-offer__price-figure {
-	color: var(--on-surface);
-	font-size: var(--text-2xl);
-	font-weight: var(--fw-medium);
-	line-height: var(--leading-tight);
+.cat-offer__duration-track {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.cat-offer__duration-value {
+	flex: 0 0 auto;
+	inline-size: calc(var(--space-7) * 4);
+}
+
+.cat-offer__count {
+	align-self: flex-start;
+	inline-size: calc(var(--space-7) * 4.5);
+	max-inline-size: 100%;
+}
+
+.cat-offer__summary {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2) var(--space-4);
+}
+
+.cat-offer__summary-line {
+	color: var(--text-secondary);
 	font-variant-numeric: tabular-nums;
 }
 
-.cat-offer__price-caption {
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
+.cat-sec__link {
+	text-decoration: none;
+}
+
+.cat-pricing__price .cat-pricing__currency {
+	flex: 0 0 auto;
+	inline-size: auto;
+	min-inline-size: calc(var(--space-7) * 2.5);
+}
+
+.cat-pricing__price .ui-number-input {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.cat-pricing__code {
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-pricing__revisions {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.cat-pricing__switchrow {
+	max-inline-size: var(--measure-narrow);
+}
+
+.cat-pricing__switchrow .cat-sec__labelrow {
+	align-items: center;
+	justify-content: space-between;
 }
 
 @media (hover: hover) {

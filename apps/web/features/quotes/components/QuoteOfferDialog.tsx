@@ -1,8 +1,10 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import { Dialog } from "@projective/ui/feedback";
-import { Button, FormControl, MoneyInput, NumberStepper, Select, Textarea } from "@projective/ui/fields";
+import { Button, FormControl, NumberInput, Select, Textarea } from "@projective/ui/fields";
 import { MoneyView } from "@projective/ui/display/money";
+import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
+import { MONEY_FIELD, moneyDigits } from "@web/utils/money-field.ts";
 import {
 	QUOTE_LIMITS,
 	type QuotableListing,
@@ -51,6 +53,7 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 	const scope = useSignal("");
 	const deliverables = useSignal("");
 	const price = useSignal<number | null>(null);
+	const priceField = useSignal<number | null>(null);
 	const turnaround = useSignal<number | null>(14);
 	const openFor = useSignal<number | null>(QUOTE_LIMITS.expiresInDays.default);
 	const local = useSignal<Record<string, string>>({});
@@ -60,6 +63,7 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 		scope.value = current?.scope ?? "";
 		deliverables.value = current?.deliverables.join("\n") ?? "";
 		price.value = current?.priceMinor ?? null;
+		priceField.value = toMajorUnits(current?.priceMinor ?? null, quote?.listing.currency ?? "USD");
 		turnaround.value = current?.turnaroundDays ?? 14;
 		openFor.value = QUOTE_LIMITS.expiresInDays.default;
 		local.value = {};
@@ -212,12 +216,16 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 						status={status("priceMinor")}
 					>
 						{({ id, describedBy }) => (
-							<MoneyInput
+							<NumberInput
+								{...MONEY_FIELD}
+								{...moneyDigits(currency)}
 								id={id}
 								aria-describedby={describedBy}
-								value={price}
-								currency={currency}
-								min={1}
+								value={priceField}
+								min={moneyDigits(currency).precisionStep}
+								onValueChange={(whole) => {
+									price.value = toMinorUnits(whole, currency);
+								}}
 								status={status("priceMinor")}
 								fluid
 							/>
@@ -231,14 +239,17 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 						status={status("turnaroundDays")}
 					>
 						{({ id, describedBy }) => (
-							<NumberStepper
+							<NumberInput
 								id={id}
 								aria-describedby={describedBy}
 								value={turnaround}
 								min={QUOTE_LIMITS.turnaroundDays.min}
 								max={QUOTE_LIMITS.turnaroundDays.max}
-								unit="days"
-								valueText={(n) => `${n} days`}
+								maxFractionDigits={0}
+								icon="clock"
+								enableIconScrub
+								suffix="days"
+								fluid
 							/>
 						)}
 					</FormControl>
@@ -250,14 +261,17 @@ export function QuoteOfferDialog(props: QuoteOfferDialogProps): JSX.Element {
 						status={status("expiresInDays")}
 					>
 						{({ id, describedBy }) => (
-							<NumberStepper
+							<NumberInput
 								id={id}
 								aria-describedby={describedBy}
 								value={openFor}
 								min={QUOTE_LIMITS.expiresInDays.min}
 								max={QUOTE_LIMITS.expiresInDays.max}
-								unit="days"
-								valueText={(n) => `${n} days`}
+								maxFractionDigits={0}
+								icon="hourglass"
+								enableIconScrub
+								suffix="days"
+								fluid
 							/>
 						)}
 					</FormControl>

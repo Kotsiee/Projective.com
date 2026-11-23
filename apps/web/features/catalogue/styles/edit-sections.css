@@ -7,7 +7,7 @@
 .cat-sec-stack {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-8);
+	gap: var(--space-7);
 }
 
 .cat-edit .cat-sec-stack {
@@ -27,9 +27,34 @@
 .cat-sec {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-5);
+	gap: var(--space-3);
 	scroll-margin-block-start: calc(var(--shell-frame-inset-block, var(--shell-topbar-h)) +
 		var(--space-5));
+}
+
+.cat-sec__fold .ui-accordion__header {
+	gap: var(--space-2);
+	padding-block: 0;
+	color: var(--on-surface);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
+}
+
+.cat-sec__fold .ui-accordion__header:hover:not(:disabled) {
+	color: var(--on-surface);
+}
+
+.cat-sec__fold .ui-accordion__panel--open .ui-accordion__panel-inner {
+	padding-block: var(--space-3) 0;
+}
+
+.cat-sec__lede {
+	margin: 0;
+	max-inline-size: var(--measure);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
 }
 
 .cat-sec__head {
@@ -57,7 +82,7 @@
 .cat-sec__body {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-5);
+	gap: var(--space-4);
 }
 
 .cat-sec__field {

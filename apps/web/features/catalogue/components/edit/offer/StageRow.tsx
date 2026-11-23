@@ -3,7 +3,6 @@ import { useSortable } from "@projective/ui/dnd";
 import {
 	InputText,
 	NumberInput,
-	NumberStepper,
 	Select,
 	SelectButton,
 	Textarea,
@@ -254,16 +253,18 @@ export function StageRow(props: StageRowProps): JSX.Element {
 							}}
 						/>
 						{stage.startTrigger === "fixed_offset" && (
-							<div class="cat-offer__compact">
-								<NumberStepper
-									value={stage.lagDays}
-									onValueChange={(n) => props.onPatch({ lagDays: n ?? 0 })}
-									min={0}
-									max={90}
-									unit={stage.lagDays === 1 ? "day" : "days"}
-									aria-label={`Days after the previous stage that ${label} starts`}
-								/>
-							</div>
+							<NumberInput
+								class="cat-offer__count"
+								value={stage.lagDays}
+								onValueChange={(n) => props.onPatch({ lagDays: Math.round(n ?? 0) })}
+								min={0}
+								max={90}
+								maxFractionDigits={0}
+								icon="calendar"
+								enableIconScrub
+								suffix={stage.lagDays === 1 ? "day" : "days"}
+								aria-label={`Days after the previous stage that ${label} starts`}
+							/>
 						)}
 					</>
 				)}

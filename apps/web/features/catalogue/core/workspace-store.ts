@@ -314,6 +314,7 @@ export function liveListing(ssr: ListingDetail): ListingDetail {
 export function resetWorkspace(): void {
 	cancelTimer();
 	hydratedKey = null;
+	onSubPage = false;
 	inflight = null;
 	beacon = null;
 	saved.value = null;
@@ -615,10 +616,20 @@ function entryState(history: HistoryPort): Record<string, unknown> {
 
 let panelMounted = false;
 let syncing = false;
+let onSubPage = false;
 
 /** The panel island says this page's frame carries the workspace panel. */
 export function markPanelMounted(): void {
 	panelMounted = true;
+}
+
+/**
+ * This page is one of the listing's Edit sub-pages (`/plan`, `/questions`, Decision #525), which
+ * share the draft and its saves but not the workspace's address, so every workspace URL move from
+ * here is a navigation to the workspace.
+ */
+export function markSubPage(): void {
+	onSubPage = true;
 }
 
 function writeLocation(state: WorkspaceUrlState, mode: "push" | "replace"): void {
@@ -644,6 +655,10 @@ function writeLocation(state: WorkspaceUrlState, mode: "push" | "replace"): void
 export function setWorkspaceUrl(patch: Partial<WorkspaceUrlState>, mode: "push" | "replace"): void {
 	const next = nextWorkspaceUrl(workspaceUrl.peek(), patch);
 	const slug = draft.peek()?.id;
+	if (onSubPage) {
+		if (slug) locationPort()?.assign(workspaceHref(slug, next));
+		return;
+	}
 	if (mode === "push" && slug && !panelMounted && workspacePanelOf(next) !== null) {
 		locationPort()?.assign(workspaceHref(slug, next));
 		return;

@@ -17,8 +17,16 @@
 	z-index: calc(var(--z-max) - 200);
 }
 
+body:has(.ui-middle-nav__footer) .ui-speed-dial.dev-fab {
+	inset-block-end: calc(
+		var(--shell-midnav-footer-cur-h, var(--shell-midnav-footer-h)) + var(--space-5) +
+		var(--ribbon-inset, 0px) + env(safe-area-inset-bottom, 0px)
+	);
+}
+
 @media (max-width: 767px) {
-	.ui-speed-dial.dev-fab {
+	.ui-speed-dial.dev-fab,
+	body:has(.ui-middle-nav__footer) .ui-speed-dial.dev-fab {
 		inset-block-end: 40dvh;
 	}
 }

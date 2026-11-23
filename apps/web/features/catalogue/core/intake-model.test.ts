@@ -1,12 +1,20 @@
 import { assert, assertEquals } from "@std/assert";
 import { type IntakeField, IntakeFieldsSchema, intakeRefusal } from "@projective/types/services";
 import {
+	addFollowUp,
+	canBeFollowed,
+	insertQuestion,
 	intakeLocked,
 	intakeLockRefusal,
+	intakeNodes,
 	intakeProblems,
+	intakeSummary,
+	moveBranch,
 	newIntakeField,
 	nextFieldId,
 	optionValue,
+	removeBranch,
+	toBranchOrder,
 	withKind,
 	withOptionAdded,
 	withOptionLabel,
@@ -143,3 +151,72 @@ Deno.test("the publish lock ignores the key order jsonb stores a question in", (
 		"Questions can't be added, removed or reordered once the listing has been published.",
 	);
 });
+
+// #region Branches
+const yesNo = (id: string) => question(id, { kind: "boolean" });
+const after = (id: string, source: string) =>
+	question(id, { condition: { fieldId: source, anyOf: [true], effect: "show" } });
+const ids = (fields: readonly IntakeField[]) => fields.map((f) => f.id);
+
+Deno.test("nodes carry the depth and the question each follow-up hangs under", () => {
+	const fields = [yesNo("a"), after("b", "a"), question("c"), after("d", "z")];
+	assertEquals(
+		intakeNodes(fields).map((n) => [n.field.id, n.depth, n.parentId]),
+		[["a", 0, null], ["b", 1, "a"], ["c", 0, null], ["d", 0, null]],
+	);
+});
+
+Deno.test("branch order puts each follow-up straight after its question, and stays valid", () => {
+	const fields = [yesNo("a"), question("c"), after("b", "a")];
+	const ordered = toBranchOrder(fields);
+	assertEquals(ids(ordered), ["a", "b", "c"]);
+	assertEquals(intakeProblems(ordered), []);
+	assertEquals(toBranchOrder(ordered), ordered);
+});
+
+Deno.test("a branch moves whole, only past a sibling, never above what it follows", () => {
+	const fields = [yesNo("a"), after("b", "a"), yesNo("c"), after("d", "c"), after("e", "c")];
+	assertEquals(ids(moveBranch(fields, "c", "a")), ["c", "d", "e", "a", "b"]);
+	assertEquals(ids(moveBranch(fields, "a", "c")), ["c", "d", "e", "a", "b"]);
+	assertEquals(ids(moveBranch(fields, "e", "d")), ["a", "b", "c", "e", "d"]);
+	assertEquals(ids(moveBranch(fields, "d", "a")), ids(fields));
+	assertEquals(intakeProblems(moveBranch(fields, "c", "a")), []);
+});
+
+Deno.test("removing a question removes its follow-ups with it", () => {
+	const fields = [yesNo("a"), after("b", "a"), after("c", "b"), question("d")];
+	assertEquals(ids(removeBranch(fields, "a")), ["d"]);
+	assertEquals(ids(removeBranch(fields, "b")), ["a", "d"]);
+});
+
+Deno.test("a palette drop lands before the branch it was dropped on, or at the end", () => {
+	const fields = [yesNo("a"), after("b", "a"), question("c")];
+	const fresh = newIntakeField("number", fields);
+	assertEquals(ids(insertQuestion(fields, fresh, "b")), [fresh.id, "a", "b", "c"]);
+	assertEquals(ids(insertQuestion(fields, fresh, "c")), ["a", "b", fresh.id, "c"]);
+	assertEquals(ids(insertQuestion(fields, fresh, null)), ["a", "b", "c", fresh.id]);
+	assertEquals(insertQuestion(fields, fresh, "b")[0].condition, undefined);
+});
+
+Deno.test("a follow-up joins the end of its question's branch, asked on its first answer", () => {
+	const fields = [yesNo("a"), after("b", "a"), question("c")];
+	const added = addFollowUp(fields, "a", "text");
+	assert(added);
+	assertEquals(added.map((f) => f.condition?.fieldId ?? "-"), ["-", "a", "a", "-"]);
+	assertEquals(added[2].condition?.anyOf, [true]);
+	assertEquals(intakeProblems(added).map((p) => p.message), ["Write question 3."]);
+	assertEquals(intakeProblems(added.map((f) => ({ ...f, label: f.label || "Which?" }))), []);
+	assertEquals(addFollowUp(fields, "c", "text"), null);
+	assertEquals(canBeFollowed(fields[0]), true);
+	assertEquals(canBeFollowed(fields[2]), false);
+});
+
+Deno.test("the summary counts questions, required ones and follow-ups", () => {
+	assertEquals(intakeSummary([]), []);
+	assertEquals(intakeSummary([yesNo("a"), { ...after("b", "a"), required: true }]), [
+		"2 questions",
+		"1 required",
+		"1 follow-up",
+	]);
+});
+// #endregion

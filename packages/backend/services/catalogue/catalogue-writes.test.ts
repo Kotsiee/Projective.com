@@ -2,6 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import {
 	formArchetypeOf,
 	type ListingOffer,
+	MilestoneSchema,
 	type UpdateListingInput,
 } from "@projective/types/catalogue";
 import { RESTRICTED_REFUSAL } from "@projective/types/auth";
@@ -21,7 +22,12 @@ import {
 	FIXTURE_SKILLS,
 } from "./catalogue-fixtures.ts";
 import { stubCatalogueClient } from "./catalogue-stub-client.ts";
-import { batchListings, savePatchBody, updateListing } from "./live-catalogue-writes.ts";
+import {
+	batchListings,
+	patchRefusal,
+	savePatchBody,
+	updateListing,
+} from "./live-catalogue-writes.ts";
 import { metricsOf, projectDetail } from "./live-catalogue.ts";
 
 /**
@@ -367,6 +373,44 @@ Deno.test("update patch — a currency change prices in the new currency's minor
 		{ kind: "product", currency: "USD", archetype: "product" },
 	);
 	assertEquals(["currency" in kept, kept.amount_cents], [false, 500_000]);
+});
+
+Deno.test("update patch — the revision cap and the Direct Deliverable rule judge the listing after the patch", () => {
+	const at = { id: "svc-23456789ab", expectedUpdatedAt: "2026-11-20T09:00:00.000Z" };
+	const pricing = {
+		amount: 0,
+		ticketPrice: 80,
+		sessionPrice: null,
+		seatsPerSession: null,
+		freeRevisions: 2,
+		extraRevisionPrice: 45,
+	};
+	const pipeline = {
+		kind: "service" as const,
+		currency: "GBP",
+		archetype: "pipeline" as const,
+		serviceType: "Pipeline" as const,
+	};
+	assertEquals(patchRefusal({ ...at, pricing }, pipeline)?.field, "pricing.extraRevisionPrice");
+	assertEquals(
+		patchRefusal({ ...at, pricing: { ...pricing, extraRevisionPrice: 40 } }, pipeline),
+		null,
+	);
+	const offer: ListingOffer = {
+		archetype: "one_off",
+		milestones: [MilestoneSchema.parse({ name: "Concepts" })],
+		turnaroundDays: 5,
+		scope: [],
+		teamRoles: [],
+	};
+	const oneOff = { ...pipeline, archetype: "one_off" as const, serviceType: "One-Off" as const };
+	assertEquals(patchRefusal({ ...at, offer }, oneOff), null);
+	assertEquals(
+		patchRefusal({ ...at, offer, serviceType: "Direct Deliverable" }, oneOff)?.field,
+		"offer.milestones",
+	);
+	const product = { kind: "product" as const, currency: "GBP", archetype: "product" as const };
+	assertEquals(patchRefusal({ ...at, pricing: { ...pricing, amount: 10 } }, product), null);
 });
 
 Deno.test("update patch — only sent keys travel; SEO and prices use the door's names and units", () => {

@@ -29,11 +29,11 @@ export type PatchField =
  * it re-states. Media and availability have their own routes.
  */
 export const SECTION_FIELDS: Readonly<Record<EditSection, readonly PatchField[]>> = {
-	media: [],
 	basics: ["title", "description", "createCategory", "serviceType", "skills"],
 	offer: ["offer", "delivery"],
 	pricing: ["pricing", "currency"],
 	availability: [],
+	media: [],
 	questions: ["intake"],
 	seo: ["seo", "tags"],
 };

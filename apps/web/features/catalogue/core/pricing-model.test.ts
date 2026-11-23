@@ -5,9 +5,12 @@ import {
 	currencyOf,
 	minorOf,
 	priceAsk,
+	signedMajorOf,
+	signedMinorOf,
 	ticketRange,
 	withAskedPrice,
-	withRevisionsDeclared,
+	withRevisionCap,
+	withUnlimitedRevisions,
 } from "./pricing-model.ts";
 
 const PRICING: ListingPricing = {
@@ -23,6 +26,14 @@ Deno.test("units convert at the currency's exponent", () => {
 	assertEquals(minorOf(12.5, "GBP"), 1250);
 	assertEquals(minorOf(5000, "JPY"), 5000);
 	assertEquals(minorOf(null, "GBP"), null);
+});
+
+Deno.test("a signed guide price converts both ways, a discount included", () => {
+	assertEquals(signedMajorOf(-250, "GBP"), -2.5);
+	assertEquals(signedMinorOf(-2.5, "GBP"), -250);
+	assertEquals(signedMinorOf(signedMajorOf(1999, "GBP"), "GBP"), 1999);
+	assertEquals(signedMajorOf(500, "JPY"), 500);
+	assertEquals(signedMinorOf(null, "GBP"), null);
 });
 
 Deno.test("each archetype asks for its own price", () => {
@@ -51,8 +62,24 @@ Deno.test("a picked currency is stored as its upper-case ISO code, or refused", 
 	assertEquals(currencyOf(null), null);
 });
 
-Deno.test("declaring revisions keeps null apart from zero", () => {
-	assertEquals(withRevisionsDeclared(PRICING, true).freeRevisions, 2);
-	assertEquals(withRevisionsDeclared({ ...PRICING, freeRevisions: 0 }, true).freeRevisions, 0);
-	assertEquals(withRevisionsDeclared({ ...PRICING, freeRevisions: 3 }, false).freeRevisions, null);
+Deno.test("unlimited revisions are a free extra round, and switching off unprices it", () => {
+	const counted = { ...PRICING, freeRevisions: 3, extraRevisionPrice: 40 };
+	const on = withUnlimitedRevisions(counted, true);
+	assertEquals([on.freeRevisions, on.extraRevisionPrice], [3, 0]);
+	const off = withUnlimitedRevisions(on, false);
+	assertEquals([off.freeRevisions, off.extraRevisionPrice], [3, null]);
+	assertEquals(withUnlimitedRevisions(counted, false), counted);
+});
+
+Deno.test("a lowered price lowers the extra-round price to half of it", () => {
+	const priced = { ...PRICING, ticketPrice: 400, extraRevisionPrice: 150 };
+	assertEquals(withRevisionCap(priced, "pipeline", "GBP"), priced);
+	const cheaper = withRevisionCap({ ...priced, ticketPrice: 199.99 }, "pipeline", "GBP");
+	assertEquals(cheaper.extraRevisionPrice, 99.99);
+	const unpriced = withRevisionCap({ ...priced, ticketPrice: null }, "pipeline", "GBP");
+	assertEquals(unpriced.extraRevisionPrice, null);
+	const free = { ...priced, ticketPrice: 10, extraRevisionPrice: 0 };
+	assertEquals(withRevisionCap(free, "pipeline", "GBP"), free);
+	const session = { ...PRICING, sessionPrice: 50, extraRevisionPrice: 30 };
+	assertEquals(withRevisionCap(session, "session", "GBP"), session);
 });

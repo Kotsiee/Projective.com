@@ -50,7 +50,12 @@ Recognised `save_listing` keys (Decision #217):
   `create_category` · `currency` (an ISO-4217 code, upper-cased, mirrored onto the subject; changeable
   only while `published_at` is NULL, i.e. the listing has never been live — after that a different
   code is `22023` DETAIL `currency`. The service sends it with the prices it re-states, in its minor
-  units).
+  units). On a One-Off, Direct Deliverable or Pipeline (the model after the save), a save carrying a
+  price key refuses a positive `extra_revision_price_cents` above half the price it revises (the
+  Pipeline's `ticket_price_cents`, else `amount_cents`, floored: `extra > base / 2`) or with no price
+  to revise, `22023` DETAIL `extra_revision_price_cents` (Decision #525). `NULL` (unpriced) and `0`
+  (free rounds, the editor's **Unlimited revisions**) always pass; Session, Group Session and product
+  listings are not judged.
 - **Service** (refused on a product, `22023` DETAIL `kind`): `delivery_model` (only while the listing
   is a **draft** — a live listing is archived and recreated instead) · `intake` (a list; once
   `published_at` is set — even back in draft — the questions' ids, order and kinds must match the
@@ -60,7 +65,9 @@ Recognised `save_listing` keys (Decision #217):
   `after_previous` · `fixed_offset`, `lagDays` an integer 0–90, `chainReaction` boolean, `intensity`
   ∈ `low` · `standard` · `high`, and `lowPriceCents` / `highPriceCents` whole non-negative numbers or
   `null`; on a listing the save leaves tiered, a Low price above the stage's price or a High price
-  below it is `22023` DETAIL `stage_template.<i>`, Decision #417) · `allow_tiered_intensity` (a
+  below it is `22023` DETAIL `stage_template.<i>`, Decision #417; a non-empty template on a Direct
+  Deliverable, which instantiates as one Delivery stage, is `22023` DETAIL `stage_template`,
+  Decision #525) · `allow_tiered_intensity` (a
   boolean, else `22023`; the Pipeline offer's `allowTieredIntensity`) ·
   `team_roles` (≤ 12, a name and a headcount of 1–20) · `deliverables` (≤ 24 lines of ≤ 140) ·
   `turnaround_days` · `session_minutes` · `session_count` · `session_plan` (≤ 52 objects, each an

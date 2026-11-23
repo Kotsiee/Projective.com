@@ -810,10 +810,6 @@
 	inline-size: calc(var(--space-8) + var(--space-5));
 }
 
-.ui-avsched__interval .ui-number-input__input {
-	text-align: center;
-}
-
 .ui-avsched__band-list {
 	gap: var(--space-1);
 }

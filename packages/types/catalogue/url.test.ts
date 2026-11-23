@@ -20,12 +20,15 @@ import {
 	isDefaultStatuses,
 	isListingSlug,
 	isTeamHandle,
+	listingSubPageHref,
+	listingSubPageOf,
 	normaliseStatuses,
 	parseCataloguePath,
 	parseConsoleUrl,
 	parseWorkspaceUrl,
 	PreviewDevice,
 	scopeRedirect,
+	SUB_PAGE_SECTION,
 	teamOfCataloguePath,
 	teamScopedApiPath,
 	workspaceHref,
@@ -420,5 +423,27 @@ Deno.test("teamScopedApiPath appends the team to an API path, or leaves it", () 
 		teamScopedApiPath("/api/catalogue/list?team=studio-fern&limit=20", "north-loop"),
 		"/api/catalogue/list?team=studio-fern&limit=20",
 	);
+});
+// #endregion
+
+// #region Sub-pages
+Deno.test("a listing's sub-page address round-trips, in a team's catalogue too", () => {
+	const slug = mintSlug("service");
+	for (const page of ["plan", "questions"] as const) {
+		assertEquals(listingSubPageHref(slug, page), `/catalogue/${slug}/${page}`);
+		assertEquals(listingSubPageOf(listingSubPageHref(slug, page)), { slug, page });
+		const team = listingSubPageHref(slug, page, "north-loop");
+		assertEquals(team, `/teams/north-loop/catalogue/${slug}/${page}`);
+		assertEquals(listingSubPageOf(team), { slug, page, team: "north-loop" });
+	}
+});
+
+Deno.test("only a listing slug and a known page name a sub-page", () => {
+	const slug = mintSlug("service");
+	assertEquals(listingSubPageOf(`/catalogue/${slug}`), null);
+	assertEquals(listingSubPageOf(`/catalogue/${slug}/simulate`), null);
+	assertEquals(listingSubPageOf("/catalogue/new/plan"), null);
+	assertEquals(listingSubPageOf(`/catalogue/${slug}/plan/extra`), null);
+	assertEquals(SUB_PAGE_SECTION, { plan: "offer", questions: "questions" });
 });
 // #endregion

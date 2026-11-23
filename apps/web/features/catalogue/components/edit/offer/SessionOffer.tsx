@@ -1,48 +1,60 @@
 import type { JSX } from "preact";
-import { DurationPicker, NumberStepper, SelectButton, ToggleSwitch } from "@projective/ui/fields";
-import { SESSION_DURATIONS } from "@projective/types/catalogue";
+import { useSignal } from "@preact/signals";
+import {
+	NumberInput,
+	SelectButton,
+	Slider,
+	type SliderValue,
+	ToggleSwitch,
+} from "@projective/ui/fields";
+import { listingSubPageHref, SessionMinutes } from "@projective/types/catalogue";
 import type {
 	CohortListingOffer,
 	ListingDetail,
 	SessionOffer as SessionOfferValue,
 } from "../../../types/catalogue-types.ts";
-import { switchSessionFormat } from "../../../core/offer-model.ts";
 import { checkOffer, commitOffer } from "../../../core/offer-commit.ts";
+import { hasPlan, planSummary } from "../../../core/plan-model.ts";
 import { draft, edit } from "../../../core/workspace-store.ts";
 import { useGatedDraft } from "../../../hooks/useGatedDraft.ts";
 import { OfferGroup } from "./OfferGroup.tsx";
 import { ConferencingSelect } from "./ConferencingSelect.tsx";
-import { SessionPlanEditor } from "./SessionPlanEditor.tsx";
 import { FieldHead } from "../FieldHead.tsx";
+import { SubPageLink } from "../SubPageLink.tsx";
 
 type TimedOffer = SessionOfferValue | CohortListingOffer;
-
-const FORMAT_OPTIONS = [
-	{ label: "One-to-one", value: "session" },
-	{ label: "Cohort", value: "cohort" },
-];
 
 const MODE_OPTIONS = [
 	{ label: "Fixed number", value: "fixed" },
 	{ label: "Ongoing", value: "rolling" },
 ];
 
-const FORMAT_HINT_ID = "cat-offer-session-format-hint";
-const DURATION_ID = "cat-offer-duration";
+const LENGTH_ID = "cat-offer-length";
 const MODE_HINT_ID = "cat-offer-session-mode-hint";
-const COUNT_ID = "cat-offer-count";
-const COUNT_HINT_ID = "cat-offer-count-hint";
-const PLAN_HINT_ID = "cat-offer-session-plan-hint";
+const PLAN_SUMMARY_ID = "cat-offer-plan-summary";
 const SEATS_ID = "cat-offer-seats";
 const COHORT_ID = "cat-offer-cohort-cap";
 
+const MINUTES_MIN = SessionMinutes.minValue ?? 5;
+const MINUTES_MAX = SessionMinutes.maxValue ?? 600;
+const SLIDER_MIN = 15;
+const SLIDER_MAX = 240;
+const MINUTES_STEP = 5;
+
+function onTrack(minutes: number): number {
+	return Math.min(SLIDER_MAX, Math.max(SLIDER_MIN, minutes));
+}
+
 /**
- * SessionOffer — a Session's or Group Session's offer: the format (one-to-one or cohort, switchable
- * only while a draft, since bookings depend on it), the session length, whether a one-to-one listing
- * is a fixed number of sessions or ongoing (Decision #411), the sittings in one booking with what each
- * covers, a cohort's seats and enrolment, and the meeting tool that mints each room.
+ * SessionOffer — a Session's or Group Session's offer: the session length (a slider for the common
+ * range beside the exact minutes), whether a one-to-one listing is a fixed number of sessions or
+ * ongoing (Decision #411), the session plan as a summary that opens its own page (Decision #525), a
+ * cohort's seats and enrolment, and the meeting tool that mints each room. One-to-one or group is the
+ * delivery model, chosen in Basics, so it is not asked again here.
  */
-export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer }): JSX.Element {
+export function SessionOffer(
+	props: { listing: ListingDetail; offer: TimedOffer; team?: string },
+): JSX.Element {
 	const { listing } = props;
 	const gated = useGatedDraft<TimedOffer, ReturnType<typeof checkOffer>>(
 		props.offer,
@@ -50,9 +62,8 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 		commitOffer,
 	);
 	const offer = gated.value.value;
-	const update = (
-		patch: Partial<Pick<TimedOffer, "minutes" | "count" | "meetingProvider" | "plan">>,
-	) => gated.set({ ...offer, ...patch });
+	const update = (patch: Partial<Pick<TimedOffer, "minutes" | "meetingProvider">>) =>
+		gated.set({ ...offer, ...patch });
 	const rolling = offer.archetype === "session" && offer.rolling;
 	const setRolling = (next: boolean) => {
 		if (offer.archetype === "session" && next !== offer.rolling) {
@@ -64,57 +75,53 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 	) => {
 		if (offer.archetype === "cohort") gated.set({ ...offer, ...patch });
 	};
-	const isDraft = listing.status === "draft";
-	const pricing = listing.pricing;
-
-	const switchFormat = (to: "session" | "cohort") => {
-		if (to === offer.archetype) return;
-		edit("serviceType", to === "cohort" ? "Group Session" : "Session");
-		gated.set(switchSessionFormat(offer, to));
+	const minutesField = useSignal<number | null>(offer.minutes);
+	const sliderField = useSignal<SliderValue>(onTrack(offer.minutes));
+	const setMinutes = (raw: number | null) => {
+		if (raw === null) {
+			minutesField.value = offer.minutes;
+			return;
+		}
+		const snapped = Math.round(raw / MINUTES_STEP) * MINUTES_STEP;
+		const minutes = Math.min(MINUTES_MAX, Math.max(MINUTES_MIN, snapped));
+		minutesField.value = minutes;
+		sliderField.value = onTrack(minutes);
+		if (minutes !== offer.minutes) update({ minutes });
 	};
+	const pricing = listing.pricing;
 
 	return (
 		<>
-			<OfferGroup
-				title="Format"
-				hintId={FORMAT_HINT_ID}
-				hint={isDraft
-					? "One buyer per sitting, or a group who book seats in the same sitting."
-					: "Fixed once published, because bookings depend on it."}
-			>
-				<div class="cat-sec__field">
-					{isDraft
-						? (
-							<SelectButton
-								options={FORMAT_OPTIONS}
-								value={offer.archetype}
-								onValueChange={(v) => {
-									if (v === "session" || v === "cohort") switchFormat(v);
-								}}
-								aria-label="Session format"
-								aria-describedby={FORMAT_HINT_ID}
-							/>
-						)
-						: (
-							<p class="cat-sec__value">
-								{offer.archetype === "cohort" ? "Cohort" : "One-to-one"}
-							</p>
-						)}
-				</div>
-			</OfferGroup>
-
 			<OfferGroup title="Sessions">
 				<div class="cat-sec__field">
-					<span class="cat-sec__label" aria-hidden="true">Length</span>
-					<DurationPicker
-						id={DURATION_ID}
-						value={offer.minutes}
-						onValueChange={(minutes) => {
-							if (minutes !== null) update({ minutes });
-						}}
-						presets={SESSION_DURATIONS}
-						aria-label="Session length"
-					/>
+					<label class="cat-sec__label" for={LENGTH_ID}>Length</label>
+					<div class="cat-offer__duration">
+						<Slider
+							class="cat-offer__duration-track"
+							value={sliderField}
+							onValueChange={(v) => {
+								if (typeof v === "number") setMinutes(v);
+							}}
+							min={SLIDER_MIN}
+							max={SLIDER_MAX}
+							step={MINUTES_STEP}
+							formatValue={(v) => `${v} minutes`}
+							aria-label="Session length"
+						/>
+						<NumberInput
+							id={LENGTH_ID}
+							class="cat-offer__duration-value"
+							value={minutesField}
+							onValueChange={setMinutes}
+							min={MINUTES_MIN}
+							max={MINUTES_MAX}
+							step={MINUTES_STEP}
+							maxFractionDigits={0}
+							icon="clock"
+							enableIconScrub
+							suffix="min"
+						/>
+					</div>
 				</div>
 				{offer.archetype === "session" && (
 					<div class="cat-sec__field">
@@ -132,40 +139,24 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 						/>
 					</div>
 				)}
-				{!rolling && (
-					<div class="cat-sec__field">
-						<FieldHead
-							label="Sessions per booking"
-							htmlFor={COUNT_ID}
-							hint="More than one, and a buyer books them all at once, as a series."
-							hintId={COUNT_HINT_ID}
-						/>
-						<div class="cat-offer__compact">
-							<NumberStepper
-								id={COUNT_ID}
-								value={offer.count}
-								onValueChange={(count) => update({ count: count ?? 1 })}
-								min={1}
-								max={52}
-								unit={offer.count === 1 ? "session" : "sessions"}
-								aria-describedby={COUNT_HINT_ID}
-							/>
-						</div>
-					</div>
-				)}
 			</OfferGroup>
 
-			{!rolling && (
+			{hasPlan(offer) && (
 				<OfferGroup
 					title="Session plan"
-					hintId={PLAN_HINT_ID}
-					hint="Optional. Give each session a title, a description or both. Buyers see the breakdown on your listing and when they book."
+					hint="How many sessions one booking holds, in order, with what each one covers. Buyers see the breakdown on your listing and when they book."
 				>
-					<SessionPlanEditor
-						count={offer.count}
-						plan={offer.plan}
-						onChange={(plan) => update({ plan })}
-					/>
+					<div class="cat-offer__summary">
+						<p class="cat-sec__value cat-offer__summary-line" id={PLAN_SUMMARY_ID}>
+							{planSummary(offer).join(" · ")}
+						</p>
+						<SubPageLink
+							href={listingSubPageHref(listing.id, "plan", props.team)}
+							label="Edit session plan"
+							icon="list-numbers"
+							describedBy={PLAN_SUMMARY_ID}
+						/>
+					</div>
 				</OfferGroup>
 			)}
 
@@ -174,33 +165,38 @@ export function SessionOffer(props: { listing: ListingDetail; offer: TimedOffer 
 					<div class="cat-offer__row">
 						<div class="cat-sec__field">
 							<label class="cat-sec__label" for={SEATS_ID}>Seats per sitting</label>
-							<div class="cat-offer__compact">
-								<NumberStepper
-									id={SEATS_ID}
-									value={pricing.seatsPerSession}
-									onValueChange={(seats) =>
-										edit("pricing", {
-											...(draft.peek()?.pricing ?? pricing),
-											seatsPerSession: seats,
-										})}
-									min={1}
-									max={500}
-									unit="seats"
-								/>
-							</div>
+							<NumberInput
+								id={SEATS_ID}
+								class="cat-offer__count"
+								value={pricing.seatsPerSession}
+								onValueChange={(seats) =>
+									edit("pricing", {
+										...(draft.peek()?.pricing ?? pricing),
+										seatsPerSession: seats,
+									})}
+								min={1}
+								max={500}
+								maxFractionDigits={0}
+								icon="members"
+								enableIconScrub
+								suffix="seats"
+								placeholder="Seats"
+							/>
 						</div>
 						<div class="cat-sec__field">
 							<label class="cat-sec__label" for={COHORT_ID}>Cohort size</label>
-							<div class="cat-offer__compact">
-								<NumberStepper
-									id={COHORT_ID}
-									value={offer.maxSeatsPerCohort}
-									onValueChange={(n) => updateCohort({ maxSeatsPerCohort: n ?? 1 })}
-									min={1}
-									max={500}
-									unit="people"
-								/>
-							</div>
+							<NumberInput
+								id={COHORT_ID}
+								class="cat-offer__count"
+								value={offer.maxSeatsPerCohort}
+								onValueChange={(n) => updateCohort({ maxSeatsPerCohort: n ?? 1 })}
+								min={1}
+								max={500}
+								maxFractionDigits={0}
+								icon="user"
+								enableIconScrub
+								suffix="people"
+							/>
 						</div>
 					</div>
 					<ToggleSwitch
