@@ -416,7 +416,7 @@ Readiness rows (§1.1): **PRD-M1** stays ❌, with the evidence "library brought
 ### LG2 — One counsel brief for the legal library and every open ⚖️ item
 
 > **Status 2026-11-23:** partly done. Steps 2 and 3, and step 1 except Part E.1.7, landed in
-> COMMIT_LG2 (FOUNDER_QUESTIONNAIRE Part E, Decision #528). Step 1's E.1.7 is open: it waits for
+> `b3148e47` (FOUNDER_QUESTIONNAIRE Part E, Decision #528). Step 1's E.1.7 is open: it waits for
 > LG1's drift table. Sending the brief to counsel is yours.
 
 Prepares PRD-M1. Docs only.
