@@ -1071,8 +1071,8 @@ payment on v_ops_unledgered_payments and (ii) a top-up that support agrees to re
 wallet still holds it. Payers withdraw to their bank as today. The gate is security.is_admin() plus
 a sign-in within the last 10 minutes (the token's amr, org.fn_session_signed_in_at() as #450 uses),
 until MFA step-up (PRD-C17) replaces it. Read #464's FLAGS (a)-(d) before you build. The
-refund-destination question for counsel is carried by LEGAL_COMPLIANCE LG2's Part E.2
-(FOUNDER_QUESTIONNAIRE.md); MR7's Part D does not hold it.
+refund-destination question for counsel is FOUNDER_QUESTIONNAIRE.md Part E2.13 (LEGAL_COMPLIANCE
+LG2, #528); MR7's Part D does not hold it.
 
 FILES:
   - 00000017: finance.card_refunds (payment, amount_minor, currency, reason, requested_by,

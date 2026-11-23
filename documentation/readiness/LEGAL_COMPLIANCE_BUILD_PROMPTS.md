@@ -6,7 +6,7 @@
 > PRD-A4. The rulings it builds on are the legal library's (#270), the AML posture (#336 I1) and
 > checkout tax (#490).
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 10 open, 0 partly done, 0 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 9 open, 1 partly done, 0 done (§0 ledger).
 > Runnable now: LG0, LG1, LG6, LG7.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -74,7 +74,7 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
    can be assigned in advance (s.91). The US rule is the same (17 U.S.C. §204(a)). PRODUCT_SPEC
    §Identity, Taxes & Compliance 4 has **Projective** sign the deed, while §18 and over (rule 1) has
    the adult party "sign IP transfer deeds". Whether the sign-up acceptance of the Terms is that
-   signature is for counsel (LG2, LG3).
+   signature is for counsel (FOUNDER_QUESTIONNAIRE Part E2.16; LG3).
 3. **"Deed" is a legal term of art.** In English law a deed has execution formalities (LP(MP)A 1989
    s.1) that a click cannot meet. An assignment needs only a signed writing. Counsel may prefer
    another name. Code keeps "deed" (the spec's word) until counsel rules, and the UI label follows
@@ -97,14 +97,16 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
    royalty, #480's consent and #270 (h)'s data controller identity uncovered. #270's flags (c), (d),
    (f), (g) and (o) are still open.
 8. **No cancellation-right step at checkout.** Nothing in `features/checkout` or the legal content
-   mentions a consumer's statutory right to cancel, or the express consent that waives it for
-   digital content. This is a candidate gap for counsel (LG2), not a row yet.
+   mentions a consumer's statutory right to cancel. Since #488, `/checkout/payment` shows
+   `DeliveryTermsNotice` for a basket that delivers files: a notice and an unticked box before Pay,
+   which speak of a refund, not of the right to cancel. Nothing covers services or sessions. This is
+   a candidate gap for counsel (FOUNDER_QUESTIONNAIRE Part E2.11, E2.12), not a row yet.
 
 ### 0.3 Run order
 
 | Wave | Content / docs lane | SQL lane (serial)                                                                        | App lane                 | Waits for                                                                                       |
 | :--- | :------------------ | :--------------------------------------------------------------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------- |
-| 1    | **LG1** → **LG2**   | —                                                                                        | **LG0**                  | Nothing. LG2 needs LG1's drift table and its 🧑 answers                                         |
+| 1    | **LG1** → **LG2**   | —                                                                                        | **LG0**                  | Nothing. LG2's brief is written (#528); its E.1.7 waits for LG1's drift table                   |
 | 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                                           | (LG4/LG5's UI halves)    | LG4 needs LG2's brief sent (not answered): it builds the mechanism, and counsel rules the words |
 | 3    | —                   | **LG7** takes a turn in [the finance SQL lane](../architecture/FINANCE_BUILD_PROMPTS.md) | **LG6** (research first) | LG7: never beside MR8a/MR8b. LG6's reader after its 🧑                                          |
 | 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (which waits for DB21)                                                                      |
@@ -411,71 +413,37 @@ Readiness rows (§1.1): **PRD-M1** stays ❌, with the evidence "library brought
 
 ### LG2 — One counsel brief for the legal library and every open ⚖️ item
 
-> **Status 2026-11-23:** open; runs after LG1.
+> **Status 2026-11-23:** partly done. Steps 2 and 3, and step 1 except Part E.1.7, landed in
+> COMMIT_LG2 (FOUNDER_QUESTIONNAIRE Part E, Decision #528). Step 1's E.1.7 is open: it waits for
+> LG1's drift table. Sending the brief to counsel is yours.
 
 Prepares PRD-M1. Docs only.
 
 ```text
-PROMPT LG2: One brief for counsel: the library, every open legal question on the tracker, and
-the regimes to rule in or out; plus the sign-off runbook
+PROMPT LG2 (the rest): Fill FOUNDER_QUESTIONNAIRE.md Part E.1.7 from LG1's drift table
 
-ROLE: Compliance analyst. Docs only; no code. Runs after LG1.
+ROLE: Compliance analyst. Docs only; no code. Runs once LG1 has landed.
 
 CONTEXT:
-  - FOUNDER_QUESTIONNAIRE.md is the house for counsel questions: Part D (#473, MR7) holds the
-    money ones (M2 holding period, M9, #435 (d)). Don't repeat them; link to them.
-  - The ⚖️ items are scattered: #336 I1 (the AML "No" and the retention table), I4 (minors);
-    Identity ERA2 / ERA4 (retention dials, PITR statement); T&S H1 (CSAM hashing, PRD-D14);
-    #490 (the tax obligation, (c) tax-exclusive display to consumers); #493 (the licence
-    wording); #496 (the notice regime); PRD-M7 (tax on the platform's own fees); #270 (f)
-    (`projective_partner`); the open items in LG1's drift table.
-  - One money question Part D lacks (MARKETPLACE_BUILD_PROMPTS.md §0.3, "For counsel"): may a
-    buyer-started refund of a card-paid line land in the wallet? UK consumer rules generally
-    expect a refund to the original payment method unless the buyer agrees otherwise; FBP DB21
-    credits the wallet, and MR3 keeps card refunds operator-only. Put it in E.2.
-  - Findings that need counsel (LEGAL_COMPLIANCE_BUILD_PROMPTS.md §0.2): 2 (the assignor's
-    signature), 3 (the word "deed"), 6 (US-framed tax documents for a GB platform), 8 (no
-    cancellation-right step at checkout).
+  - Part E is written (#528). E.1.7 is a slot that reads "Pending: LG1's drift table …".
+  - LG1's drift table has one row per difference: document · clause id · what it says · what
+    is true now · source. LG1 fixes what it can in the drafts and leaves the rows whose product
+    rule is unsettled for this brief.
 
 STEPS:
-  1. Write Part E of FOUNDER_QUESTIONNAIRE.md, "Counsel brief: the legal library and the open
-     compliance questions", in the style of Part D (facts first, then numbered questions, then
-     what each answer decides):
-     E.1 The library. Each document: its slug, newest version, what it governs, the product
-         rules it states with their sources, and its open clause-level questions from LG1.
-     E.2 Every open ⚖️ item not in Part D, one table: the question · source decision · the
-         owner's position, if any · the switch, dial or prompt that waits on the answer.
-     E.3 Regimes for counsel to rule in or out. List each one as a candidate, with where the
-         product touches it, and draw no legal conclusion: UK GDPR / DPA 2018 and PECR
-         (cookies, marketing, #492); the 2013 Consumer Contracts Regulations and the EU
-         Consumer Rights Directive (cancellation rights and the digital-content waiver at
-         checkout); the DMCC Act 2024 (subscriptions, fake reviews: #486); the Online Safety
-         Act 2023 (messaging, public profiles, reports); the EU DSA (notice and action, #496;
-         marketplace trader traceability); the UK platform-operator reporting regulations
-         (2023) and EU DAC7 (LG6); CDPA 1988 s.90(3) / s.91 and 17 U.S.C. §204(a) (LG3, LG4);
-         MLR 2017 (#336 I1, LG7); e-money and safeguarding (link to Part D).
-     E.4 The sign-off runbook, for a human, once counsel approves a document: set
-         reviewedAt to the approval date (a code edit; a review never pre-dates the text);
-         remove the reconstructed 1.0 baselines (#270 (b)); confirm effective dates; add the
-         version to org.legal_document_versions and LEGAL_VERSIONS with `material` set as
-         counsel says, so fn_needs_reacceptance re-asks; check that the noindex and the
-         disclosure lift and the sitemap lists the document; then flip PRD-M1 when the last
-         one is done.
-     E.5 What is missing for counsel to start: the data controller's identity (LG1 (b)), and
-         anything else only I can supply.
-  2. Point every matching row of PRODUCTION_READINESS §Decisions awaiting a human at its E.2
-     line, and add a row for any item that has none.
-  3. A decision row (newest decisions-*.md and its README line; re-check the next free number
-     right before you write it) that records the brief and rules nothing, like #473.
+  1. (E.1.7 only.) Replace the slot with the rows LG1 left open, one line each, naming the
+     question each puts to counsel. A row that is the owner's product question, not counsel's,
+     gets a row in PRODUCTION_READINESS §Decisions awaiting a human instead. A new ⚖️ item
+     goes into E.2 at the next free E2 number, with its §Decisions row. If the owner has
+     answered LG1's stops, update E.1's planned documents and E.5 items 1 and 4.
 
-ACCEPTANCE: Part E exists. Every ⚖️ on the tracker is either in Part D, in Part E, or ruled.
-PRD-M1's evidence names the brief.
-SAME CHANGE: PRODUCTION_READINESS §Decisions awaiting a human; the decision row.
+ACCEPTANCE: E.1.7 has no "Pending" text. Every ⚖️ on the tracker is in Part D, in Part E, or
+ruled.
+SAME CHANGE: PRODUCTION_READINESS §Decisions awaiting a human, for any row added; #528's index
+line, if E.2 grows.
 ```
 
-Readiness rows (§1.1): **PRD-M1** stays ❌, with the evidence "counsel brief written <date> (Part
-E); awaiting counsel". No score changes.
-
+Readiness rows (§1.1): **PRD-M1** stays ❌ (its evidence already names the brief). No score changes.
 ### LG3 — The maker accepts the deed and the payer the Escrow Terms, once per version (conditional)
 
 > **Status 2026-11-23:** open; runs only on A at §0.4 item 4, after LG2's brief is sent.

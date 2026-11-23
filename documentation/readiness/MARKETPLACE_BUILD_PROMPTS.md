@@ -154,13 +154,14 @@ their prompts with their decision numbers.
 | 9  | Close #219 (d) as sanctioned                                                                    | MKZ           | Yes: SA already names it the second sanctioned loosening |
 | —  | SCH-WP7 step 6 (#344 (f)); SBP S4's (f)                                                         | their prompts | Their own                                                |
 
-**For counsel** (build behind a switch that stays off; never switch it on): the tax obligation and
-its tax-exclusive display (#490 (c)), the nudge's consent basis (CK5, built off), A8's refund
-refusal (`finance.delivered_refund_refusal`, #488), SC7's licence wording, SC8's notice regime, and
-one question that [LEGAL LG2](LEGAL_COMPLIANCE_BUILD_PROMPTS.md)'s brief carries: **may a
-buyer-started refund of a card-paid line land in the wallet?** UK consumer rules generally expect a
-refund to the original payment method unless the buyer agrees otherwise. DB21 credits the wallet and
-MR3 keeps card refunds operator-only.
+**For counsel** (build behind a switch that stays off; never switch it on). Each item is in
+[FOUNDER_QUESTIONNAIRE.md](../architecture/FOUNDER_QUESTIONNAIRE.md) Part E.2, LEGAL LG2's brief
+(#528): the tax obligation and its tax-exclusive display (#490 (c); E2.20, E2.21), the nudge's
+consent basis (CK5, built off; E2.8), A8's refund refusal (`finance.delivered_refund_refusal`, #488;
+E2.11), SC7's licence wording (E2.14), SC8's notice regime (E2.10), and one money question: **may a
+buyer-started refund of a card-paid line land in the wallet?** (E2.13). UK consumer rules generally
+expect a refund to the original payment method unless the buyer agrees otherwise. DB21 credits the
+wallet and MR3 keeps card refunds operator-only.
 
 ### 0.4 Live runs left by landed prompts
 
