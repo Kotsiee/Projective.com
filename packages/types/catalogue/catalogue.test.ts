@@ -171,3 +171,32 @@ Deno.test("publish readiness lists what is missing in the Edit page's order", ()
 		"Add a cover image",
 	]);
 });
+
+Deno.test("a product publishes only with a library file to deliver (MK-60)", () => {
+	const notes = { name: "Notes", label: "Notes", extension: ".txt", bytes: 1 };
+	const product = (attachments: unknown[]) =>
+		detail({
+			id: "prd-23456789ab",
+			kind: "product",
+			serviceType: null,
+			offer: {
+				archetype: "product",
+				format: "download",
+				licence: "personal",
+				attributionRequired: false,
+				attachments,
+			},
+		});
+	assertEquals(publishReadiness(product([notes])).missing, [
+		"Add a title",
+		"Attach a file to deliver",
+		"Set a price",
+		"Add a cover image",
+	]);
+	assertEquals(
+		publishReadiness(product([{ ...notes, fileId: "7f1c3a52-0b6e-4c1d-9a7e-2d4b5c6e7f80" }]))
+			.missing
+			.includes("Attach a file to deliver"),
+		false,
+	);
+});

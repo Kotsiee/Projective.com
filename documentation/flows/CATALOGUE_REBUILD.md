@@ -415,7 +415,9 @@ export interface ShowcaseGridProps {
   the arrows move it, Space drops it and Esc cancels, with live-region announcements.
 - Dropping a video on slot 1 is refused with an inline reason.
 - Removing slot 1 promotes the first remaining **image**. If none remains, the publish gate reports
-  "Add a cover image".
+  "Add a cover image" — and on a **published** listing the save is refused (`PG422` `a cover image`,
+  Decision #494 (d)): it keeps a cover until it is paused. A published Pipeline keeps its last stage
+  the same way.
 
 **Pipeline.**
 - `MediaCropPicker` is opened with `target: "showcase"`, `allowVideo: positions.some(p => p !== 1)`

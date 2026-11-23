@@ -39,13 +39,16 @@ SELECT TO authenticated USING (
         )
     );
 
--- A team-owned listing may only be created by a member of that team, in their own name.
+-- A team-owned listing may only be created by a member of that team, in their own name. It starts as a
+-- draft: going live is catalogue.set_listing_status's alone (Decision #494), and the derived-column
+-- guard (00001895) keeps `published_at` and `promoted` empty on the way in.
 CREATE POLICY "Sellers create their own listings" ON catalogue.listings FOR
 INSERT
     TO authenticated
 WITH
     CHECK (
         owner_user_id = auth.uid ()
+        AND status = 'draft'::catalogue.listing_status
         AND (
             owner_team_id IS NULL
             OR org.is_active_team_member (owner_team_id)
@@ -127,11 +130,15 @@ SELECT TO authenticated USING (
         )
     );
 
+-- A member article has no publish door yet (Decision #494 (e)), so a client creates drafts only.
 CREATE POLICY "Authors create their own articles" ON catalogue.articles FOR
 INSERT
     TO authenticated
 WITH
-    CHECK (owner_user_id = auth.uid ());
+    CHECK (
+        owner_user_id = auth.uid ()
+        AND status = 'draft'::catalogue.listing_status
+    );
 
 CREATE POLICY "Authors update their own articles" ON catalogue.articles FOR
 UPDATE TO authenticated USING (owner_user_id = auth.uid ())
@@ -153,6 +160,8 @@ SELECT TO anon, authenticated USING (
         )
     );
 
+-- The write check asks what apply_listing_media asks of every slot (Decision #494 (A) 4): each file is
+-- live, of its kind and the seller's own, or their team's (catalogue.fn_listing_file_ok, 00001170).
 CREATE POLICY "Owners manage their listing media" ON catalogue.listing_media FOR ALL TO authenticated USING (
     EXISTS (
         SELECT 1
@@ -170,6 +179,15 @@ WITH
             WHERE
                 l.id = listing_media.listing_id
                 AND l.owner_user_id = auth.uid ()
+                AND catalogue.fn_listing_file_ok (listing_media.file_id, l.owner_team_id, listing_media.kind || '/')
+                AND (
+                    listing_media.rendition_file_id IS NULL
+                    OR catalogue.fn_listing_file_ok (listing_media.rendition_file_id, l.owner_team_id, listing_media.kind || '/')
+                )
+                AND (
+                    listing_media.poster_file_id IS NULL
+                    OR catalogue.fn_listing_file_ok (listing_media.poster_file_id, l.owner_team_id, 'image/')
+                )
         )
     );
 

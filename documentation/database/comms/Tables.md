@@ -82,6 +82,7 @@ emitted by a workspace or money RPC. `spend.approved` / `spend.rejected` were al
 | `business.invite`                 | account · high · in_app + push + email     | no        | `org.invite_workspace_member` / `resend_workspace_invitation`      |
 | `business.member_joined`          | account · low · in_app (1-hour collapse)   | no        | `org.respond_to_workspace_invitation`, to the inviter              |
 | `application.withdrawn`           | work · low · in_app (digestible)           | no        | `projects.withdraw_application`, to the project owner (DM link to the applicant) |
+| `catalogue.listing_published`     | discovery · low · in_app (digestible, 1-day collapse) | no | `catalogue.set_listing_status` on a listing's **first** publish, to the owning party's followers (never the publisher), grouped per seller and linked to `/view/<slug>`; the template is NULL (Decision #494 (C)) |
 
 `team.invite` and `team.member_joined` already existed; their `action_url_template` moved from
 `/settings` to `/teams`, the new business keys point at `/businesses`, and

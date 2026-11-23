@@ -3322,6 +3322,9 @@ are that decision's rulings A1 to A11 and B1 to B10.
   deletes a library file afterwards cannot change what a buyer already bought. Publishing again with
   different files makes a new version for later buyers; each buyer keeps the version they bought.
   Whether a later version reaches earlier buyers is a later rule. **Built.**
+- **A product goes on sale only with a file to deliver** (MK-60, Decision #488 (a)). Its draft must
+  attach at least one library file; one that only describes its bundle cannot be published, because
+  it would sell a licence with nothing to fetch. **Built** (MARKETPLACE SC4).
 - **A purchase's files reach only its holder.** The person who bought, or, for a team, business or
   enterprise purchase, its members while acting as that account; a refunded or withdrawn purchase
   delivers nothing more, though what was already delivered cannot be recalled. **Built.**
@@ -3374,6 +3377,12 @@ it changes at once, persists, and — if the platform refuses — changes back a
 - **Followers / following.** A profile's follower and following counts open the list of the people
   behind them (a person's profile only has a following list — teams, businesses and enterprises do
   not follow). A profile the viewer may not see is left out of every list.
+- **What a follower hears** (Decision #494 (C), ruled 2026-11-18). When a listing goes on sale for
+  the **first** time, everyone who follows its seller — the person for a personal listing, the team
+  for a team's — gets one in-app notice linking to the listing's public page. A day's new listings
+  from one seller, a batch included, fold into one notice. A listing that was live before (resumed,
+  re-published from draft, restored with its account) is not news, and the person who published it is
+  never told. **Built** (MARKETPLACE SC4).
 
 ---
 

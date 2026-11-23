@@ -6,8 +6,8 @@
 > MK-12 and MK-16. The owner's rulings are Decisions #485–#506 (one per prompt), #525 for SC10–SC13
 > and #393 for the asset-delivery phases.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 12 open, 3 partly done, 9 done (§0 ledger).
-> Runnable now: CK2, RV1, RV2, SC4, SC9 (phase 1), SC10, SC11, SC12, SC13.
+> **Verified against code 2026-11-23 at `f2e25929`.** 11 open, 3 partly done, 10 done (§0 ledger).
+> Runnable now: CK2, RV1, RV2, SC6, SC9 (phase 1), SC10, SC11, SC12, SC13.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -40,6 +40,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | SC1 | `CatalogueListingRowSchema` pins all 30 columns; `parseListingRow` is the one read boundary         | `5a95dbac`, `f2abf8e2` (#501)             | `f2e25929` |
 | SC2 | A bought Pipeline's stages keep the CREATE category; a tiered Pipeline and a session plan seeded    | `a0671fbe` (#503)                         | `f2e25929` |
 | SC3 | `projects.open_cohort` / `cancel_cohort`, the Cohorts block at `?cohort=`, one seeded cohort        | `322c4dc9`, `b87c276c` (#498)             | `f2e25929` |
+| SC4 | Only the definer door publishes; the post-publish locks on the tables; a product needs a file; the follower notice | `0cf50f7d`, SC4_FIX (#535) | `0cf50f7d` |
 | SC5 | `ListingViewBeacon` writes deduped views; the rollup derives view and order counts; 91 days seeded  | `322c4dc9` (#506)                         | `f2e25929` |
 
 ### 0.1 Row → work order
@@ -77,18 +78,16 @@ Two rows of the **Listing view** section are left to live runs of prompts that l
 | MK-36 | ✅ · High · MVP    | **SC13** (#525); T&S P2a refuses PII in copy      | The note names file answers and numeric follow-ups                                                |
 | MK-37 | 🟡 · High · UAT    | CK1 ✅ + the live run (§0.4)                      | ✅ once the publish → copy → download run is walked live                                          |
 | MK-40 | 🟡 · High · UAT    | SCH-WP7 step 5 (SC3 ✅, #498)                     | ✅ once WP7 step 5 schedules later sittings from the app and the seller's walk is recorded (§0.4) |
-| MK-41 | 🟡 · Crit · PROD   | **SC4** (#494) + T&S SN2 → SN3                    | ✅ once SN3 screens before publish; SC4 closes the write bypass and the emitter                   |
+| MK-41 | 🟡 · Crit · PROD   | T&S SN2 → SN3 (SC4 ✅, #535)                      | ✅ once SN3 screens before publish                                                                |
 | MK-42 | ✅ · Normal · UAT  | **MKZ** (🧑 close #219 (d))                       | The note cites SA's sanctioned loosening                                                          |
-| MK-44 | 🟡 · Normal · UAT  | **SC6** (#500; ⏳ SC4)                            | Slug links; a team or business buyer is named                                                     |
-| MK-45 | ✅ · High · UAT    | **SC6** (ruled #500; ⏳ SC4)                      | The ruled team-editing scope is built (note clears)                                               |
+| MK-44 | 🟡 · Normal · UAT  | **SC6** (#500)                                    | Slug links; a team or business buyer is named                                                     |
+| MK-45 | ✅ · High · UAT    | **SC6** (ruled #500)                              | The ruled team-editing scope is built (note clears)                                               |
 | MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                                       |
 | MK-47 | ❌ · High · PROD   | T&S R2 → **SC8** (R1 landed); **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands            |
-| MK-57 | 🟡 · High · PROD   | **SC4**, if it takes #494 (a)                     | A direct write meets the doors' locks (#494 (A) 3–4)                                              |
-| MK-60 | 🟡 · High · UAT    | **SC4** (#488 (a))                                | The publish gate refuses a product with no file to deliver                                        |
 
 SC10, SC11 and SC12 each add a new MK row in the change that lands them (#525). Section scores live
 in USER_FLOWS' Scoreboard. What UAT still needs from these sections: the live runs (§0.4), the MK-31
-chain (DB21 → MR3), RV1's product arm, SC4, SC6, CK2, SCH-WP7 step 5, CK6's device runs and SBP S4.
+chain (DB21 → MR3), RV1's product arm, SC6, CK2, SCH-WP7 step 5, CK6's device runs and SBP S4.
 
 ### 0.2 Run order
 
@@ -112,7 +111,7 @@ finance SQL lane (FINANCE §0); FINANCE's order wins on a conflict.
 **Queue C — everything else**, as the second SQL session whenever its files are disjoint from what
 is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 
-1. **SC4 → SC6** — SC4 runs now (`00001170`, and `00002018` / `00002020`); SC6 ⏳ SC4.
+1. **SC6** — runs now (`00001170`): SC4 landed (#535).
 2. **RV1**'s product arm — runs now.
 3. **RV2 → RV3** — RV2 runs now (RV1's doors are in); RV3 ⏳ RV2.
 4. **SC11**, **SC12** — each stops at its 🧑 first. SC11 writes `00001155`, so no SCH package runs
@@ -127,7 +126,7 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 | :----------------------------------------------- | :-------------------- | :---------------------------------------------------------------- |
 | `00001210` (`place_wallet_order`, promo, orders) | CK2, CK4, SC7, SC10   | FBP DB9, DB10, DB11, DB13, DB15; SCH-WP6                          |
 | `00000017` (finance tables)                      | CK2, CK4, SC7         | FBP DB6, DB8, DB21, MR3, MR5                                      |
-| `00001170` (catalogue doors, `save_listing`)     | SC4, SC6, SC10, SC12  | —                                                                 |
+| `00001170` (catalogue doors, `save_listing`)     | SC6, SC10, SC12       | —                                                                 |
 | `00001155` (sessions, cohorts)                   | SC10, SC11            | every SCH package; FBP DB15                                       |
 | `00005060` (jobs)                                | RV2, SC11             | FBP DB17, MR5; PM-GH1                                             |
 | `00002500` / `00002510` / `00002520` (grants)    | every SQL prompt here | one writer at a time across all tracks                            |
@@ -143,8 +142,6 @@ their prompts with their decision numbers.
 
 | #  | Question                                                                                        | Prompt        | Recommendation                                           |
 | :- | :---------------------------------------------------------------------------------------------- | :------------ | :------------------------------------------------------- |
-| 1  | #494 (a): does MK-57 ride in SC4's change                                                       | SC4           | Yes: the same grants and the same fix                    |
-| 2  | #494 (d): may a published listing lose its last cover or stage                                  | SC4           | No: refuse it PG422, as the gate does                    |
 | 3  | #496 (b): does a strike count against the person or the owning workspace                        | SC8           | Asked before step 4                                      |
 | 4  | #393 A1, A3–A5, A7, A9–A11 and B1–B10 (A2, A6 and A8 are ruled)                                 | SC9           | Per phase, as the spec recommends                        |
 | 5  | Per-hour rounding; whether a per-session listing may vary its lengths; a seat priced per hour   | SC10          | None yet: the prompt asks                                |
@@ -626,79 +623,10 @@ the decision row closing #58-63 (h)'s ratings half.
 
 ## 5. Seller catalogue — new prompts
 
-### SC4 — Only the publish door publishes, and publishing tells people
-
-> **Status 2026-11-23:** open, and runnable: CK1 has landed (#494 (D)). Step 1's probe ran on
-> 2026-11-18 and was rolled back (#494); it is committed when SC4 runs. Two 🧑 stops are open, #494
-> (a) and (d).
-
-Narrows MK-41 (✅ once T&S SN3 lands); closes MK-60 and, if (a), MK-57.
-
-```text
-PROMPT SC4: Only the publish door can publish a listing, and publishing tells the people it
-should
-
-ROLE: Postgres security engineer. Queue C: 00001170, 00001895, 00002018, 00002020, 00002520,
-00005010.
-
-CONTEXT (verified at b7280787 and by #494's probe; line refs at f2e25929):
-  - The publish path: routes/api/catalogue/status.ts → CatalogueBackendService.setStatus (:214) →
-    live-catalogue-writes.ts:362 → catalogue.set_listing_status (00001170:1120), whose gate
-    checks a title, a price, a slot-1 cover and, for a Pipeline, a stage; set_listings_status
-    (:1304) for batches; both SECURITY INVOKER; trg_listings_publish_age_gate (00001810:37-39).
-  - The bypass is live (#494 (A), probed under a seller's JWT): a bare UPDATE or INSERT
-    publishes a listing with no cover or price; clearing published_at reopens #217's currency
-    lock; a published listing's currency, questions, delivery model and showcase files change
-    directly. The cause: 00002520 ~:871 / ~:873 and the owner-only policies (00002020, 00002018)
-    on PostgREST. catalogue.products and catalogue.articles take the same grant, unprobed
-    (#494 (e)). catalogue.listings.promoted is client-writable past marketplace.promote_listing's
-    plan check (#494 (f)).
-  - CK1's version freeze runs in set_listing_status's publish arm, so a bare UPDATE publishes past
-    it too (#488 (c)); a product whose draft names no library file publishes and sells nothing
-    to deliver (#488 (a), MK-60).
-  - catalogue.listing_published is seeded (00005010:95: in-app, discovery, low; Zod
-    packages/types/comms/catalog.ts:112) and never emitted.
-  - Screening (PRD-D10) is T&S SN2 → SN3, through cutShowcaseRendition in
-    live-catalogue-writes.ts. It is not this prompt's.
-
-🧑 DECISIONS (before step 2), from #494's flags:
-  (a) Does MK-57 ride in this change (the same grants and the same fix)? Recommended: yes.
-  (d) A published listing can lose its cover (apply_listing_media) or every stage (save_listing).
-      Recommended: refuse removing the last cover or stage from a published listing with PG422,
-      as the gate does.
-
-STEPS:
-  1. Red first: extend catalogue_publish_locks.sql: under a seller's JWT, a bare UPDATE or
-     INSERT publishes a listing with no cover (#494 (A)). Commit it.
-  2. Close it: status, and every column the publish gate owns (published_at, …), changes only
-     inside the doors. set_listing_status and set_listings_status become SECURITY DEFINER
-     (ruled: Decision #494 (B)), and promoted joins the guarded columns (#494 (f)). Extend the
-     derived-column guard (security.fn_guard_derived_columns, 00001895) or narrow the UPDATE
-     grant to the editable columns, and sweep catalogue.products and articles (#494 (e)). Prove
-     save_listing and the live editor still work.
-  3. Emit listing_published from the door on a listing's first publish only, keyed on
-     published_at (ruled: Decision #494 (b)), to the owning party's followers in a daily digest
-     (group_window 1 day, a link to /view/<slug>; ruled: Decision #494 (C)). A batch emits one
-     per listing, grouped by the window.
-  4. Name the bypass, as found, in MK-41's row either way.
-  5. MK-60 (#488 (a)): the publish gate refuses a product listing whose manifest names no
-     library file.
-
-ACCEPTANCE: the probe: a direct UPDATE or INSERT that publishes → 42501; the door still
-publishes; one notice per first publish and none on pause or resume; a product with no file
-refuses to publish.
-
-SAME CHANGE: PRODUCT_SPEC.md (who hears of a publish, #494 (C)); documentation/database/
-catalogue/{Policies,Functions}.md; the comms docs for the emitter; the decision row.
-```
-
-§1.2 rows: **MK-41** stays 🟡 with a narrower note (screening is SN3's), and becomes ✅ when SN3
-lands. **MK-60** 🟡 → ✅. **MK-57** 🟡 → ✅ if (a).
-
 ### SC6 — The Clients view links by slug and names every buyer; a team edits its listings
 
 > **Status 2026-11-23:** step 4 landed in `e900af75` (#500 rewrote MK-44's and MK-45's notes); steps
-> 1–3 below are open. Waits for SC4 (`00001170`); CK1 has landed.
+> 1–3 below are open, and runnable: CK1 and SC4 (#535) have landed.
 
 Closes MK-44 (🟡 → ✅); builds MK-45's ruled scope.
 

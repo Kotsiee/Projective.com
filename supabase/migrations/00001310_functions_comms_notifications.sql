@@ -491,6 +491,8 @@ BEGIN
             SET title = p_title,
                 body = p_body,
                 payload = COALESCE(p_payload, '{}'::jsonb),
+                -- A given link follows the newest event, as the title and body do.
+                action_url = COALESCE(p_action_url, action_url),
                 group_count = group_count + 1,
                 -- Resurface: a collapsed event is new information, so it becomes unread again.
                 read_at = NULL,

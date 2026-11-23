@@ -62,7 +62,8 @@ fan-out → insert the notification → resolve the deep link → materialise on
 The collapse first takes `pg_advisory_xact_lock(hashtextextended(user_id::text || group_key, 0))`,
 held to the end of the caller's transaction, so a concurrent event with the same recipient and
 `group_key` waits and then refreshes the row: two at once end as one row with `group_count` 2 (CAS
-N3). `fn_notify_many` takes its recipients in id order, so two fan-outs over one key cannot deadlock
+N3). The refresh rewrites the title, body and payload, and the link when the event passes one
+(`p_action_url`), so a folded notice opens what its newest line names (Decision #494 (C)). `fn_notify_many` takes its recipients in id order, so two fan-outs over one key cannot deadlock
 on those locks.
 
 **⚠️ It never raises.** The whole body is wrapped in an exception handler that returns `NULL`. It is

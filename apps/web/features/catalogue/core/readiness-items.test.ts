@@ -41,7 +41,7 @@ Deno.test("a pipeline lists its stage before its price; a product lists no deliv
 	);
 	assertEquals(
 		labels(readinessItems({ kind: "product", serviceType: null }, { ready: true, missing: [] })),
-		["✓ Add a title", "✓ Set a price", "✓ Add a cover image"],
+		["✓ Add a title", "✓ Attach a file to deliver", "✓ Set a price", "✓ Add a cover image"],
 	);
 });
 
@@ -50,6 +50,7 @@ Deno.test("a locked Publish leads to the section that fixes the first missing li
 	assertEquals(firstMissingSection(["Add a cover image", "Set a price"]), "media");
 	assertEquals(firstMissingSection(["Add a title"]), "basics");
 	assertEquals(firstMissingSection(["Add at least one stage"]), "offer");
+	assertEquals(firstMissingSection(["Attach a file to deliver"]), "offer");
 	assertEquals(firstMissingSection(["Open a bookable time in the next 30 days"]), "availability");
 	assertEquals(firstMissingSection(["Something new", "Set a price"]), "pricing");
 });

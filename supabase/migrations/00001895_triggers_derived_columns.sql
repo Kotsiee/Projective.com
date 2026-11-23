@@ -14,10 +14,11 @@
 -- step: a member's `role` and the vault projection (finance.vault_permissions).
 -- =============================================================================================
 
+-- `is_published` follows the listing, and only catalogue.set_listing_status moves it (Decision #494).
 DROP TRIGGER IF EXISTS trg_service_blueprints_derived ON marketplace.service_blueprints;
 CREATE TRIGGER trg_service_blueprints_derived
     BEFORE INSERT OR UPDATE ON marketplace.service_blueprints
-    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('rating_average', 'rating_count');
+    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('rating_average', 'rating_count', 'is_published');
 
 DROP TRIGGER IF EXISTS trg_products_derived ON catalogue.products;
 CREATE TRIGGER trg_products_derived
@@ -87,12 +88,56 @@ CREATE TRIGGER trg_quote_events_kept
     BEFORE UPDATE OR DELETE ON marketplace.quote_events
     FOR EACH ROW EXECUTE FUNCTION marketplace.fn_quote_record_kept();
 
+-- #region catalogue — only the doors publish (Decision #494)
+-- A listing's lifecycle is the publish door's: `status` and `published_at` move only inside
+-- catalogue.set_listing_status (a definer, which runs the gate, freezes a product and tells followers)
+-- and the account-lifecycle definers; an INSERT starts as a draft (the policy, 00002020). `promoted`
+-- is marketplace.promote_listing's, past its plan check. A member article has no publish door yet, so
+-- no client publishes one. Then the published listing's own locks (catalogue.trg_published_locks,
+-- catalogue.trg_listing_keeps_cover, 00001170), so a direct write meets what the editor refuses.
 DROP TRIGGER IF EXISTS trg_listings_derived ON catalogue.listings;
 CREATE TRIGGER trg_listings_derived
     BEFORE INSERT OR UPDATE ON catalogue.listings
     FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns(
-        'rating_average', 'rating_count', 'view_count', 'order_count'
+        'rating_average', 'rating_count', 'view_count', 'order_count', 'published_at', 'promoted'
     );
+
+DROP TRIGGER IF EXISTS trg_listings_immutable ON catalogue.listings;
+CREATE TRIGGER trg_listings_immutable
+    BEFORE UPDATE ON catalogue.listings
+    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_immutable_columns('status');
+
+DROP TRIGGER IF EXISTS trg_articles_derived ON catalogue.articles;
+CREATE TRIGGER trg_articles_derived
+    BEFORE INSERT OR UPDATE ON catalogue.articles
+    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('published_at');
+
+DROP TRIGGER IF EXISTS trg_articles_immutable ON catalogue.articles;
+CREATE TRIGGER trg_articles_immutable
+    BEFORE UPDATE ON catalogue.articles
+    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_immutable_columns('status');
+
+DROP TRIGGER IF EXISTS trg_listings_published_locks ON catalogue.listings;
+CREATE TRIGGER trg_listings_published_locks
+    BEFORE UPDATE ON catalogue.listings
+    FOR EACH ROW EXECUTE FUNCTION catalogue.trg_published_locks();
+
+DROP TRIGGER IF EXISTS trg_products_published_locks ON catalogue.products;
+CREATE TRIGGER trg_products_published_locks
+    BEFORE UPDATE ON catalogue.products
+    FOR EACH ROW EXECUTE FUNCTION catalogue.trg_published_locks();
+
+DROP TRIGGER IF EXISTS trg_service_blueprints_published_locks ON marketplace.service_blueprints;
+CREATE TRIGGER trg_service_blueprints_published_locks
+    BEFORE UPDATE ON marketplace.service_blueprints
+    FOR EACH ROW EXECUTE FUNCTION catalogue.trg_published_locks();
+
+DROP TRIGGER IF EXISTS listing_media_keeps_cover ON catalogue.listing_media;
+CREATE CONSTRAINT TRIGGER listing_media_keeps_cover
+    AFTER DELETE OR UPDATE ON catalogue.listing_media
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION catalogue.trg_listing_keeps_cover();
+-- #endregion
 
 -- #region org — the profile owners a client can still write
 -- `org.users_public`, `org.freelancer_profiles`, `org.business_profiles` and (since 2026-09-28)

@@ -20,6 +20,7 @@ const SECTION_OF: Readonly<Record<string, EditSection>> = {
 	"Add a cover image": "media",
 	"Set a price": "pricing",
 	"Add at least one stage": "offer",
+	"Attach a file to deliver": "offer",
 	[CHOOSE_AVAILABILITY]: "availability",
 	[BOOKABLE_SOON]: "availability",
 };
@@ -52,6 +53,7 @@ export function readinessItems(
 		"Add a title",
 		...(listing.kind === "service" ? ["Choose a delivery model"] : []),
 		...(archetype === "pipeline" ? ["Add at least one stage"] : []),
+		...(archetype === "product" ? ["Attach a file to deliver"] : []),
 		"Set a price",
 		...(archetype === "session" || archetype === "cohort"
 			? [CHOOSE_AVAILABILITY, BOOKABLE_SOON]

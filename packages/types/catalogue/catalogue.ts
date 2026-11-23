@@ -643,8 +643,9 @@ export function hasBeenPublished(listing: Pick<ListingDetail, "publishedAt">): b
 /**
  * The publish gate. A listing goes live only with a title (which the SEO title falls back to), a
  * still in cover slot 1, a price the card can show, and its archetype's minimum: a Pipeline needs a
- * stage, and a Session or Group Session needs availability with a window in the next 30 days. What
- * is missing is listed in the Edit page's order (Decision #525).
+ * stage, a product a library file to deliver (MK-60), and a Session or Group Session needs
+ * availability with a window in the next 30 days. What is missing is listed in the Edit page's order
+ * (Decision #525).
  * Shared by the client (to explain what is missing) and the server (defence in depth on every
  * status write).
  */
@@ -658,6 +659,10 @@ export function publishReadiness(
 	if (detail.kind === "service" && !detail.serviceType) missing.push("Choose a delivery model");
 	const stages = detail.offer.archetype === "pipeline" ? detail.offer.stages : [];
 	if (archetype === "pipeline" && stages.length === 0) missing.push("Add at least one stage");
+	const files = detail.offer.archetype === "product" ? detail.offer.attachments : [];
+	if (archetype === "product" && !files.some((f) => f.fileId)) {
+		missing.push("Attach a file to deliver");
+	}
 	const price = resolveListingPricing({
 		kind: detail.kind,
 		serviceType: detail.serviceType,

@@ -86,7 +86,8 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
     why; a follow-up rule is locked with everything else, because it decides which answers exist
     (Decision #522). The pure guard is `intakeLockRefusal` (`@projective/types/services`).
   - `catalogue.save_listing` refuses any change to the questions' ids, order or kinds with 22023
-    `DETAIL = 'intake'` (probe `supabase/probes/catalogue_publish_locks.sql`).
+    `DETAIL = 'intake'`, and so does a direct write to the blueprint: the lock is held on the table
+    (`catalogue.trg_published_locks`, Decision #494; probe `supabase/probes/catalogue_publish_locks.sql`).
   - The same instant fixes the listing's currency, which a never-published draft may still change in
     Pricing.
 

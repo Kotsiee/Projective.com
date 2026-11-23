@@ -417,25 +417,10 @@ BEGIN
         RAISE EXCEPTION 'A service has no product terms' USING ERRCODE = '22023', DETAIL = 'kind';
     END IF;
 
-    -- A live listing keeps its delivery model: changing it would orphan the bookings and projects made
-    -- under the old one, so the seller archives and recreates instead (plan §4.3).
-    IF v_patch ? 'delivery_model'
-       AND (v_patch ->> 'delivery_model')::marketplace.service_delivery_model IS DISTINCT FROM v_model
-       AND v_row.status <> 'draft' THEN
-        RAISE EXCEPTION 'A live listing keeps its delivery model; archive it and create a new one'
-            USING ERRCODE = '22023', DETAIL = 'delivery_model';
-    END IF;
-
-    -- The currency is the seller's to choose until the listing first goes live; from then on orders,
-    -- payouts and analytics are recorded in it. Keyed on published_at, which outlives a return to draft.
-    IF v_patch ? 'currency' THEN
-        IF pg_catalog.upper(COALESCE(v_patch ->> 'currency', '')) !~ '^[A-Z]{3}$' THEN
-            RAISE EXCEPTION 'A currency is a three-letter ISO code' USING ERRCODE = '22023', DETAIL = 'currency';
-        END IF;
-        IF v_row.published_at IS NOT NULL AND pg_catalog.upper(v_patch ->> 'currency') <> v_row.currency THEN
-            RAISE EXCEPTION 'A listing keeps its currency once it has been published' USING ERRCODE = '22023',
-                DETAIL = 'currency';
-        END IF;
+    -- A live listing keeps its delivery model, a published one its currency and its questions' ids, order
+    -- and kinds: catalogue.trg_published_locks holds those on the tables, so a direct write meets them too.
+    IF v_patch ? 'currency' AND pg_catalog.upper(COALESCE(v_patch ->> 'currency', '')) !~ '^[A-Z]{3}$' THEN
+        RAISE EXCEPTION 'A currency is a three-letter ISO code' USING ERRCODE = '22023', DETAIL = 'currency';
     END IF;
 
     -- The listing as it will stand after this save (Decision #525): an extra revision round costs at most
@@ -473,30 +458,8 @@ BEGIN
         END IF;
     END IF;
 
-    -- Once a listing has been live, buyers' answers are stored under its question ids (basket lines,
-    -- invitations), so the questions keep their ids, order and kinds; only wording and options change
-    -- (ServiceCreation.md §1.1). Keyed on published_at, so a listing restored to draft stays locked.
-    IF v_patch ? 'intake' THEN
-        v_doc := COALESCE(v_patch -> 'intake', '[]'::jsonb);
-        IF pg_catalog.jsonb_typeof(v_doc) <> 'array' THEN
-            RAISE EXCEPTION 'Buyer questions are a list' USING ERRCODE = '22023', DETAIL = 'intake';
-        END IF;
-        IF v_row.published_at IS NOT NULL AND (
-            SELECT COALESCE(pg_catalog.jsonb_agg(
-                       pg_catalog.jsonb_build_array(f.value ->> 'id', f.value ->> 'kind') ORDER BY f.n), '[]'::jsonb)
-              FROM pg_catalog.jsonb_array_elements(v_doc) WITH ORDINALITY AS f (value, n)
-        ) IS DISTINCT FROM (
-            SELECT COALESCE(pg_catalog.jsonb_agg(
-                       pg_catalog.jsonb_build_array(f.value ->> 'id', f.value ->> 'kind') ORDER BY f.n), '[]'::jsonb)
-              FROM marketplace.service_blueprints b
-             CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(
-                   CASE WHEN pg_catalog.jsonb_typeof(b.intake_fields) = 'array' THEN b.intake_fields ELSE '[]'::jsonb END
-               ) WITH ORDINALITY AS f (value, n)
-             WHERE b.id = v_row.service_blueprint_id
-        ) THEN
-            RAISE EXCEPTION 'A published listing keeps its questions; only their wording and options can change'
-                USING ERRCODE = '22023', DETAIL = 'intake';
-        END IF;
+    IF v_patch ? 'intake' AND pg_catalog.jsonb_typeof(COALESCE(v_patch -> 'intake', '[]'::jsonb)) <> 'array' THEN
+        RAISE EXCEPTION 'Buyer questions are a list' USING ERRCODE = '22023', DETAIL = 'intake';
     END IF;
 
     IF v_patch ? 'stage_template' THEN
@@ -778,8 +741,9 @@ seller who created it. Only keys present in the patch change; children (skills, 
 replaced whole when present; `offer` and `seo` envelopes are decoded onto the flat keys. Returns
 { listing_id, updated_at }. Refusals: 42501 not the seller / a file that is not theirs / the subject
 could not be updated · 22023 malformed patch, a changed currency or question id/kind/order after first
-publish (DETAIL names the key) · PB404 no such listing · PC409 expected_updated_at is stale (DETAIL
-stale:<current updated_at>) · PG422 more than 10 tags.';
+publish, or a live listing''s delivery model (DETAIL names the key; catalogue.trg_published_locks) ·
+PB404 no such listing · PC409 expected_updated_at is stale (DETAIL stale:<current updated_at>) · PG422
+more than 10 tags, or a published Pipeline''s last stage removed (DETAIL at least one stage).';
 -- #endregion
 
 -- #region Tag cap (Decision #217(f))
@@ -810,8 +774,10 @@ $$;
 -- array clears it. Every file must be the caller's (`fn_listing_file_ok`) and match its kind; a
 -- poster is an image. Slot 1 must be an image (`ck_listing_media_cover_is_image`). A service's
 -- blueprint cover follows slot 1 — its rendition when one was cut, else the original — so the card,
--- the hero and every booking surface show the same picture; no slot 1 clears it. INVOKER: the owner
--- policy on `listing_media` is the gate, as it is for every other listing child.
+-- the hero and every booking surface show the same picture; no slot 1 clears it, except on a published
+-- listing, which keeps a cover (PG422 at commit, catalogue.trg_listing_keeps_cover). INVOKER: the owner
+-- policy on `listing_media` is the gate, as it is for every other listing child, and since #494 it asks
+-- `fn_listing_file_ok` of every file too, so a direct write cannot name another person's file.
 CREATE OR REPLACE FUNCTION catalogue.apply_listing_media(p_listing uuid, p_slots jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -914,7 +880,7 @@ COMMENT ON FUNCTION catalogue.apply_listing_media(uuid, jsonb) IS
 it, and mirror slot 1 (rendition, else original) into service_blueprints.cover_file_id. Returns
 { listing_id, slots, cover_file_id }. Refusals: 42501 not the seller / a file that is not theirs or not
 of its kind · 22023 malformed slots or two items in one position · 23514 a video in slot 1 ·
-PB404 no such listing.';
+PB404 no such listing · PG422 at commit, a published listing left without a cover (DETAIL a cover image).';
 -- #endregion
 
 -- #region Product versions and delivery (Decision #488, ASSET_DELIVERY_ARCHITECTURE.md §6, §10)
@@ -927,12 +893,13 @@ PB404 no such listing.';
 -- the download route, which retries the copy itself.
 --
 -- A file the draft still names but the seller has since deleted, or that never finished uploading,
--- refuses the publish (PG422) rather than freezing a bundle with a hole in it. A product whose draft
--- names no library file freezes nothing and answers NULL: it sells a licence with nothing to fetch.
+-- refuses the publish (PG422) rather than freezing a bundle with a hole in it. A draft that names no
+-- library file never reaches here: the publish gate refuses it (`a file to deliver`, MK-60); a product
+-- put on sale before that gate freezes nothing and answers NULL.
 --
--- A definer, because no client writes a version. Reached from set_listing_status (an INVOKER, so the
--- caller needs EXECUTE, 00002510); called directly it re-checks what that door checks — the caller
--- created the listing, and the listing is published — so a direct call is a re-publish, nothing more.
+-- A definer, because no client writes a version. Reached only from set_listing_status (a definer too,
+-- Decision #494 (B)); it still re-checks what that door checks — the caller created the listing, and
+-- the listing is published.
 CREATE OR REPLACE FUNCTION catalogue.fn_freeze_product_version(p_listing uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1113,16 +1080,20 @@ the entitlement''s version. Service role only.';
 -- #region Status
 -- Move a listing through its lifecycle (draft · published · paused · archived — nothing is ever
 -- deleted). Publishing passes the gate the console shows — a title, a price, an image in showcase
--- slot 1 and, for a Pipeline, at least one stage —
+-- slot 1, for a Pipeline at least one stage and for a product a file to deliver (MK-60) —
 -- checked HERE as well, so a request built by hand cannot publish a listing the page would not have
 -- let through. A service's blueprint follows the listing's publication, so discovery, booking and the
 -- listing never disagree about whether the service is on sale.
+--
+-- The one door to `status`, `published_at` and `is_published` (Decision #494): a client write to them
+-- is refused (security.fn_guard_* in 00001895, the INSERT policies in 00002020), so this is a definer
+-- and keeps its own ownership check. A listing's first publish tells the owning party's followers.
 CREATE OR REPLACE FUNCTION catalogue.set_listing_status(p_listing uuid, p_status text)
 RETURNS jsonb
 LANGUAGE plpgsql
 VOLATILE
-SECURITY INVOKER
-SET search_path = catalogue, marketplace, public
+SECURITY DEFINER
+SET search_path = ''
 AS $$
 DECLARE
     v_uid uuid := auth.uid();
@@ -1130,6 +1101,10 @@ DECLARE
     v_missing text[] := ARRAY[]::text[];
     v_rows integer;
     v_version jsonb;
+    v_party_type text;
+    v_name text;
+    v_slug text;
+    v_follower uuid;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to change a listing' USING ERRCODE = '42501';
@@ -1168,6 +1143,17 @@ BEGIN
         ) THEN
             v_missing := v_missing || 'at least one stage'::text;
         END IF;
+        -- A product is bought for its files; one whose draft names no library file would sell nothing.
+        IF v_row.kind = 'product' AND NOT EXISTS (
+            SELECT 1
+              FROM catalogue.products p
+             CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(
+                   CASE WHEN pg_catalog.jsonb_typeof(p.file_manifest) = 'array' THEN p.file_manifest ELSE '[]'::jsonb END
+               ) AS e (value)
+             WHERE p.id = v_row.product_id AND e.value ? 'fileId'
+        ) THEN
+            v_missing := v_missing || 'a file to deliver'::text;
+        END IF;
         IF pg_catalog.cardinality(v_missing) > 0 THEN
             RAISE EXCEPTION 'Add % before publishing', pg_catalog.array_to_string(v_missing, ', ')
                 USING ERRCODE = 'PG422', DETAIL = pg_catalog.array_to_string(v_missing, '|');
@@ -1196,14 +1182,52 @@ BEGIN
         v_version := catalogue.fn_freeze_product_version(p_listing);
     END IF;
 
+    -- A first publish is news to the people who follow the seller (Decision #494, (b) and (C)): keyed on
+    -- `published_at` being empty before the UPDATE above, so a resume, a re-publish from draft and an
+    -- account restore tell no one. One group per owning party, so a day's publishes — a batch's
+    -- included — collapse into one notice. The publisher is never told, as comms.fn_notify_many drops
+    -- the actor; that helper takes no link, so the loop is written out in its order.
+    -- shortcut: fans out inline in the publish; move to comms.notification_queue once a party has
+    -- thousands of followers.
+    IF p_status = 'published' AND v_row.published_at IS NULL THEN
+        v_party_type := CASE WHEN v_row.owner_team_id IS NULL THEN 'user' ELSE 'team' END;
+        v_name := CASE WHEN v_row.owner_team_id IS NULL
+            THEN (SELECT COALESCE(NULLIF(pg_catalog.btrim(pg_catalog.concat_ws(' ', u.first_name, u.last_name)), ''), u.username)
+                    FROM org.users_public u WHERE u.user_id = v_row.owner_user_id)
+            ELSE (SELECT t.name FROM org.teams t WHERE t.id = v_row.owner_team_id) END;
+        v_slug := CASE WHEN v_row.kind = 'service'
+            THEN (SELECT b.slug FROM marketplace.service_blueprints b WHERE b.id = v_row.service_blueprint_id)
+            ELSE (SELECT p.slug FROM catalogue.products p WHERE p.id = v_row.product_id) END;
+        FOR v_follower IN
+            SELECT f.follower_user_id
+              FROM org.profile_follows f
+             WHERE f.target_entity_type = v_party_type
+               AND f.target_entity_id = COALESCE(v_row.owner_team_id, v_row.owner_user_id)
+               AND f.follower_user_id <> v_uid
+             ORDER BY f.follower_user_id
+        LOOP
+            PERFORM comms.fn_notify(
+                v_follower, 'catalogue.listing_published',
+                pg_catalog.format('%s published a listing', COALESCE(v_name, 'A seller you follow')), v_row.title,
+                'catalogue.listings', p_listing,
+                pg_catalog.jsonb_build_object('listing', v_slug, 'kind', v_row.kind),
+                v_uid, NULL, NULL,
+                'listing_published:' || v_party_type || ':' || COALESCE(v_row.owner_team_id, v_row.owner_user_id),
+                p_action_url => '/view/' || v_slug
+            );
+        END LOOP;
+    END IF;
+
     RETURN pg_catalog.jsonb_build_object('listing_id', p_listing, 'status', p_status, 'version', v_version);
 END;
 $$;
 
 COMMENT ON FUNCTION catalogue.set_listing_status(uuid, text) IS
 'Move a listing to draft / published / paused / archived, as the seller who created it; a service''s
-blueprint follows. Publishing needs a title, a price, a slot-1 cover image and (Pipeline) a stage; a
-published product freezes its attached files (catalogue.fn_freeze_product_version, Decision #488).
+blueprint follows. The one door to status, published_at and is_published (Decision #494), hence a definer.
+Publishing needs a title, a price, a slot-1 cover image, (Pipeline) a stage and (product) a file to deliver;
+a published product freezes its attached files (catalogue.fn_freeze_product_version, Decision #488); a
+first publish tells the owning party''s followers (catalogue.listing_published, one daily group).
 Returns { listing_id, status, version } — version is that freeze''s answer, NULL otherwise. Refusals: 42501 not the
 seller · 22023 unknown status · PB404 no such listing · PG422 the publish gate (DETAIL lists what is
 missing, separated by |), or an attached file gone from the seller''s library · PM403 the seller is
@@ -1295,18 +1319,128 @@ END;
 $$;
 -- #endregion
 
+-- #region Published locks (Decision #217, #494 (a) and (d); MK-57)
+-- What a listing's first publish fixes, and what a published listing keeps, held on the tables so a
+-- direct PATCH meets the refusal the editor gives (save_listing used to hold the first three in its
+-- body). Keyed on `published_at`, which outlives a return to draft: the currency is fixed — the
+-- listing's, and its product's or blueprint's, which may only move to the listing's own — and the
+-- buyer questions keep their ids, order and kinds (answers are stored under them), while their wording
+-- and options still change. A live (not draft) listing keeps its delivery model. A published Pipeline
+-- keeps at least one stage, refused PG422 in the gate's own words (#494 (d)).
+-- INVOKER and client-only, as security.fn_guard_derived_columns is and for the same reason: the role
+-- running the statement is what tells a client from a definer, the service role or the seed.
+CREATE OR REPLACE FUNCTION catalogue.trg_published_locks()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_listing catalogue.listings;
+BEGIN
+    IF current_user NOT IN ('anon', 'authenticated') THEN
+        RETURN NEW;
+    END IF;
+    SELECT l.* INTO v_listing
+      FROM catalogue.listings l
+     WHERE CASE TG_TABLE_NAME
+               WHEN 'listings' THEN l.id = OLD.id
+               WHEN 'products' THEN l.product_id = OLD.id
+               ELSE l.service_blueprint_id = OLD.id
+           END;
+    IF NOT FOUND THEN
+        RETURN NEW;
+    END IF;
+
+    IF v_listing.published_at IS NOT NULL AND NEW.currency IS DISTINCT FROM OLD.currency
+       AND (TG_TABLE_NAME = 'listings' OR NEW.currency IS DISTINCT FROM v_listing.currency) THEN
+        RAISE EXCEPTION 'A listing keeps its currency once it has been published' USING ERRCODE = '22023',
+            DETAIL = 'currency';
+    END IF;
+
+    IF TG_TABLE_NAME = 'service_blueprints' THEN
+        IF NEW.delivery_model IS DISTINCT FROM OLD.delivery_model
+           AND v_listing.status <> 'draft'::catalogue.listing_status THEN
+            RAISE EXCEPTION 'A live listing keeps its delivery model; archive it and create a new one'
+                USING ERRCODE = '22023', DETAIL = 'delivery_model';
+        END IF;
+        IF v_listing.published_at IS NOT NULL AND (
+            SELECT COALESCE(pg_catalog.jsonb_agg(
+                       pg_catalog.jsonb_build_array(f.value ->> 'id', f.value ->> 'kind') ORDER BY f.n), '[]'::jsonb)
+              FROM pg_catalog.jsonb_array_elements(
+                   CASE WHEN pg_catalog.jsonb_typeof(NEW.intake_fields) = 'array' THEN NEW.intake_fields ELSE '[]'::jsonb END
+               ) WITH ORDINALITY AS f (value, n)
+        ) IS DISTINCT FROM (
+            SELECT COALESCE(pg_catalog.jsonb_agg(
+                       pg_catalog.jsonb_build_array(f.value ->> 'id', f.value ->> 'kind') ORDER BY f.n), '[]'::jsonb)
+              FROM pg_catalog.jsonb_array_elements(
+                   CASE WHEN pg_catalog.jsonb_typeof(OLD.intake_fields) = 'array' THEN OLD.intake_fields ELSE '[]'::jsonb END
+               ) WITH ORDINALITY AS f (value, n)
+        ) THEN
+            RAISE EXCEPTION 'A published listing keeps its questions; only their wording and options can change'
+                USING ERRCODE = '22023', DETAIL = 'intake';
+        END IF;
+        IF v_listing.status = 'published'::catalogue.listing_status
+           AND NEW.delivery_model = 'pipeline'::marketplace.service_delivery_model
+           AND NEW.stage_template IS DISTINCT FROM OLD.stage_template
+           AND pg_catalog.jsonb_typeof(NEW.stage_template) = 'array'
+           AND pg_catalog.jsonb_array_length(NEW.stage_template) = 0 THEN
+            RAISE EXCEPTION 'A published Pipeline keeps at least one stage; pause it before removing the last'
+                USING ERRCODE = 'PG422', DETAIL = 'at least one stage';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION catalogue.trg_published_locks() IS
+'BEFORE UPDATE on catalogue.listings, catalogue.products and marketplace.service_blueprints: a client write
+cannot change a published listing''s currency (22023 currency; a product''s or blueprint''s may only move to
+the listing''s), its questions'' ids, order or kinds (22023 intake), a live listing''s delivery model (22023
+delivery_model), or empty a published Pipeline''s stages (PG422 at least one stage). Definers, the service
+role and the seed pass.';
+
+-- A published listing keeps a cover (#494 (d)). Deferred to the end of the transaction, because the
+-- showcase door replaces every slot (a DELETE, then the INSERT): only the state it leaves is judged.
+-- Client-only like the locks above; at commit the role is still the request's.
+CREATE OR REPLACE FUNCTION catalogue.trg_listing_keeps_cover()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+BEGIN
+    IF current_user IN ('anon', 'authenticated')
+       AND EXISTS (SELECT 1 FROM catalogue.listings l
+                    WHERE l.id = OLD.listing_id AND l.status = 'published'::catalogue.listing_status)
+       AND NOT EXISTS (SELECT 1 FROM catalogue.listing_media m
+                        WHERE m.listing_id = OLD.listing_id AND m.position = 1 AND m.kind = 'image') THEN
+        RAISE EXCEPTION 'A published listing keeps a cover image; pause it before removing the last'
+            USING ERRCODE = 'PG422', DETAIL = 'a cover image';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+COMMENT ON FUNCTION catalogue.trg_listing_keeps_cover() IS
+'Deferred AFTER DELETE OR UPDATE constraint trigger on catalogue.listing_media: a client transaction may not
+leave a published listing without an image in showcase slot 1 (PG422 a cover image). Definers, the service
+role and the seed pass.';
+-- #endregion
+
 -- #region Batch status
 -- The console's batch action (`BatchActionSchema` status): `set_listing_status` per listing, each in
 -- its own sub-transaction, so one listing the gate refuses does not undo the others. At most 100 ids;
 -- repeats are applied once, in first-seen order. Returns one outcome per listing:
 -- { listing_id, ok, code, detail, message } — `code` is the refusal's SQLSTATE (PG422 for the
--- publish gate, with `detail` listing what is missing), NULL on success.
+-- publish gate, with `detail` listing what is missing), NULL on success. A definer like the door it
+-- calls (Decision #494 (B)); set_listing_status checks the caller for each listing.
 CREATE OR REPLACE FUNCTION catalogue.set_listings_status(p_listings uuid[], p_status text)
 RETURNS jsonb[]
 LANGUAGE plpgsql
 VOLATILE
-SECURITY INVOKER
-SET search_path = catalogue, public
+SECURITY DEFINER
+SET search_path = ''
 AS $$
 DECLARE
     v_ids uuid[];
