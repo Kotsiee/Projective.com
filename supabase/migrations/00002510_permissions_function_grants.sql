@@ -2510,6 +2510,16 @@ GRANT EXECUTE ON FUNCTION projects.cancel_cohort (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION projects.get_listing_cohorts (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.get_listing_cohorts (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION projects.fn_close_cohort_enrolment (timestamptz) FROM PUBLIC, anon, authenticated, service_role;
+-- Rolling weekly templates (00001155 §10, SC11). The seller's door asks catalogue.fn_manages_listing
+-- itself; the generator is the `cohort-template-chains` job's and the door's; the helpers are internal.
+REVOKE ALL ON FUNCTION projects.fn_cancel_cohort_sittings (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_sitting_lengths (marketplace.service_blueprints, integer) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_weekly_templates_refusal (jsonb, integer[]) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_template_chain (timestamptz, jsonb, text, integer[]) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_blueprint_timezone (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_open_template_cohorts (timestamptz, integer, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.save_group_schedule (uuid, text, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.save_group_schedule (uuid, text, jsonb) TO authenticated;
 -- #endregion
 
 -- #region Disputes (00001260, Decision #212)

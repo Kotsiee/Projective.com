@@ -1,7 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 import { type ReadonlySignal, useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Button, FormControl, NumberInput, Textarea } from "@projective/ui/fields";
+import { Button, FormControl, NumberInput, Select, Textarea } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { MoneyView } from "@projective/ui/display/money";
@@ -155,8 +155,24 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 			: 1
 	);
 
+	/**
+	 * The chain a buyer picked on a rolling group session (SC11); `null` is the offer's own cohort, the
+	 * earliest chain with a seat to sell.
+	 */
+	const chainId = useSignal<string | null>(null);
+	const chains = useComputed(() => offer.value?.cohort?.chains ?? []);
+	const chosenChain = useComputed(() =>
+		chains.value.find((c) => c.cohortId === chainId.value) ?? null
+	);
+
 	const seatCap = useComputed(() =>
-		Math.min(SEATS_MAX, Math.max(1, offer.value?.capacity?.remaining ?? 1))
+		Math.min(
+			SEATS_MAX,
+			Math.max(
+				1,
+				chosenChain.value ? chosenChain.value.remaining : offer.value?.capacity?.remaining ?? 1,
+			),
+		)
 	);
 
 	/** The viewer's own IANA zone, read from `Intl` on the client — never guessed server-side. */
@@ -213,6 +229,7 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 		note.value = "";
 		noteRefused.value = false;
 		seats.value = 1;
+		chainId.value = null;
 		loadError.value = null;
 		error.value = null;
 		intakeState.reset();
@@ -267,7 +284,18 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 	const zone = useComputed(() => grid.value?.viewerTimezone ?? viewerZone() ?? null);
 	const pickLabels = useComputed(() => picks.value.map((pick) => pickLabel(pick, zone.value)));
 
-	const sittings = useComputed(() => offer.value?.cohort?.sittings ?? []);
+	const sittings = useComputed(() =>
+		chosenChain.value?.sittings ?? offer.value?.cohort?.sittings ?? []
+	);
+	/** The chains with a seat left, as the Starts picker offers them. */
+	const chainOptions = useComputed(() =>
+		chains.value.filter((c) => c.remaining > 0 && c.sittings.length > 0).map((c) => ({
+			label: `${
+				sittingLabel(c.sittings[0].startsAt, c.sittings[0].endsAt, zone.value)
+			} · ${c.remaining} ${plural(c.remaining, "seat")} left`,
+			value: c.cohortId,
+		}))
+	);
 	const sittingsLine = useComputed(() => cohortLine(sittings.value, zone.value));
 	const minimumLine = useComputed(() =>
 		cohortMinimumSentence(offer.value?.cohort ?? null, zone.value)
@@ -341,6 +369,7 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 			timezone: viewerZone(),
 			note: note.value.trim() || undefined,
 			seats: isCohort.value ? seats.value ?? 1 : 1,
+			cohortId: isCohort.value ? chosenChain.value?.cohortId : undefined,
 			answers: intakeState.answers.value,
 		});
 		if (out.simulated) return true;
@@ -553,6 +582,24 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 
 				{isCohort.value && (
 					<section class="sbk__section">
+						{chainOptions.value.length > 1 && (
+							<FormControl
+								label="Starts"
+								hint="Each start is its own run of every session, with its own seats."
+							>
+								{(a) => (
+									<Select
+										options={chainOptions.value}
+										value={chainId.value ?? o.cohort?.cohortId ?? ""}
+										onValueChange={(v) => {
+											chainId.value = v === o.cohort?.cohortId ? null : v;
+											seatsRefused.value = null;
+										}}
+										aria-describedby={a.describedBy}
+									/>
+								)}
+							</FormControl>
+						)}
 						<FormControl
 							label="Seats"
 							hint={o.capacity?.sentence}

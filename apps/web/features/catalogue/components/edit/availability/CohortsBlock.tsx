@@ -79,6 +79,8 @@ export function CohortsBlock(props: { listing: string }): JSX.Element {
 	const data = cohorts.value;
 	const open = enrollingCohort(data);
 	const loading = !data && !cohortsError.value;
+	// On rolling weekly templates the runs open themselves (SC11): no Open, no opening dialog.
+	const rolling = data?.scheduleMode === "rolling_templates";
 
 	return (
 		<OfferGroup
@@ -98,7 +100,14 @@ export function CohortsBlock(props: { listing: string }): JSX.Element {
 
 			{data && (
 				<>
-					{!open && (
+					{rolling && (
+						<p class="cat-sec__value">
+							Rolling weekly: a run opens for every week's session 1, {data.horizonWeeks}{" "}
+							weeks ahead, from the times on your session plan. A run that closes with nobody booked
+							is cancelled for you.
+						</p>
+					)}
+					{!open && !rolling && (
 						<p class="cat-sec__value">
 							{data.cohorts.length === 0
 								? "No cohort is open, so buyers can only join the waitlist."
@@ -155,7 +164,7 @@ export function CohortsBlock(props: { listing: string }): JSX.Element {
 
 					{cohortNotice.value && <p class="cat-sec__hint" role="status">{cohortNotice.value}</p>}
 
-					{!open && (
+					{!open && !rolling && (
 						<div>
 							<Button
 								label={data.cohorts.length === 0 ? "Open a cohort" : "Open the next cohort"}
@@ -168,7 +177,7 @@ export function CohortsBlock(props: { listing: string }): JSX.Element {
 						</div>
 					)}
 
-					<OpenCohortDialog listing={props.listing} data={data} />
+					{!rolling && <OpenCohortDialog listing={props.listing} data={data} />}
 					<CancelCohortDialog listing={props.listing} data={data} />
 				</>
 			)}

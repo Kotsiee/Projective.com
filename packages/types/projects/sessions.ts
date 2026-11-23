@@ -135,6 +135,8 @@ export const CohortRowSchema = z.object({
 	opened_by: uuid.nullable(),
 	cancelled_at: iso.nullable(),
 	cancel_reason: CohortCancelReasonSchema.nullable(),
+	/** Session 1's start on a chain the listing's rolling weekly templates opened (SC11); else null. */
+	chain_start: iso.nullable(),
 });
 export type CohortRow = z.infer<typeof CohortRowSchema>;
 
@@ -154,13 +156,28 @@ export const CohortOfferSchema = z.object({
 	minSeats: z.number().int().min(1).max(500).nullable(),
 	enrolmentClosesAt: iso.nullable(),
 	cadence: CohortCadenceSchema.nullable(),
+	/**
+	 * Every chain a rolling listing has taking bookings, soonest first, each with its own sittings and
+	 * the seats it has left (SC11). Empty for a listing whose seller opens cohorts by hand. The offer's
+	 * own cohort is the earliest chain with a seat to sell.
+	 */
+	chains: z.array(z.object({
+		cohortId: uuid,
+		firstStartsAt: iso.nullable(),
+		remaining: z.number().int().min(0).max(500),
+		sittings: z.array(CohortSittingSchema).max(200),
+	})).max(60).default([]),
 });
 export type CohortOffer = z.infer<typeof CohortOfferSchema>;
 
 /** `POST /api/services/reserve-seat` — hold seats on a listing's current cohort. */
 export const ReserveSeatInputSchema = z.object({
-	/** The listing (its discovery id). The server resolves the cohort; a client never names one. */
+	/**
+	 * The listing (its discovery id). The server resolves the cohort; a client names one only to pick a
+	 * later chain of a rolling listing, and the server checks it is one of that listing's offered chains.
+	 */
 	subjectId: z.string().min(1).max(160),
+	cohortId: uuid.optional(),
 	seats: z.number().int().min(1).max(500).default(1),
 	/** Anything the buyer wants the provider to know before the first sitting. */
 	note: z.string().max(2000).optional(),
@@ -604,6 +621,73 @@ export type OpenCohortInput = z.infer<typeof OpenCohortInputSchema>;
 export const CancelCohortInputSchema = z.object({ cohortId: uuid });
 export type CancelCohortInput = z.infer<typeof CancelCohortInputSchema>;
 
+// #region Rolling weekly templates (SC11)
+/**
+ * `marketplace.service_blueprints.group_schedule_mode`, mirrored 1:1: how a Group Session's cohorts are
+ * opened. `fixed_cohorts` (the default) — the seller opens each by hand; `rolling_templates` — every
+ * occurrence of session 1's weekly template within the horizon starts a chain, opened as a cohort.
+ */
+export const GroupScheduleModeSchema = z.enum(["fixed_cohorts", "rolling_templates"]);
+export type GroupScheduleMode = z.infer<typeof GroupScheduleModeSchema>;
+
+/** Minutes in a week, the span a weekly template wraps around. */
+const WEEK_MINUTES = 7 * 24 * 60;
+
+/**
+ * One sitting's weekly template (`session_template_rules.weekly[k]`): an ISO weekday (1 Monday … 7
+ * Sunday) and its start in minutes after midnight, in the seller's own zone.
+ */
+export const WeeklySessionTemplateSchema = z.object({
+	weekday: z.number().int().min(1).max(7),
+	startMinute: z.number().int().min(0).max(1439),
+});
+export type WeeklySessionTemplate = z.infer<typeof WeeklySessionTemplateSchema>;
+
+/**
+ * Why a week of templates cannot run, or `null` — the rule `projects.fn_weekly_templates_refusal` holds:
+ * at most {@link COHORT_SITTINGS_MAX} templates, and no two whose weekly spans overlap (the week wraps,
+ * so Sunday night runs into Monday morning). `lengths[k]` is sitting k's length in minutes. Overlapping
+ * templates would make one chain's session k another chain's session 1.
+ */
+export function weeklyTemplatesProblem(
+	templates: readonly WeeklySessionTemplate[],
+	lengths: readonly number[],
+): string | null {
+	if (templates.length > COHORT_SITTINGS_MAX) {
+		return `A listing has at most ${COHORT_SITTINGS_MAX} weekly session times`;
+	}
+	const at = templates.map((t) => (t.weekday - 1) * 1440 + t.startMinute);
+	const len = templates.map((_, k) => Math.max(1, lengths[k] ?? 60));
+	for (let i = 0; i < at.length; i++) {
+		for (let j = i + 1; j < at.length; j++) {
+			const gap = (((at[j] - at[i]) % WEEK_MINUTES) + WEEK_MINUTES) % WEEK_MINUTES;
+			if (gap < len[i] || WEEK_MINUTES - gap < len[j]) {
+				return `Sessions ${i + 1} and ${j + 1} overlap in the week — give each its own time`;
+			}
+		}
+	}
+	return null;
+}
+
+/** `PUT /api/catalogue/group-schedule` — a group-session listing's cohort schedule. */
+export const SaveGroupScheduleInputSchema = z.object({
+	/** The listing (its catalogue id). */
+	listing: z.string().min(1).max(160),
+	mode: GroupScheduleModeSchema,
+	/** One per sitting, by position; stored whole. */
+	templates: z.array(WeeklySessionTemplateSchema).max(COHORT_SITTINGS_MAX),
+});
+export type SaveGroupScheduleInput = z.infer<typeof SaveGroupScheduleInputSchema>;
+
+/** What `projects.save_group_schedule` answers: the schedule as stored and how many chains it opened. */
+export const GroupScheduleSavedSchema = z.object({
+	mode: GroupScheduleModeSchema,
+	templates: z.array(WeeklySessionTemplateSchema).max(COHORT_SITTINGS_MAX),
+	opened: z.number().int().min(0),
+});
+export type GroupScheduleSaved = z.infer<typeof GroupScheduleSavedSchema>;
+// #endregion
+
 /**
  * Where a cohort stands for its seller (`get_listing_cohorts.phase`): `closed` once its enrolment
  * close has passed and before its first sitting, `running` from its first sitting on.
@@ -650,6 +734,8 @@ export const ListingCohortSchema = z.object({
 	cancelReason: CohortCancelReasonSchema.nullable(),
 	cancelledAt: iso.nullable(),
 	projectSlug: z.string().min(1).max(120).nullable(),
+	/** Opened by the listing's rolling weekly templates (`cohorts.chain_start` set, SC11). */
+	generated: z.boolean().default(false),
 	sittings: z.array(ListingCohortSittingSchema).max(COHORT_SITTINGS_MAX),
 });
 export type ListingCohort = z.infer<typeof ListingCohortSchema>;
@@ -662,6 +748,13 @@ export const ListingCohortsSchema = z.object({
 	sessionCount: z.number().int().min(1).max(COHORT_SITTINGS_MAX),
 	sessionMinutes: z.number().int().min(5).max(600),
 	cohortSize: z.number().int().min(1).max(500),
+	/** How the listing's cohorts open, and the weekly templates a rolling listing runs on (SC11). */
+	scheduleMode: GroupScheduleModeSchema.default("fixed_cohorts"),
+	weeklyTemplates: z.array(WeeklySessionTemplateSchema).max(COHORT_SITTINGS_MAX).default([]),
+	/** The zone the templates are read in: the seller's calendar zone. */
+	timezone: z.string().min(1).max(64).default("UTC"),
+	/** How many weeks ahead a rolling listing keeps its chains open (`rolling_horizon_weeks`). */
+	horizonWeeks: z.number().int().min(1).max(52).default(4),
 	cohorts: z.array(ListingCohortSchema).max(20),
 });
 export type ListingCohorts = z.infer<typeof ListingCohortsSchema>;

@@ -36,3 +36,22 @@
 	gap: var(--space-2);
 	min-inline-size: 0;
 }
+
+/* How a group session's cohorts open (SC11): the mode, its hint and the next runs, above the rows. */
+.cat-plan__mode {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	margin-block-end: var(--space-4);
+	min-inline-size: 0;
+}
+
+/* A rolling row's weekday and start time, one line that wraps on a narrow column. */
+.cat-plan__when {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}

@@ -68,6 +68,7 @@ import {
 	type DevFileAccess,
 	type DevClientPipeline,
 	type DevDiscoveryActivity,
+	type DevGroupSchedule,
 	type DevDiscoveryViewer,
 	type DevDisputeState,
 	type DevEmailConfirmation,
@@ -158,6 +159,7 @@ export type {
 	DevCheckoutPayment,
 	DevClientPipeline,
 	DevDiscoveryActivity,
+	DevGroupSchedule,
 	DevDiscoveryViewer,
 	DevDisputeState,
 	DevEmailConfirmation,
@@ -623,6 +625,11 @@ export interface DevOverrides {
 	 */
 	clientPipeline: DevClientPipeline;
 	/**
+	 * How a fixture group session's cohorts open (SC11): the fixture's fixed cohorts, or forced to
+	 * fixed or to rolling weekly templates. Reaches the fixture path as `?schedule=`.
+	 */
+	groupSchedule: DevGroupSchedule;
+	/**
 	 * A simulated availability conflict in the listing workspace (plan §10): nothing bookable in the
 	 * next 30 days. Drives the scheduler's `Issues` and the publish readiness on the client; a save
 	 * still meets the real gate.
@@ -726,6 +733,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	operatorDesk: "auto",
 	catalogueAnalytics: "auto",
 	clientPipeline: "auto",
+	groupSchedule: "auto",
 	availabilityConflict: "auto",
 	promotionState: "auto",
 	fileAccess: "auto",
@@ -1326,6 +1334,13 @@ export const DEV_CLIENT_PIPELINES: ReadonlyArray<DevOption<DevClientPipeline>> =
 	{ value: "busy", label: "Busy" },
 ];
 
+/** Group-session schedules (SC11). `Fixture` keeps the fixture's fixed cohorts. */
+export const DEV_GROUP_SCHEDULES: ReadonlyArray<DevOption<DevGroupSchedule>> = [
+	{ value: "auto", label: "Fixture" },
+	{ value: "fixed_cohorts", label: "Fixed" },
+	{ value: "rolling_templates", label: "Rolling" },
+];
+
 /** Availability conflicts (plan §10). `Real` lets the scheduler's own validation decide. */
 export const DEV_AVAILABILITY_CONFLICTS: ReadonlyArray<DevOption<DevAvailabilityConflict>> = [
 	{ value: "auto", label: "Real" },
@@ -1538,6 +1553,8 @@ function reflect(next: DevOverrides): void {
 		} else delete root.dataset.devCatalogueAnalytics;
 		if (next.clientPipeline !== "auto") root.dataset.devClientPipeline = next.clientPipeline;
 		else delete root.dataset.devClientPipeline;
+		if (next.groupSchedule !== "auto") root.dataset.devGroupSchedule = next.groupSchedule;
+		else delete root.dataset.devGroupSchedule;
 		if (next.availabilityConflict !== "auto") {
 			root.dataset.devAvailabilityConflict = next.availabilityConflict;
 		} else delete root.dataset.devAvailabilityConflict;
@@ -1622,6 +1639,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devOperatorDesk;
 		delete root.dataset.devCatalogueAnalytics;
 		delete root.dataset.devClientPipeline;
+		delete root.dataset.devGroupSchedule;
 		delete root.dataset.devAvailabilityConflict;
 		delete root.dataset.devPromotionState;
 		delete root.dataset.devFileAccess;

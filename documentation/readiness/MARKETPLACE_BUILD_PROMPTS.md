@@ -6,8 +6,8 @@
 > MK-12 and MK-16. The owner's rulings are Decisions #485–#506 (one per prompt), #525 for SC10–SC13
 > and #393 for the asset-delivery phases.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 11 open, 3 partly done, 10 done (§0 ledger).
-> Runnable now: CK2, RV1, RV2, SC6, SC9 (phase 1), SC10, SC11, SC12, SC13.
+> **Verified against code 2026-11-23 at `f2e25929`.** 10 open, 3 partly done, 11 done (§0 ledger).
+> Runnable now: CK2, RV1, RV2, SC6, SC9 (phase 1), SC10, SC12, SC13.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -42,6 +42,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | SC3 | `projects.open_cohort` / `cancel_cohort`, the Cohorts block at `?cohort=`, one seeded cohort        | `322c4dc9`, `b87c276c` (#498)             | `f2e25929` |
 | SC4 | Only the definer door publishes; the post-publish locks on the tables; a product needs a file; the follower notice | `0cf50f7d`, `fb7d7276` (#535) | `0cf50f7d` |
 | SC5 | `ListingViewBeacon` writes deduped views; the rollup derives view and order counts; 91 days seeded  | `322c4dc9` (#506)                         | `f2e25929` |
+| SC11 | Rolling weekly templates: `group_schedule_mode`, `session_template_rules.weekly`, `fn_open_template_cohorts` (job `cohort-template-chains`), `save_group_schedule`, the offer's `chains`, `/plan` Fixed · Rolling, `/view` Starts | #541 | `2995f564` |
 
 ### 0.1 Row → work order
 
@@ -85,7 +86,7 @@ Two rows of the **Listing view** section are left to live runs of prompts that l
 | MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                                       |
 | MK-47 | ❌ · High · PROD   | T&S R2 → **SC8** (R1 landed); **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands            |
 
-SC10, SC11 and SC12 each add a new MK row in the change that lands them (#525). Section scores live
+SC10 and SC12 each add a new MK row in the change that lands them (#525); SC11 added MK-63 (#541). Section scores live
 in USER_FLOWS' Scoreboard. What UAT still needs from these sections: the live runs (§0.4), the MK-31
 chain (DB21 → MR3), RV1's product arm, SC6, CK2, SCH-WP7 step 5, CK6's device runs and SBP S4.
 
@@ -114,8 +115,7 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 1. **SC6** — runs now (`00001170`): SC4 landed (#535).
 2. **RV1**'s product arm — runs now.
 3. **RV2 → RV3** — RV2 runs now (RV1's doors are in); RV3 ⏳ RV2.
-4. **SC11**, **SC12** — each stops at its 🧑 first. SC11 writes `00001155`, so no SCH package runs
-   beside it.
+4. **SC12** — stops at its 🧑 first (SC11 landed, #541).
 5. T&S **R2** (their track; R1 landed) → **SC8**; **SC9** once per #393 phase (phase 1 runs now).
 
 **App lane** (up to three at once, file-disjoint): **SC13** now; **MKZ** last.
@@ -127,8 +127,8 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 | `00001210` (`place_wallet_order`, promo, orders) | CK2, CK4, SC7, SC10   | FBP DB9, DB10, DB11, DB13, DB15; SCH-WP6                          |
 | `00000017` (finance tables)                      | CK2, CK4, SC7         | FBP DB8, DB21, MR3, MR5                                           |
 | `00001170` (catalogue doors, `save_listing`)     | SC6, SC10, SC12       | —                                                                 |
-| `00001155` (sessions, cohorts)                   | SC10, SC11            | every SCH package; FBP DB15                                       |
-| `00005060` (jobs)                                | RV2, SC11             | FBP DB17, MR5; PM-GH1                                             |
+| `00001155` (sessions, cohorts)                   | SC10                  | every SCH package; FBP DB15                                       |
+| `00005060` (jobs)                                | RV2                   | FBP DB17, MR5; PM-GH1                                             |
 | `00002500` / `00002510` / `00002520` (grants)    | every SQL prompt here | one writer at a time across all tracks                            |
 | `supabase/seeds/gen/*` (+ `db:seed:generate`)    | RV1, RV2, RV3         | —                                                                 |
 | `features/checkout/**`, `live-orders.ts`         | CK4, SC10             | FBP DB21, UI5, UI6                                                |
@@ -145,7 +145,6 @@ their prompts with their decision numbers.
 | 3  | #496 (b): does a strike count against the person or the owning workspace                        | SC8           | Asked before step 4                                      |
 | 4  | #393 A1, A3–A5, A7, A9–A11 and B1–B10 (A2, A6 and A8 are ruled)                                 | SC9           | Per phase, as the spec recommends                        |
 | 5  | Per-hour rounding; whether a per-session listing may vary its lengths; a seat priced per hour   | SC10          | None yet: the prompt asks                                |
-| 6  | Rolling templates: the horizon and its opener, the capacity, an empty chain, beside Open cohort | SC11          | None yet: the prompt asks                                |
 | 7  | Plan files: frozen or live, whether a manual reveal notifies, readable after a refund           | SC12          | None yet: the prompt asks                                |
 | 8  | File answers: where they live, their limits and scan; a number's starting value in a follow-up  | SC13          | None yet: the prompt asks                                |
 | 9  | Close #219 (d) as sanctioned                                                                    | MKZ           | Yes: SA already names it the second sanctioned loosening |
@@ -172,6 +171,9 @@ check, #447). Record each run in its row's evidence; MKZ step 1 checks them.
 - **SC3** (#498): the seller opens a cohort, and a buyer reserves a seat and checks out → MK-12,
   MK-40.
 - **RV1** (#487): complete → review → the seller is notified → replies, signed in → MK-32.
+- **SC11** (#541): a seller switches a group session to Rolling weekly on `/plan` and sets each
+  session's time, then a buyer picks a start on `/view` and checks out; screenshots of both at 1440,
+  900 and 390 px in the four modes → MK-63.
 - **CK6** (#504), yours: `--apply` on a hosted host, then Apple Pay (iOS Safari), Google Pay
   (Android Chrome) and PayPal, recorded in the providers spec §4.3 F → MK-23.
 
@@ -884,57 +886,6 @@ USER_FLOWS (a new MK row); the decision row closing #525 flag (a) for this item.
 ```
 
 §1.2 rows: a new **MK** row (a seller prices a session by the hour) ❌ → ✅.
-
-### SC11 — Rolling weekly templates for a group session
-
-> **Status 2026-11-23:** open; written by #525 (`f2e25929`). Its 🧑 stop comes before any code.
-
-```text
-PROMPT SC11: A group session runs on rolling weekly templates, each buyer starting on the next
-open chain
-
-ROLE: Postgres + scheduling engineer. Queue C (00001155), then the app lane.
-
-CONTEXT (verified at 862a4b14 with #525 applied):
-  - Cohorts: projects.cohorts (00000015:829: cadence weekly · fortnightly · fixed, min_seats,
-    enrolment_closes_at), opened one at a time by projects.open_cohort (00001155:1243; a sitting
-    per occurrence at :1297 and :1370), seats held by reserve_seat (:275), the waitlist (#455),
-    cancel_cohort (#498). The seller's dialog is
-    features/catalogue/components/edit/availability/OpenCohortDialog.tsx.
-  - allow_continuous_enrollment renders and does nothing (MK-59).
-  - #525's design: a template per session position (weekday, start minute, timezone, seat
-    capacity). Each occurrence of session 1 starts one chain whose session k is the next
-    occurrence of template k after session k-1, so chains never share a sitting. A template
-    schedule is therefore a generator of ordinary cohorts: open the next weeks' chains as cohorts
-    and seats, holds, escrow, refunds, the waitlist and cancellation all work unchanged.
-
-🧑 DECISION (before any code): (1) the horizon (how many weeks of chains stay open) and what opens
-them (a scheduled job in the registry, or a save); (2) one capacity per chain (the smallest
-template's) or per sitting; (3) what happens to a generated chain that closes empty (it holds no
-money: cancel it quietly?); (4) whether the mode replaces Open cohort or sits beside it.
-
-STEPS:
-  1. Red first: a probe in which a saved template schedule yields cohorts whose sittings follow
-     the chain rule, across a daylight-saving change.
-  2. Schema, Zod first: catalogue- or marketplace-side listing_session_templates (blueprint,
-     position, weekday, start_minute, timezone, seat_capacity) and
-     service_blueprints.group_schedule_mode ('fixed_cohorts' default | 'rolling_templates').
-  3. projects.fn_open_template_cohorts(p_now, p_limit): FOR UPDATE SKIP LOCKED, idempotent per
-     chain start, in the job registry (the OPERATIONS pattern, #514, #518).
-  4. /plan for a Group Session: Fixed cohorts · Rolling weekly, and a template row per session
-     (weekday Select, time, timezone, capacity NumberInput); Availability keeps Open cohort in
-     fixed mode.
-  5. /view shows the next chain starts; a buyer lands on the earliest open one.
-
-ACCEPTANCE: the probe is green; a generated cohort refunds and cancels exactly as a manual one
-(the cohort probes re-run green); a booking lands on the earliest open chain.
-
-SAME CHANGE: PRODUCT_SPEC (group sessions); PRODUCT_MANAGEMENT only if a cohort state is added
-(none planned); documentation/database/*; ROUTING for any API; a Dev Context Switcher control for
-the mode; USER_FLOWS (a new MK row, and MK-59 re-read).
-```
-
-§1.2 rows: a new **MK** row (a seller runs a group session on weekly templates) ❌ → ✅.
 
 ### SC12 — Files on a session plan, revealed by policy
 

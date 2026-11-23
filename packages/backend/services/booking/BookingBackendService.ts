@@ -685,7 +685,13 @@ export class BookingBackendService {
 		// A cohort has its own sittings, so a seat is reserved on it rather than picked from the grid.
 		if (format === "cohort") {
 			const reserved = await BookingBackendService.reserveSeat(
-				{ subjectId: input.subjectId, seats: input.seats ?? 1, note: input.note, answers: input.answers },
+				{
+					subjectId: input.subjectId,
+					cohortId: input.cohortId,
+					seats: input.seats ?? 1,
+					note: input.note,
+					answers: input.answers,
+				},
 				actor,
 			);
 			if (!reserved.ok || !reserved.data) {
@@ -827,7 +833,12 @@ export class BookingBackendService {
 			});
 		}
 
-		const reserved = await SessionBackendService.reserveSeat(owner.blueprintId, input.seats, readerOf(actor));
+		const reserved = await SessionBackendService.reserveSeat(
+			owner.blueprintId,
+			input.seats,
+			readerOf(actor),
+			input.cohortId,
+		);
 		if (!reserved.ok || !reserved.data) {
 			return fail(reserved.status, { message: reserved.message, details: reserved.details });
 		}

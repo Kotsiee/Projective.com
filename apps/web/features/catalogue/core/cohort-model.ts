@@ -20,9 +20,14 @@ import type { CohortDialog } from "../types/catalogue-types.ts";
 
 // #region Paths
 /** `/api/catalogue/cohorts?listing=`, plus the `clientPipeline` dev axis when one is set. */
-export function cohortsPath(listing: string, sim: string | null = null): string {
+export function cohortsPath(
+	listing: string,
+	sim: string | null = null,
+	schedule: string | null = null,
+): string {
 	const q = new URLSearchParams({ listing });
 	if (sim) q.set("sim", sim);
+	if (schedule) q.set("schedule", schedule);
 	return `/api/catalogue/cohorts?${q.toString()}`;
 }
 

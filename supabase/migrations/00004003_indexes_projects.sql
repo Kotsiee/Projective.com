@@ -100,6 +100,9 @@ CREATE INDEX IF NOT EXISTS idx_project_applications_invite_link
 -- #region Sessions & cohorts (Decision #171)
 CREATE INDEX IF NOT EXISTS idx_cohorts_project ON projects.cohorts (project_id);
 CREATE INDEX IF NOT EXISTS idx_cohorts_stage ON projects.cohorts (project_stage_id);
+-- One generated chain per listing engagement and session-1 start (SC11): the rolling generator's guard.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cohorts_chain_start ON projects.cohorts (project_stage_id, chain_start)
+    WHERE chain_start IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_cohort_memberships_user ON projects.cohort_memberships (user_id);
 -- The seats a buyer gave away through their seat link (Decision #522).
 CREATE INDEX IF NOT EXISTS idx_cohort_memberships_sponsor

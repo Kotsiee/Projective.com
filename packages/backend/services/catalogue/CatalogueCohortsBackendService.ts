@@ -1,7 +1,9 @@
 import type {
 	CohortCancellation,
+	GroupScheduleMode,
 	ListingCohorts,
 	OpenCohortInput,
+	SaveGroupScheduleInput,
 } from "@projective/types/projects";
 import { getUserClient, isCatalogueBackendLive } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
@@ -38,6 +40,8 @@ const UNREACHABLE = "We couldn't reach your cohorts just now. Try again in a mom
 
 interface Options {
 	sim?: string | null;
+	/** The `groupSchedule` dev axis (SC11): the fixture listing's schedule mode, when forced. */
+	schedule?: GroupScheduleMode | null;
 	now?: number;
 }
 
@@ -88,7 +92,11 @@ export class CatalogueCohortsBackendService {
 			const found = check(fixtureScopedListings().find((l) => l.slug === listingSlug));
 			if (found.kind === "missing") return fail(404, { message: NO_LISTING });
 			if (found.kind === "not_cohort") return fail(422, { message: NOT_COHORT });
-			return ok(toListingCohorts(fixtureListingCohorts(simOf(options.sim), now, found.listing)));
+			return ok(
+				toListingCohorts(
+					fixtureListingCohorts(simOf(options.sim), now, found.listing, options.schedule),
+				),
+			);
 		}
 		if (!canReadLive(actor)) return fail(401, { message: SIGNED_OUT });
 		try {
@@ -161,6 +169,50 @@ export class CatalogueCohortsBackendService {
 			return ok(toListingCohorts(read.data as RawListingCohorts), { status: 201 });
 		} catch (error) {
 			console.error("[catalogue:cohorts:open]", error instanceof Error ? error.message : error);
+			return fail(503, { message: UNREACHABLE });
+		}
+	}
+
+	/**
+	 * Save how the listing's cohorts open and its weekly templates (`projects.save_group_schedule`, SC11),
+	 * and answer its cohorts as they now stand: on rolling templates the save has already opened the
+	 * chains in the horizon. 422 for a week the database refuses (overlapping, or short of the sittings).
+	 */
+	static async saveSchedule(
+		input: SaveGroupScheduleInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<ListingCohorts>> {
+		if (!isCatalogueBackendLive()) {
+			if (!actor.userId) return fail(401, { message: SIGNED_OUT });
+			const found = check(fixtureScopedListings().find((l) => l.slug === input.listing));
+			if (found.kind === "missing") return fail(404, { message: NO_LISTING });
+			if (found.kind === "not_cohort") return fail(422, { message: NOT_COHORT });
+			const raw = fixtureListingCohorts("auto", Date.now(), found.listing);
+			return ok(
+				toListingCohorts({ ...raw, schedule_mode: input.mode, weekly_templates: input.templates }),
+			);
+		}
+		if (!canReadLive(actor)) return fail(401, { message: SIGNED_OUT });
+		try {
+			const db = getUserClient(actor.accessToken);
+			const found = check(
+				(await loadScopedListings(db, actor)).find((l) => l.slug === input.listing),
+			);
+			if (found.kind === "missing") return fail(404, { message: NO_LISTING });
+			if (found.kind === "not_cohort") return fail(422, { message: NOT_COHORT });
+			const { error } = await db.schema("projects").rpc("save_group_schedule", {
+				p_listing: found.listing.id,
+				p_mode: input.mode,
+				p_templates: input.templates,
+			});
+			if (error) return refusal(error);
+			const read = await db.schema("projects").rpc("get_listing_cohorts", {
+				p_listing: found.listing.id,
+			});
+			if (read.error) return refusal(read.error);
+			return ok(toListingCohorts(read.data as RawListingCohorts));
+		} catch (error) {
+			console.error("[catalogue:cohorts:schedule]", error instanceof Error ? error.message : error);
 			return fail(503, { message: UNREACHABLE });
 		}
 	}

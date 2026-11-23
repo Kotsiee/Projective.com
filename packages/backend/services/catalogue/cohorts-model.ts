@@ -5,10 +5,14 @@ import {
 	CohortCancelReasonSchema,
 	CohortPhaseSchema,
 	CohortStatusSchema,
+	type GroupScheduleMode,
+	GroupScheduleModeSchema,
 	type ListingCohort,
 	type ListingCohorts,
 	type ListingCohortSitting,
+	WeeklySessionTemplateSchema,
 } from "@projective/types/projects";
+import { parseStoredList } from "@projective/types/explore";
 import type { ClientPipelineSim } from "./clients-fixtures.ts";
 
 /**
@@ -49,6 +53,7 @@ export interface RawListingCohort {
 	cancel_reason: string | null;
 	cancelled_at: string | null;
 	project_slug: string | null;
+	generated?: boolean | null;
 	sittings: RawListingCohortSitting[] | null;
 }
 
@@ -57,6 +62,10 @@ export interface RawListingCohorts {
 	session_count: number | null;
 	session_minutes: number | null;
 	cohort_size: number | null;
+	schedule_mode?: string | null;
+	weekly_templates?: unknown;
+	timezone?: string | null;
+	horizon_weeks?: number | null;
 	cohorts: RawListingCohort[] | null;
 }
 
@@ -123,6 +132,7 @@ export function toListingCohort(raw: RawListingCohort): ListingCohort | null {
 		cancelReason: CohortCancelReasonSchema.safeParse(raw.cancel_reason).data ?? null,
 		cancelledAt: isoOf(raw.cancelled_at),
 		projectSlug: raw.project_slug,
+		generated: raw.generated === true,
 		sittings: (raw.sittings ?? []).flatMap(sittingOf).slice(0, COHORT_SITTINGS_MAX),
 	};
 }
@@ -133,6 +143,11 @@ export function toListingCohorts(raw: RawListingCohorts): ListingCohorts {
 		sessionCount: clamp(raw.session_count, 1, COHORT_SITTINGS_MAX, 1),
 		sessionMinutes: clamp(raw.session_minutes, 5, 600, 60),
 		cohortSize: clamp(raw.cohort_size, 1, 500, 1),
+		scheduleMode: GroupScheduleModeSchema.safeParse(raw.schedule_mode).data ?? "fixed_cohorts",
+		weeklyTemplates: parseStoredList(WeeklySessionTemplateSchema, raw.weekly_templates)
+			.slice(0, COHORT_SITTINGS_MAX),
+		timezone: raw.timezone && raw.timezone.length <= 64 ? raw.timezone : "UTC",
+		horizonWeeks: clamp(raw.horizon_weeks, 1, 52, 4),
 		cohorts: (raw.cohorts ?? []).flatMap((c) => {
 			const one = toListingCohort(c);
 			return one ? [one] : [];
@@ -169,19 +184,29 @@ function fixtureSlug(n: number): string {
 /**
  * The fixture world's cohorts for one listing, as `get_listing_cohorts` would answer them: none on
  * `empty`; one whose enrolment closed below its minimum on `action_required`; otherwise one taking
- * bookings, three sittings a week apart.
+ * bookings, three sittings a week apart. Forced to rolling weekly templates by the `groupSchedule` dev
+ * axis (SC11), the listing runs on one template a day apart per sitting, Monday 18:00 first, and its
+ * cohorts read as generated chains.
  */
 export function fixtureListingCohorts(
 	sim: ClientPipelineSim,
 	now: number,
 	listing: { title: string; cohortSize?: number; sessionCount?: number },
+	schedule: GroupScheduleMode | null = null,
 ): RawListingCohorts {
 	const size = listing.cohortSize ?? 12;
 	const count = listing.sessionCount ?? 3;
+	const rolling = schedule === "rolling_templates";
 	const base: RawListingCohorts = {
 		session_count: count,
 		session_minutes: 120,
 		cohort_size: size,
+		schedule_mode: schedule ?? "fixed_cohorts",
+		weekly_templates: rolling
+			? Array.from({ length: count }, (_, k) => ({ weekday: (k % 7) + 1, startMinute: 18 * 60 }))
+			: [],
+		timezone: "Europe/London",
+		horizon_weeks: 4,
 		cohorts: [],
 	};
 	if (sim === "empty") return base;
@@ -216,6 +241,7 @@ export function fixtureListingCohorts(
 			cancel_reason: null,
 			cancelled_at: null,
 			project_slug: null,
+			generated: rolling,
 			sittings,
 		}],
 	};

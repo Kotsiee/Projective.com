@@ -35,7 +35,7 @@ signed-in person).
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
 | **UAT**          | **72%** |           193 | 99 |  79 | 15 |              25 |
-| **Production**   | **65%** |           250 | 105 | 106 | 39 |              36 |
+| **Production**   | **65%** |           251 | 105 | 107 | 39 |              36 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -44,7 +44,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | Cluster                                          | Flows | ✅ | 🟡 | ❌ |  ⏸ | Score |
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
-| MK — Discovery, marketplace, checkout & sessions |    62 | 27 | 24 |  9 |  2 |   68% |
+| MK — Discovery, marketplace, checkout & sessions |    63 | 27 | 25 |  9 |  2 |   67% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 29 | 36 | 10 |  2 |   64% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 24 | 16 |  3 |   59% |
 
@@ -226,8 +226,9 @@ PRODUCTION_READINESS.md.
 | MK-46 | Request to Sell; shared IP; royalty routing              | Freelancer, Client | —                                                  | ❌     | Normal   | PROD | No table, door or UI (PRODUCT_SPEC §Digital Marketplace 3, 5)                                                    |
 | MK-47 | Asset protection, delivery APIs, takedown and report     | Seller, Operator   | proposed `/api/catalogue/files/*`                  | ❌     | High     | PROD | #393 specified, unbuilt, 21 rulings open; no inbound copyright or report path; SC8's mechanism ruled #496, waits for T&S R2 (R1 landed: the `notice` source) |
 | MK-57 | Edit a published listing within its locks                | Seller             | `/catalogue/:slug`                                 | ✅     | High     | PROD | — (SC4, #535: the locks are held on the tables, so a direct write meets the editor's refusals; `promoted` is the plan check's alone; a showcase cannot name another person's file; a published listing keeps its last cover and stage, `PG422`; probe `catalogue_publish_locks` §5–7) |
-| MK-59 | Let people join a cohort that has started                | Seller, Buyer      | Offer section toggle                               | ❌     | Normal   | PROD | The toggle (`allow_continuous_enrollment`) renders and does nothing, and every cohort's enrolment closes by its first sitting, as ruled (#498 (b)); `enrollment_window_days` has no reader or writer |
+| MK-59 | Let people join a cohort that has started                | Seller, Buyer      | Offer section toggle                               | ❌     | Normal   | PROD | The toggle (`allow_continuous_enrollment`) renders and does nothing, and every cohort's enrolment closes by its first sitting, as ruled (#498 (b)); `enrollment_window_days` has no reader or writer. Re-read by SC11 (#541): a rolling listing gives a late buyer next week's run instead, and the toggle still does nothing |
 | MK-60 | Publish a product only with the files it sells          | Seller             | `/catalogue/:slug` publish                         | ✅     | High     | UAT  | — (SC4, #535: the gate refuses a product with no library file, `PG422 a file to deliver`, and the checklist says **Attach a file to deliver**; probe `catalogue_publish_locks` §9. Products already on sale without one are marked Needs attention, #535 (d)) |
+| MK-63 | Run a group session on rolling weekly times              | Seller, Buyer      | `/catalogue/:slug/plan` Rolling weekly → `PUT /api/catalogue/cohorts`; `/view` Starts | 🟡     | Normal   | PROD | SC11 (#541): a seller gives each session a weekday and time, every week's session 1 opens a run as an ordinary cohort four weeks ahead (job `cohort-template-chains`, and at once on save), session k at the next slot after k-1 ends in the seller's zone, a run that closes empty is cancelled quietly, and a buyer lands on the earliest run with a seat and may pick a later start; probe `cohort_templates.sql` 10/10 (clock change, idempotent, disjoint, full-run spill, quiet close, refund as a manual cohort, calendar clash) and the cohort, waitlist and session probes green in a rolled-back harness. Missing: the seller's and buyer's walk with screenshots of `/plan` and the Starts picker, and a clean `test:probes:fresh` (the shared DB was rebuilt without SC11 during the session) |
 
 ### Calls & sessions
 

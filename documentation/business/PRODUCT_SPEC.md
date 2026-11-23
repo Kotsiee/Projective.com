@@ -811,6 +811,19 @@ the next cohort. A seller who leaves an under-filled cohort alone runs it. The l
 a cohort that has started" setting has no effect yet: every cohort's enrolment closes by its first
 session.
 
+**Or a group session runs on rolling weekly times (SC11).** Instead of opening cohorts by hand, a
+seller may give each session of the plan a weekday and a start time in their own zone. Every week's
+session 1 then starts a new run: session 2 is the next time of session 2's slot after session 1 ends,
+and so on, so runs never share a session, and a clock change keeps the seller's local time. The
+platform keeps four weeks of runs open (`rolling_horizon_weeks`). Each run is an ordinary cohort of the
+listing's cohort size, with its seats, holds, escrow, refunds and cancellation exactly as above, and its
+enrolment closes as its session 1 starts. A buyer is offered the earliest run with a seat left and may
+pick a later start; the waitlist opens only when every open run is full. A run that closes with nobody
+booked holds no money and no one, so it is cancelled quietly and leaves the seller's calendar; a run with
+a seat goes ahead. The two ways sit side by side per listing: a rolling listing has no Open cohort, and
+times that overlap within the week are refused, because one run's later session would land on the next
+run's first.
+
 **What every archetype must disclose before purchase.** These are business requirements, not
 presentation:
 

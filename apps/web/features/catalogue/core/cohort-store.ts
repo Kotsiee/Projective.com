@@ -1,11 +1,14 @@
 import { signal } from "@preact/signals";
 import { catalogueSim } from "@web/utils/dev-seam.ts";
-import type {
-	CohortCancellation,
-	ListingCohorts,
-	OpenCohortInput,
+import {
+	type CohortCancellation,
+	type GroupScheduleMode,
+	type ListingCohorts,
+	type OpenCohortInput,
+	type WeeklySessionTemplate,
+	weeklyTemplatesProblem,
 } from "@projective/types/projects";
-import { getCatalogue, postCatalogue } from "./api.ts";
+import { getCatalogue, postCatalogue, putCatalogue } from "./api.ts";
 import { cancelCohortPath, cohortsPath } from "./cohort-model.ts";
 import { setWorkspaceUrl, workspaceUrl } from "./workspace-store.ts";
 import type { CohortDialog } from "../types/catalogue-types.ts";
@@ -30,10 +33,52 @@ export const cohortNotice = signal<string | null>(null);
 export async function loadCohorts(listing: string): Promise<void> {
 	cohortsError.value = null;
 	const res = await getCatalogue<ListingCohorts>(
-		cohortsPath(listing, catalogueSim("clientPipeline")),
+		cohortsPath(listing, catalogueSim("clientPipeline"), catalogueSim("groupSchedule")),
 	);
 	if (res.ok && res.data) cohorts.value = res.data;
 	else cohortsError.value = res.message ?? "We couldn't load this listing's cohorts.";
+}
+
+/** Why the last schedule save was refused, when it was (SC11). */
+export const scheduleError = signal<string | null>(null);
+
+/** How long a schedule edit settles before it is saved, so a scrubbed time saves once. */
+const SCHEDULE_SETTLE_MS = 600;
+let scheduleTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Change how the listing's cohorts open and its weekly templates (SC11). The block and the plan show the
+ * change at once; the save follows once edits settle, and its answer, the cohorts as they then stand
+ * (a rolling save has opened its chains), replaces the optimistic copy. A week whose times overlap
+ * (`weeklyTemplatesProblem`, `minutes` long each) is shown and not sent; a refusal is kept for the plan
+ * to show and the next read corrects the copy.
+ */
+export function saveSchedule(
+	listing: string,
+	mode: GroupScheduleMode,
+	templates: WeeklySessionTemplate[],
+	minutes: number,
+): void {
+	const current = cohorts.peek();
+	if (current) cohorts.value = { ...current, scheduleMode: mode, weeklyTemplates: templates };
+	clearTimeout(scheduleTimer);
+	const problem = weeklyTemplatesProblem(templates, templates.map(() => minutes));
+	scheduleError.value = problem;
+	if (problem) return;
+	scheduleTimer = setTimeout(async () => {
+		const res = await putCatalogue<ListingCohorts>("/api/catalogue/cohorts", {
+			listing,
+			mode,
+			templates,
+		});
+		if (res.ok && res.data) {
+			cohorts.value = res.data;
+			scheduleError.value = null;
+		} else {
+			scheduleError.value = res.message ?? "The schedule couldn't be saved.";
+			void loadCohorts(listing);
+		}
+	}, SCHEDULE_SETTLE_MS);
 }
 
 /** Open or close the cohort dialog: opening pushes a history entry, closing replaces it. */

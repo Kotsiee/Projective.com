@@ -854,6 +854,11 @@ CREATE TABLE projects.cohorts (
 	-- (`cancel_cohort_membership`) leaves both NULL.
 	cancelled_at timestamp with time zone,
 	cancel_reason text,
+	-- Set only on a cohort a listing's rolling weekly templates opened (`fn_open_template_cohorts`, SC11):
+	-- the instant its session 1 starts, which is what the generator is idempotent on
+	-- (`uq_cohorts_chain_start`). A cancelled chain keeps it, so a cancelled week is never reopened. NULL on
+	-- a cohort its seller opened by hand and on a 1-1's one-seat cohort.
+	chain_start timestamp with time zone,
 
 	CONSTRAINT cohorts_pkey PRIMARY KEY (id),
 	CONSTRAINT cohorts_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id),

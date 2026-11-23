@@ -197,7 +197,8 @@ DECLARE
     v record;
     v_taken integer;
 BEGIN
-    SELECT c.id, c.name, c.max_seats, c.project_stage_id, c.min_seats, c.enrolment_closes_at, c.cadence,
+    SELECT c.id, c.project_id, c.name, c.max_seats, c.project_stage_id, c.min_seats, c.enrolment_closes_at,
+           c.cadence, sb.group_schedule_mode = 'rolling_templates' AS rolling,
            (SELECT min(se.start_time) FROM projects.session_events se
              WHERE se.cohort_id = c.id AND se.status = 'scheduled') AS first_start
       INTO v
@@ -211,7 +212,11 @@ BEGIN
        AND (c.enrolment_closes_at IS NULL OR c.enrolment_closes_at > pg_catalog.now())
        -- A listing nobody may see yet answers only its own seller (their preview).
        AND (sb.is_published OR projects.fn_is_session_host(p.id, auth.uid()))
-     ORDER BY first_start NULLS LAST, c.created_at
+     -- On rolling weekly templates several chains enrol at once (SC11): a buyer lands on the earliest one
+     -- with a seat to sell, so a full chain never hides next week's.
+     ORDER BY (sb.group_schedule_mode = 'rolling_templates'
+               AND projects.fn_cohort_seats_taken(c.id) + projects.fn_cohort_seats_owed(c.id) >= c.max_seats),
+              first_start NULLS LAST, c.created_at
      LIMIT 1;
     IF NOT FOUND THEN
         RETURN NULL;
@@ -229,6 +234,32 @@ BEGIN
         'min_seats', v.min_seats,
         'enrolment_closes_at', v.enrolment_closes_at,
         'cadence', v.cadence,
+        -- Every chain a rolling listing has enrolling, soonest first, for the buyer to pick a start (SC11);
+        -- empty on a listing whose seller opens cohorts by hand.
+        'chains', CASE WHEN v.rolling THEN COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                'cohort_id', ch.id,
+                'first_start', ch.first_start,
+                'remaining', GREATEST(ch.max_seats - projects.fn_cohort_seats_taken(ch.id)
+                                      - projects.fn_cohort_seats_owed(ch.id), 0),
+                'sittings', COALESCE((
+                    SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                        'id', se.id, 'title', se.title, 'starts_at', se.start_time, 'ends_at', se.end_time
+                    ) ORDER BY se.start_time)
+                      FROM projects.session_events se
+                     WHERE se.cohort_id = ch.id AND se.status = 'scheduled'
+                ), '[]'::jsonb)
+            ) ORDER BY ch.first_start NULLS LAST, ch.created_at)
+              FROM (
+                  SELECT c.id, c.max_seats, c.created_at,
+                         (SELECT min(se.start_time) FROM projects.session_events se
+                           WHERE se.cohort_id = c.id AND se.status = 'scheduled') AS first_start
+                    FROM projects.cohorts c
+                   WHERE c.project_id = v.project_id
+                     AND c.status = 'enrolling'
+                     AND (c.enrolment_closes_at IS NULL OR c.enrolment_closes_at > pg_catalog.now())
+              ) ch
+        ), '[]'::jsonb) ELSE '[]'::jsonb END,
         'sittings', COALESCE((
             SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
                 'id', se.id, 'title', se.title, 'starts_at', se.start_time, 'ends_at', se.end_time
@@ -1292,6 +1323,10 @@ BEGIN
     IF v_listing.status = 'archived'::catalogue.listing_status THEN
         RAISE EXCEPTION 'This listing is archived — restore it to open a cohort' USING ERRCODE = 'PU422';
     END IF;
+    IF v_bp.group_schedule_mode = 'rolling_templates' THEN
+        RAISE EXCEPTION 'This listing opens its cohorts from its weekly session times — switch it to fixed cohorts to open one by hand'
+            USING ERRCODE = 'PU422';
+    END IF;
 
     v_count := COALESCE(v_bp.session_count, 1);
     v_minutes := COALESCE(v_bp.session_minutes, 60);
@@ -1558,18 +1593,7 @@ BEGIN
        SET status = 'released', updated_at = pg_catalog.now()
      WHERE cohort_id = v_cohort.id AND status = 'held';
 
-    UPDATE projects.session_events
-       SET status = 'cancelled_by_freelancer'::projects.session_event_status, updated_at = pg_catalog.now()
-     WHERE cohort_id = v_cohort.id AND status = 'scheduled';
-    UPDATE scheduling.events ev
-       SET status = 'cancelled'::scheduling.event_status
-      FROM projects.session_events se
-     WHERE se.cohort_id = v_cohort.id
-       AND ev.source_session_event_id = se.id
-       AND ev.status <> 'cancelled'::scheduling.event_status;
-    PERFORM comms.fn_cancel_queued(NULL, 'projects.session_events', se.id)
-       FROM projects.session_events se
-      WHERE se.cohort_id = v_cohort.id;
+    PERFORM projects.fn_cancel_cohort_sittings(v_cohort.id);
 
     -- The queue is told; a refunded seat-holder has had their own notice above.
     FOR v_wait IN
@@ -1644,6 +1668,12 @@ BEGIN
         'session_count', COALESCE(v_bp.session_count, 1),
         'session_minutes', COALESCE(v_bp.session_minutes, 60),
         'cohort_size', v_bp.max_seats_per_cohort,
+        -- How its cohorts are opened, and the weekly templates a rolling listing runs on (SC11).
+        'schedule_mode', v_bp.group_schedule_mode,
+        'weekly_templates', CASE WHEN pg_catalog.jsonb_typeof(v_bp.session_template_rules -> 'weekly') = 'array'
+                                 THEN v_bp.session_template_rules -> 'weekly' ELSE '[]'::jsonb END,
+        'timezone', projects.fn_blueprint_timezone(v_bp.id),
+        'horizon_weeks', projects.fn_session_param('rolling_horizon_weeks', 4),
         'cohorts', COALESCE((
             SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
                        'cohort_id', x.id,
@@ -1665,11 +1695,12 @@ BEGIN
                        'cancel_reason', x.cancel_reason,
                        'cancelled_at', x.cancelled_at,
                        'project_slug', x.project_slug,
+                       'generated', x.chain_start IS NOT NULL,
                        'sittings', x.sittings
                    ) ORDER BY x.band, x.first_start NULLS LAST, x.created_at)
               FROM (
                   SELECT c.id, c.name, c.status, c.max_seats, c.min_seats, c.enrolment_closes_at, c.cadence,
-                         c.cancel_reason, c.cancelled_at, c.created_at, p.slug AS project_slug,
+                         c.cancel_reason, c.cancelled_at, c.created_at, c.chain_start, p.slug AS project_slug,
                          f.first_start, f.last_end,
                          CASE
                              WHEN c.status = 'cancelled' THEN 'cancelled'
@@ -1701,6 +1732,8 @@ BEGIN
                      AND p.session_kind = 'group'
                      AND (c.status IN ('enrolling', 'active')
                           OR COALESCE(c.cancelled_at, c.created_at) > pg_catalog.now() - INTERVAL '90 days')
+                     -- A generated chain that closed empty was never anyone's: it is not listed (SC11).
+                     AND NOT (c.chain_start IS NOT NULL AND c.status = 'cancelled' AND c.cancel_reason = 'under_filled')
                    ORDER BY CASE WHEN c.status IN ('enrolling', 'active') THEN 0 ELSE 1 END, f.first_start NULLS LAST
                    LIMIT 20
               ) x
@@ -1735,7 +1768,7 @@ DECLARE
     v_closed integer := 0;
 BEGIN
     FOR r IN
-        SELECT c.id, c.name, c.min_seats, c.project_id, p.owner_user_id, p.source_blueprint_id
+        SELECT c.id, c.name, c.min_seats, c.project_id, c.chain_start, p.owner_user_id, p.source_blueprint_id
           FROM projects.cohorts c
           JOIN projects.projects p ON p.id = c.project_id
          WHERE c.status = 'enrolling'::projects.cohort_status
@@ -1753,6 +1786,19 @@ BEGIN
            SET status = 'released', updated_at = pg_catalog.now()
          WHERE cohort_id = r.id AND status = 'held';
         v_closed := v_closed + 1;
+
+        -- A generated chain that closed with no paid seat holds no money and no one: it is cancelled
+        -- quietly and its sittings leave the seller's calendar (SC11 ruling 3). A chain with a seat runs.
+        IF r.chain_start IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM projects.cohort_memberships cm
+             WHERE cm.cohort_id = r.id AND cm.status <> 'cancelled'
+        ) THEN
+            UPDATE projects.cohorts
+               SET status = 'cancelled'::projects.cohort_status, cancelled_at = p_now, cancel_reason = 'under_filled'
+             WHERE id = r.id;
+            PERFORM projects.fn_cancel_cohort_sittings(r.id);
+            CONTINUE;
+        END IF;
 
         IF r.min_seats IS NOT NULL THEN
             SELECT COALESCE(sum(cm.seats), 0)::integer INTO v_paid
@@ -2994,7 +3040,9 @@ AS $$
        AND c.status = 'enrolling'
        AND (c.enrolment_closes_at IS NULL OR c.enrolment_closes_at > pg_catalog.now())
        AND sb.is_published
-     ORDER BY (SELECT min(se.start_time) FROM projects.session_events se
+     -- A rolling listing's queue is invited into the earliest chain with a free seat (SC11).
+     ORDER BY (sb.group_schedule_mode = 'rolling_templates' AND projects.fn_cohort_seats_taken(c.id) >= c.max_seats),
+              (SELECT min(se.start_time) FROM projects.session_events se
                 WHERE se.cohort_id = c.id AND se.status = 'scheduled') NULLS LAST,
               c.created_at
      LIMIT 1;
@@ -3660,4 +3708,362 @@ COMMENT ON FUNCTION projects.claim_cohort_seat(text) IS
 'Claim one seat through a buyer''s seat link (Decision #522): first come first served under a row lock on the buyer''s membership, until the first sitting starts. Moves one seat to a membership sponsored by the buyer''s; charges nothing. Refusals ''Seat refused: <code>''.';
 COMMENT ON FUNCTION projects.share_cohort_seats(uuid) IS
 'Open (or return) the seat link of the caller''s own paid membership of more than one seat (Decision #522).';
+-- #endregion
+
+-- #region 10. Rolling weekly templates — a generator of ordinary cohorts (SC11)
+-- A group-session listing on `group_schedule_mode = 'rolling_templates'` runs on one weekly template per
+-- session position (`session_template_rules -> 'weekly'`: an ISO weekday and a start minute in the
+-- seller's own zone). Owner rulings (SC11, 2026-11-23): (1) every occurrence of session 1's template within
+-- `rolling_horizon_weeks` (4) starts a CHAIN whose session k is the next occurrence of template k after
+-- session k-1 ends, opened as an ordinary enrolling cohort by the job `cohort-template-chains` and by the
+-- seller's save, so seats, holds, escrow, refunds, the waitlist and cancellation are the cohort machinery
+-- unchanged; (2) one capacity per chain, the listing's cohort size; (3) a chain whose enrolment closes, as
+-- its session 1 starts, with no paid seat is cancelled quietly (fn_close_cohort_enrolment); (4) the mode
+-- sits beside Open cohort, per listing, and a rolling listing refuses open_cohort; (5) several chains enrol
+-- at once, a buyer lands on the earliest with a seat to sell and may pick a later one (get_cohort_offer
+-- `chains`; #455 (e) and #498's one-enrolling rule amended for this mode). Templates may not overlap within
+-- the week, or one chain's session k would be another chain's session 1.
+
+-- Internal: a cancelled cohort's sittings, their calendar mirrors and their queued reminders all end. The
+-- step cancel_cohort and the quiet cancel of an empty chain share.
+CREATE OR REPLACE FUNCTION projects.fn_cancel_cohort_sittings(p_cohort_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    UPDATE projects.session_events
+       SET status = 'cancelled_by_freelancer'::projects.session_event_status, updated_at = pg_catalog.now()
+     WHERE cohort_id = p_cohort_id AND status = 'scheduled';
+    UPDATE scheduling.events ev
+       SET status = 'cancelled'::scheduling.event_status
+      FROM projects.session_events se
+     WHERE se.cohort_id = p_cohort_id
+       AND ev.source_session_event_id = se.id
+       AND ev.status <> 'cancelled'::scheduling.event_status;
+    PERFORM comms.fn_cancel_queued(NULL, 'projects.session_events', se.id)
+       FROM projects.session_events se
+      WHERE se.cohort_id = p_cohort_id;
+END;
+$$;
+
+-- Each of a listing's first `p_n` sittings' length in minutes: its plan entry's `durationMinutes` (SC10),
+-- else the listing's `session_minutes`, else an hour.
+CREATE OR REPLACE FUNCTION projects.fn_sitting_lengths(p_bp marketplace.service_blueprints, p_n integer)
+RETURNS integer[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(pg_catalog.array_agg(COALESCE(
+               CASE WHEN pg_catalog.jsonb_typeof((p_bp).session_plan -> (g.n - 1) -> 'durationMinutes') = 'number'
+                    THEN ((p_bp).session_plan -> (g.n - 1) ->> 'durationMinutes')::integer END,
+               (p_bp).session_minutes, 60) ORDER BY g.n), '{}'::integer[])
+      FROM pg_catalog.generate_series(1, GREATEST(p_n, 0)) AS g (n);
+$$;
+
+-- Why a week of templates cannot run, or NULL. `p_lengths[k]` is sitting k's length in minutes. Refused:
+-- not a list, more than 52, an entry without an ISO weekday (1–7) and a start minute (0–1439), or two
+-- templates whose weekly spans overlap (the week wraps, so Sunday night runs into Monday morning).
+CREATE OR REPLACE FUNCTION projects.fn_weekly_templates_refusal(p_templates jsonb, p_lengths integer[])
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+    v_n integer;
+    v_at integer[] := '{}';
+    v_len integer[] := '{}';
+    v_t jsonb;
+    v_gap integer;
+    i integer;
+    j integer;
+BEGIN
+    IF pg_catalog.jsonb_typeof(p_templates) IS DISTINCT FROM 'array' THEN
+        RETURN 'The weekly session times are a list';
+    END IF;
+    v_n := pg_catalog.jsonb_array_length(p_templates);
+    IF v_n > 52 THEN
+        RETURN 'A listing has at most 52 weekly session times';
+    END IF;
+    FOR i IN 0 .. v_n - 1 LOOP
+        v_t := p_templates -> i;
+        IF pg_catalog.jsonb_typeof(v_t -> 'weekday') IS DISTINCT FROM 'number'
+           OR pg_catalog.jsonb_typeof(v_t -> 'startMinute') IS DISTINCT FROM 'number'
+           OR (v_t ->> 'weekday') !~ '^[1-7]$'
+           OR (v_t ->> 'startMinute') !~ '^[0-9]{1,4}$'
+           OR (v_t ->> 'startMinute')::integer > 1439 THEN
+            RETURN pg_catalog.format('Session %s needs a weekday and a start time', i + 1);
+        END IF;
+        v_at := v_at || (((v_t ->> 'weekday')::integer - 1) * 1440 + (v_t ->> 'startMinute')::integer);
+        v_len := v_len || GREATEST(COALESCE(p_lengths[i + 1], 60), 1);
+    END LOOP;
+    FOR i IN 1 .. v_n LOOP
+        FOR j IN i + 1 .. v_n LOOP
+            -- Minutes from template i's start to template j's, around the week.
+            v_gap := ((v_at[j] - v_at[i]) % 10080 + 10080) % 10080;
+            IF v_gap < v_len[i] OR 10080 - v_gap < v_len[j] THEN
+                RETURN pg_catalog.format('Sessions %s and %s overlap in the week — give each its own time', i, j);
+            END IF;
+        END LOOP;
+    END LOOP;
+    RETURN NULL;
+END;
+$$;
+
+-- The chain that session 1 at `p_first` opens: session k starts at the next occurrence of template k at
+-- or after session k-1 ends, in wall-clock time in zone `p_tz`, so a clock change keeps the seller's local
+-- time. `p_lengths[k]` is sitting k's length in minutes, and its cardinality the number of sittings.
+CREATE OR REPLACE FUNCTION projects.fn_template_chain(
+    p_first timestamptz,
+    p_templates jsonb,
+    p_tz text,
+    p_lengths integer[]
+)
+RETURNS timestamptz[]
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+    v_starts timestamptz[] := ARRAY[p_first];
+    v_after timestamp;
+    v_day date;
+    v_at timestamp;
+    k integer;
+    d integer;
+BEGIN
+    FOR k IN 2 .. COALESCE(pg_catalog.cardinality(p_lengths), 1) LOOP
+        v_after := (v_starts[k - 1] + pg_catalog.make_interval(mins => p_lengths[k - 1])) AT TIME ZONE p_tz;
+        FOR d IN 0 .. 7 LOOP
+            v_day := v_after::date + d;
+            CONTINUE WHEN pg_catalog.date_part('isodow', v_day::timestamp)::integer
+                          <> (p_templates -> (k - 1) ->> 'weekday')::integer;
+            v_at := v_day + pg_catalog.make_interval(mins => (p_templates -> (k - 1) ->> 'startMinute')::integer);
+            EXIT WHEN v_at >= v_after;
+        END LOOP;
+        v_starts := v_starts || (v_at AT TIME ZONE p_tz);
+    END LOOP;
+    RETURN v_starts;
+END;
+$$;
+
+-- The zone a listing's weekly templates are read in: its provider's calendar zone (the team's schedule
+-- for a team listing, else the seller's own, their freelancer schedule first, as fn_session_host_schedule
+-- picks it), or UTC when they publish none.
+CREATE OR REPLACE FUNCTION projects.fn_blueprint_timezone(p_blueprint_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT s.timezone
+          FROM marketplace.service_blueprints sb
+          JOIN scheduling.schedules s
+            ON (sb.owner_team_id IS NOT NULL AND s.owner_type = 'team'::scheduling.owner_type
+                AND s.owner_id = sb.owner_team_id)
+            OR (sb.owner_team_id IS NULL
+                AND s.owner_type IN ('freelancer'::scheduling.owner_type, 'user'::scheduling.owner_type)
+                AND s.owner_id = sb.freelancer_profile_id)
+         WHERE sb.id = p_blueprint_id
+         ORDER BY (s.owner_type = 'freelancer'::scheduling.owner_type) DESC
+         LIMIT 1
+    ), 'UTC');
+$$;
+
+-- The generator (job `cohort-template-chains`, every 15 minutes, and a seller's save for their one
+-- listing). For each published, unarchived group-session listing on rolling templates, locked FOR UPDATE
+-- SKIP LOCKED so two runs share the work: every occurrence of session 1's template after `p_now` and
+-- within the horizon that has no chain yet opens one, an enrolling cohort of the listing's cohort size
+-- whose enrolment closes as session 1 starts, its sittings written through fn_write_group_sitting.
+-- Idempotent per chain start (uq_cohorts_chain_start, a cancelled chain included). A listing whose
+-- templates do not number its sittings, or overlap, is left alone. A chain one of whose sittings is not
+-- free on the seller's calendar (PS409) is rolled back whole and skipped; the next run tries again while
+-- its session 1 is still ahead. Answers how many chains it opened.
+CREATE OR REPLACE FUNCTION projects.fn_open_template_cohorts(
+    p_now timestamptz DEFAULT pg_catalog.now(),
+    p_limit integer DEFAULT 200,
+    p_blueprint uuid DEFAULT NULL
+)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_bp marketplace.service_blueprints;
+    v_weeks integer := GREATEST(projects.fn_session_param('rolling_horizon_weeks', 4), 1);
+    v_count integer;
+    v_templates jsonb;
+    v_lengths integer[];
+    v_tz text;
+    v_eng record;
+    v_local timestamp;
+    v_day date;
+    v_first timestamptz;
+    v_starts timestamptz[];
+    v_cohort uuid;
+    v_plan_title text;
+    v_opened integer := 0;
+    d integer;
+    k integer;
+BEGIN
+    FOR v_bp IN
+        SELECT sb.*
+          FROM marketplace.service_blueprints sb
+         WHERE sb.delivery_model = 'group_session'::marketplace.service_delivery_model
+           AND sb.group_schedule_mode = 'rolling_templates'
+           AND sb.is_published
+           AND (p_blueprint IS NULL OR sb.id = p_blueprint)
+           AND EXISTS (SELECT 1 FROM catalogue.listings l
+                        WHERE l.service_blueprint_id = sb.id
+                          AND l.status <> 'archived'::catalogue.listing_status)
+         ORDER BY sb.id
+         LIMIT GREATEST(COALESCE(p_limit, 200), 1)
+           FOR UPDATE OF sb SKIP LOCKED
+    LOOP
+        v_count := COALESCE(v_bp.session_count, 1);
+        v_templates := v_bp.session_template_rules -> 'weekly';
+        CONTINUE WHEN pg_catalog.jsonb_typeof(v_templates) IS DISTINCT FROM 'array'
+                   OR pg_catalog.jsonb_array_length(v_templates) < v_count;
+        SELECT pg_catalog.jsonb_agg(x.e ORDER BY x.n) INTO v_templates
+          FROM pg_catalog.jsonb_array_elements(v_templates) WITH ORDINALITY AS x (e, n)
+         WHERE x.n <= v_count;
+        v_lengths := projects.fn_sitting_lengths(v_bp, v_count);
+        CONTINUE WHEN projects.fn_weekly_templates_refusal(v_templates, v_lengths) IS NOT NULL;
+
+        v_tz := projects.fn_blueprint_timezone(v_bp.id);
+        SELECT * INTO v_eng FROM projects.fn_session_engagement_for(v_bp.id, 'group');
+        v_local := p_now AT TIME ZONE v_tz;
+        FOR d IN 0 .. v_weeks * 7 LOOP
+            v_day := v_local::date + d;
+            CONTINUE WHEN pg_catalog.date_part('isodow', v_day::timestamp)::integer
+                          <> (v_templates -> 0 ->> 'weekday')::integer;
+            v_first := (v_day + pg_catalog.make_interval(mins => (v_templates -> 0 ->> 'startMinute')::integer))
+                       AT TIME ZONE v_tz;
+            CONTINUE WHEN v_first <= p_now OR v_first > p_now + pg_catalog.make_interval(days => v_weeks * 7);
+            CONTINUE WHEN EXISTS (SELECT 1 FROM projects.cohorts c
+                                   WHERE c.project_stage_id = v_eng.o_stage_id AND c.chain_start = v_first);
+            v_starts := projects.fn_template_chain(v_first, v_templates, v_tz, v_lengths);
+            BEGIN
+                INSERT INTO projects.cohorts (
+                    project_id, project_stage_id, name, max_seats, status, enrolment_closes_at, cadence, chain_start
+                ) VALUES (
+                    v_eng.o_project_id, v_eng.o_stage_id, pg_catalog.left(v_bp.title, 200),
+                    LEAST(GREATEST(v_bp.max_seats_per_cohort, 1), 500), 'enrolling'::projects.cohort_status,
+                    v_first, CASE WHEN v_count > 1 THEN 'fixed' END, v_first
+                )
+                RETURNING id INTO v_cohort;
+                FOR k IN 1 .. v_count LOOP
+                    v_plan_title := CASE WHEN pg_catalog.jsonb_typeof(v_bp.session_plan -> (k - 1)) = 'object'
+                                         THEN NULLIF(pg_catalog.btrim(COALESCE(v_bp.session_plan -> (k - 1) ->> 'title', '')), '') END;
+                    PERFORM projects.fn_write_group_sitting(
+                        v_cohort,
+                        pg_catalog.left(CASE
+                            WHEN v_count = 1 THEN COALESCE(v_bp.title || ' — ' || v_plan_title, v_bp.title)
+                            WHEN v_plan_title IS NOT NULL
+                                THEN pg_catalog.format('%s — session %s of %s: %s', v_bp.title, k, v_count, v_plan_title)
+                            ELSE pg_catalog.format('%s — session %s of %s', v_bp.title, k, v_count) END, 200),
+                        v_starts[k], v_starts[k] + pg_catalog.make_interval(mins => v_lengths[k]));
+                END LOOP;
+                PERFORM projects.fn_sync_sitting_mirrors(v_cohort);
+                v_opened := v_opened + 1;
+            EXCEPTION WHEN SQLSTATE 'PS409' THEN
+                NULL;
+            END;
+        END LOOP;
+    END LOOP;
+    RETURN v_opened;
+END;
+$$;
+
+COMMENT ON FUNCTION projects.fn_open_template_cohorts(timestamptz, integer, uuid) IS
+'The rolling weekly generator (SC11): opens, as ordinary enrolling cohorts, every chain whose session 1
+starts after p_now and within rolling_horizon_weeks on each published rolling group-session listing (or
+p_blueprint alone), session k at the next occurrence of template k after session k-1 ends, in the seller''s
+zone. FOR UPDATE SKIP LOCKED, idempotent per chain start; a chain that clashes with the seller''s calendar
+is skipped. Job cohort-template-chains. Answers how many it opened.';
+
+-- The seller's door for a group-session listing's schedule (SC11): how its cohorts open, and its weekly
+-- templates, `p_templates` being the `weekly` list (one per sitting by position), stored whole. On rolling
+-- templates the listing's chains open at once if it is published; cohorts already open are left as they
+-- are in either mode. Answers {mode, weekly_templates, opened}.
+--
+-- Refusals: 42501 signed out · PM403 under 18 · P0002 not a listing the caller manages · PU422 not a group
+-- session, or archived · 22023 an unknown mode, templates fn_weekly_templates_refusal refuses, or a rolling
+-- schedule with fewer templates than the listing's sittings (DETAIL mode / templates).
+CREATE OR REPLACE FUNCTION projects.save_group_schedule(p_listing uuid, p_mode text, p_templates jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_listing catalogue.listings;
+    v_bp marketplace.service_blueprints;
+    v_templates jsonb := COALESCE(p_templates, '[]'::jsonb);
+    v_count integer;
+    v_problem text;
+    v_opened integer := 0;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to change a listing''s schedule' USING ERRCODE = '42501';
+    END IF;
+    PERFORM org.fn_assert_adult(v_uid);
+    IF NOT COALESCE(catalogue.fn_manages_listing(p_listing), false) THEN
+        RAISE EXCEPTION 'No such listing' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT * INTO v_listing FROM catalogue.listings WHERE id = p_listing;
+    SELECT * INTO v_bp FROM marketplace.service_blueprints WHERE id = v_listing.service_blueprint_id FOR UPDATE;
+    IF v_bp.id IS NULL OR v_bp.delivery_model <> 'group_session'::marketplace.service_delivery_model THEN
+        RAISE EXCEPTION 'Only a group session has a cohort schedule' USING ERRCODE = 'PU422';
+    END IF;
+    IF v_listing.status = 'archived'::catalogue.listing_status THEN
+        RAISE EXCEPTION 'This listing is archived — restore it to change its schedule' USING ERRCODE = 'PU422';
+    END IF;
+    IF p_mode IS NULL OR p_mode NOT IN ('fixed_cohorts', 'rolling_templates') THEN
+        RAISE EXCEPTION 'A schedule is fixed cohorts or rolling weekly' USING ERRCODE = '22023', DETAIL = 'mode';
+    END IF;
+    IF pg_catalog.jsonb_typeof(v_templates) IS DISTINCT FROM 'array' THEN
+        RAISE EXCEPTION 'The weekly session times are a list' USING ERRCODE = '22023', DETAIL = 'templates';
+    END IF;
+    v_count := COALESCE(v_bp.session_count, 1);
+    v_problem := projects.fn_weekly_templates_refusal(v_templates,
+        projects.fn_sitting_lengths(v_bp, GREATEST(pg_catalog.jsonb_array_length(v_templates), v_count)));
+    IF v_problem IS NOT NULL THEN
+        RAISE EXCEPTION '%', v_problem USING ERRCODE = '22023', DETAIL = 'templates';
+    END IF;
+    IF p_mode = 'rolling_templates' AND pg_catalog.jsonb_array_length(v_templates) < v_count THEN
+        RAISE EXCEPTION 'Give each of the % sessions a weekday and a start time', v_count
+            USING ERRCODE = '22023', DETAIL = 'templates';
+    END IF;
+
+    UPDATE marketplace.service_blueprints
+       SET group_schedule_mode = p_mode,
+           session_template_rules = CASE WHEN pg_catalog.jsonb_typeof(session_template_rules) = 'object'
+                                         THEN session_template_rules ELSE '{}'::jsonb END
+                                    || pg_catalog.jsonb_build_object('weekly', v_templates),
+           updated_at = pg_catalog.now()
+     WHERE id = v_bp.id;
+    IF p_mode = 'rolling_templates' THEN
+        v_opened := projects.fn_open_template_cohorts(pg_catalog.now(), 1, v_bp.id);
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object('mode', p_mode, 'weekly_templates', v_templates, 'opened', v_opened);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.save_group_schedule(uuid, text, jsonb) IS
+'The seller''s door for a group-session listing''s cohort schedule (SC11): fixed_cohorts (Open cohort by
+hand) or rolling_templates, with its weekly templates (ISO weekday, start minute, one per sitting). A
+rolling save opens the published listing''s chains at once. Refusals: 42501 · PM403 · P0002 · PU422 ·
+22023 mode / templates.';
 -- #endregion

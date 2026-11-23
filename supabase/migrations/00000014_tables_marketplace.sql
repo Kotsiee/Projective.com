@@ -84,7 +84,18 @@ CREATE TABLE marketplace.service_blueprints (
     max_seats_per_cohort integer NOT NULL DEFAULT 1,
     allow_continuous_enrollment boolean NOT NULL DEFAULT false,
     enrollment_window_days integer DEFAULT 7,
+    -- A Group Session's ROLLING WEEKLY TEMPLATES (SC11): `{ "weekly": [{ "weekday", "startMinute" }, …] }`,
+    -- one entry per sitting, read BY POSITION like `session_plan` (entry 0 is session 1). `weekday` is ISO
+    -- (1 Monday … 7 Sunday) and `startMinute` the minutes after midnight in the seller's own zone. Read
+    -- only under `group_schedule_mode = 'rolling_templates'`; written only by `projects.save_group_schedule`,
+    -- which refuses a malformed or overlapping week (`projects.fn_weekly_templates_refusal`).
     session_template_rules jsonb NOT NULL DEFAULT '{}'::jsonb,
+    -- How a Group Session's cohorts are opened (SC11). `fixed_cohorts`, the default: the seller opens each
+    -- one by hand (`projects.open_cohort`, Decision #498). `rolling_templates`: every occurrence of session
+    -- 1's template within `rolling_horizon_weeks` starts a chain whose session k is the next occurrence of
+    -- template k after session k-1 ends, opened as an ordinary cohort (`projects.fn_open_template_cohorts`).
+    group_schedule_mode text NOT NULL DEFAULT 'fixed_cohorts'
+        CHECK (group_schedule_mode IN ('fixed_cohorts', 'rolling_templates')),
     -- The seller's own INTAKE: the questions a buyer answers on the way to purchase (Decision #108).
     -- An ORDERED array of `IntakeField` objects — text · textarea · number (optionally with a slider)
     -- · boolean · select · multiselect · radio · pills · checkboxes — whose element shape is owned by

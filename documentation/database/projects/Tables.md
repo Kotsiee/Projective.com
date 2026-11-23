@@ -879,7 +879,8 @@ A group of attendees on a `session` engagement. A 1-1 booking is a cohort of one
 | `cadence`             | text                   | `ck_cohorts_cadence`: NULL (one sitting, or a 1-1), `weekly`, `fortnightly`, `fixed`. |
 | `opened_by`           | uuid                   | FK → `org.users_public.user_id`. The seller who opened it.  |
 | `cancelled_at`        | timestamptz            | Set by `cancel_cohort`.                                     |
-| `cancel_reason`       | text                   | `ck_cohorts_cancel_reason`: `under_filled` (the close passed below `min_seats`) or `provider`. `ck_cohorts_cancelled`: both NULL unless `status = 'cancelled'` (a 1-1's one-seat cohort ending with its seat leaves both NULL). |
+| `cancel_reason`       | text                   | `ck_cohorts_cancel_reason`: `under_filled` (the close passed below `min_seats`, or a generated chain closed with no paid seat) or `provider`. `ck_cohorts_cancelled`: both NULL unless `status = 'cancelled'` (a 1-1's one-seat cohort ending with its seat leaves both NULL). |
+| `chain_start`         | timestamptz            | Set only on a chain a listing's rolling weekly templates opened (`fn_open_template_cohorts`, SC11): its session 1's start. `uq_cohorts_chain_start` (`project_stage_id, chain_start` WHERE set) makes the generator idempotent; a cancelled chain keeps it, so it is never reopened. NULL on a cohort opened by hand and on a 1-1's cohort. |
 
 ### `projects.cohort_memberships`
 

@@ -152,6 +152,13 @@ export interface RawCohortOffer {
 	min_seats?: number | null;
 	enrolment_closes_at?: string | null;
 	cadence?: string | null;
+	/** A rolling listing's chains taking bookings, soonest first (SC11); empty or absent otherwise. */
+	chains?: {
+		cohort_id: string;
+		first_start: string | null;
+		remaining: number | null;
+		sittings: RawSitting[] | null;
+	}[] | null;
 }
 // #endregion
 
@@ -445,6 +452,14 @@ function disputesOf(raw: RawDisputeSummary[] | null | undefined): DisputeSummary
 
 // #region The listing's cohort
 /** Map `get_cohort_offer` onto the offer the entity view and the Reserve seat flow read. */
+function cohortSittingsOf(raw: RawSitting[] | null | undefined) {
+	return (raw ?? []).flatMap((s) => {
+		const startsAt = isoOf(s.starts_at);
+		const endsAt = isoOf(s.ends_at);
+		return startsAt && endsAt ? [{ id: s.id, title: s.title.slice(0, 200), startsAt, endsAt }] : [];
+	}).slice(0, 200);
+}
+
 export function toCohortOffer(raw: RawCohortOffer | null): CohortOffer | null {
 	if (!raw) return null;
 	return {
@@ -452,13 +467,13 @@ export function toCohortOffer(raw: RawCohortOffer | null): CohortOffer | null {
 		name: raw.name.slice(0, 160),
 		seats: seatCount(raw.max_seats, raw.taken),
 		firstStartsAt: isoOf(raw.first_start),
-		sittings: (raw.sittings ?? []).flatMap((s) => {
-			const startsAt = isoOf(s.starts_at);
-			const endsAt = isoOf(s.ends_at);
-			return startsAt && endsAt
-				? [{ id: s.id, title: s.title.slice(0, 200), startsAt, endsAt }]
-				: [];
-		}).slice(0, 200),
+		sittings: cohortSittingsOf(raw.sittings),
+		chains: (raw.chains ?? []).map((c) => ({
+			cohortId: c.cohort_id,
+			firstStartsAt: isoOf(c.first_start),
+			remaining: Math.max(0, Math.min(500, Math.trunc(c.remaining ?? 0))),
+			sittings: cohortSittingsOf(c.sittings),
+		})).slice(0, 60),
 		curriculum: curriculumOf(raw.curriculum),
 		minSeats: typeof raw.min_seats === "number" && raw.min_seats >= 1
 			? Math.min(raw.min_seats, 500)

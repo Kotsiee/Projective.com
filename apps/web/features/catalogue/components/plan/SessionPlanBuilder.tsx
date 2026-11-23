@@ -1,13 +1,26 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
+import { useSignal, useSignalEffect } from "@preact/signals";
 import "../../styles/offer.css";
 import "../../styles/session-plan.css";
 import { DndContext, DropIndicator, useSortable } from "@projective/ui/dnd";
-import { Button, InputText, Textarea } from "@projective/ui/fields";
+import {
+	Button,
+	InputText,
+	Select,
+	SelectButton,
+	Textarea,
+	TimeTumbler,
+} from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { type BlueprintSessionPlanEntry, SESSION_PLAN_MAX } from "@projective/types/explore";
 import { SUB_PAGE_SECTION, workspaceHref } from "@projective/types/catalogue";
+import {
+	type GroupScheduleMode,
+	GroupScheduleModeSchema,
+	type ListingCohorts,
+	type WeeklySessionTemplate,
+} from "@projective/types/projects";
 import type { ListingDetail } from "../../types/catalogue-types.ts";
 import { checkOffer, commitOffer } from "../../core/offer-commit.ts";
 import { offerEditorFor } from "../../core/offer-model.ts";
@@ -17,17 +30,39 @@ import {
 	planRows,
 	planSummary,
 	SESSIONS_MIN,
+	templateRows,
 	type TimedOffer,
+	WEEKDAYS,
 	withSessionAdded,
 	withSessionEntry,
 	withSessionMoved,
 	withSessionRemoved,
+	withTemplate,
+	withTemplateMoved,
+	withTemplateRemoved,
 } from "../../core/plan-model.ts";
+import { cohorts, loadCohorts, saveSchedule, scheduleError } from "../../core/cohort-store.ts";
 import { useGatedDraft } from "../../hooks/useGatedDraft.ts";
 import { SubPageHead } from "../subpage/SubPageHead.tsx";
 
 const HEADING_ID = "cat-plan-h";
 const SUMMARY_ID = "cat-plan-summary";
+const MODE_HINT_ID = "cat-plan-mode-hint";
+
+const MODE_OPTIONS: { label: string; value: GroupScheduleMode }[] = [
+	{ label: "Fixed cohorts", value: "fixed_cohorts" },
+	{ label: "Rolling weekly", value: "rolling_templates" },
+];
+const WEEKDAY_OPTIONS = WEEKDAYS.map((d) => ({ label: d.label, value: String(d.value) }));
+
+/** "Thu 26 Nov, 18:00" in the viewer's zone. */
+const STARTS = new Intl.DateTimeFormat(undefined, {
+	weekday: "short",
+	day: "numeric",
+	month: "short",
+	hour: "2-digit",
+	minute: "2-digit",
+});
 
 const rowDragId = (index: number) => `session:${index}`;
 const indexOf = (id: unknown) => Number(String(id).replace("session:", ""));
@@ -41,6 +76,9 @@ interface SessionRowProps {
 	only: boolean;
 	onEntry: (patch: Partial<BlueprintSessionPlanEntry>) => void;
 	onRemove: () => void;
+	/** On rolling weekly templates, this sitting's weekday and start time (SC11). */
+	template?: WeeklySessionTemplate;
+	onTemplate?: (patch: Partial<WeeklySessionTemplate>) => void;
 }
 
 function SessionRow(props: SessionRowProps): JSX.Element {
@@ -102,6 +140,69 @@ function SessionRow(props: SessionRowProps): JSX.Element {
 				aria-label={`Session ${n} description`}
 				fluid
 			/>
+			{props.template && props.onTemplate && (
+				<div class="cat-plan__when">
+					<Select
+						options={WEEKDAY_OPTIONS}
+						value={String(props.template.weekday)}
+						onValueChange={(v) => props.onTemplate?.({ weekday: Number(v) })}
+						aria-label={`Session ${n} weekday`}
+					/>
+					<TimeTumbler
+						value={props.template.startMinute}
+						minuteStep={5}
+						onValueChange={(m) => props.onTemplate?.({ startMinute: m })}
+						aria-label={`Session ${n} start time`}
+					/>
+				</div>
+			)}
+		</div>
+	);
+}
+
+/**
+ * How a group session's cohorts open (SC11): Fixed cohorts, each opened by hand in Availability, or
+ * Rolling weekly, where every week's session 1 starts a new run on the times set on each row. Rolling
+ * runs open the horizon's weeks ahead, each with the listing's cohort size, and one that closes with
+ * nobody booked is cancelled for the seller. The schedule is the listing's cohorts' own state
+ * (`cohort-store`), saved through `PUT /api/catalogue/cohorts`, not the offer draft.
+ */
+function ScheduleMode(
+	props: { listing: string; count: number; minutes: number; schedule: ListingCohorts },
+) {
+	const { schedule } = props;
+	const rolling = schedule.scheduleMode === "rolling_templates";
+	const next = schedule.cohorts
+		.filter((c) => c.generated && c.phase === "enrolling" && c.firstStartsAt)
+		.slice(0, 4)
+		.map((c) => STARTS.format(new Date(c.firstStartsAt as string)));
+	const hint = rolling
+		? `Every week, session 1 starts a new run with its own ${schedule.cohortSize} seats. Runs open ${schedule.horizonWeeks} weeks ahead, buyers pick the start that suits them, and a run that closes with nobody booked is cancelled for you. Times are in ${schedule.timezone}.`
+		: "You open each cohort yourself, with its dates, in the Availability section.";
+	const choose = (value: unknown) => {
+		const mode = GroupScheduleModeSchema.safeParse(value);
+		if (!mode.success || mode.data === schedule.scheduleMode) return;
+		saveSchedule(
+			props.listing,
+			mode.data,
+			templateRows(schedule.weeklyTemplates, props.count),
+			props.minutes,
+		);
+	};
+	return (
+		<div class="cat-plan__mode">
+			<SelectButton
+				options={MODE_OPTIONS}
+				value={schedule.scheduleMode}
+				onValueChange={choose}
+				aria-label="How cohorts open"
+				aria-describedby={MODE_HINT_ID}
+			/>
+			<p class="cat-sec__hint" id={MODE_HINT_ID}>{hint}</p>
+			{rolling && next.length > 0 && (
+				<p class="cat-sec__value">Next runs start {next.join(" · ")}</p>
+			)}
+			{scheduleError.value && <p class="cat-offer__problem" role="status">{scheduleError.value}</p>}
 		</div>
 	);
 }
@@ -149,12 +250,38 @@ export function SessionPlanBuilder(props: { listing: ListingDetail; team?: strin
 	return (
 		<div class="cat-sub">
 			{head}
-			<PlanRows offer={offer} />
+			{offer.archetype === "cohort" && <CohortSchedule listing={listing.id} offer={offer} />}
+			{offer.archetype !== "cohort" && <PlanRows listing={listing.id} offer={offer} />}
 		</div>
 	);
 }
 
-function PlanRows(props: { offer: TimedOffer }): JSX.Element {
+/** A group session's plan: its cohort schedule, read with the listing's cohorts, then the rows. */
+function CohortSchedule(props: { listing: string; offer: TimedOffer }): JSX.Element {
+	const slug = useSignal(props.listing);
+	if (slug.peek() !== props.listing) slug.value = props.listing;
+	useSignalEffect(() => {
+		void loadCohorts(slug.value);
+	});
+	const schedule = cohorts.value;
+	return (
+		<>
+			{schedule && (
+				<ScheduleMode
+					listing={props.listing}
+					count={props.offer.count}
+					minutes={props.offer.minutes}
+					schedule={schedule}
+				/>
+			)}
+			<PlanRows listing={props.listing} offer={props.offer} schedule={schedule} />
+		</>
+	);
+}
+
+function PlanRows(
+	props: { listing: string; offer: TimedOffer; schedule?: ListingCohorts | null },
+): JSX.Element {
 	const gated = useGatedDraft<TimedOffer, ReturnType<typeof checkOffer>>(
 		props.offer,
 		checkOffer,
@@ -166,6 +293,11 @@ function PlanRows(props: { offer: TimedOffer }): JSX.Element {
 	const overIndex = useSignal<number | null>(null);
 	const rows = planRows(offer);
 	const problem = gated.problem.value;
+	const rolling = props.schedule?.scheduleMode === "rolling_templates" ? props.schedule : null;
+	const templates = rolling ? templateRows(rolling.weeklyTemplates, offer.count) : null;
+	const keepTemplates = (next: WeeklySessionTemplate[]) => {
+		if (rolling) saveSchedule(props.listing, "rolling_templates", next, offer.minutes);
+	};
 
 	const move = (from: number, to: number) => {
 		const next = [...keys.peek()];
@@ -173,14 +305,17 @@ function PlanRows(props: { offer: TimedOffer }): JSX.Element {
 		next.splice(to, 0, key);
 		keys.value = next;
 		gated.set(withSessionMoved(offer, from, to));
+		if (templates) keepTemplates(withTemplateMoved(templates, offer.count, from, to));
 	};
 	const add = () => {
 		keys.value = [...keys.peek(), freshKey()];
 		gated.set(withSessionAdded(offer));
+		if (templates) keepTemplates(templateRows(templates, offer.count + 1));
 	};
 	const remove = (index: number) => {
 		keys.value = keys.peek().filter((_, i) => i !== index);
 		gated.set(withSessionRemoved(offer, index));
+		if (templates) keepTemplates(withTemplateRemoved(templates, offer.count, index));
 	};
 
 	const from = dragIndex.value;
@@ -215,6 +350,10 @@ function PlanRows(props: { offer: TimedOffer }): JSX.Element {
 								only={offer.count <= SESSIONS_MIN}
 								onEntry={(patch) => gated.set(withSessionEntry(offer, i, patch))}
 								onRemove={() => remove(i)}
+								template={templates?.[i]}
+								onTemplate={templates
+									? (patch) => keepTemplates(withTemplate(templates, offer.count, i, patch))
+									: undefined}
 							/>
 							<DropIndicator active={seamAfter === i} />
 						</li>

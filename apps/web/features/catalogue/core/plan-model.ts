@@ -1,5 +1,6 @@
 import type { CohortListingOffer, SessionOffer } from "@projective/types/catalogue";
 import { type BlueprintSessionPlanEntry, SESSION_PLAN_MAX } from "@projective/types/explore";
+import type { WeeklySessionTemplate } from "@projective/types/projects";
 
 /**
  * plan-model — the pure rules under the session plan (`/catalogue/[id]/plan`, Decision #525): one
@@ -77,3 +78,77 @@ export function planSummary(offer: Pick<TimedOffer, "count" | "plan">): string[]
 	if (planned === offer.count) return [sittings, "Each one planned"];
 	return [sittings, `${planned} planned`];
 }
+
+// #region Rolling weekly templates (SC11)
+/** ISO weekdays in order, Monday first, as the weekday Select offers them. */
+export const WEEKDAYS = [
+	{ value: 1, label: "Monday" },
+	{ value: 2, label: "Tuesday" },
+	{ value: 3, label: "Wednesday" },
+	{ value: 4, label: "Thursday" },
+	{ value: 5, label: "Friday" },
+	{ value: 6, label: "Saturday" },
+	{ value: 7, label: "Sunday" },
+] as const;
+
+/** Where a new listing's first weekly template starts: Monday at 18:00. */
+const FIRST_TEMPLATE: WeeklySessionTemplate = { weekday: 1, startMinute: 18 * 60 };
+
+/**
+ * A rolling schedule's templates, one per sitting by position: the stored ones, then for each sitting
+ * without one the day after the template before it at the same time, so a new row is never blank.
+ */
+export function templateRows(
+	templates: readonly WeeklySessionTemplate[],
+	count: number,
+): WeeklySessionTemplate[] {
+	const rows: WeeklySessionTemplate[] = [];
+	for (let k = 0; k < count; k++) {
+		const prev = rows[k - 1];
+		rows.push(
+			templates[k] ??
+				(prev
+					? { weekday: (prev.weekday % 7) + 1, startMinute: prev.startMinute }
+					: FIRST_TEMPLATE),
+		);
+	}
+	return rows;
+}
+
+/** The templates with sitting `index`'s changed. */
+export function withTemplate(
+	templates: readonly WeeklySessionTemplate[],
+	count: number,
+	index: number,
+	patch: Partial<WeeklySessionTemplate>,
+): WeeklySessionTemplate[] {
+	const rows = templateRows(templates, count);
+	if (index >= 0 && index < count) rows[index] = { ...rows[index], ...patch };
+	return rows;
+}
+
+/** The templates after sitting `from` moves to `to`: a time travels with its session, like its title. */
+export function withTemplateMoved(
+	templates: readonly WeeklySessionTemplate[],
+	count: number,
+	from: number,
+	to: number,
+): WeeklySessionTemplate[] {
+	const rows = templateRows(templates, count);
+	if (from === to || from < 0 || to < 0 || from >= count || to >= count) return rows;
+	const [moved] = rows.splice(from, 1);
+	rows.splice(to, 0, moved);
+	return rows;
+}
+
+/** The templates without sitting `index`'s. */
+export function withTemplateRemoved(
+	templates: readonly WeeklySessionTemplate[],
+	count: number,
+	index: number,
+): WeeklySessionTemplate[] {
+	const rows = templateRows(templates, count);
+	if (index >= 0 && index < count) rows.splice(index, 1);
+	return rows;
+}
+// #endregion

@@ -57,6 +57,11 @@ export const SessionBookingInputSchema = z.object({
 	 */
 	seats: z.number().int().min(1).max(SESSION_SEATS_MAX).default(1),
 	/**
+	 * The chain a buyer picked on a rolling group session (`CohortOffer.chains`, SC11). Omitted, the seat
+	 * lands on the offer's own cohort, the earliest chain with a seat to sell.
+	 */
+	cohortId: z.string().uuid().optional(),
+	/**
 	 * The buyer's answers to the listing's own intake fields (`ServiceView.intake`), keyed by field
 	 * id. Validated server-side against the listing through the same `intakeRefusal` the modal ran,
 	 * and carried on the basket line so the provider reads them wherever the booking is opened.

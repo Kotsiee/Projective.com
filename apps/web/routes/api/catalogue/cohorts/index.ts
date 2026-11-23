@@ -9,7 +9,11 @@ import {
 	toCatalogueResponse,
 } from "@features/catalogue/core/respond.ts";
 import { invalidQuery, parseReadQuery } from "@features/catalogue/core/read-query.ts";
-import { OpenCohortInputSchema } from "@projective/types/projects";
+import {
+	GroupScheduleModeSchema,
+	OpenCohortInputSchema,
+	SaveGroupScheduleInputSchema,
+} from "@projective/types/projects";
 import { CatalogueCohortsBackendService } from "@server/services/catalogue/CatalogueCohortsBackendService.ts";
 
 /**
@@ -17,10 +21,13 @@ import { CatalogueCohortsBackendService } from "@server/services/catalogue/Catal
  * seller (Decision #498; `?team=` as every catalogue route).
  *
  * `GET ?listing=` reads the listing's cohorts and the opening form's facts
- * ({@link CatalogueCohortsBackendService.cohorts}); `sim` is the `clientPipeline` dev axis, honoured
- * only by the fixture path. `POST` {@link OpenCohortInputSchema} opens the next cohort
+ * ({@link CatalogueCohortsBackendService.cohorts}); `sim` is the `clientPipeline` dev axis and
+ * `schedule` the `groupSchedule` one, both honoured only by the fixture path. `POST` {@link OpenCohortInputSchema} opens the next cohort
  * ({@link CatalogueCohortsBackendService.open}): 403 for a 13–17 account, 422 for terms the database
  * refuses, 409 while another cohort is taking bookings or a sitting clashes with the calendar.
+ * `PUT` {@link SaveGroupScheduleInputSchema} saves how the cohorts open (fixed cohorts or rolling weekly
+ * templates, SC11) and answers the cohorts as they now stand
+ * ({@link CatalogueCohortsBackendService.saveSchedule}): 422 for a week the database refuses.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -31,8 +38,10 @@ export const handler = define.handlers({
 		if (!parsed.ok) return invalidQuery(parsed.errors);
 		const { listing, sim } = parsed.query;
 		if (!listing) return invalidQuery({ listing: "Name the listing." });
+		const schedule = GroupScheduleModeSchema.safeParse(ctx.url.searchParams.get("schedule")).data ??
+			null;
 		return toCatalogueResponse(
-			await CatalogueCohortsBackendService.cohorts(listing, actor, { sim }),
+			await CatalogueCohortsBackendService.cohorts(listing, actor, { sim, schedule }),
 		);
 	},
 
@@ -45,5 +54,18 @@ export const handler = define.handlers({
 		const parsed = OpenCohortInputSchema.safeParse(await readJsonBody(ctx.req));
 		if (!parsed.success) return invalid(parsed.error);
 		return toCatalogueResponse(await CatalogueCohortsBackendService.open(parsed.data, actor));
+	},
+
+	async PUT(ctx) {
+		const actor = await apiSellerActor(ctx.url, readActor(ctx));
+		if (actor instanceof Response) return actor;
+		if (!actor.userId) return signedOut();
+		const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
+		if (restricted) return restricted;
+		const parsed = SaveGroupScheduleInputSchema.safeParse(await readJsonBody(ctx.req));
+		if (!parsed.success) return invalid(parsed.error);
+		return toCatalogueResponse(
+			await CatalogueCohortsBackendService.saveSchedule(parsed.data, actor),
+		);
 	},
 });

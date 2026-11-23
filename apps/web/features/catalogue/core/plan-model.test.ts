@@ -1,7 +1,11 @@
 import { assertEquals } from "@std/assert";
 import { normaliseSessionPlan } from "@projective/types/catalogue";
 import { SESSION_PLAN_MAX } from "@projective/types/explore";
+import { weeklyTemplatesProblem } from "@projective/types/projects";
 import {
+	templateRows,
+	withTemplateMoved,
+	withTemplateRemoved,
 	canAddSession,
 	hasPlan,
 	planRows,
@@ -82,4 +86,36 @@ Deno.test("an ongoing one-to-one listing has no plan; a group session always doe
 		}),
 		true,
 	);
+});
+
+Deno.test("templateRows: a sitting without a template gets the day after the one before, at its time", () => {
+	assertEquals(templateRows([], 2), [{ weekday: 1, startMinute: 1080 }, {
+		weekday: 2,
+		startMinute: 1080,
+	}]);
+	assertEquals(templateRows([{ weekday: 7, startMinute: 370 }], 2), [
+		{ weekday: 7, startMinute: 370 },
+		{ weekday: 1, startMinute: 370 },
+	]);
+	assertEquals(templateRows([{ weekday: 4, startMinute: 0 }, { weekday: 1, startMinute: 0 }], 1), [
+		{ weekday: 4, startMinute: 0 },
+	]);
+});
+
+Deno.test("withTemplateMoved / withTemplateRemoved: a time moves and leaves with its session", () => {
+	const week = [{ weekday: 4, startMinute: 370 }, { weekday: 1, startMinute: 370 }, {
+		weekday: 3,
+		startMinute: 370,
+	}];
+	assertEquals(withTemplateMoved(week, 3, 0, 2).map((t) => t.weekday), [1, 3, 4]);
+	assertEquals(withTemplateRemoved(week, 3, 1).map((t) => t.weekday), [4, 3]);
+});
+
+Deno.test("weeklyTemplatesProblem: overlaps are refused around the week, separate times pass", () => {
+	const at = (weekday: number, startMinute: number) => ({ weekday, startMinute });
+	assertEquals(weeklyTemplatesProblem([at(1, 600), at(3, 600)], [60, 60]), null);
+	assertEquals(weeklyTemplatesProblem([at(1, 600), at(1, 660)], [60, 60]), null);
+	assertEquals(typeof weeklyTemplatesProblem([at(1, 600), at(1, 630)], [60, 60]), "string");
+	assertEquals(typeof weeklyTemplatesProblem([at(7, 1410), at(1, 0)], [60, 60]), "string");
+	assertEquals(typeof weeklyTemplatesProblem([at(2, 540), at(2, 540)], [30, 30]), "string");
 });

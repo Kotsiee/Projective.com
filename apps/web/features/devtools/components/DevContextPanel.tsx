@@ -19,6 +19,7 @@ import {
 	DEV_CHECKOUT_GATES,
 	DEV_CHECKOUT_PAYMENTS,
 	DEV_CLIENT_PIPELINES,
+	DEV_GROUP_SCHEDULES,
 	DEV_DATA_EXPORTS,
 	DEV_DISCOVERY_ACTIVITIES,
 	DEV_DISCOVERY_VIEWERS,
@@ -583,6 +584,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.clientPipeline}
 						disabled={!o.enabled}
 						onChange={(clientPipeline) => patchDevContext({ clientPipeline })}
+					/>
+				</Field>
+
+				<Field label="Group schedule" hint="fixture cohorts">
+					<Segment
+						name="Group schedule"
+						options={DEV_GROUP_SCHEDULES}
+						value={o.groupSchedule}
+						disabled={!o.enabled}
+						onChange={(groupSchedule) => patchDevContext({ groupSchedule })}
 					/>
 				</Field>
 

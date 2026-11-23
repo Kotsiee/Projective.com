@@ -531,6 +531,13 @@ export type DevCatalogueAnalytics = "auto" | "empty" | "sparse" | "rich";
 export type DevClientPipeline = "auto" | "empty" | "action_required" | "busy";
 
 /**
+ * How a group session's cohorts open in the fixture world (SC11): the fixture's own fixed cohorts, or
+ * forced to fixed cohorts or rolling weekly templates. Honoured only by the fixture path, as the
+ * `?schedule=` the cohorts read appends to `/api/catalogue/cohorts`.
+ */
+export type DevGroupSchedule = "auto" | "fixed_cohorts" | "rolling_templates";
+
+/**
  * A simulated availability conflict for the listing workspace (plan §10): `empty_horizon` acts as if
  * nothing were bookable in the next 30 days, so `Issues` warns and the publish readiness blocks.
  * Client-only: a save still meets the real gate. Availability is one layer (Decision #408), so there is
@@ -773,6 +780,8 @@ export interface DevSeamState {
 	catalogueAnalytics?: DevCatalogueAnalytics;
 	/** The simulated client pipeline. Optional like `walletAurora`; absent reads as `auto`. */
 	clientPipeline?: DevClientPipeline;
+	/** The simulated group-session schedule (SC11). Optional like `walletAurora`; absent reads as `auto`. */
+	groupSchedule?: DevGroupSchedule;
 	/** The simulated availability conflict. Optional like `walletAurora`; absent reads as `auto`. */
 	availabilityConflict?: DevAvailabilityConflict;
 	/** The simulated Promote control. Optional like `walletAurora`; absent reads as `auto`. */
@@ -1041,6 +1050,7 @@ const CAPTCHAS: readonly DevCaptcha[] = ["auto", "pass", "fail", "interactive"];
 const OPERATOR_DESKS: readonly DevOperatorDesk[] = ["auto", "queue", "empty"];
 const CATALOGUE_ANALYTICS: readonly DevCatalogueAnalytics[] = ["auto", "empty", "sparse", "rich"];
 const CLIENT_PIPELINES: readonly DevClientPipeline[] = ["auto", "empty", "action_required", "busy"];
+const GROUP_SCHEDULES: readonly DevGroupSchedule[] = ["auto", "fixed_cohorts", "rolling_templates"];
 const AVAILABILITY_CONFLICTS: readonly DevAvailabilityConflict[] = ["auto", "empty_horizon"];
 const PROMOTION_STATES: readonly DevPromotionState[] = [
 	"auto",
@@ -1145,6 +1155,7 @@ export function readDevSeam(): DevSeamState | null {
 		operatorDesk: coerce(ds.devOperatorDesk, OPERATOR_DESKS, "auto"),
 		catalogueAnalytics: coerce(ds.devCatalogueAnalytics, CATALOGUE_ANALYTICS, "auto"),
 		clientPipeline: coerce(ds.devClientPipeline, CLIENT_PIPELINES, "auto"),
+		groupSchedule: coerce(ds.devGroupSchedule, GROUP_SCHEDULES, "auto"),
 		availabilityConflict: coerce(ds.devAvailabilityConflict, AVAILABILITY_CONFLICTS, "auto"),
 		promotionState: coerce(ds.devPromotionState, PROMOTION_STATES, "auto"),
 		fileAccess: coerce(ds.devFileAccess, FILE_ACCESSES, "auto"),
@@ -1157,7 +1168,9 @@ export function readDevSeam(): DevSeamState | null {
  * the axis is `auto`, so the parameter is omitted and the fixture's default answers. Always `null` in
  * production, where the seam is never written.
  */
-export function catalogueSim(axis: "catalogueAnalytics" | "clientPipeline"): string | null {
+export function catalogueSim(
+	axis: "catalogueAnalytics" | "clientPipeline" | "groupSchedule",
+): string | null {
 	const value = readDevSeam()?.[axis];
 	return value && value !== "auto" ? value : null;
 }

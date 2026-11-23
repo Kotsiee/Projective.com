@@ -120,6 +120,14 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Cohort waitlists: expires each invite whose held seat lapsed unused (the buyer is told), then invites the people waiting in join order, one per seat nobody holds on the listing''s enrolling cohort, each holding its seat for waitlist_invite_hold_hours (48).')
 ON CONFLICT (name) DO NOTHING;
 
+-- Rolling weekly templates (SC11). Every 15 minutes: a chain only needs to exist before its session 1
+-- leaves the horizon's far edge, and a seller's save opens their own listing's chains at once.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('cohort-template-chains', 'sql', '*/15 * * * *',
+        'SELECT projects.fn_open_template_cohorts();', NULL, NULL,
+        'Rolling group sessions: opens, as ordinary enrolling cohorts, every chain whose session 1 starts within rolling_horizon_weeks (4) on a published listing''s weekly templates; idempotent per chain start, a chain whose sitting clashes with the seller''s calendar is skipped.')
+ON CONFLICT (name) DO NOTHING;
+
 -- Listing analytics (Decision #217). Writes yesterday's UTC listing rollups; a SQL job, so it needs no
 -- secret. A late or missed run is repaired by `analytics.fn_backfill_listing_rollups`.
 INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES

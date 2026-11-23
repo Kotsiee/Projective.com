@@ -19,6 +19,8 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Minutes a reserved cohort seat is held for its buyer while they pay (projects.reserve_seat, Decision #171).'),
     ('waitlist_invite_hold_hours', '48'::jsonb,
         'Hours a cohort waitlist invite holds its seat for the invited buyer; unused by then, the invite expires and the next person in the queue is invited (projects.fn_waitlist_dispatch, Decision #455).'),
+    ('rolling_horizon_weeks', '4'::jsonb,
+        'Weeks ahead a group session on rolling weekly templates keeps its chains open: every session-1 start within it is an enrolling cohort (projects.fn_open_template_cohorts, SC11).'),
     ('session_join_lead_minutes', '10'::jsonb,
         'Minutes before a sitting starts that its join link opens (projects.session_join_link).'),
     ('session_presence_minutes', '15'::jsonb,

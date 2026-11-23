@@ -197,6 +197,7 @@ export class SessionBackendService {
 		blueprintId: string,
 		seats: number,
 		actor: ReadActor,
+		cohortId?: string,
 	): Promise<ServiceResult<{ hold: SeatHold; firstStartsAt: string | null }>> {
 		if (!actor.accessToken) return signedOut();
 		if (!isProjectsBackendLive()) {
@@ -207,8 +208,15 @@ export class SessionBackendService {
 		if (!offer) {
 			return fail(409, { message: "This listing has no cohort taking bookings yet.", details: { reason: "closed" } });
 		}
+		// A rolling listing's buyer may pick a later chain (SC11), only one this listing offers.
+		const chain = cohortId && cohortId !== offer.cohortId
+			? offer.chains.find((c) => c.cohortId === cohortId)
+			: undefined;
+		if (cohortId && cohortId !== offer.cohortId && !chain) {
+			return fail(409, { message: "That start isn't taking bookings any more.", details: { reason: "closed" } });
+		}
 		const { data, error } = await getUserClient(actor.accessToken).schema("projects").rpc("reserve_seat", {
-			p_cohort_id: offer.cohortId,
+			p_cohort_id: chain?.cohortId ?? offer.cohortId,
 			p_seats: seats,
 		});
 		if (error) return refusal(error);
@@ -228,7 +236,7 @@ export class SessionBackendService {
 				expiresAt: new Date(row.expires_at).toISOString(),
 				seatsAfter: seatCount(row.max_seats, row.max_seats - row.remaining),
 			},
-			firstStartsAt: offer.firstStartsAt,
+			firstStartsAt: chain ? chain.firstStartsAt : offer.firstStartsAt,
 		}, { status: 201 });
 	}
 
