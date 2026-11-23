@@ -42,7 +42,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | SC3 | `projects.open_cohort` / `cancel_cohort`, the Cohorts block at `?cohort=`, one seeded cohort        | `322c4dc9`, `b87c276c` (#498)             | `f2e25929` |
 | SC4 | Only the definer door publishes; the post-publish locks on the tables; a product needs a file; the follower notice | `0cf50f7d`, `fb7d7276` (#535) | `0cf50f7d` |
 | SC5 | `ListingViewBeacon` writes deduped views; the rollup derives view and order counts; 91 days seeded  | `322c4dc9` (#506)                         | `f2e25929` |
-| SC11 | Rolling weekly templates: `group_schedule_mode`, `session_template_rules.weekly`, `fn_open_template_cohorts` (job `cohort-template-chains`), `save_group_schedule`, the offer's `chains`, `/plan` Fixed · Rolling, `/view` Starts | #541 | `2995f564` |
+| SC11 | Rolling weekly templates: `group_schedule_mode`, `session_template_rules.weekly`, `fn_open_template_cohorts` (job `cohort-template-chains`), `save_group_schedule`, the offer's `chains`, `/plan` Fixed · Rolling, `/view` Starts | `999615f0` (#541) | `2995f564` |
 
 ### 0.1 Row → work order
 
