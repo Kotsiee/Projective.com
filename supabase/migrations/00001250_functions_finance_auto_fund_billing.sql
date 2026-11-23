@@ -491,6 +491,8 @@ $$;
 -- including the twin that waited on the locks below. The order is written `invoiced`, "On account".
 -- With `p_fx_quote_id` (Decision #435) the business buys on account in the quote's currency: `p_amount`
 -- is the quote's charge, credited, limited and owed in that currency, and converted into the order's.
+-- `p_tax_calculation_ref` is the checkout's recorded Stripe Tax calculation (Decision #490), passed on
+-- to place_wallet_order: `p_amount` then includes the tax, which is invoiced with the order.
 CREATE OR REPLACE FUNCTION finance.place_on_account_order(
     p_basket_id uuid,
     p_item_ids uuid[],
@@ -499,7 +501,8 @@ CREATE OR REPLACE FUNCTION finance.place_on_account_order(
     p_promo_code text,
     p_idempotency_key text,
     p_amount bigint,
-    p_fx_quote_id uuid DEFAULT NULL
+    p_fx_quote_id uuid DEFAULT NULL,
+    p_tax_calculation_ref text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -597,7 +600,7 @@ BEGIN
     PERFORM finance.fn_ensure_wallet('business', v_business.id, v_credit_currency);
     PERFORM finance.fn_wallet_credit(v_business.id, 'business', v_credit_currency, p_amount, 'on_account_credit', 'baskets', v_basket.id);
     v_order := finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code,
-        p_idempotency_key, v_expected, p_fx_quote_id);
+        p_idempotency_key, v_expected, p_fx_quote_id, p_tax_calculation_ref);
     IF (SELECT o.charged_minor FROM finance.orders o WHERE o.idempotency_key = p_idempotency_key)
        IS DISTINCT FROM v_expected THEN
         RAISE EXCEPTION 'The amount to pay on account no longer matches this order — review the basket and try again'

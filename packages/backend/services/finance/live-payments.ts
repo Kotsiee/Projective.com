@@ -210,6 +210,9 @@ function checkoutLinkOf(raw: unknown): CheckoutOrderLink | null {
 		promoCode: typeof link.promo_code === "string" ? link.promo_code : null,
 		orderKey: String(link.order_key),
 		...(typeof link.fx_quote_id === "string" ? { fxQuoteId: link.fx_quote_id } : {}),
+		...(typeof link.tax_calculation_ref === "string"
+			? { taxCalculationRef: link.tax_calculation_ref }
+			: {}),
 	};
 }
 
@@ -344,6 +347,7 @@ export async function attachCheckoutOrder(
 			promo_code: link.promoCode,
 			order_key: link.orderKey,
 			...(link.fxQuoteId ? { fx_quote_id: link.fxQuoteId } : {}),
+			...(link.taxCalculationRef ? { tax_calculation_ref: link.taxCalculationRef } : {}),
 		},
 	});
 	if (error) {

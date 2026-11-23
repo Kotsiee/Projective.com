@@ -1208,7 +1208,20 @@ CREATE TABLE finance.orders (
     platform_fee_mode text NOT NULL DEFAULT 'seller_deducted'
         CHECK (platform_fee_mode IN ('seller_deducted', 'buyer_added')),
 
+    -- The tax the order was charged (Decision #490): the sum of its lines' `tax_minor`, from the Stripe Tax
+    -- calculation it names, added on top of the price (tax-exclusive). 0 while `tax_collection_enabled`
+    -- is off, and on every order with no line of a kind `tax_collected_kinds` names.
     tax_minor bigint NOT NULL DEFAULT 0 CHECK (tax_minor >= 0),
+    -- What the tax was ("United Kingdom VAT 20%"), as the checkout showed it; NULL with no calculation.
+    tax_jurisdiction text CHECK (tax_jurisdiction IS NULL OR length(tax_jurisdiction) <= 160),
+    -- The Stripe Tax calculation the order was placed on (`taxcalc_…`, finance.tax_calculations), and the
+    -- tax transaction recorded from it after commit (`tax_…`, finance.record_tax_transaction). A
+    -- calculation with no transaction yet is due one (finance.tax_records_due).
+    tax_calculation_ref text CHECK (tax_calculation_ref IS NULL OR tax_calculation_ref ~ '^taxcalc_[A-Za-z0-9_]{1,250}$'),
+    tax_transaction_ref text CHECK (tax_transaction_ref IS NULL OR tax_transaction_ref ~ '^tax_[A-Za-z0-9_]{1,250}$'),
+    -- The business buyer's VAT ID the calculation was made with (reverse charge), as typed on
+    -- /checkout/details; NULL for a consumer.
+    buyer_tax_id text CHECK (buyer_tax_id IS NULL OR length(buyer_tax_id) <= 60),
     -- The buyer's voluntary contribution toward processing costs. Added LAST and never part of the
     -- platform-fee base: charging a percentage of a gift would turn the buyer's generosity into
     -- revenue.
@@ -1286,6 +1299,13 @@ CREATE TABLE finance.order_lines (
         CHECK (status IN ('confirmed', 'refunded', 'cancelled')),
     refunded_minor bigint NOT NULL DEFAULT 0 CHECK (refunded_minor >= 0),
     refunded_at timestamptz,
+    -- The tax on this line (Decision #490), on top of what the buyer paid for it; finance.orders.tax_minor
+    -- is the sum. A refund in full gives it back with the line (finance.fn_refund_product_line).
+    tax_minor bigint NOT NULL DEFAULT 0 CHECK (tax_minor >= 0),
+    -- The line's item in the order's Stripe tax transaction (`tax_li_…`), and the reversal recorded once
+    -- the line was refunded; a refunded line with a `tax_line_ref` and no reversal is due one.
+    tax_line_ref text CHECK (tax_line_ref IS NULL OR tax_line_ref ~ '^tax_li_[A-Za-z0-9_]{1,250}$'),
+    tax_reversal_ref text CHECK (tax_reversal_ref IS NULL OR tax_reversal_ref ~ '^tax_[A-Za-z0-9_]{1,250}$'),
 
     fulfilment finance.fulfilment_kind NOT NULL DEFAULT 'pending',
     -- Download fulfilment.
@@ -1327,7 +1347,34 @@ CREATE TABLE finance.order_lines (
     CONSTRAINT ck_order_lines_refunded_at CHECK ((refunded_minor = 0) = (refunded_at IS NULL)),
     CONSTRAINT ck_order_lines_refund_state CHECK (
         status = 'confirmed' OR refunded_minor = GREATEST(line_total_minor - promo_discount_minor, 0)
-    )
+    ),
+    CONSTRAINT ck_order_lines_tax_reversal CHECK (tax_reversal_ref IS NULL OR tax_line_ref IS NOT NULL)
+);
+
+-- A Stripe Tax calculation the checkout made for a basket (Decision #490, CK4), recorded by the server
+-- (finance.record_tax_calculation, service role) so finance.place_wallet_order takes the tax from HERE,
+-- never from its caller: a figure the browser could send would be a figure it could lower. `lines` maps
+-- each taxed basket line (its id) to `{amount, tax}`, the amount being what the buyer pays for the line,
+-- which the order door re-checks line by line. `input_hash` keys the cache: the same basket, lines and
+-- billing address reuse a live calculation rather than pay Stripe for another. Consumed once
+-- (`order_id`); Stripe lets a transaction be made from it until `expires_at` (90 days).
+CREATE TABLE finance.tax_calculations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    calculation_ref text NOT NULL UNIQUE CHECK (calculation_ref ~ '^taxcalc_[A-Za-z0-9_]{1,250}$'),
+    basket_id uuid NOT NULL REFERENCES finance.baskets (id) ON DELETE CASCADE,
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'team', 'business', 'enterprise')),
+    owner_id uuid NOT NULL,
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+    input_hash text NOT NULL CHECK (length(input_hash) BETWEEN 1 AND 128),
+    lines jsonb NOT NULL CHECK (jsonb_typeof(lines) = 'object'),
+    taxable_minor bigint NOT NULL CHECK (taxable_minor >= 0),
+    tax_minor bigint NOT NULL CHECK (tax_minor >= 0),
+    jurisdiction text CHECK (jurisdiction IS NULL OR length(jurisdiction) <= 160),
+    buyer_tax_id text CHECK (buyer_tax_id IS NULL OR length(buyer_tax_id) <= 60),
+    reverse_charge boolean NOT NULL DEFAULT false,
+    expires_at timestamptz NOT NULL,
+    order_id uuid UNIQUE REFERENCES finance.orders (id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- The buyer's saved delivery and billing record, per billing identity.

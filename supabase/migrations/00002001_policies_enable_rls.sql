@@ -644,6 +644,9 @@ ALTER TABLE finance.orders ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.order_lines ENABLE ROW LEVEL SECURITY;
 
+-- No client policy: written and read only by the service role's tax doors (Decision #490, CK4).
+ALTER TABLE finance.tax_calculations ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE finance.invoices ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.buyer_details ENABLE ROW LEVEL SECURITY;

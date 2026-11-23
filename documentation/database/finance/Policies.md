@@ -199,6 +199,7 @@ policy — except `buyer_details`, the buyer's own form.
 | `finance.payout_accounts`         | `fn_owner_visible(owner_type, owner_id)`                                                  | — (`record_payout_account` / `sync_payout_account`) |
 | `finance.orders`                  | `fn_owner_visible(owner_type, owner_id)` — the buyer, or the members of the buying entity | — |
 | `finance.order_lines`             | `EXISTS` over its order (runs under the order's policy)                                   | — |
+| `finance.tax_calculations`        | none — no client reads it (Decision #490, CK4)                                            | — (service role only: `record_tax_calculation`; read by `tax_calculation_for` and, as its owner, `place_wallet_order`) |
 | `finance.invoices`                | admin, the issuer (`issue_from_profile` is a user **or** team id — both tested), or a member of `issue_to_business_id` | — |
 | `finance.invoice_line_items`      | `EXISTS` over its invoice                                                                  | — |
 | `finance.buyer_details`           | `fn_owner_visible(owner_type, owner_id)`                                                  | INSERT / UPDATE, `fn_can_manage_basket(owner_type, owner_id)` — the same read/write split as the basket these details check out under |

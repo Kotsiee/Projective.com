@@ -48,6 +48,12 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
 		"Service role: the payout-schedule cron's claim. Not user-initiated; the run refuses while the switch is off.",
 	"live-payments.ts#claim_due_deposit_rules":
 		"Service role: the recurring-deposit cron's claim. Not user-initiated; the run refuses while the switch is off.",
+	"checkout-tax.ts#record_tax_calculation":
+		"Service role: records what Stripe Tax answered for a checkout preview (finance.tax_calculations) and moves no money; the order door that charges the tax is behind the switch (Decision #490, CK4).",
+	"checkout-tax.ts#record_tax_transaction":
+		"Service role: records the Stripe tax transaction of an order already placed and moves no money; reached after a placement behind the switch, or by the FINANCE_CRON_SECRET tax sweep, which refuses while the switch is off (Decision #490, CK4).",
+	"checkout-tax.ts#record_tax_reversal":
+		"Service role: records the Stripe reversal of a refunded line's tax and moves no money; reached only by the FINANCE_CRON_SECRET tax sweep, which refuses while the switch is off (Decision #490, CK4).",
 };
 
 /** Helpers that pass the switch first, by file: a call to one counts as passing it. Each is checked. */

@@ -114,6 +114,7 @@ export function conservationGroups(row: ConservationCurrency): ConservationGroup
 			{ label: "wallets", minor: row.heldWalletsMinor },
 			{ label: "escrow", minor: row.heldEscrowsMinor },
 			{ label: "pending releases", minor: row.heldPendingMinor },
+			{ label: "tax to remit", minor: row.taxPayableMinor },
 		]),
 		group("Fees kept", [
 			{ label: "escrow fees", minor: row.feesEscrowsMinor },

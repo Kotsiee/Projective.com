@@ -125,6 +125,15 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Whether this database honours a Dev Context Switcher override that LOOSENS a gate (today x-pj-dev-fx-checkout: on, finance.fn_fx_checkout_enabled, Decision #436). False everywhere but a local database: only the development seed world (supabase/seeds/07_finance.sql) sets it, so a header a client sends to a deployed PostgREST loosens nothing. An override that can only make a gate stricter needs no such key.')
 ON CONFLICT (key) DO NOTHING;
 
+-- Tax at checkout (Decision #490, CK4). OFF until the owner and counsel rule (⚖️): nothing in the code
+-- switches it on, and probes switch it on only inside rolled-back transactions.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('tax_collection_enabled', 'false'::jsonb,
+        'Whether the platform calculates and collects tax at checkout through Stripe Tax (Decision #490): a calculation at the payment step, the tax added on top of the price, recorded on the order by finance.place_wallet_order and at Stripe as a tax transaction after commit, reversed on refund. Off until counsel confirms the obligation; while off every order is placed exactly as before.'),
+    ('tax_collected_kinds', '["digital_product"]'::jsonb,
+        'The finance.purchasable_item_kind values the platform collects tax on when tax_collection_enabled is on (Decision #490 (A)): digital products, where the platform is the supplier. Every other line says its seller is responsible for any tax on their work. Widening it needs counsel''s ruling, not a rebuild.')
+ON CONFLICT (key) DO NOTHING;
+
 -- from 20260723092000
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('instant_payout_fee_bp', 'null'::jsonb,

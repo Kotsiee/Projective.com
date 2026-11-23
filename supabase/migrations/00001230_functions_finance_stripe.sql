@@ -667,6 +667,11 @@ BEGIN
         'promo_code', NULLIF(pg_catalog.btrim(COALESCE(p_checkout ->> 'promo_code', '')), ''),
         'order_key', v_key
     ) || CASE WHEN v_quote_id IS NOT NULL THEN pg_catalog.jsonb_build_object('fx_quote_id', v_quote_id)
+              ELSE '{}'::jsonb END
+      -- The checkout's recorded Stripe Tax calculation (Decision #490), which the order is placed on;
+      -- place_wallet_order checks it, so here it is only shaped.
+      || CASE WHEN COALESCE(p_checkout ->> 'tax_calculation_ref', '') ~ '^taxcalc_[A-Za-z0-9_]{1,250}$'
+              THEN pg_catalog.jsonb_build_object('tax_calculation_ref', p_checkout ->> 'tax_calculation_ref')
               ELSE '{}'::jsonb END;
     IF v_payment.checkout IS NOT NULL THEN
         IF v_payment.checkout = v_checkout THEN
@@ -1034,7 +1039,8 @@ BEGIN
                 v_payment.checkout ->> 'promo_code',
                 v_payment.checkout ->> 'order_key',
                 COALESCE((SELECT q.to_minor FROM finance.fx_quotes q WHERE q.id = v_payment.fx_quote_id), v_payment.amount_cents),
-                v_payment.fx_quote_id
+                v_payment.fx_quote_id,
+                v_payment.checkout ->> 'tax_calculation_ref'
             );
             v_order_id := (v_order ->> 'order_id')::uuid;
             IF v_order_id IS NULL THEN

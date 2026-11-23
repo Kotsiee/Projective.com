@@ -44,6 +44,8 @@ export const ConservationCurrencySchema = z.object({
 	heldWalletsMinor: minorUnitsNonNeg,
 	heldEscrowsMinor: minorUnitsNonNeg,
 	heldPendingMinor: minorUnitsNonNeg,
+	/** The tax checkout collected and the platform holds to remit (`tax_payable_minor`, Decision #490). */
+	taxPayableMinor: minorUnitsNonNeg,
 	feesEscrowsMinor: minorUnitsNonNeg,
 	feesOrdersMinor: minorUnitsNonNeg,
 	feesFxMinor: minorUnitsNonNeg,

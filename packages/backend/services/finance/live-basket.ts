@@ -1618,7 +1618,7 @@ async function resolvePromo(
 	session: Session,
 	code: string | null,
 	items: readonly BasketItem[],
-): Promise<AppliedPromo | null> {
+): Promise<ResolvedPromo | null> {
 	if (!code || !code.trim()) return null;
 	if (promoExcludedLine(items)) {
 		const typed = clip(code.trim().toUpperCase(), 40);
@@ -1682,6 +1682,7 @@ async function resolvePromo(
 	}
 	const clamped = applyDiscounts(covered, raw).promoDiscountMinor;
 	return {
+		covers: covered.map((item) => item.id),
 		code: clip(promo.code, 40),
 		label: clip(promo.label ?? promo.code, 120),
 		valid: true,
@@ -1693,6 +1694,12 @@ async function resolvePromo(
 			: null,
 	};
 }
+
+/**
+ * A resolved code with the basket lines it covers (`covers`, valid codes only): what checkout tax
+ * shares the saving over, as `finance.place_wallet_order` does (Decision #490).
+ */
+export type ResolvedPromo = AppliedPromo & { covers?: readonly string[] };
 
 /** The promo saving attached to a basket, in minor units — `0` when none applies or it is refused. */
 export function promoMinorFor(promo: AppliedPromo | null): number {
@@ -1829,7 +1836,7 @@ export interface BasketView {
 	promoCode: string | null;
 	account: AccountBaskets;
 	/** Resolve a code against a SUBSET of lines — the checkout prices only what the buyer submits. */
-	resolvePromo(code: string | null, items: readonly BasketItem[]): Promise<AppliedPromo | null>;
+	resolvePromo(code: string | null, items: readonly BasketItem[]): Promise<ResolvedPromo | null>;
 	/** Group a subset of lines the way the basket groups them. */
 	groupsFor(items: readonly BasketItem[]): BasketGroup[];
 }

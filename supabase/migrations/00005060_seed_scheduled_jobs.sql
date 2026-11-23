@@ -82,6 +82,16 @@ SELECT 'finance-sweep-stale-payouts', 'http', '*/10 * * * *', NULL, '/api/financ
  WHERE pg_catalog.to_regprocedure('finance.fn_claim_stale_payouts(integer)') IS NOT NULL
 ON CONFLICT (name) DO NOTHING;
 
+-- The tax sweep (Decision #490, CK4) calls Stripe Tax, so it is an http job on the same secret: a tax
+-- transaction for each order placed on a calculation, a reversal for each refunded line. Nothing is due
+-- while tax_collection_enabled is off, so it runs and finds nothing.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
+SELECT 'finance-tax-records', 'http', '*/10 * * * *', NULL, '/api/finance/cron/tax?limit=50',
+       'FINANCE_CRON_SECRET',
+       'Records at Stripe Tax what checkout collected: a tax transaction from each order''s calculation and a reversal for each refunded line, idempotent and recorded once (PaymentBackendService.sweepTaxRecords).'
+ WHERE pg_catalog.to_regprocedure('finance.tax_records_due(integer)') IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+
 -- The alert sweep (MR4, Decision #461) sends through the app (an incoming webhook and a Resend digest),
 -- so it is an http job on its own secret. Registered only where its claim function exists, so pg_cron
 -- is never pointed at a route that is not there.

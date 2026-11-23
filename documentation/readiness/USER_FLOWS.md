@@ -35,7 +35,7 @@ signed-in person).
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
 | **UAT**          | **72%** |           193 | 101 |  78 | 14 |              25 |
-| **Production**   | **66%** |           251 | 107 | 107 | 37 |              36 |
+| **Production**   | **66%** |           251 | 107 | 108 | 36 |              36 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -46,7 +46,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 24 |  8 |  2 |   70% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 29 | 36 | 10 |  2 |   64% |
-| MW — Money, workspaces, legal & operator         |    64 | 21 | 25 | 15 |  3 |   60% |
+| MW — Money, workspaces, legal & operator         |    64 | 21 | 26 | 14 |  3 |   61% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
@@ -187,7 +187,7 @@ PRODUCTION_READINESS.md.
 | :---- | :------------------------------------------------------- | :-------------- | :--------------------------------------------------------- | :----- | :------- | :--- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
 | MK-18 | Basket: add, remove, save for later, lists, owner switch | Buyer           | drawer, `/checkout`, `/api/basket/*`                       | ✅     | High     | UAT  | The idle-basket nudge is built (CK5, #492: one Marketing email per idle spell to an opted-in adult) and off until counsel confirms consent     |
 | MK-19 | Buy now (one line)                                       | Buyer           | BuyNowModal → `/checkout/payment`                          | ✅     | High     | UAT  | —                                                                                                                                              |
-| MK-20 | Checkout details (delivery and billing)                  | Buyer           | `/checkout/details`                                        | 🟡     | Critical | PROD | No tax or VAT: `taxNote: null`, invoice tax 0 (FINANCE A9, PRD-M5)                                                                             |
+| MK-20 | Checkout details (delivery and billing)                  | Buyer           | `/checkout/details`                                        | 🟡     | Critical | PROD | Tax built, off pending counsel (CK4, #544): Stripe Tax on digital products, added at checkout with a tax line and VAT ID for reverse charge; `tax_collection_enabled` stays off, so no tax is shown or charged yet (PRD-M5)|
 | MK-21 | Pay from the wallet                                      | Buyer           | `/checkout/payment` → `place_wallet_order`                 | ✅     | Critical | MVP  | Wallet + card split unsupported (CO17, planned)                                                                                                |
 | MK-22 | Pay by card (saved or new, 3DS)                          | Buyer           | same → Stripe → order                                      | ✅     | Critical | MVP  | Needs `FINANCE_BACKEND_LIVE` and a Stripe key                                                                                                  |
 | MK-23 | Express pay (Apple Pay, Google Pay, PayPal)              | Buyer           | same                                                       | 🟡     | High     | UAT  | Built to be proven (CK6, #504): `deno task stripe:domains` registers the hosts in test mode and a redirect wallet's return lands on its confirmation once (unit + e2e); left for a human: `--apply` and live domains on a hosted host, then the Apple Pay (iOS Safari), Google Pay (Android Chrome) and PayPal runs recorded in the providers spec §4.3 F |
@@ -481,7 +481,7 @@ Public pricing is ID-04.
 | :---- | :---------------------------------------------------------- | :-------------------------- | :--------------------------------- | :----- | :----- | :--- | :--------------------------------------------------------------- |
 | MW-55 | Legal workspace: IP chain of title, audit packs             | Client, Freelancer          | `/legal/workspace`, `/audit-packs` | ❌     | Normal | PROD | Hidden until LG4 (PRD-A4 ✅)                                     |
 | MW-56 | A deed of transfer issued on escrow release                 | Client, Freelancer          | `/legal/workspace/transfers`       | ❌     | High   | PROD | No deed table, generator or signing (PRD-M4)                     |
-| MW-57 | Tax documents (invoice tax, 1099 / W-9, VAT reverse charge) | Freelancer, Business member | —                                  | ❌     | High   | PROD | Payout side built (LG6, `6e7487ea`, #527): a seller's private residence certificate shown to one client, Stripe Express pointed to, and the operator's reporting CSV; 1099 / W-9 not built (no Stripe path for this account). Invoice tax and reverse charge wait for CK4 (A9; PRD-M5) |
+| MW-57 | Tax documents (invoice tax, 1099 / W-9, VAT reverse charge) | Freelancer, Business member | —                                  | 🟡     | High   | PROD | Payout side built (LG6, `6e7487ea`, #527): a seller's private residence certificate shown to one client, Stripe Express pointed to, and the operator's reporting CSV; 1099 / W-9 not built (no Stripe path for this account). Invoice tax lines and reverse charge built with checkout tax, off pending counsel (CK4, #544; A9, PRD-M5)|
 | MW-58 | AML monitoring                                              | Operator                    | `/admin/ledger` (AML signals)      | 🟡     | Normal | PROD | Built (LG7, #529): round trips and rapid churn are recorded at the money doors and an operator reads them, with their facts, on `/admin/ledger` (a member gets 404); the Safety Hold is built and off (⚖️). Left: the page capture at 1440 and 390 px. The reporting programme stays dormant by ruling (Identity X2; PRD-M6) |
 
 Request to Sell and shared IP are MK-46.
@@ -570,3 +570,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-23 | DB9 (#337 ruling M5 (a), (b)): no row flips; MW-11 and MW-15 narrowed (an entity takes its owner's confirmed country's currency; nothing is priced outside the nine settlement currencies; a short-balance payout is returned and alerts); a human still enables the non-GBP settlement currencies in the Stripe Dashboard | 83% | 72% | 65% |
 | 2026-11-23 | DB21 (#542): MK-31 ❌ → 🟡 (a buyer cancels a digital product while its sale clears; the product dispute and an operator's card refund are left) | 83% | 72% | 66% |
 | 2026-11-23 | DB21 step 2 (#543): no row flips; MK-31 narrowed (a buyer reports a faulty or missing download and an operator rules; only an operator's card refund is left) | 83% | 72% | 66% |
+| 2026-11-23 | CK4 (#544): MW-57 ❌ → 🟡 (invoice tax lines and VAT reverse charge built, off pending counsel); MK-20 narrowed (checkout tax built behind `tax_collection_enabled`, off); still 🟡 | 83% | 72% | 66% |

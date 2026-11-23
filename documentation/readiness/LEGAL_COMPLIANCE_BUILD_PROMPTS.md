@@ -17,7 +17,7 @@
 
 - PRD-M3's hosted half is [OPERATIONS_BUILD_PROMPTS.md](OPERATIONS_BUILD_PROMPTS.md) **OPS7**.
 - PRD-M5's checkout and invoice half is [MARKETPLACE_BUILD_PROMPTS.md](MARKETPLACE_BUILD_PROMPTS.md)
-  **CK4** (#490).
+  **CK4** (#490): built, switch off (#544).
 - PRD-M6's dormant programme is
   [IDENTITY_BUILD_PROMPTS.md](../architecture/IDENTITY_BUILD_PROMPTS.md) **X2**.
 
@@ -49,10 +49,10 @@ A landed prompt gets its row here.
 | PRD-M2 | PROD | Critical | — (✅, AU1 #446; LG3 landed, §0.0)   | — (LG3 extended it to the IP Transfer Deed and the Escrow Terms at first commit, #534; the gaps it found are PRD-M10)                                                     |
 | PRD-M3 | PROD | Normal   | OPS7 (OPERATIONS)                    | ✅ when `account-data-exports` returns a 2xx from the hosted scheduler                                                                                                       |
 | PRD-M4 | PROD | High     | LG3 (landed) → **LG4** → **LG5**     | 🟡 on LG4 (a signed transfer record on each final release) · ✅ on LG5 (audit packs)                                                                                         |
-| PRD-M5 | PROD | High     | CK4 + LG6 (landed, §0.0)            | 🟡 when CK4 lands with its switch off · ✅ when counsel confirms the obligations and its switch is on in the target environment                                       |
+| PRD-M5 | PROD | High     | CK4 (#544) + LG6 (landed, §0.0)     | 🟡 now: CK4 built with its switch off · ✅ when counsel confirms the obligations and its switch is on in the target environment                                       |
 | PRD-M6 | PROD | Normal   | LG7 (built; its page check is left, §3) + X2 | 🟡 now (LG7 built, #529) · ✅ once LG7's page check runs: an operator reads the signals on `/admin/ledger` and a member gets 404 |
 | PRD-M9 | PROD | Normal   | — (🧑 #529 (d))                      | ✅ when a card and payout-bank fingerprint is captured and a second-account round trip records a signal; needs its own decision row first                                    |
-| PRD-M7 | PROD | High     | **LG8** (⏳ CK4)                     | 🟡 when built behind `platform_fee_tax_enabled` (off) · ✅ when counsel confirms and the switch is on                                                                        |
+| PRD-M7 | PROD | High     | **LG8** (CK4 landed, #544)          | 🟡 when built behind `platform_fee_tax_enabled` (off) · ✅ when counsel confirms and the switch is on                                                                        |
 | PRD-A4 | UAT  | Normal   | LG0 (landed, §0.0)                   | ✅ when no placeholder is reachable. It stays ✅ when LG4 and LG5 open the pages again                                                                                       |
 
 **USER_FLOWS rows that move:**
@@ -62,7 +62,7 @@ A landed prompt gets its row here.
 | ID-11 | Critical | 🟡 → ✅ with PRD-M1                                                                                            |
 | MW-55 | Normal   | ❌ → 🟡 on LG4 (the workspace and its transfers page) · ✅ on LG5                                              |
 | MW-56 | High     | ❌ → 🟡 on LG4 · ✅ once the IP Transfer Deed's text is counsel-reviewed (PRD-M1)                              |
-| MW-57 | High     | ❌ → 🟡 when CK4 lands with its switch off (LG6 landed) · ✅ when the switch is on                         |
+| MW-57 | High     | 🟡 now (CK4 built, switch off, #544; LG6 landed) · ✅ when the switch is on                                 |
 | MW-58 | Normal   | ❌ → 🟡 on LG7 (built, #529) · ✅ once LG7's page check runs (the reporting programme stays dormant by ruling) |
 
 ### 0.2 Findings the prompts rely on (checked 2026-11-19, still true at `f2e25929`)
@@ -115,7 +115,7 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 | 1    | — (LG1 done once LG7's commit lands) | —                                                                                        | —                        | Step 4 landed (#540); step 6's rest lands with LG7's commit (#529) |
 | 2    | —                   | LG3 (landed, §0.0) → **LG4** → **LG5**                                                   | (LG4/LG5's UI halves)    | LG4 builds once LG2's brief is sent and LG3 and FINANCE DB6 land (#530 (g)); counsel rules text |
 | 3    | —                   | LG7 (built, #529; its page check is left, §3)                                            | — (LG6 landed, §0.0)     | LG7's page check: a dev server and a seeded DB                                                  |
-| 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (runnable: DB21 landed, #543)                                                               |
+| 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (landed, #544)                                                                              |
 | Last | **LG9**             | —                                                                                        | —                        | Everything above that can land                                                                  |
 
 **Hot files.** LG4 and LG5 each edit
@@ -512,7 +512,7 @@ Readiness rows (§1.1): **PRD-M6** → ✅; **MW-58** → ✅.
 
 ### LG8 — Tax on the platform's own fees
 
-> **Status 2026-11-23:** open; waits for MARKETPLACE CK4, runnable now that FBP DB21 has landed (#543).
+> **Status 2026-11-23:** open and runnable: MARKETPLACE CK4 has landed (#544), switch off.
 
 PRD-M7 → 🟡.
 
@@ -528,8 +528,9 @@ CONTEXT (verified at 197b0d0c; re-check every line):
     charges, records or invoices tax on them. CK4 taxes the buyer's order only.
   - The fee is "a flat 5%; it never tapers, and no plan buys a lower one" (root CLAUDE.md,
     finance-model.md). The landing's claims gate (#281) holds every figure on / and /features.
-  - CK4's Stripe Tax engine is the calculation to reuse: CK4 keeps it behind one service function
-    you can call for a fee line (MARKETPLACE_BUILD_PROMPTS.md CK4 step 4).
+  - CK4's Stripe Tax engine is the calculation to reuse: `calculateTax` in
+    `packages/backend/services/finance/checkout-tax.ts` (#544), the platform's one Stripe Tax call.
+    Stripe Tax is not active on the test account yet (`stripe_tax_inactive`).
 
 🧑 + ⚖️ STOP: A (recommended): the fee is tax-inclusive. The 5% stays 5%; where Projective must
 charge tax on it, the tax is inside it, so no payout, preview or claim changes and the

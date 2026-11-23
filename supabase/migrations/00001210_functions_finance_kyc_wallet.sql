@@ -1902,6 +1902,12 @@ and KYB verification (PK403 kyb_required).';
 --     must equal it or the call refuses (PC409 `price_changed`) before any money moves; on the card
 --     path the webhook passes the PaymentIntent's amount, so a mismatch leaves the top-up in the wallet
 --     (`settled_unapplied`, Decision #200) instead of drawing the difference from an existing balance.
+--   * Tax (Decision #490, CK4): while `tax_collection_enabled` is on, an order with a line of a kind
+--     `tax_collected_kinds` names is placed only on `p_tax_calculation_ref`, the Stripe Tax calculation
+--     the checkout service recorded for this basket (finance.record_tax_calculation): its tax is added
+--     on top of the net (tax-exclusive), is what `p_expected_minor` and a quote must equal with the net,
+--     is recorded on the order and each taxed line, and is debited with the order and credited to no
+--     seller. Each taxed line must be paid exactly what it was calculated on. Off, nothing changes.
 --   * A promo is redeemed atomically: the code is read FOR UPDATE and its count is raised only while
 --     under `max_redemptions`; the redemption lost to a concurrent order refuses PC409
 --     `promo_exhausted`. Under the same lock, an account that has used the code
@@ -1918,7 +1924,8 @@ CREATE OR REPLACE FUNCTION finance.place_wallet_order(
     p_promo_code text,
     p_idempotency_key text,
     p_expected_minor bigint,
-    p_fx_quote_id uuid DEFAULT NULL
+    p_fx_quote_id uuid DEFAULT NULL,
+    p_tax_calculation_ref text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1945,6 +1952,10 @@ DECLARE
     v_creator bigint := 0;
     v_promo_minor bigint := 0;
     v_net bigint;
+    -- Tax (Decision #490): the server's calculation the order is placed on, its tax, and net + tax.
+    v_calc finance.tax_calculations;
+    v_tax bigint := 0;
+    v_total bigint;
     v_fee_total bigint := 0;
     v_remaining_promo bigint;
     v_eligible_base bigint;
@@ -2588,7 +2599,25 @@ BEGIN
     END IF;
 
     v_net := v_subtotal - v_creator - v_promo_minor;
-    IF p_expected_minor IS DISTINCT FROM v_net THEN
+    -- Tax (Decision #490, CK4): while `tax_collection_enabled` is on, the calculation sent must be the one
+    -- the checkout service recorded for THIS basket and account (finance.record_tax_calculation), unused
+    -- and unexpired, and the tax comes from that record, never from the caller. Once the lines are
+    -- written below, every paid line of a kind the platform collects on must be in it at what the buyer
+    -- paid for it (none sent: none may be paid). Switched off, any calculation sent is ignored and no tax
+    -- is charged: the order is placed exactly as before.
+    IF finance.fn_tax_collection_on() AND p_tax_calculation_ref IS NOT NULL THEN
+        SELECT c.* INTO v_calc FROM finance.tax_calculations c
+         WHERE c.calculation_ref = p_tax_calculation_ref FOR UPDATE;
+        IF NOT FOUND OR v_calc.basket_id IS DISTINCT FROM v_basket.id OR v_calc.owner_id IS DISTINCT FROM v_basket.owner_id
+           OR v_calc.owner_type IS DISTINCT FROM v_basket.owner_type OR v_calc.currency IS DISTINCT FROM v_currency
+           OR v_calc.order_id IS NOT NULL OR v_calc.expires_at <= pg_catalog.now() THEN
+            RAISE EXCEPTION 'price_changed: The tax on this order needs recalculating — review the total and try again'
+                USING ERRCODE = 'PC409';
+        END IF;
+        v_tax := v_calc.tax_minor;
+    END IF;
+    v_total := v_net + v_tax;
+    IF p_expected_minor IS DISTINCT FROM v_total THEN
         RAISE EXCEPTION 'price_changed: The total changed while you were paying — review it and try again'
             USING ERRCODE = 'PC409';
     END IF;
@@ -2602,7 +2631,7 @@ BEGIN
             RAISE EXCEPTION 'quote_invalid: That exchange-rate quote is not for this order — review the total and try again'
                 USING ERRCODE = 'PC409';
         END IF;
-        IF v_quote.to_currency <> v_currency OR v_quote.to_minor <> v_net THEN
+        IF v_quote.to_currency <> v_currency OR v_quote.to_minor <> v_total THEN
             RAISE EXCEPTION 'price_changed: The total changed while you were paying — review it and try again'
                 USING ERRCODE = 'PC409';
         END IF;
@@ -2655,20 +2684,20 @@ BEGIN
         IF NOT FOUND THEN
             RAISE EXCEPTION 'Your wallet holds no %', v_currency USING ERRCODE = 'PF402';
         END IF;
-        IF v_wallet.balance_cents < v_net THEN
+        IF v_wallet.balance_cents < v_total THEN
             RAISE EXCEPTION 'Your wallet balance doesn''t cover this order' USING ERRCODE = 'PF402';
         END IF;
         -- A business basket passes the spend gate once for the whole charge (BB3): KYB, the buyer's envelope,
         -- the threshold with the platform fallback, an approval bound to this basket. Its cover lets the
         -- ticket and revision lines below hold without counting the buyer — or anyone — again.
         IF v_basket.owner_type = 'business' THEN
-            PERFORM finance.fn_assert_business_spend (v_wallet.id, v_uid, v_net, 'baskets', v_basket.id);
+            PERFORM finance.fn_assert_business_spend (v_wallet.id, v_uid, v_total, 'baskets', v_basket.id);
         ELSIF v_basket.owner_type IN ('team', 'enterprise') THEN
-            IF COALESCE(v_wallet.approval_threshold_cents, 0) > 0 AND v_net >= v_wallet.approval_threshold_cents THEN
+            IF COALESCE(v_wallet.approval_threshold_cents, 0) > 0 AND v_total >= v_wallet.approval_threshold_cents THEN
                 RAISE EXCEPTION 'This purchase needs approval before it can be paid for'
                     USING ERRCODE = 'PA403';
             END IF;
-            IF NOT finance.fn_check_spending_limit (v_wallet.id, v_uid, v_net) THEN
+            IF NOT finance.fn_check_spending_limit (v_wallet.id, v_uid, v_total) THEN
                 RAISE EXCEPTION 'This purchase is over your spending limit for this account'
                     USING ERRCODE = 'PA403';
             END IF;
@@ -2683,18 +2712,22 @@ BEGIN
         id, reference, status, placed_at, owner_type, owner_id, basket_id, currency, subtotal_minor,
         creator_discount_minor, promo_discount_minor, platform_fee_minor, platform_fee_bp,
         platform_fee_mode, tax_minor, processing_contribution_minor, total_minor, charged_minor,
-        payment_provider, payment_method_label, idempotency_key, promo_code, fx_conversion_id
+        payment_provider, payment_method_label, idempotency_key, promo_code, fx_conversion_id,
+        tax_jurisdiction, tax_calculation_ref, buyer_tax_id
     ) VALUES (
         v_order_id, v_reference, 'confirmed', pg_catalog.now(), v_basket.owner_type, v_basket.owner_id,
-        v_basket.id, v_currency, v_subtotal, v_creator, v_promo_minor, 0, v_fee_bp, 'seller_deducted', 0,
-        0, v_net, v_net, 'wallet', 'Projective wallet', p_idempotency_key,
-        CASE WHEN v_promo_minor > 0 THEN v_promo.code END, v_conv.id
+        v_basket.id, v_currency, v_subtotal, v_creator, v_promo_minor, 0, v_fee_bp, 'seller_deducted', v_tax,
+        0, v_total, v_total, 'wallet', 'Projective wallet', p_idempotency_key,
+        CASE WHEN v_promo_minor > 0 THEN v_promo.code END, v_conv.id,
+        v_calc.jurisdiction, v_calc.calculation_ref, v_calc.buyer_tax_id
     );
 
-    -- The products are paid here; each ticket line's share leaves the wallet as its escrow hold below.
-    IF v_net - v_escrow_total > 0 THEN
+    -- The products and the tax are paid here; each ticket line's share leaves the wallet as its escrow
+    -- hold below. The tax is the platform's to remit, never a seller's: it stays out of every credit and
+    -- is held as the `tax_payable` term of finance.v_conservation_identity (Decision #490 (B)).
+    IF v_total - v_escrow_total > 0 THEN
         PERFORM finance.fn_wallet_debit (v_wallet.owner_id, v_wallet.owner_type, v_currency,
-            v_net - v_escrow_total, 'order_payment', 'orders', v_order_id);
+            v_total - v_escrow_total, 'order_payment', 'orders', v_order_id);
     END IF;
 
     -- Each line: its share of the promo (the covered lines only, pro rata by what each costs after
@@ -2917,6 +2950,30 @@ BEGIN
          WHERE id = (v_line.l ->> 'id')::uuid;
     END LOOP;
 
+    -- Each paid line the platform collects on is what the calculation was made on: the same lines, each
+    -- at what the buyer paid for it. Anything else is a basket that moved since the preview (or a page
+    -- that sent no calculation), and the whole order rolls back.
+    IF finance.fn_tax_collection_on() AND EXISTS (
+        SELECT 1
+          FROM (SELECT e.key AS ref, (e.value ->> 'amount')::bigint AS amount
+                  FROM pg_catalog.jsonb_each(COALESCE(v_calc.lines, '{}'::jsonb)) e) c
+          FULL JOIN (SELECT l.basket_item_id::text AS ref, l.line_total_minor - l.promo_discount_minor AS paid
+                       FROM finance.order_lines l
+                      WHERE l.order_id = v_order_id AND finance.fn_tax_collected(l.item_type::text)
+                        AND l.line_total_minor - l.promo_discount_minor > 0) o
+            ON o.ref = c.ref
+         WHERE c.ref IS NULL OR o.ref IS NULL OR c.amount IS DISTINCT FROM o.paid
+    ) THEN
+        RAISE EXCEPTION 'price_changed: The tax on this order needs recalculating — review the total and try again'
+            USING ERRCODE = 'PC409';
+    END IF;
+    IF v_calc.id IS NOT NULL THEN
+        UPDATE finance.order_lines l
+           SET tax_minor = (v_calc.lines -> l.basket_item_id::text ->> 'tax')::bigint
+         WHERE l.order_id = v_order_id AND v_calc.lines ? l.basket_item_id::text;
+        UPDATE finance.tax_calculations SET order_id = v_order_id WHERE id = v_calc.id;
+    END IF;
+
     IF v_conv.id IS NOT NULL THEN
         PERFORM finance.fn_stamp_escrow_fx(v_conv.id, ARRAY(
             SELECT e.id FROM finance.escrows e
@@ -2935,15 +2992,15 @@ BEGIN
 
     RETURN pg_catalog.jsonb_build_object(
         'order_id', v_order_id, 'reference', v_reference, 'status', 'confirmed',
-        'charged_minor', v_net, 'currency', v_currency, 'replayed', false,
+        'charged_minor', v_total, 'currency', v_currency, 'replayed', false,
         'fx_conversion_id', v_conv.id,
-        'charge_minor', COALESCE(v_conv.from_minor, v_net),
+        'charge_minor', COALESCE(v_conv.from_minor, v_total),
         'charge_currency', COALESCE(v_conv.from_currency::text, v_currency)
     );
 END;
 $$;
 
-COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint, uuid) IS
+COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint, uuid, text) IS
 'Pay for the submitted basket lines from the caller''s Projective wallet, atomically: re-price every
 line from the catalogue against the unit price the buyer was shown, re-validate the promo code they saw
 applied (none sent → none applied), debit the wallet, credit each seller net of their own marketplace
@@ -2967,7 +3024,10 @@ terms (marketplace.fn_quote_offer_terms as p_terms); every other kind is refused
 total the buyer saw, in the order''s currency). With p_fx_quote_id (Decision #435) the account pays from
 its wallet in the quote''s currency, converted first at the locked quote, which must price exactly this
 net; the escrows are stamped with the conversion and the order names it. A promo is redeemed atomically
-against its cap and recorded on the order.
+against its cap and recorded on the order. While tax_collection_enabled is on (Decision #490), an order
+with a line of a tax_collected_kinds kind needs p_tax_calculation_ref, the server''s recorded Stripe Tax
+calculation for this basket: its tax is added to the net (tax-exclusive), recorded on the order and its
+lines, debited with the order and credited to no seller. Off, any calculation is ignored.
 Idempotent on the key, re-checked after the basket lock. Refusal SQLSTATEs: 42501 not allowed · PK403
 verification · PB404 basket gone · PC409 basket/price/promo/seat hold changed, price_changed (the net is
 not p_expected_minor), promo_exhausted (the cap was reached), a session time that passed, or a quote

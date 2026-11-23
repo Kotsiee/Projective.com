@@ -180,6 +180,14 @@ WITH terms (currency, term, minor) AS (
       FROM finance.pending_releases pr
      WHERE pr.state <> 'available'
     UNION ALL
+    -- The tax checkout collected (Decision #490), held for the platform to remit; a line refunded or
+    -- cancelled gave its tax back to the buyer with it.
+    SELECT o.currency, 'tax_payable', o.tax_minor - COALESCE((
+            SELECT pg_catalog.sum(l.tax_minor) FROM finance.order_lines l
+             WHERE l.order_id = o.id AND l.status IN ('refunded', 'cancelled')), 0)
+      FROM finance.orders o
+     WHERE o.tax_minor > 0
+    UNION ALL
     SELECT e.currency, 'fees_escrows', e.platform_fee_cents
       FROM finance.escrows e
      WHERE e.status = 'released' AND e.platform_fee_cents > 0
@@ -221,6 +229,7 @@ WITH terms (currency, term, minor) AS (
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'held_wallets'), 0)::bigint AS held_wallets_minor,
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'held_escrows'), 0)::bigint AS held_escrows_minor,
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'held_pending'), 0)::bigint AS held_pending_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'tax_payable'), 0)::bigint AS tax_payable_minor,
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'fees_escrows'), 0)::bigint AS fees_escrows_minor,
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'fees_orders'), 0)::bigint AS fees_orders_minor,
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'fees_fx'), 0)::bigint AS fees_fx_minor,
@@ -234,10 +243,10 @@ SELECT c.*,
        (c.in_cash_minor + c.in_on_account_minor + c.in_fx_minor)
          - (c.out_payouts_minor + c.out_card_refunds_minor + c.out_chargebacks_minor + c.out_invoices_minor
             + c.out_fx_minor) AS external_minor,
-       (c.held_wallets_minor + c.held_escrows_minor + c.held_pending_minor)
+       (c.held_wallets_minor + c.held_escrows_minor + c.held_pending_minor + c.tax_payable_minor)
          + (c.fees_escrows_minor + c.fees_orders_minor + c.fees_fx_minor)
          - (c.losses_chargebacks_minor + c.losses_card_refunds_minor + c.losses_promos_minor) AS accounted_minor,
-       ((c.held_wallets_minor + c.held_escrows_minor + c.held_pending_minor)
+       ((c.held_wallets_minor + c.held_escrows_minor + c.held_pending_minor + c.tax_payable_minor)
          + (c.fees_escrows_minor + c.fees_orders_minor + c.fees_fx_minor)
          - (c.losses_chargebacks_minor + c.losses_card_refunds_minor + c.losses_promos_minor))
        - ((c.in_cash_minor + c.in_on_account_minor + c.in_fx_minor)

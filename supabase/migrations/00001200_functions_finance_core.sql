@@ -1578,12 +1578,29 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects
 -- An escrow a conversion funded is invoiced in the currency the business paid in, at what it cost
 -- there, with its own amount, currency and rate on the line (Decision #435).
 -- Projective is the issuer (issue_from_profile NULL). total = escrow + bonus + tax: the platform fee
--- was deducted from the payee at release, so it is shown, never added. amount_due = the on-account
+-- was deducted from the payee at release, so it is shown, never added. The tax is what the period's
+-- orders were charged (finance.orders.tax_minor, Decision #490), less the tax of lines refunded since,
+-- one `tax` line per order; it is 0 while `tax_collection_enabled` is off. amount_due = the on-account
 -- credit, the only part not already paid from the wallet; with nothing due the invoice is issued Paid.
 -- Due `invoice_due_days` after issue (finance-model §15). Idempotent on
 -- uq_invoices_business_period_currency: a re-run returns the invoices already issued and writes
 -- nothing. A new invoice tells the business's billing members (`invoice.issued`). Returns the
 -- period's invoice ids.
+-- The tax an order still holds (Decision #490): what it was charged, less the tax of its lines
+-- refunded or cancelled since, which went back to the buyer with them. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_order_tax_held(p_order_id uuid)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT o.tax_minor - COALESCE((SELECT pg_catalog.sum(l.tax_minor) FROM finance.order_lines l
+                                     WHERE l.order_id = o.id AND l.status IN ('refunded', 'cancelled')), 0)
+      FROM finance.orders o
+     WHERE o.id = p_order_id;
+$$;
+
 CREATE OR REPLACE FUNCTION finance.fn_generate_consolidated_invoice(
     p_business_id uuid, p_start timestamptz, p_end timestamptz
 ) RETURNS uuid[] AS $$
@@ -1591,7 +1608,6 @@ DECLARE
     v_ids uuid[] := '{}';
     v_invoice uuid;
     v_due_days integer;
-    v_tax bigint := 0; -- shortcut: no tax is computed yet; becomes Stripe Tax's figure when tax collection lands.
     v_slug text;
     v_member uuid;
     c record;
@@ -1614,6 +1630,12 @@ BEGIN
              WHERE e.payer_business_id = p_business_id AND e.status = 'released'
                AND e.released_at >= p_start AND e.released_at < p_end
              GROUP BY 1
+        ), taxed AS (
+            SELECT upper(o.currency) AS currency, SUM(finance.fn_order_tax_held(o.id)) AS tax
+              FROM finance.orders o
+             WHERE o.owner_type = 'business' AND o.owner_id = p_business_id AND o.tax_minor > 0
+               AND o.placed_at >= p_start AND o.placed_at < p_end
+             GROUP BY 1
         ), credit AS (
             SELECT upper(t.currency) AS currency, SUM(t.amount_cents) AS due
               FROM finance.transactions t
@@ -1623,13 +1645,16 @@ BEGIN
                AND t.created_at >= p_start AND t.created_at < p_end
              GROUP BY 1
         )
-        SELECT COALESCE(s.currency, k.currency) AS currency,
+        SELECT COALESCE(s.currency, k.currency, x.currency) AS currency,
                COALESCE(s.subtotal, 0)::bigint AS subtotal,
                COALESCE(s.fee, 0)::bigint AS fee,
-               COALESCE(k.due, 0)::bigint AS due
-          FROM spend s FULL JOIN credit k ON k.currency = s.currency
+               COALESCE(k.due, 0)::bigint AS due,
+               COALESCE(x.tax, 0)::bigint AS tax
+          FROM spend s
+          FULL JOIN credit k ON k.currency = s.currency
+          FULL JOIN taxed x ON x.currency = COALESCE(s.currency, k.currency)
     LOOP
-        CONTINUE WHEN c.subtotal = 0 AND c.due = 0;
+        CONTINUE WHEN c.subtotal = 0 AND c.due = 0 AND c.tax = 0;
         v_invoice := NULL;
         INSERT INTO finance.invoices (
             project_stage_id, issue_to_business_id, issue_from_profile, invoice_type,
@@ -1638,8 +1663,8 @@ BEGIN
         )
         VALUES (
             NULL, p_business_id, NULL, 'consolidated_monthly',
-            p_start, p_end, c.subtotal + v_tax, c.subtotal,
-            c.fee, v_tax, c.subtotal + v_tax, c.due, c.currency,
+            p_start, p_end, c.subtotal + c.tax, c.subtotal,
+            c.fee, c.tax, c.subtotal + c.tax, c.due, c.currency,
             CASE WHEN c.due > 0 THEN 'issued' ELSE 'paid' END,
             now() + make_interval(days => v_due_days),
             CASE WHEN c.due > 0 THEN NULL ELSE now() END
@@ -1695,6 +1720,17 @@ BEGIN
             END IF;
         END LOOP;
 
+        -- The stored tax lines (Decision #490): one per order, from the calculation it was placed on.
+        INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency)
+        SELECT v_invoice, 'tax', o.id,
+               left('Tax on order ' || o.reference || COALESCE(' · ' || o.tax_jurisdiction, ''), 200),
+               finance.fn_order_tax_held(o.id), upper(o.currency)
+          FROM finance.orders o
+         WHERE o.owner_type = 'business' AND o.owner_id = p_business_id AND o.tax_minor > 0
+           AND o.placed_at >= p_start AND o.placed_at < p_end AND upper(o.currency) = c.currency
+           AND finance.fn_order_tax_held(o.id) > 0
+         ORDER BY o.placed_at, o.id;
+
         INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency)
         SELECT v_invoice, 'on_account', t.id, 'Bought on account', t.amount_cents, upper(t.currency)
           FROM finance.transactions t
@@ -1717,7 +1753,7 @@ BEGIN
                     ELSE format('Your %s invoice is ready. Everything on it was paid from the wallet.', c.currency)
                 END,
                 'invoices', v_invoice,
-                jsonb_build_object('total_minor', c.subtotal + v_tax, 'amount_due_minor', c.due, 'currency', c.currency),
+                jsonb_build_object('total_minor', c.subtotal + c.tax, 'amount_due_minor', c.due, 'currency', c.currency),
                 NULL, 'business', p_business_id, NULL,
                 '/businesses/' || COALESCE(v_slug, p_business_id::text) || '/billing'
             );
@@ -2595,6 +2631,216 @@ BEGIN
        SET metadata = pg_catalog.jsonb_set(metadata, '{tax_document,shared_project_id}', pg_catalog.to_jsonb(p_project_id))
      WHERE id = p_file_id;
     RETURN finance.fn_tax_document_json(p_file_id);
+END;
+$$;
+-- #endregion
+
+-- #region Tax at checkout — Stripe Tax behind a switch that stays off (Decision #490, CK4)
+-- The switch (`security.platform_params.tax_collection_enabled`, seeded off). Missing reads as off.
+CREATE OR REPLACE FUNCTION finance.fn_tax_collection_on()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((SELECT p.value = 'true'::jsonb FROM security.platform_params p
+                      WHERE p.key = 'tax_collection_enabled'), false);
+$$;
+
+-- Whether the platform collects on a line of this kind (`tax_collected_kinds`, seeded
+-- ["digital_product"]: the kinds the platform itself supplies, #490 (A)). Missing reads as the default.
+CREATE OR REPLACE FUNCTION finance.fn_tax_collected(p_kind text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((SELECT p.value ? p_kind FROM security.platform_params p
+                      WHERE p.key = 'tax_collected_kinds'), p_kind = 'digital_product');
+$$;
+
+-- Record a Stripe Tax calculation the checkout service made for a basket (service role only), so the
+-- order door reads the tax from the server's record and never from its caller. `p_lines` maps each
+-- taxed basket line id to `{amount, tax}` (what the buyer pays for the line, and its tax), and the
+-- tax must be their sum. Idempotent on the calculation: recording it again answers the same row.
+CREATE OR REPLACE FUNCTION finance.record_tax_calculation(
+    p_calculation_ref text,
+    p_basket_id uuid,
+    p_owner_type text,
+    p_owner_id uuid,
+    p_currency text,
+    p_input_hash text,
+    p_lines jsonb,
+    p_tax_minor bigint,
+    p_jurisdiction text,
+    p_buyer_tax_id text,
+    p_reverse_charge boolean,
+    p_expires_at timestamptz
+)
+RETURNS uuid
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_id uuid;
+    v_taxable bigint;
+    v_tax bigint;
+BEGIN
+    IF p_lines IS NULL OR pg_catalog.jsonb_typeof(p_lines) <> 'object' OR p_lines = '{}'::jsonb
+       OR EXISTS (SELECT 1 FROM pg_catalog.jsonb_each(p_lines) e
+                   WHERE e.key !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                      OR pg_catalog.jsonb_typeof(e.value -> 'amount') <> 'number'
+                      OR pg_catalog.jsonb_typeof(e.value -> 'tax') <> 'number'
+                      OR (e.value ->> 'amount')::bigint < 0 OR (e.value ->> 'tax')::bigint < 0) THEN
+        RAISE EXCEPTION 'tax: expected each taxed basket line with its amount and tax' USING ERRCODE = '22023';
+    END IF;
+    SELECT pg_catalog.sum((e.value ->> 'amount')::bigint), pg_catalog.sum((e.value ->> 'tax')::bigint)
+      INTO v_taxable, v_tax
+      FROM pg_catalog.jsonb_each(p_lines) e;
+    IF v_tax IS DISTINCT FROM p_tax_minor THEN
+        RAISE EXCEPTION 'tax: the tax is not the sum of its lines' USING ERRCODE = '22023';
+    END IF;
+    INSERT INTO finance.tax_calculations (
+        calculation_ref, basket_id, owner_type, owner_id, currency, input_hash, lines, taxable_minor,
+        tax_minor, jurisdiction, buyer_tax_id, reverse_charge, expires_at
+    ) VALUES (
+        p_calculation_ref, p_basket_id, p_owner_type, p_owner_id, pg_catalog.upper(p_currency), p_input_hash,
+        p_lines, v_taxable, v_tax, NULLIF(pg_catalog.btrim(COALESCE(p_jurisdiction, '')), ''),
+        NULLIF(pg_catalog.btrim(COALESCE(p_buyer_tax_id, '')), ''), COALESCE(p_reverse_charge, false), p_expires_at
+    )
+    ON CONFLICT (calculation_ref) DO NOTHING
+    RETURNING id INTO v_id;
+    IF v_id IS NULL THEN
+        SELECT c.id INTO v_id FROM finance.tax_calculations c WHERE c.calculation_ref = p_calculation_ref;
+    END IF;
+    RETURN v_id;
+END;
+$$;
+
+-- The live calculation a checkout preview may reuse (service role only): the newest unconsumed one for
+-- this basket and input (lines, address, tax ID), made in the last day and with an hour of life left.
+CREATE OR REPLACE FUNCTION finance.tax_calculation_for(p_basket_id uuid, p_input_hash text)
+RETURNS SETOF finance.tax_calculations
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT c.*
+      FROM finance.tax_calculations c
+     WHERE c.basket_id = p_basket_id AND c.input_hash = p_input_hash AND c.order_id IS NULL
+       AND c.created_at > pg_catalog.now() - interval '1 day'
+       AND c.expires_at > pg_catalog.now() + interval '1 hour'
+     ORDER BY c.created_at DESC
+     LIMIT 1;
+$$;
+
+-- What the platform still owes Stripe Tax (service role only): each order placed on a calculation with
+-- no tax transaction yet, then each refunded line of a recorded transaction with no reversal yet. The
+-- tax sweep (TaxBackendService) creates them, idempotent at Stripe on the order and the line.
+CREATE OR REPLACE FUNCTION finance.tax_records_due(p_limit integer)
+RETURNS TABLE (
+    kind text, order_id uuid, line_id uuid, reference text, calculation_ref text, transaction_ref text,
+    line_ref text, amount_minor bigint, tax_minor bigint, currency text
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    (SELECT 'transaction'::text, o.id, NULL::uuid, o.reference, o.tax_calculation_ref, NULL::text, NULL::text,
+            o.total_minor, o.tax_minor, o.currency
+       FROM finance.orders o
+      WHERE o.tax_calculation_ref IS NOT NULL AND o.tax_transaction_ref IS NULL
+      ORDER BY o.placed_at, o.id
+      LIMIT GREATEST(COALESCE(p_limit, 50), 1))
+    UNION ALL
+    (SELECT 'reversal'::text, o.id, l.id, o.reference || '-refund-' || (l.position + 1), NULL::text,
+            o.tax_transaction_ref, l.tax_line_ref, GREATEST(l.line_total_minor - l.promo_discount_minor, 0),
+            l.tax_minor, l.currency
+       FROM finance.order_lines l
+       JOIN finance.orders o ON o.id = l.order_id
+      WHERE l.tax_line_ref IS NOT NULL AND l.tax_reversal_ref IS NULL AND l.status <> 'confirmed'
+        AND o.tax_transaction_ref IS NOT NULL
+      ORDER BY l.refunded_at, l.id
+      LIMIT GREATEST(COALESCE(p_limit, 50), 1));
+$$;
+
+-- Record the Stripe tax transaction made from an order's calculation (service role only), with each
+-- taxed line's item in it (`p_line_refs`: basket line id → `tax_li_…`), and claim it in
+-- finance.idempotency_keys in the same transaction. Write-once: the same transaction replays; another
+-- is refused (PX409).
+CREATE OR REPLACE FUNCTION finance.record_tax_transaction(p_order_id uuid, p_transaction_ref text, p_line_refs jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    o finance.orders;
+BEGIN
+    IF p_transaction_ref IS NULL OR p_transaction_ref !~ '^tax_[A-Za-z0-9_]{1,250}$'
+       OR pg_catalog.jsonb_typeof(COALESCE(p_line_refs, '{}'::jsonb)) <> 'object' THEN
+        RAISE EXCEPTION 'tax: expected a tax transaction id and its line items' USING ERRCODE = '22023';
+    END IF;
+    SELECT * INTO o FROM finance.orders WHERE id = p_order_id FOR UPDATE;
+    IF NOT FOUND OR o.tax_calculation_ref IS NULL THEN
+        RAISE EXCEPTION 'tax: that order was placed on no tax calculation' USING ERRCODE = '22023';
+    END IF;
+    IF o.tax_transaction_ref IS NOT NULL THEN
+        IF o.tax_transaction_ref = p_transaction_ref THEN
+            RETURN pg_catalog.jsonb_build_object('order_id', o.id, 'transaction_ref', o.tax_transaction_ref, 'replayed', true);
+        END IF;
+        RAISE EXCEPTION 'tax: this order already has a tax transaction' USING ERRCODE = 'PX409';
+    END IF;
+    INSERT INTO finance.idempotency_keys (key, scope, request_hash, status, response)
+    VALUES ('tax_transaction:' || o.id, 'tax.transaction', pg_catalog.md5(p_transaction_ref), 'succeeded',
+            pg_catalog.jsonb_build_object('transaction_ref', p_transaction_ref))
+    ON CONFLICT (key) DO NOTHING;
+    UPDATE finance.orders SET tax_transaction_ref = p_transaction_ref, updated_at = pg_catalog.now() WHERE id = o.id;
+    UPDATE finance.order_lines l
+       SET tax_line_ref = p_line_refs ->> l.basket_item_id::text
+     WHERE l.order_id = o.id AND p_line_refs ? l.basket_item_id::text;
+    RETURN pg_catalog.jsonb_build_object('order_id', o.id, 'transaction_ref', p_transaction_ref, 'replayed', false);
+END;
+$$;
+
+-- Record the Stripe reversal of a refunded line's tax (service role only), claimed in
+-- finance.idempotency_keys in the same transaction. Write-once, as a transaction is.
+CREATE OR REPLACE FUNCTION finance.record_tax_reversal(p_line_id uuid, p_reversal_ref text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    l finance.order_lines;
+BEGIN
+    IF p_reversal_ref IS NULL OR p_reversal_ref !~ '^tax_[A-Za-z0-9_]{1,250}$' THEN
+        RAISE EXCEPTION 'tax: expected a tax transaction id' USING ERRCODE = '22023';
+    END IF;
+    SELECT * INTO l FROM finance.order_lines WHERE id = p_line_id FOR UPDATE;
+    IF NOT FOUND OR l.tax_line_ref IS NULL OR l.status = 'confirmed' THEN
+        RAISE EXCEPTION 'tax: that line has no recorded tax to reverse' USING ERRCODE = '22023';
+    END IF;
+    IF l.tax_reversal_ref IS NOT NULL THEN
+        IF l.tax_reversal_ref = p_reversal_ref THEN
+            RETURN pg_catalog.jsonb_build_object('line_id', l.id, 'reversal_ref', l.tax_reversal_ref, 'replayed', true);
+        END IF;
+        RAISE EXCEPTION 'tax: this line''s tax is already reversed' USING ERRCODE = 'PX409';
+    END IF;
+    INSERT INTO finance.idempotency_keys (key, scope, request_hash, status, response)
+    VALUES ('tax_reversal:' || l.id, 'tax.reversal', pg_catalog.md5(p_reversal_ref), 'succeeded',
+            pg_catalog.jsonb_build_object('reversal_ref', p_reversal_ref))
+    ON CONFLICT (key) DO NOTHING;
+    UPDATE finance.order_lines SET tax_reversal_ref = p_reversal_ref WHERE id = l.id;
+    RETURN pg_catalog.jsonb_build_object('line_id', l.id, 'reversal_ref', p_reversal_ref, 'replayed', false);
 END;
 $$;
 -- #endregion

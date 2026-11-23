@@ -119,6 +119,7 @@ import {
 } from "./payout-schedules.ts";
 import { chargeScheduledDeposit } from "./scheduled-deposits.ts";
 import { paymentFundingState } from "./funding-state.ts";
+import { syncTaxRecords, type TaxSync } from "./checkout-tax.ts";
 
 /**
  * PaymentBackendService — the FAT half of the Stripe fiat rails, Phase 1 (root CLAUDE.md §8
@@ -1336,6 +1337,20 @@ export class PaymentBackendService {
 			retry: count("retry"),
 			results,
 		});
+	}
+	// #endregion
+
+	// #region Tax records
+	/**
+	 * Make at Stripe the tax records the ledger owes it (Decision #490, CK4) — run by the scheduler
+	 * (`POST /api/finance/cron/tax`): a tax transaction from each order placed on a Stripe Tax
+	 * calculation, then a reversal of each refunded line's tax, each idempotent at Stripe and recorded
+	 * once. Nothing is due while `tax_collection_enabled` is off. A Stripe or database outage leaves the
+	 * rest for the next sweep.
+	 */
+	static async sweepTaxRecords(limit = 50): Promise<Result<TaxSync>> {
+		if (!liveSettings()) return notConnected("Tax collection isn't connected in this environment.");
+		return ok(await syncTaxRecords(limit, getStripe()));
 	}
 	// #endregion
 

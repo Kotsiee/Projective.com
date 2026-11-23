@@ -35,6 +35,7 @@ function usd(): ConservationCurrency {
 		heldWalletsMinor: 5173105,
 		heldEscrowsMinor: 10700000,
 		heldPendingMinor: 2280,
+		taxPayableMinor: 0,
 		feesEscrowsMinor: 220000,
 		feesOrdersMinor: 1815,
 		feesFxMinor: 0,

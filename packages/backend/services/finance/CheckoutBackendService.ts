@@ -56,7 +56,16 @@ import {
 	promoExcludedLine,
 	promoMinorFor,
 	readBasket,
+	type ResolvedPromo,
 } from "./live-basket.ts";
+import {
+	type CheckoutTax,
+	checkoutTaxFor,
+	type CheckoutTaxInput,
+	liveTaxDeps,
+	NO_TAX,
+	syncTaxRecords,
+} from "./checkout-tax.ts";
 import { defaultCardOf, listCards } from "./live-cards.ts";
 import {
 	billingContextsFor,
@@ -189,6 +198,14 @@ function feeBpOf(owner: ResolvedOwner): number {
 	return owner.platformFeeBp ?? PLATFORM_FEE_BP;
 }
 
+/** The tax a summary shows: its amount in that summary's currency, and the note (Decision #490). */
+interface TaxView {
+	minor: number;
+	note: string | null;
+}
+
+const UNTAXED: TaxView = { minor: 0, note: null };
+
 /** Wrap the SSOT's integer totals into the display-currency {@link CheckoutTotals} projection. */
 function toTotals(
 	items: readonly BasketItem[],
@@ -196,12 +213,14 @@ function toTotals(
 	money: MoneyProjector,
 	platformFeeBp: number,
 	processingContributionMinor = 0,
+	tax: TaxView = UNTAXED,
 ): CheckoutTotals {
 	const t = checkoutTotals({
 		items,
 		promoDiscountMinor: promoMinor,
 		platformFeeBp,
 		processingContributionMinor,
+		taxMinor: tax.minor,
 	});
 	return {
 		subtotal: money.derived(t.subtotalMinor),
@@ -211,10 +230,9 @@ function toTotals(
 		platformFee: money.derived(t.platformFeeMinor),
 		platformFeeBp: t.platformFeeBp,
 		platformFeeMode: t.feeMode,
+		// What Stripe Tax calculated for this buyer (Decision #490); nothing while the switch is off.
 		taxes: money.derived(t.taxMinor),
-		// No tax engine has been wired, so no tax is asserted. A fabricated rate would look
-		// authoritative and be wrong; the SSOT takes tax as an INPUT for exactly this reason.
-		taxNote: null,
+		taxNote: tax.note,
 		processingContribution: money.derived(t.processingContributionMinor),
 		total: money.derived(t.totalMinor),
 	};
@@ -502,29 +520,28 @@ function moneyIn(minor: number, currency: string): MoneyView {
 }
 
 /**
- * The order total for these lines in the listings' OWN currency: what the order is written in, what
- * `finance.place_wallet_order` debits in that currency, and what a conversion quote must deliver.
+ * These lines read in the listings' OWN currency: what the order is written in, what
+ * `finance.place_wallet_order` debits in that currency, what a conversion quote must deliver, and what
+ * Stripe Tax is asked about (Decision #490).
  *
- * The figure is not a conversion of the display total — that would be a third number nobody priced.
- * It is the SAME basket read in the currency the sellers priced in, narrowed to the same lines and
- * totalled by the same `toTotals` (so the same promo resolution, the same discounts, the same
- * rounding): exactly what a buyer reading the basket in that currency would see as their total. When
- * the display currency already IS that currency, the display total is returned as-is and no second
- * read is made. `null` when the lines span more than one currency — no single order total exists.
- *
- * The voluntary contribution is never part of it: `create` refuses a contribution on every route, so
- * a charge that included one would be a figure no payment can be made for.
+ * The figures are not a conversion of the display ones — that would be a third number nobody priced.
+ * They are the SAME basket read in the currency the sellers priced in, narrowed to the same lines, with
+ * the promo resolved there: exactly what a buyer reading the basket in that currency would see. When
+ * the display currency already IS that currency, the display read is returned as-is and no second
+ * read is made. `null` when the lines span more than one currency — no single order exists.
  */
-async function originTotalFor(
+async function originOf(
 	query: BasketQuery,
 	actor: ReadActor,
-	resolved: Pick<Resolved, "basketId" | "money" | "owner">,
+	resolved: Pick<Resolved, "basketId" | "money">,
 	items: readonly BasketItem[],
-	displayTotal: () => MoneyView,
-): Promise<MoneyView | null> {
+	displayPromo: ResolvedPromo | null,
+): Promise<OriginBasket | null> {
 	const currency = chargeCurrencyOf(items.filter(isCheckoutEligible));
 	if (currency === null) return null;
-	if (currency === resolved.money.display) return displayTotal();
+	if (currency === resolved.money.display) {
+		return { lines: items, promo: displayPromo, money: resolved.money };
+	}
 
 	const read = await io.readBasket(
 		{ ...query, basketId: resolved.basketId, display: currency },
@@ -536,8 +553,56 @@ async function originTotalFor(
 	const wanted = new Set(items.map((item) => item.id));
 	const lines = native.basket.items.filter((item) => wanted.has(item.id));
 	if (lines.length !== wanted.size) return null;
-	const promo = await native.resolvePromo(native.promoCode, lines);
-	return toTotals(lines, promoMinorFor(promo), native.money, feeBpOf(resolved.owner), 0).total;
+	return { lines, promo: await native.resolvePromo(native.promoCode, lines), money: native.money };
+}
+
+/** A checkout's lines in the order's own currency ({@link originOf}). */
+interface OriginBasket {
+	lines: readonly BasketItem[];
+	promo: ResolvedPromo | null;
+	money: MoneyProjector;
+}
+
+/**
+ * The order total in its own currency: the same `toTotals` (the same promo resolution, discounts and
+ * rounding) plus the tax Stripe Tax calculated in that currency. The voluntary contribution is never
+ * part of it: `create` refuses a contribution on every route, so a charge that included one would be a
+ * figure no payment can be made for.
+ */
+function originTotalOf(origin: OriginBasket, owner: ResolvedOwner, tax: CheckoutTax): MoneyView {
+	return toTotals(origin.lines, promoMinorFor(origin.promo), origin.money, feeBpOf(owner), 0, {
+		minor: tax.quote?.taxMinor ?? 0,
+		note: null,
+	}).total;
+}
+
+/** The checkout's tax (Decision #490) on its lines in the order's own currency; none without one. */
+function taxFor(
+	resolved: Pick<Resolved, "basketId" | "owner">,
+	origin: OriginBasket | null,
+	buyer: BuyerDetails,
+	actor: ReadActor,
+): Promise<CheckoutTax> {
+	if (!origin) return Promise.resolve(NO_TAX);
+	const promo = origin.promo?.valid
+		? { minor: promoMinorFor(origin.promo), covers: origin.promo.covers ?? [] }
+		: null;
+	return io.checkoutTax({
+		basketId: resolved.basketId,
+		owner: { ownerType: resolved.owner.ownerType, ownerId: resolved.owner.ownerId },
+		currency: origin.money.display,
+		lines: origin.lines.filter(isCheckoutEligible),
+		promo,
+		buyer,
+	}, actor);
+}
+
+/** The tax as the display summary shows it: converted once, like every other display figure. */
+function taxViewOf(tax: CheckoutTax, money: MoneyProjector): TaxView {
+	return {
+		minor: tax.quote ? money.convertMinor(tax.quote.taxMinor, tax.quote.currency) : 0,
+		note: tax.note,
+	};
 }
 
 /** What a checkout charges and in which currency it may be paid. */
@@ -745,6 +810,23 @@ export interface CheckoutIo {
 	processorConnected: () => boolean;
 	lockQuote: typeof lockQuote;
 	readQuote: typeof readQuote;
+	checkoutTax: (input: CheckoutTaxInput, actor: ReadActor) => Promise<CheckoutTax>;
+	syncTax: () => Promise<unknown>;
+}
+
+/**
+ * The live checkout tax (`checkout-tax.ts`). A failure — Stripe or the database unreachable — shows no
+ * tax rather than a guessed one; while the switch is on the order door then refuses the order
+ * (`price_changed`), so nothing is ever placed without its tax.
+ */
+async function liveCheckoutTax(input: CheckoutTaxInput, actor: ReadActor): Promise<CheckoutTax> {
+	if (!actor.accessToken) return NO_TAX;
+	try {
+		return await checkoutTaxFor(input, liveTaxDeps(actor.accessToken));
+	} catch (error) {
+		console.error("[checkout:tax]", error instanceof Error ? error.message : error);
+		return NO_TAX;
+	}
 }
 
 const LIVE_IO: CheckoutIo = {
@@ -761,9 +843,24 @@ const LIVE_IO: CheckoutIo = {
 	processorConnected,
 	lockQuote,
 	readQuote,
+	checkoutTax: liveCheckoutTax,
+	syncTax: () => syncTaxRecords(10),
 };
 
 let io: CheckoutIo = LIVE_IO;
+
+/**
+ * After an order commits on a calculation: its tax transaction at Stripe now (Decision #490), best
+ * effort — the tax sweep (`POST /api/finance/cron/tax`) makes whatever this misses.
+ */
+async function recordTaxAfterCommit(tax: CheckoutTax): Promise<void> {
+	if (!tax.quote) return;
+	try {
+		await io.syncTax();
+	} catch (error) {
+		console.error("[checkout:tax-sync]", error instanceof Error ? error.message : error);
+	}
+}
 
 /** Swap some of the checkout's reads and writes for fakes (tests only); `null` restores the live ones. */
 export function setCheckoutIoForTesting(fake: Partial<CheckoutIo> | null): void {
@@ -864,25 +961,24 @@ export class CheckoutBackendService {
 
 			const promo = await view.resolvePromo(view.promoCode, items);
 			const processingOffer = processingOfferFor(money);
+			const details = await io.details(owner, query, actor);
+			// The tax on the lines in the order's own currency, for this buyer's billing address (Decision
+			// #490): recomputed whenever the details change, since saving them returns a fresh session.
+			const basket = await originOf(query, actor, resolved, items, promo);
+			const tax = await taxFor(resolved, basket, details.buyer, actor);
 			const totals = toTotals(
 				items,
 				promoMinorFor(promo),
 				money,
 				feeBpOf(owner),
 				processingOffer.optedIn ? processingOffer.amount.minor : 0,
+				taxViewOf(tax, money),
 			);
 			// The charge first: it names the wallet the order is paid from, whose balance the wallet route
 			// is offered against, the currency the on-account standing is read in, and whose limit,
-			// threshold and approvals the spend read answers for. It is the order's own total, or that
-			// total converted into the billing currency the buyer's details name (Decision #435).
-			const origin = await originTotalFor(
-				query,
-				actor,
-				resolved,
-				items,
-				() => toTotals(items, promoMinorFor(promo), money, feeBpOf(owner), 0).total,
-			);
-			const details = await io.details(owner, query, actor);
+			// threshold and approvals the spend read answers for. It is the order's own total with its tax,
+			// or that total converted into the billing currency the buyer's details name (Decision #435).
+			const origin = basket ? originTotalOf(basket, owner, tax) : null;
 			const priced = origin
 				? await buyerChargeFor(
 					owner,
@@ -1097,13 +1193,25 @@ export class CheckoutBackendService {
 			}
 
 			const promo = await view.resolvePromo(view.promoCode, eligible);
-			const totals = toTotals(eligible, promoMinorFor(promo), money, feeBpOf(owner), 0);
+			const details = await io.details(owner, query, actor);
+			// The tax the session showed for these lines (Decision #490): the same calculation, reused for
+			// the same lines and address, which the order door takes the tax from.
+			const basket = await originOf(query, actor, resolved, eligible, promo);
+			const tax = await taxFor(resolved, basket, details.buyer, actor);
+			const totals = toTotals(
+				eligible,
+				promoMinorFor(promo),
+				money,
+				feeBpOf(owner),
+				0,
+				taxViewOf(tax, money),
+			);
 			const priced: Resolved = { ...resolved, items: eligible };
 			// The order's total in the lines' own currency — what the order is written in — and what every
 			// route charges: that total, or with the quote the page was shown (Decision #435) its price in
 			// the buyer's currency. The wallet route is offered against the charge, the on-account standing
 			// is read in it, and a card, an express wallet or an on-account credit is made for exactly it.
-			const origin = await originTotalFor(query, actor, resolved, eligible, () => totals.total);
+			const origin = basket ? originTotalOf(basket, owner, tax) : null;
 			let charge: BuyerCharge | null = origin ? { ...origin, quote: null } : null;
 			let quoteId: string | null = null;
 			let quotePaid = false;
@@ -1132,9 +1240,8 @@ export class CheckoutBackendService {
 				};
 				quoteId = quote.id;
 			}
-			const [standing, details, spendLimit] = await Promise.all([
+			const [standing, spendLimit] = await Promise.all([
 				standingFor(owner, charge, actor),
-				io.details(owner, query, actor),
 				io.spendLimit(owner, totals.total.minor, money, actor, {
 					basketId: resolved.basketId,
 					// A business's approval is matched against the charge in its own currency, exactly as
@@ -1229,6 +1336,8 @@ export class CheckoutBackendService {
 			};
 			// Named only when set, so a same-currency order still resolves the doors by their old arguments.
 			const quoteArg = quoteId ? { p_fx_quote_id: quoteId } : {};
+			// The recorded Stripe Tax calculation the order is placed on (Decision #490); none while off.
+			const taxArg = tax.quote ? { p_tax_calculation_ref: tax.quote.calculationRef } : {};
 
 			if (onAccount) {
 				// Credited on account in the charge's currency — converted into the order's by the quote when
@@ -1236,7 +1345,7 @@ export class CheckoutBackendService {
 				const { data, error } = simulatedDoor(sim) ??
 					await io.placeOrder(
 						"place_on_account_order",
-						{ ...rpcArgs, p_amount: charge.minor, ...quoteArg },
+						{ ...rpcArgs, p_amount: charge.minor, ...quoteArg, ...taxArg },
 						actor.accessToken,
 					);
 				if (error) {
@@ -1257,6 +1366,7 @@ export class CheckoutBackendService {
 					return refusal(refused.message, [refused]);
 				}
 				// Written `invoiced` with nothing charged now: the order is billed on the monthly invoice.
+				await recordTaxAfterCommit(tax);
 				const placed = succeeded(data as PlacedOrder);
 				const result: CheckoutResult = {
 					...placed,
@@ -1329,6 +1439,7 @@ export class CheckoutBackendService {
 						promoCode: appliedCode,
 						orderKey: input.idempotencyKey,
 						...(quoteId ? { fxQuoteId: quoteId } : {}),
+						...(tax.quote ? { taxCalculationRef: tax.quote.calculationRef } : {}),
 					},
 				}, actor);
 				if (!pay.ok || !pay.data) {
@@ -1370,7 +1481,7 @@ export class CheckoutBackendService {
 			const { data, error } = simulatedDoor(sim) ??
 				await io.placeOrder(
 					"place_wallet_order",
-					{ ...rpcArgs, p_expected_minor: origin.minor, ...quoteArg },
+					{ ...rpcArgs, p_expected_minor: origin.minor, ...quoteArg, ...taxArg },
 					actor.accessToken,
 				);
 			if (error) {
@@ -1385,6 +1496,7 @@ export class CheckoutBackendService {
 				return refusal(refused.message, [refused]);
 			}
 
+			await recordTaxAfterCommit(tax);
 			const result = succeeded(data as PlacedOrder);
 			return ok({ result }, { message: result.message });
 		});
@@ -1428,7 +1540,7 @@ export class CheckoutBackendService {
 			if (!moneyWritesLive()) return moneyWritesOff<Out>();
 			const resolved = await resolve({ ...query, basketId: input.basketId }, actor);
 			if (!resolved) return SIGNED_OUT as ServiceResult<Out>;
-			const { owner, money, view } = resolved;
+			const { owner, view } = resolved;
 			if (owner.ownerType !== "business" || !owner.actingIsMember) {
 				return fail(422, {
 					message: "Approvals are for purchases made for a business.",
@@ -1445,8 +1557,12 @@ export class CheckoutBackendService {
 				}) as ServiceResult<Out>;
 			}
 			const promo = await view.resolvePromo(view.promoCode, eligible);
-			const totals = toTotals(eligible, promoMinorFor(promo), money, feeBpOf(owner), 0);
-			const origin = await originTotalFor(query, actor, resolved, eligible, () => totals.total);
+			const details = await io.details(owner, query, actor);
+			const basket = await originOf(query, actor, resolved, eligible, promo);
+			// With its tax (Decision #490), as `create` charges it.
+			const origin = basket
+				? originTotalOf(basket, owner, await taxFor(resolved, basket, details.buyer, actor))
+				: null;
 			if (!origin) {
 				return fail(422, {
 					message: "This basket mixes currencies. Ask for approval of each currency separately.",
@@ -1454,7 +1570,6 @@ export class CheckoutBackendService {
 			}
 			// The figure that leaves the business's wallet: converted into its billing currency when it pays
 			// in that one (Decision #435), which is the wallet and amount the spend gate will count.
-			const details = await io.details(owner, query, actor);
 			const { buyerCharge: charge } = await buyerChargeFor(
 				owner,
 				resolved.basketId,

@@ -152,8 +152,8 @@ Why this order:
 - **RED WP2 / WP11** (the wallet read path, SQL aggregates) wait for SV5. **RED WP4** (keyboard on
   money paths) waits for UI2, UI3 and UI5. **RED WP7** (the money sweep and its lint ban) waits for
   UI5 (and SBP S5).
-- **Marketplace:** CK4 (checkout tax, #490) and SC7 (#493) waited for DB21, which has landed (#542,
-  #543).
+- **Marketplace:** CK4 (checkout tax, #490) has landed, off (#544); SC7 (#493) waited for DB21, which
+  has landed (#542, #543).
 - **LEGAL_COMPLIANCE LG4** adds one enqueue line each to `fn_mature_pending_releases` and
   `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6 (landed, #532),
   whose clearing-window holds decide which escrows count as finally released (#530 (g)).
@@ -206,7 +206,7 @@ gates (SBP S1, back on in S4).
   on `formatMoney` / `Intl.NumberFormat` is `OPTIMIZATION_BUILD_PROMPTS.md`'s (RED WP7).
 - **Tax computation (A9)** (#490): Stripe Tax at checkout and on invoices, collected by the platform
   on digital products only and added on top of the price, behind `tax_collection_enabled` (off until
-  counsel), as `readiness/MARKETPLACE_BUILD_PROMPTS.md` CK4, after DB21.
+  counsel). Built by `readiness/MARKETPLACE_BUILD_PROMPTS.md` CK4 (#544), not switched on.
 - **X4 / N31:** the root `CLAUDE.md` persona fix is the owner's edit (`f1f10e31`). No prompt here
   touches a guardrail file.
 - **Planned, no prompt:** the Income Smoother engine (ruling M6: a `PRODUCT_SPEC.md` entry first),

@@ -51,7 +51,7 @@ const ORDER_COLS =
 	"id, reference, status, placed_at, owner_type, owner_id, basket_id, currency, subtotal_minor, " +
 	"creator_discount_minor, promo_discount_minor, platform_fee_minor, platform_fee_bp, " +
 	"platform_fee_mode, tax_minor, processing_contribution_minor, total_minor, charged_minor, " +
-	"payment_provider, payment_method_label, promo_code";
+	"payment_provider, payment_method_label, promo_code, tax_jurisdiction";
 const LINE_COLS =
 	"id, order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor, " +
 	"currency, promo_discount_minor, platform_fee_bp, platform_fee_minor, fulfilment, asset_id, " +
@@ -75,6 +75,8 @@ interface OrderRow {
 	platform_fee_bp: number;
 	platform_fee_mode: "seller_deducted" | "buyer_added";
 	tax_minor: number | string;
+	/** What the tax was ("United Kingdom VAT 20%", Decision #490); `null` with none charged. */
+	tax_jurisdiction: string | null;
 	processing_contribution_minor: number | string;
 	total_minor: number | string;
 	charged_minor: number | string;
@@ -656,7 +658,7 @@ function totalsOf(order: OrderRow): CheckoutTotals {
 		platformFeeBp: order.platform_fee_bp,
 		platformFeeMode: order.platform_fee_mode,
 		taxes: money(order.tax_minor),
-		taxNote: null,
+		taxNote: order.tax_jurisdiction ? order.tax_jurisdiction.slice(0, 160) : null,
 		processingContribution: money(order.processing_contribution_minor),
 		total: money(order.total_minor),
 	};

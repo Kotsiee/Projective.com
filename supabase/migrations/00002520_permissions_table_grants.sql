@@ -838,6 +838,10 @@ GRANT ALL ON TABLE finance.wallets, finance.payouts, finance.payout_accounts,
     finance.ratings
 TO service_role;
 
+-- A tax calculation is the server's record of what Stripe Tax answered (Decision #490): no client
+-- reads or writes it; finance.place_wallet_order reads it as its definer.
+GRANT ALL ON TABLE finance.tax_calculations TO service_role;
+
 -- The ledger is append-only (Decision #186): the service role reads and appends, never rewrites. The
 -- trigger in 00001830 is the guarantee; this keeps the grant from claiming otherwise.
 GRANT SELECT, INSERT ON TABLE finance.transactions TO service_role;

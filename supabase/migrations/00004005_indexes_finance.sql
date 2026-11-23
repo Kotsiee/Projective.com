@@ -106,6 +106,13 @@ CREATE INDEX IF NOT EXISTS idx_ledger_audit_wallet ON finance.ledger_audit (wall
 
 CREATE INDEX IF NOT EXISTS idx_pending_releases_wallet ON finance.pending_releases (wallet_id, state);
 CREATE INDEX IF NOT EXISTS idx_pending_releases_due ON finance.pending_releases (available_at) WHERE state = 'pending';
+-- Tax at checkout (Decision #490): the cache a checkout preview reads, and what the tax sweep still owes Stripe.
+CREATE INDEX IF NOT EXISTS idx_tax_calculations_cache ON finance.tax_calculations (basket_id, input_hash)
+    WHERE order_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_tax_due ON finance.orders (placed_at)
+    WHERE tax_calculation_ref IS NOT NULL AND tax_transaction_ref IS NULL;
+CREATE INDEX IF NOT EXISTS idx_order_lines_tax_reversal_due ON finance.order_lines (order_id)
+    WHERE tax_line_ref IS NOT NULL AND tax_reversal_ref IS NULL AND status <> 'confirmed';
 -- The rows a card dispute froze, which its close recovers from or returns (ruling M3).
 CREATE INDEX IF NOT EXISTS idx_pending_releases_hold ON finance.pending_releases (hold_chargeback_id)
     WHERE hold_chargeback_id IS NOT NULL;

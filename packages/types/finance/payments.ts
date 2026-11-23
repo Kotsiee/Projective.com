@@ -112,6 +112,11 @@ export const CheckoutOrderLinkSchema = z.object({
 	 * the top-up is already in the order's currency.
 	 */
 	fxQuoteId: uuid.optional(),
+	/**
+	 * The Stripe Tax calculation the order is placed on (Decision #490), recorded by the checkout; absent
+	 * while `tax_collection_enabled` is off or nothing is taxed. The charge includes its tax.
+	 */
+	taxCalculationRef: z.string().regex(/^taxcalc_[A-Za-z0-9_]{1,250}$/).optional(),
 });
 export type CheckoutOrderLink = z.infer<typeof CheckoutOrderLinkSchema>;
 

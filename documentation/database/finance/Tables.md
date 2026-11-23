@@ -740,6 +740,35 @@ admits only product listings the issuer manages. `deactivated_at` is the archive
 `archive_promo_code` writes (nothing is hard-deleted). Written only by the three seller doors and,
 for a platform code, by seeds and probes. Read as `SellerPromoCodeSchema` (projection-only).
 
+**Tax at checkout (Decision #490, MARKETPLACE CK4; built, not switched on).** While
+`security.platform_params.tax_collection_enabled` is `false` (as seeded) none of these is written and
+every order reads as before. `finance.orders.tax_minor` (`bigint`, NOT NULL `DEFAULT 0`, `≥ 0`) is the
+tax the order was charged, on top of its net (`total_minor` = net + tax), the sum of its lines'
+`finance.order_lines.tax_minor` (same type). Beside it on the order: `tax_jurisdiction` (`text`, NULL,
+≤ 160, "United Kingdom VAT 20%", the checkout's `taxNote`), `tax_calculation_ref` (`text`, NULL,
+`^taxcalc_…`, the Stripe Tax calculation the order was placed on), `tax_transaction_ref` (`text`, NULL,
+`^tax_…`, the tax transaction made from it after commit) and `buyer_tax_id` (`text`, NULL, ≤ 60, a
+business buyer's VAT ID for reverse charge). On the line: `tax_line_ref` (`text`, NULL, `^tax_li_…`, the
+line's item in that transaction) and `tax_reversal_ref` (`text`, NULL, `^tax_…`, the reversal recorded
+once the line was refunded; `ck_order_lines_tax_reversal`: only on a line with a `tax_line_ref`).
+Written by `place_wallet_order` (the tax, the jurisdiction, the calculation, the VAT ID) and by the
+service role's `record_tax_transaction` / `record_tax_reversal` (the refs). A refund in full gives the
+line's tax back with it (`fn_refund_product_line`). Due-work partial indexes `idx_orders_tax_due` and
+`idx_order_lines_tax_reversal_due` (`00004005`). The tax held is the `tax_payable` term of
+`v_conservation_identity`. Projected as the order's `taxes` and `taxNote` (`live-orders.ts`).
+
+**`finance.tax_calculations` (Decision #490).** A Stripe Tax calculation the checkout recorded for a
+basket, which `place_wallet_order` takes the tax from (never from its caller): `calculation_ref` (UNIQUE,
+`^taxcalc_…`), `basket_id` (FK `finance.baskets`, CASCADE), `owner_type` · `owner_id`, `currency`,
+`input_hash` (the cache key: lines, address, VAT ID), `lines` (`jsonb` object, basket line id →
+`{amount, tax}`, the amount being what the buyer pays for the line), `taxable_minor`, `tax_minor`,
+`jurisdiction`, `buyer_tax_id`, `reverse_charge`, `expires_at` (Stripe allows a transaction from it
+for 90 days), `order_id` (UNIQUE, FK `finance.orders` SET NULL: the order that consumed it, once),
+`created_at`. RLS on with no policy; `GRANT ALL` to `service_role` only: written by
+`record_tax_calculation`, read by `tax_calculation_for` (the cache) and, as their owner, by the order
+door. Partial index `idx_tax_calculations_cache` (`basket_id, input_hash`, unconsumed). Zod
+`TaxCalculationSchema` (`packages/types/finance/checkout-tax.ts`).
+
 **The fee on each line (Decision #337, ruling M1).** `finance.order_lines` records what was taken on
 a line when it was bought: `platform_fee_minor` (`bigint`, NOT NULL `DEFAULT 0`, `≥ 0`) and its rate
 `platform_fee_bp` (`integer`, NULL, `0..10000`), beside `promo_discount_minor` (`bigint`, NOT NULL

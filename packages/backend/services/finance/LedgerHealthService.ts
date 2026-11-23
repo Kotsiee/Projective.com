@@ -43,6 +43,7 @@ interface RawCurrency {
 	held_wallets_minor: number;
 	held_escrows_minor: number;
 	held_pending_minor: number;
+	tax_payable_minor: number;
 	fees_escrows_minor: number;
 	fees_orders_minor: number;
 	fees_fx_minor: number;
@@ -113,6 +114,7 @@ function toCurrency(raw: RawCurrency): ConservationCurrency {
 		heldWalletsMinor: raw.held_wallets_minor,
 		heldEscrowsMinor: raw.held_escrows_minor,
 		heldPendingMinor: raw.held_pending_minor,
+		taxPayableMinor: raw.tax_payable_minor,
 		feesEscrowsMinor: raw.fees_escrows_minor,
 		feesOrdersMinor: raw.fees_orders_minor,
 		feesFxMinor: raw.fees_fx_minor,

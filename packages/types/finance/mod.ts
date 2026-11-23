@@ -33,6 +33,7 @@ export * from "./sittings.ts";
 export * from "./buyer.ts";
 export * from "./countries.ts";
 export * from "./checkout.ts";
+export * from "./checkout-tax.ts";
 export * from "./order.ts";
 export * from "./order-history.ts";
 export * from "./payments.ts";

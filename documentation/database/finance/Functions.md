@@ -291,7 +291,41 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   second session adds no ledger row. It commits, so it runs against a disposable copy of the
   database (recipe in its header), never the shared dev DB.
 - **`finance.fn_generate_consolidated_invoice(business_id, start, end)`** — consolidates a period's
-  released escrows/fees/bonuses into one itemised `consolidated_monthly` invoice.
+  released escrows/fees/bonuses into one itemised `consolidated_monthly` invoice. Its `tax_cents` is
+  the period's stored order tax (`finance.fn_order_tax_held` over the business's orders placed in it:
+  what each was charged, less its refunded lines' tax), one `tax` line per order ("Tax on order
+  PJ-… · United Kingdom VAT 20%"), and `total_cents` = subtotal + tax (Decision #490, CK4). 0 while
+  `tax_collection_enabled` is off.
+
+### Tax at checkout (`00001200` §Tax at checkout; Decision #490, MARKETPLACE CK4) — built, not switched on
+
+- **`finance.fn_tax_collection_on()` → boolean** (internal): `security.platform_params.tax_collection_enabled`,
+  seeded `false`; missing reads as off.
+- **`finance.fn_tax_collected(p_kind text)` → boolean** (internal): whether `tax_collected_kinds`
+  (seeded `["digital_product"]`) names the kind.
+- **`finance.fn_order_tax_held(p_order_id)` → bigint** (internal): the order's `tax_minor` less the tax
+  of its lines `refunded` / `cancelled` since.
+- **`finance.record_tax_calculation(p_calculation_ref, p_basket_id, p_owner_type, p_owner_id, p_currency,
+  p_input_hash, p_lines, p_tax_minor, p_jurisdiction, p_buyer_tax_id, p_reverse_charge, p_expires_at)`
+  → uuid** (service role only): records what Stripe Tax answered for a basket in
+  `finance.tax_calculations`. `p_lines` maps each taxed basket line id to `{amount, tax}`; the tax must
+  be their sum (`22023` otherwise). Idempotent on the calculation.
+- **`finance.tax_calculation_for(p_basket_id, p_input_hash)` → setof `finance.tax_calculations`**
+  (service role only): the cache — the newest unconsumed calculation for that input, made in the last
+  day with an hour of life left.
+- **`finance.tax_records_due(p_limit)` → table** (service role only): what is still owed Stripe Tax —
+  `transaction` rows (an order on a calculation with no `tax_transaction_ref`; `reference` the order's)
+  then `reversal` rows (a refunded line with a `tax_line_ref` and no `tax_reversal_ref`, its
+  `transaction_ref`, `line_ref`, `amount_minor` = what the buyer paid for it and `tax_minor`;
+  `reference` `<order>-refund-<n>`). Read by the tax sweep (`PaymentBackendService.sweepTaxRecords`,
+  job `finance-tax-records`) and the checkout after a commit.
+- **`finance.record_tax_transaction(p_order_id, p_transaction_ref, p_line_refs)` → jsonb** (service role
+  only): writes the order's `tax_transaction_ref` and each line's `tax_line_ref` (`p_line_refs`: basket
+  line id → `tax_li_…`), claiming `tax_transaction:<order>` in `finance.idempotency_keys` in the same
+  transaction. Write-once: the same id replays (`replayed: true`), another is `PX409`.
+- **`finance.record_tax_reversal(p_line_id, p_reversal_ref)` → jsonb** (service role only): the
+  reversal of a refunded line's tax, claimed `tax_reversal:<line>`; write-once the same way. `22023` on
+  a line with no recorded tax or not refunded.
 - ~~`finance.fn_seed_business_wallet()`~~ — **removed 2026-09-28** with its trigger
   `trg_seed_business_wallet`. It credited every new business wallet 2,500,000 minor units of
   `demo_opening_credit` in whatever currency it was opened in — spendable funds nobody had paid in. No
@@ -408,7 +442,9 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
     (`fx_conversions.principal_minor` in `from_currency`);
   - held — `held_wallets_minor` (`balance_cents`; pots are earmarks inside it) · `held_escrows_minor`
     (`amount_cents` of every escrow not `released` / `refunded`: `held`, `reserved` #430, `disputed`) ·
-    `held_pending_minor` (`pending_releases` not `available`, `amount_cents − recovered_cents`);
+    `held_pending_minor` (`pending_releases` not `available`, `amount_cents − recovered_cents`) ·
+    `tax_payable_minor` (`orders.tax_minor` less the tax of lines `refunded` / `cancelled`: the tax
+    checkout collected, which the platform holds to remit; Decision #490, CK4);
   - fees — `fees_escrows_minor` (released escrows' `platform_fee_cents`) · `fees_orders_minor`
     (`orders.platform_fee_minor`) · `fees_fx_minor` (`fx_conversions.spread_minor` in `from_currency`);
   - losses — `losses_chargebacks_minor` (lost cases' `unrecovered_cents`) ·
@@ -1036,7 +1072,8 @@ reached only through the refund doors (probe `order_refund_lifecycle.sql`).
   neither offered nor accepted (the report's ruling decides its refund, PO409).
 - **`finance.fn_refund_product_line(p_line_id, p_release_id)` → bigint** (internal, FBP DB21): the
   money of a product refund, shared by the cancel and a product dispute's buyer win: what the buyer
-  paid into the paying wallet (`order_refund`), the seller's clearing row (`pending` or `on_hold`)
+  paid, with the line's tax (Decision #490), into the paying wallet (`order_refund`; the return value
+  is that sum), the seller's clearing row (`pending` or `on_hold`)
   closed with `recovered_cents = amount_cents`, the entitlement `refunded`, the line written through
   `fn_record_line_refund`.
 - **`finance.fn_order_paying_wallet(p_order_id, p_currency)` → uuid** (internal): the wallet of the
@@ -1093,11 +1130,22 @@ same gate the checkout's `invoice` provider applies (refused `PK403 kyb_required
 `supabase/probes/business_invoicing_terms_kyb.sql`). Returns
 `{ invoicing_mode, billing_day }`.
 
-### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_expected_minor, p_fx_quote_id DEFAULT NULL)` → jsonb
+### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_expected_minor, p_fx_quote_id DEFAULT NULL, p_tax_calculation_ref DEFAULT NULL)` → jsonb
 
 > **With `p_fx_quote_id` (Decision #435)** the account pays from its wallet in the quote's currency:
 > see [Paying in one's own currency](#-paying-in-ones-own-currency-decision-435). The result (and a
 > replay) adds `fx_conversion_id`, `charge_minor` and `charge_currency`: what the buyer was charged.
+
+> **Tax (Decision #490, CK4; not switched on).** While `tax_collection_enabled` is on, a sent
+> `p_tax_calculation_ref` must be the calculation the checkout recorded for this basket and account,
+> in this currency, unused and unexpired; its `tax_minor` is added to the net, and `p_expected_minor`
+> (and a quote's `to_minor`) must equal net + tax. After the lines are written, every paid line of a
+> `tax_collected_kinds` kind must be in the calculation at what the buyer paid for it, or the call
+> refuses `PC409 price_changed` and rolls back (none sent: none may be paid). The order carries
+> `tax_minor`, `tax_jurisdiction`, `tax_calculation_ref` and `buyer_tax_id`, each taxed line its
+> `tax_minor`; the buyer is debited net + tax, no seller is credited any of it, and the calculation is
+> consumed (`order_id`). `charged_minor` / `charge_minor` include the tax. Switched off, a sent
+> calculation is ignored.
 
 **Age gate:** a caller under 18 is refused `PM403` right after the sign-in check (`org.fn_assert_adult`, Decision #190) —
 which covers `finance.place_on_account_order`, which pays through this function.
@@ -1319,7 +1367,10 @@ amount within the currency's `on_account_limit_cents`), `get_on_account_standing
 `LANGUAGE sql STABLE SECURITY DEFINER`; no grant to `authenticated` (the finance-wide `PUBLIC` /
 `anon` revoke, `00002510`), so only its definer callers read it.
 
-### `finance.place_on_account_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_amount, p_fx_quote_id DEFAULT NULL)` → jsonb (`00001250`, Decision #172)
+### `finance.place_on_account_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key, p_amount, p_fx_quote_id DEFAULT NULL, p_tax_calculation_ref DEFAULT NULL)` → jsonb (`00001250`, Decision #172)
+
+> **Tax (Decision #490).** `p_tax_calculation_ref` passes to `place_wallet_order`; `p_amount` then
+> includes the tax, which the on-account credit and the monthly invoice carry.
 
 > **With `p_fx_quote_id` (Decision #435)** `p_amount` is the quote's charge: credited, limited, owed and
 > locked in the quote's currency, then converted into the order's by `place_wallet_order`.
@@ -1863,7 +1914,8 @@ the order even if the payer's browser never returns. The caller must be the paye
 answered as missing, `P0002`), the payment a still-unpaid `wallet_topup`, the checkout's currency the
 payment's, and the caller able to spend from the basket NOW (`finance.fn_can_manage_basket`, the guard
 `place_wallet_order` applies). `p_checkout` needs `basket_id`, `item_ids` (non-empty), `currency`,
-`units` and an `order_key` of 8–120 characters; it is stored normalised. **Write-once:** the same
+`units` and an `order_key` of 8–120 characters; it is stored normalised, with a well-formed
+`tax_calculation_ref` (Decision #490) kept so the settle door places the order on the same calculation. **Write-once:** the same
 checkout again is a no-op, a different one is `PX409` — one payment paying for two orders is the case
 this exists to prevent. **Second tab (DB7, CO13):** the basket is locked `FOR UPDATE`, and a checkout
 whose `item_ids` overlap another `requires_payment` / `processing` top-up's on the same basket is

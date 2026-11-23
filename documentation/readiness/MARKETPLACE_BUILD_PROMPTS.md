@@ -6,7 +6,7 @@
 > MK-12 and MK-16. The owner's rulings are Decisions #485–#506 (one per prompt), #525 for SC10–SC13
 > and #393 for the asset-delivery phases.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 9 open, 3 partly done, 12 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 8 open, 4 partly done, 12 done (§0 ledger).
 > Runnable now: RV1, RV2, SC6, SC9 (phase 6), SC10, SC12, SC13.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -51,7 +51,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 
 | Row   | Now · Crit · Gate  | Work order                              | The row flips (or its note clears) when                                                                                                |
 | :---- | :----------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
-| MK-20 | 🟡 · Crit · PROD   | **CK4** (ruled #490; ⚖️)                | ✅ only once the tax switch is on in the target environment after counsel; CK4 alone narrows the note                                  |
+| MK-20 | 🟡 · Crit · PROD   | **CK4** (built #544, off; ⚖️)           | ✅ only once the tax switch is on in the target environment after counsel; CK4 has narrowed the note                                   |
 | MK-23 | 🟡 · High · UAT    | CK6 ✅ + you, on a hosted domain (§0.4) | Your device runs are recorded (Apple Pay on iOS Safari, Google Pay on Android Chrome, the PayPal return)                               |
 | MK-24 | 🟡 · Normal · UAT  | SBP S1 → S4                             | A business buys Business Pro, sets monthly invoicing and places an on-account order                                                    |
 | MK-25 | ✅ · Normal · UAT  | COMMS NT3 (email)                       | The approval notice also emails (note clears)                                                                                          |
@@ -104,8 +104,8 @@ finance SQL lane (FINANCE §0); FINANCE's order wins on a conflict.
 1. CK2 — landed (#536).
 2. **SC10**'s money half — no wait (CK2 has landed, #536).
 3. FBP **MR3** — DB21 has landed whole (#542, #543).
-4. **CK4** — runnable: DB21 has landed (#543), so both refund paths can reverse the tax; ⚖️ counsel before the switch. LEGAL LG8 follows
-   it.
+4. **CK4** — built, not switched on (#544); ⚖️ counsel before the switch. LEGAL LG8 is next: it calls
+   `calculateTax` (`checkout-tax.ts`) for a fee line.
 5. **SC7** — runnable: DB21 has landed (#543; a refund reverses the royalty too, #493 (D)); ⚖️ counsel before the grant
    switch. The last change to the money path in this file.
 
@@ -124,14 +124,14 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 
 | File                                             | Writers here          | Writers elsewhere (never at the same time)                        |
 | :----------------------------------------------- | :-------------------- | :---------------------------------------------------------------- |
-| `00001210` (`place_wallet_order`, promo, orders) | CK4, SC7, SC10        | FBP DB10, DB11, DB13; SCH-WP6                                     |
-| `00000017` (finance tables)                      | CK4, SC7              | FBP MR3, MR5                                                      |
+| `00001210` (`place_wallet_order`, promo, orders) | SC7, SC10             | FBP DB10, DB11, DB13; SCH-WP6                                     |
+| `00000017` (finance tables)                      | SC7                   | FBP MR3, MR5                                                      |
 | `00001170` (catalogue doors, `save_listing`)     | SC6, SC10, SC12       | —                                                                 |
 | `00001155` (sessions, cohorts)                   | SC10                  | every SCH package                                                 |
 | `00005060` (jobs)                                | RV2                   | MR5; PM-GH1                                                       |
 | `00002500` / `00002510` / `00002520` (grants)    | every SQL prompt here | one writer at a time across all tracks                            |
 | `supabase/seeds/gen/*` (+ `db:seed:generate`)    | RV1, RV2, RV3         | —                                                                 |
-| `features/checkout/**`, `live-orders.ts`         | CK4, SC10             | FBP UI5, UI6                                                      |
+| `features/checkout/**`, `live-orders.ts`         | SC10                  | FBP UI5, UI6                                                      |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`       | every prompt          | every readiness track: edit your rows and the computed lines only |
 
 ### 0.3 Human stops on this path
@@ -322,70 +322,24 @@ rows from §0.1.
 
 ### CK4 — Tax at checkout, built behind a switch that stays off
 
-> **Status 2026-11-23:** open and runnable: FBP DB21 has landed whole (#542, #543), so both refund
-> paths exist for the tax to reverse.
+> **Status 2026-11-23:** partly done. Steps 1–5 landed in one change (#544), behind
+> `tax_collection_enabled` (off): probe `checkout_tax.sql`, `checkout-tax.test.ts` and the CK4 cases
+> of `CheckoutBackendService.test.ts`. Left: the acceptance run against Stripe's own figures, which
+> waits for the owner to activate Stripe Tax in the Dashboard (head office, registrations; the test
+> account answers `stripe_tax_inactive`), and counsel's ruling before the switch goes on (⚖️). FBP MR3
+> refunds a top-up, never an order, so it has no tax to reverse.
 
-Narrows MK-20 (it stays 🟡 until the switch is on); narrows PRD-M5.
+MK-20 stays 🟡 until the switch is on in the target environment.
 
 ```text
-PROMPT CK4: Tax is calculated, shown and recorded at checkout and on invoices — built behind a
-switch that stays off until the owner and counsel rule
+CK4 — what is left
 
-ROLE: Payments engineer (Stripe + Postgres). Queue M, after DB21: 00000017, 00001210, 00001200.
-
-CONTEXT (verified at b7280787; line refs at f2e25929):
-  - There is no tax anywhere. taxNote: null in CheckoutBackendService.ts:217 (with a "no tax
-    engine" comment), checkout-ssr.ts:289 and live-orders.ts:658; fn_generate_consolidated_
-    invoice hard-codes v_tax bigint := 0 (00001200:1416). Zod already accepts tax as an input
-    (packages/types/finance/checkout.ts:441-538, order.ts:245-256).
-  - A9 is "Planned, no prompt" (FBP §0.6) and PRD-M5 is ❌. PRODUCT_SPEC.md :3539-3555 promises
-    tax documents (1099, W-9, EU reverse charge).
-  - The platform charges the buyer itself under Separate Charges & Transfers, settles in the
-    nine currencies a GB platform can (#423 (B)), and a wallet order spends a balance topped up
-    earlier.
-  - Use the stripe:stripe-best-practices and stripe:stripe-docs skills for the current Stripe Tax
-    API (calculations, transactions, reversals, registrations, product tax codes) before you
-    design anything.
-
-The tax model (ruled: Decision #490, 2026-11-18, A split by kind; ⚖️ counsel confirms the
-obligation before any switch goes on): the platform calculates tax at the order, card and wallet
-alike (never at top-up), with Stripe Tax: a calculation at /checkout/payment's preview, a tax
-transaction recorded at commit and reversed on refund. A business buyer may give a VAT ID on
-/checkout/details for reverse charge. Invoices carry tax lines from the stored calculation.
-Registrations are mine, in the Stripe Dashboard. Tax is added at checkout (tax-exclusive). The
-platform collects only on the kinds `tax_collected_kinds` names (digital_product by default);
-every other line says the seller is responsible for any tax on their work. The product tax codes
-are as tabled in #490 (C). All of it behind `tax_collection_enabled` (a platform param, off).
-Re-verify DB21 at HEAD and stop if it has not landed (#490 (f)).
-
-STEPS:
-  1. Red first: a unit test that a GB consumer buying a digital product, with the switch on, sees
-     a tax line; an invoice probe that v_tax is not 0 when the switch is on.
-  2. Schema in place: the tax amount, jurisdiction and calculation reference on orders and lines
-     (integer minor units), and the buyer's tax ID on the order; doors only.
-  3. Checkout: taxNote and a tax line in the summary from the calculation, recomputed when the
-     details change. With the switch off, today's behaviour exactly, pinned by a test.
-  4. Commit: the calculation reference is recorded inside place_wallet_order's transaction; the
-     Stripe tax transaction is created after commit, idempotently (finance.idempotency_keys), and
-     reversed by the refund paths (DB21, MR3). Keep the Stripe Tax calculation behind one service
-     function that LEGAL LG8 can call for a fee line.
-  5. Invoices: fn_generate_consolidated_invoice sums the stored tax lines, and the PDF shows them.
-
-ACCEPTANCE: with the switch off, every existing checkout and invoice test passes unchanged. With
-it on, in test mode: a GB consumer, an EU business with a VAT ID and a US buyer each get the tax
-Stripe returns, recorded and shown; a refund reverses it; finance_invariants.sql passes.
-
-SAME CHANGE: finance-model.md (a Tax section); PRODUCT_SPEC.md (the ruled rule, marked "Not
-switched on" until counsel); SYSTEM_ARCHITECTURE.md §Environment Variable Contract and
-.env.example if you add a key; FINANCE_AUDIT.md A9; documentation/database/finance/*; Zod; the
-decision row.
+ACCEPTANCE (test mode, once the owner has activated Stripe Tax and with tax_collection_enabled on
+inside a disposable environment only): a GB consumer, an EU business with a VAT ID and a US buyer
+each get the tax Stripe returns, recorded on the order and shown at checkout; a refund reverses it
+(the finance-tax-records sweep records the reversal); finance_invariants.sql and
+conservation_identity.sql pass. Never switch it on in a shared or hosted environment.
 ```
-
-§1.2 rows: **MK-20** stays 🟡 with the note "built, off pending counsel"; → ✅ when the switch is on
-in the target environment. **PRD-M5** narrowed (the checkout half). **MW-57** goes ❌ → 🟡 with CK4
-now that LEGAL LG6 has landed (#527: platform reporting and tax-residence certificates; no 1099 /
-W-9, which Stripe offers no path to for this account).
-
 ---
 
 ## 4. Reviews — new prompts

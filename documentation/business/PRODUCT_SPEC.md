@@ -3851,8 +3851,18 @@ counsel's (#527 (A)); this section describes what is built, not that it meets th
   to the identity and tax number Stripe holds (`GET /api/finance/tax-report?year=`). A person files
   it, through Stripe's Platform tax reporting (a private preview that takes these totals) or with
   counsel. Kept for the window in `finance-model.md` §17.
-- **Reverse Charge Mechanism:** for B2B transactions within the EU, VAT ID validation and
-  reverse-charge logic on invoices. **Not built** (MARKETPLACE CK4, Decision #490).
+- **Tax at checkout (Decision #490). Built, Not switched on:** ⚖️ `tax_collection_enabled` stays off
+  until the owner and counsel rule, and while it is off no order is taxed. The rule, once on: the
+  platform collects tax only where it is the supplier — digital products (`tax_collected_kinds`) —
+  through Stripe Tax, added on top of the price (the seller's price and net never move). Checkout
+  shows the tax line with its jurisdiction and rate from the payment step on, recalculated when the
+  buyer's billing details change; every service and session line says its seller is responsible for
+  any tax on their work. The order, each taxed line and the monthly invoice record the tax; a refund
+  gives it back. `finance-model.md` §9.1 is the mechanism.
+- **Reverse Charge Mechanism:** a business buyer may give a VAT ID on `/checkout/details`; Stripe Tax
+  applies reverse charge to a business in another VAT jurisdiction, and the order records the VAT ID.
+  Built with tax at checkout, **Not switched on** (Decision #490). The typed ID is passed to Stripe as
+  given: Projective makes no VIES check of its own before the calculation.
 - **Tax Residence Certificates:** a seller uploads their certificate in Tax documents. It is private
   to them until they show it to the client of one of their projects, one client at a time, and they
   can make it private again whenever they like. It is malware-scanned when the upload pipeline is

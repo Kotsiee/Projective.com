@@ -57,6 +57,7 @@ import {
 } from "./vault.ts";
 import { VerificationCaseSchema } from "./verification.ts";
 import { AmlSignalSchema } from "./aml-signals.ts";
+import { TaxCalculationSchema } from "./checkout-tax.ts";
 
 const SQL = readRepoFile("supabase/migrations/00000017_tables_finance.sql");
 
@@ -109,6 +110,7 @@ const ROWS: Readonly<Record<string, RowContract>> = {
 	"finance.pending_releases": { schema: PendingReleaseSchema },
 	"finance.inbound_payments": { schema: InboundPaymentSchema },
 	"finance.aml_signals": { schema: AmlSignalSchema },
+	"finance.tax_calculations": { schema: TaxCalculationSchema },
 };
 
 /**

@@ -28,6 +28,7 @@ import { payingWallets, type ResolvedOwner } from "./commerce-owner.ts";
 import type { QuoteLock, QuoteRequest } from "./fx-quotes.ts";
 import { type BasketView, PROMO_NOT_APPLICABLE, promoExcludedLine } from "./live-basket.ts";
 import { PROCESSOR_ANSWERS } from "./PaymentBackendService.ts";
+import { type CheckoutTax, type CheckoutTaxInput, NO_TAX } from "./checkout-tax.ts";
 
 /**
  * The checkout service: "wallet covers" counts only the wallet that pays (FCA N7), and a payment
@@ -162,6 +163,8 @@ interface World {
 	paidQuotes?: string[];
 	/** The account the basket is paid from (default the person's own). */
 	ownerType?: ResolvedOwner["ownerType"];
+	/** What checkout tax answers (Decision #490); absent, the switch is off. */
+	tax?: (input: CheckoutTaxInput) => CheckoutTax;
 }
 
 /** What a test's checkout did: each read of the basket, each standing asked for, each money call. */
@@ -173,6 +176,9 @@ interface Spy {
 	locks: QuoteRequest[];
 	/** The paying wallet's Available each lock was offered a paid quote against. */
 	available: (number | undefined)[];
+	/** What each tax read was asked, and how many tax syncs ran after a commit. */
+	taxInputs: CheckoutTaxInput[];
+	taxSyncs: number;
 }
 
 /** USD per GBP, read at the moment each basket read is made — a test moves it to move the rate. */
@@ -376,7 +382,16 @@ function moneySwitchOn(): () => void {
 /** Run `run` against a checkout reading `world`, every read and write faked; the live I/O comes back after. */
 async function withCheckout(world: World, run: (spy: Spy) => Promise<void>): Promise<void> {
 	const restoreEnv = moneySwitchOn();
-	const spy: Spy = { reads: 0, standings: [], charges: [], orders: [], locks: [], available: [] };
+	const spy: Spy = {
+		reads: 0,
+		standings: [],
+		charges: [],
+		orders: [],
+		locks: [],
+		available: [],
+		taxInputs: [],
+		taxSyncs: 0,
+	};
 	const buyer = { ...BUYER, billingCurrency: world.billing ?? "GBP" };
 	setCheckoutIoForTesting({
 		readBasket: (query) => {
@@ -437,6 +452,14 @@ async function withCheckout(world: World, run: (spy: Spy) => Promise<void>): Pro
 			});
 		},
 		processorConnected: () => true,
+		checkoutTax: (input) => {
+			spy.taxInputs.push(input);
+			return Promise.resolve(world.tax?.(input) ?? NO_TAX);
+		},
+		syncTax: () => {
+			spy.taxSyncs++;
+			return Promise.resolve();
+		},
 	});
 	try {
 		await run(spy);
@@ -1085,6 +1108,110 @@ Deno.test("no promo code applies beside a One-Off: it is an escrow line", async 
 	await withCheckout(world, async () => {
 		const session = await sessionOf();
 		assertEquals(session.blockers.map((b) => b.code), ["promo_not_applicable"]);
+	});
+});
+// #endregion
+
+// #region Tax at checkout (CK4, Decision #490)
+/** Stripe Tax's answer for a GB consumer: 20% VAT on every line, recorded as `taxcalc_test_gb`. */
+function gbVat(input: CheckoutTaxInput): CheckoutTax {
+	const lines = Object.fromEntries(input.lines.map((line) => {
+		const amount = line.unitPrice.minor;
+		return [line.id, { amount, tax: amount / 5 }];
+	}));
+	const taxMinor = Object.values(lines).reduce((sum, line) => sum + line.tax, 0);
+	return {
+		quote: {
+			calculationRef: "taxcalc_test_gb",
+			currency: input.currency,
+			taxMinor,
+			taxableMinor: taxMinor * 5,
+			lines,
+			jurisdiction: "United Kingdom VAT 20%",
+			reverseCharge: false,
+			buyerTaxId: null,
+			expiresAt: "2027-02-20T00:00:00.000Z",
+		},
+		note: "United Kingdom VAT 20%",
+	};
+}
+
+Deno.test("CK4: switched off, the session and the wallet order are today's: no tax, no note, no calculation", async () => {
+	const world: World = { lines: [product("line-gbp", 1_000)] };
+	await withCheckout(world, async (spy) => {
+		const session = await sessionOf();
+		assertEquals(
+			[
+				session.totals.taxes.minor,
+				session.totals.taxNote,
+				session.buyerCharge?.minor,
+				session.totals.total.minor,
+			],
+			[0, null, 1_000, 1_000],
+		);
+		const result = await create(
+			payFor(world, { expectedCharge: { minor: 1_000, currency: "GBP" } }),
+		);
+		assertEquals(result.status, "succeeded");
+		assertEquals(
+			spy.orders.map(({ args }) => ["p_tax_calculation_ref" in args, args.p_expected_minor]),
+			[[false, 1_000]],
+		);
+		assertEquals(spy.taxSyncs, 0);
+	});
+});
+
+Deno.test("CK4: a GB consumer buying a digital product, switched on, sees the tax line and pays net + tax", async () => {
+	const world: World = { lines: [product("line-gbp", 1_000)], tax: gbVat };
+	await withCheckout(world, async (spy) => {
+		const session = await sessionOf();
+		assertEquals(
+			[
+				session.totals.taxes.minor,
+				session.totals.taxNote,
+				session.buyerCharge?.minor,
+				session.totals.total.minor,
+			],
+			[200, "United Kingdom VAT 20%", 1_200, 1_200],
+		);
+		assertEquals(spy.taxInputs[0].currency, "GBP");
+		assertEquals(spy.taxInputs[0].buyer.personal.address.country, "GB");
+
+		const result = await create(
+			payFor(world, { expectedCharge: { minor: 1_200, currency: "GBP" } }),
+		);
+		assertEquals(result.status, "succeeded");
+		assertEquals(
+			spy.orders.map(({ door, args }) => [door, args.p_expected_minor, args.p_tax_calculation_ref]),
+			[["place_wallet_order", 1_200, "taxcalc_test_gb"]],
+		);
+		assertEquals(spy.taxSyncs, 1);
+	});
+});
+
+Deno.test("CK4: the charge the buyer saw without the tax is price_changed once the tax applies", async () => {
+	const world: World = { lines: [product("line-gbp", 1_000)], tax: gbVat };
+	await withCheckout(world, async (spy) => {
+		const result = await create(
+			payFor(world, { expectedCharge: { minor: 1_000, currency: "GBP" } }),
+		);
+		assertEquals(result.blockers.map((b) => b.code), ["price_changed"]);
+		assertEquals(spy.orders.length, 0);
+	});
+});
+
+Deno.test("CK4: a card payment charges net + tax and carries the calculation to the webhook's placement", async () => {
+	const world: World = { lines: [product("line-gbp", 1_000)], tax: gbVat };
+	await withCheckout(world, async (spy) => {
+		const result = await create(payFor(world, {
+			provider: "card",
+			expectedCharge: { minor: 1_200, currency: "GBP" },
+		}));
+		assertEquals(result.status, "requires_action");
+		assertEquals(
+			spy.charges.map((c) => [c.amountMinor, c.checkout?.taxCalculationRef]),
+			[[1_200, "taxcalc_test_gb"]],
+		);
 	});
 });
 // #endregion

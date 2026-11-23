@@ -958,7 +958,7 @@ EXECUTE ON FUNCTION finance.set_invoicing_terms (text, uuid, text, integer) TO a
 -- Paying a basket from the wallet (00001210 §11). A money-moving function a client may call: it
 -- authorises the caller itself (fn_can_manage_basket, KYB, spend limit), re-prices every line, and
 -- moves money only through the service-role primitives it calls as its owner.
-GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text, bigint, uuid, text) TO authenticated;
 
 -- The seller's own marketplace commission (00001210 §11; Decision #337, ruling M1). It answers only a
 -- seller about themselves, or a team to its active members, which is why fn_effective_commission_bp
@@ -973,7 +973,7 @@ GRANT EXECUTE ON FUNCTION finance.get_seller_commission(text, uuid) TO authentic
 -- queue drain, the wallet watch, the billing run, the statement generator) stays service-role only.
 GRANT EXECUTE ON FUNCTION finance.get_billing_settings(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.set_billing_controls(uuid, text, bigint) TO authenticated;
-GRANT EXECUTE ON FUNCTION finance.place_on_account_order(uuid, uuid[], text, jsonb, text, text, bigint, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.place_on_account_order(uuid, uuid[], text, jsonb, text, text, bigint, uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.get_on_account_standing(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.pay_invoice(uuid) TO authenticated;
 
@@ -1294,6 +1294,23 @@ REVOKE ALL ON FUNCTION finance.cancellable_order_lines (uuid[]) FROM PUBLIC, ano
 GRANT EXECUTE ON FUNCTION finance.cancellable_order_lines (uuid[]) TO authenticated;
 REVOKE ALL ON FUNCTION finance.session_forfeits (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.session_forfeits (uuid) TO authenticated;
+
+-- Tax at checkout (00001200 §Tax at checkout, Decision #490, CK4). The switch and the kind test are
+-- read inside the order door as its owner. The four doors are the server's alone: a calculation, a
+-- tax transaction and a reversal record what Stripe answered, so no client may write or read them.
+REVOKE ALL ON FUNCTION finance.fn_tax_collection_on () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_tax_collected (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_order_tax_held (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.record_tax_calculation (text, uuid, text, uuid, text, text, jsonb, bigint, text, text, boolean, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_tax_calculation (text, uuid, text, uuid, text, text, jsonb, bigint, text, text, boolean, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION finance.tax_calculation_for (uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.tax_calculation_for (uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION finance.tax_records_due (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.tax_records_due (integer) TO service_role;
+REVOKE ALL ON FUNCTION finance.record_tax_transaction (uuid, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_tax_transaction (uuid, text, jsonb) TO service_role;
+REVOKE ALL ON FUNCTION finance.record_tax_reversal (uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_tax_reversal (uuid, text) TO service_role;
 REVOKE ALL ON FUNCTION finance.fn_carry_spend_cover (uuid, uuid, bigint) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_wallet_credit_fx (uuid, text, text, bigint, text, text, uuid, text, numeric, timestamptz) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_wallet_debit_fx (uuid, text, text, bigint, text, text, uuid, text, numeric, timestamptz) FROM PUBLIC, anon, authenticated;

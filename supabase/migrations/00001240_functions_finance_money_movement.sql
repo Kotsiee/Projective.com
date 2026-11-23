@@ -360,11 +360,13 @@ AS $$
 $$;
 
 -- A digital product line's money going back to its buyer (FBP DB21), under the caller's locks and
--- checks: what they paid, into the wallet that paid (`order_refund`); the seller's clearing row
+-- checks: what they paid, with the line's tax (Decision #490: the platform held it for this sale, and
+-- the tax sweep reverses it at Stripe), into the wallet that paid (`order_refund`); the seller's clearing row
 -- p_release_id (pending, or on hold for a product dispute) closed, taken back in full, with no ledger
 -- line, since that money never cleared; the entitlement `refunded`, so the download route stops serving
 -- it; and the line written through fn_record_line_refund (`cancelled`, or `refunded` once delivered).
--- p_release_id is NULL only when the seller was credited nothing. Returns the amount refunded. Internal:
+-- p_release_id is NULL only when the seller was credited nothing. Returns the amount refunded, tax
+-- included. Internal:
 -- finance.cancel_order_line and a product dispute's buyer win (fn_settle_order_line_dispute) call it.
 CREATE OR REPLACE FUNCTION finance.fn_refund_product_line(p_line_id uuid, p_release_id uuid)
 RETURNS bigint
@@ -393,10 +395,11 @@ BEGIN
         RAISE EXCEPTION 'This order wasn''t paid from a wallet in its own currency, so it can''t be refunded here. Contact support.'
             USING ERRCODE = 'PO409';
     END IF;
-    PERFORM finance.fn_wallet_credit(w.owner_id, w.owner_type, w.currency, v_paid, 'order_refund', 'order_lines', l.id);
+    PERFORM finance.fn_wallet_credit(w.owner_id, w.owner_type, w.currency, v_paid + l.tax_minor, 'order_refund',
+        'order_lines', l.id);
     UPDATE catalogue.entitlements SET status = 'refunded', updated_at = pg_catalog.now() WHERE order_line_id = l.id;
     PERFORM finance.fn_record_line_refund(l.id, v_paid);
-    RETURN v_paid;
+    RETURN v_paid + l.tax_minor;
 END;
 $$;
 

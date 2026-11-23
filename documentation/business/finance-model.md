@@ -425,6 +425,59 @@ Breakdown: System Fee (5%) → £50 to the Fee Collection Account; Team Vault (1
   operator export over the ledger (`finance.read_seller_tax_report`, PRODUCT_SPEC §Identity, Taxes &
   Compliance 2). ⚖️ Which duties apply is counsel's (#527 (A)).
 
+### 9.1 Tax at checkout (Decision #490; CK4) — built, **not switched on**
+
+⚖️ **Off until the owner and counsel rule.** `security.platform_params.tax_collection_enabled` is
+seeded `false`, nothing in the code switches it on, and while it is off every order is placed exactly
+as before (no tax, no note, no Stripe call). Counsel confirms who is liable, where and on what before
+it goes on in any environment; the head-office address and the registrations are the owner's, set in
+the Stripe Dashboard (Stripe Tax is not active on the test account either).
+
+- **What is taxed (#490 (A)).** The platform collects only where it is the supplier: the kinds
+  `tax_collected_kinds` names, `["digital_product"]` as seeded. A service engagement or a session is a
+  contract between the client and the seller (§9), so it carries no platform tax and the checkout says
+  so on one line ("Sellers are responsible for any tax on their own work."). Widening the param gives
+  the platform-wide option with no rebuild, once counsel rules it.
+- **Tax-exclusive (#490 (B)).** The tax is added on top of the price at checkout. The seller's price,
+  the commission base and the seller's net never move; a promo shares over the lines before the tax.
+- **How it is calculated.** Stripe Tax's custom flow, the platform the liable party, at the order and
+  never at a top-up (a top-up is stored value, not a supply), card and wallet alike. `/checkout/payment`'s
+  preview sends each taxed line at what the buyer pays for it, with its product tax code (#490 (C):
+  `txcd_10000000` for a download, template, preset, font or bundle; `txcd_10202003` source code;
+  `txcd_10302000` an ebook; `txcd_20060258` a course) and the billing address; a business buyer's
+  VAT ID from `/checkout/details` goes as `gb_vat` / `eu_vat` for reverse charge. The answer is
+  recorded server-side (`finance.tax_calculations`), reused for the same basket, lines and address for
+  a day, and shown as the summary's tax line with its jurisdiction and rate (`taxNote`). Saving the
+  details returns a fresh session, so the tax is recomputed when they change.
+- **At commit.** `finance.place_wallet_order` takes the tax from the recorded calculation, never from
+  its caller: the order and each taxed line carry it (`tax_minor`), with the jurisdiction, the
+  calculation and the buyer's VAT ID on the order; the buyer is debited net + tax; no seller is
+  credited any of it. A line paid a different amount than it was calculated on, a used or foreign
+  calculation, or none, refuses the order (`price_changed`) before it commits. On account, the credit
+  and the invoice include the tax.
+- **Where it sits.** The platform holds it to remit: the `tax_payable` term of
+  `finance.v_conservation_identity`, computed from the orders (less refunded lines), as the commission
+  is. Shortcut against #490 (B)'s "a tax-payable wallet per currency": no platform-owned wallet exists
+  (`finance.wallets.owner_type` has no platform owner, and the commission wallet is not materialised
+  either, #54 (i)), so the term is the named sink; a materialised wallet replaces it when the fee
+  wallet lands.
+- **At Stripe.** After commit, a tax transaction is made from the calculation (`reference` = the
+  order's reference, idempotent on the order) and recorded once (`finance.record_tax_transaction`,
+  claimed in `finance.idempotency_keys`); a calculation can be used for 90 days. A refunded line gives
+  its tax back with its price (`finance.fn_refund_product_line`, the cancel and the dispute win, FBP
+  DB21) and is reversed at Stripe (`create_reversal`, partial, per line). The checkout makes the
+  transaction inline; the `finance-tax-records` job (`POST /api/finance/cron/tax`, every 10 min) makes
+  whatever it missed. A card refund made at Stripe (MR3, not built) refunds a top-up, not an order, so
+  it has no tax to reverse.
+- **Invoices.** `finance.fn_generate_consolidated_invoice` sums the period's stored order tax
+  (`tax_cents`), one `tax` line per order, which the PDF prints.
+- **One calculation.** `calculateTax` (`checkout-tax.ts`) is the platform's one Stripe Tax call;
+  LEGAL LG8 calls it for a tax line on the platform's own fees (PRD-M7, #490 (a)).
+- **Open (#490 FLAGS).** (a) tax on the platform's own fees (PRD-M7); (b) a VAT-registered seller
+  cannot charge their own VAT; (c) ⚖️ the tax-exclusive display against UK drip-pricing rules; (d)
+  `txcd_10000000` for US buyers; (e) a session kind needs its Educate / Advise category before it can be
+  taxed.
+
 ---
 
 ## 10. KYC / KYB Gating
@@ -722,7 +775,7 @@ Governs shared wallets (Business / Team / Enterprise).
   `consolidated_monthly` invoice, issued on the business's `org.business_profiles.billing_day`
   (1–28, set through `finance.set_invoicing_terms`; the 1st when NULL) — Decision #168. One invoice
   per currency, Projective as issuer, escrows selected by `released_at`; total = escrow + bonus +
-  tax (the fee is shown, already inside); **due 14 days after issue** (`invoice_due_days`);
+  tax (the fee is shown, already inside; the tax is the period's stored order tax, §9.1); **due 14 days after issue** (`invoice_due_days`);
   idempotent per business, period and currency. Run daily by `finance.fn_run_billing_cycle` (pg_cron
   02:20 UTC), which also marks overdue invoices — Decision #172.
 - **Paying on account** (Decision #172): `finance.place_on_account_order` credits the business
