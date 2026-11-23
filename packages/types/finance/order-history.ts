@@ -40,8 +40,20 @@ export const OrderHistoryLineSchema = z.object({
 	 * RV1); `null` for every other line, and for a purchase not offered one.
 	 */
 	reviewHref: z.string().max(200).nullable(),
+	/**
+	 * A digital product the buyer may still cancel, named by its entitlement's opaque slug
+	 * (`finance.cancellable_order_lines`, FBP DB21): its sale is still clearing and nothing refuses it.
+	 * `null` for every other line.
+	 */
+	cancel: z.object({ entitlement: z.string().regex(/^ent-[23456789a-z]{10}$/) }).nullable(),
 });
 export type OrderHistoryLine = z.infer<typeof OrderHistoryLineSchema>;
+
+/** `POST /api/checkout/orders/cancel`: the purchase to cancel, by its entitlement's slug (FBP DB21). */
+export const CancelOrderLineInputSchema = z.object({
+	entitlement: z.string().regex(/^ent-[23456789a-z]{10}$/),
+});
+export type CancelOrderLineInput = z.infer<typeof CancelOrderLineInputSchema>;
 // #endregion
 
 // #region Entry

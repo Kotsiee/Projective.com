@@ -1620,8 +1620,9 @@ the ticket line whose order''s own transaction held or reserved it. Internal (FB
 -- line is refunded in full. A paid revision began when it was resolved; a ticket line (and a One-Off or
 -- Task, which carries its master ticket) when its ticket reached in_progress, in_review or completed,
 -- now or in its history since the order; a seat or session line when one of its sittings was completed
--- or the buyer joined one. A line with no such fact here (a digital product, whose download rule is
--- DB21's) counts as begun, so nothing is called cancelled that this cannot show. Internal.
+-- or the buyer joined one; a digital product when a file of it was first delivered in full
+-- (catalogue.entitlements.first_delivered_at, ruling A8). A line with no such fact here counts as
+-- begun, so nothing is called cancelled that this cannot show. Internal.
 CREATE OR REPLACE FUNCTION finance.fn_order_line_delivery_began(p_line_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -1630,6 +1631,9 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
     SELECT CASE
+        -- A digital product began when a file of it was first delivered in full (ruling A8, FBP DB21).
+        WHEN l.item_type = 'digital_product' THEN EXISTS (
+            SELECT 1 FROM catalogue.entitlements en WHERE en.order_line_id = l.id AND en.first_delivered_at IS NOT NULL)
         WHEN l.item_type = 'paid_revision' THEN EXISTS (
             SELECT 1 FROM projects.stage_revision_requests rv WHERE rv.id = l.item_id AND rv.status = 'resolved')
         WHEN l.ticket_id IS NOT NULL THEN EXISTS (
@@ -1697,12 +1701,12 @@ COMMENT ON FUNCTION finance.fn_roll_up_order_status(uuid) IS
 refunded when every line is refunded or cancelled with at least one refunded; otherwise unchanged.
 Internal (FBP DB19).';
 
--- The line writer: an escrow refund of `p_amount` (in the escrow's currency, the line's) adds to the
--- line it was bought on, capped at what the buyer paid for the line. Refunded in full, the line becomes
--- `refunded` when its delivery had begun and `cancelled` when it had not, and the order rolls up. A line
--- already refunded or cancelled, or an escrow no line paid for, changes nothing. Returns the line, or
--- NULL. Internal: only finance.fn_refund_escrow_to_payer calls it.
-CREATE OR REPLACE FUNCTION finance.fn_record_order_line_refund(p_escrow_id uuid, p_amount bigint)
+-- The line writer: a refund of `p_amount` (in the line's currency) adds to the line, capped at what the
+-- buyer paid for it. Refunded in full, the line becomes `refunded` when its delivery had begun and
+-- `cancelled` when it had not, and the order rolls up. A line already refunded or cancelled changes
+-- nothing. Returns the line, or NULL when there is none. Internal: the escrow writer below and the
+-- product refund doors (FBP DB21) call it.
+CREATE OR REPLACE FUNCTION finance.fn_record_line_refund(p_line_id uuid, p_amount bigint)
 RETURNS uuid
 LANGUAGE plpgsql
 VOLATILE
@@ -1717,9 +1721,7 @@ BEGIN
     IF p_amount IS NULL OR p_amount <= 0 THEN
         RETURN NULL;
     END IF;
-    SELECT * INTO v_line FROM finance.order_lines l
-     WHERE l.id = finance.fn_order_line_of_escrow(p_escrow_id)
-       FOR UPDATE;
+    SELECT * INTO v_line FROM finance.order_lines l WHERE l.id = p_line_id FOR UPDATE;
     IF NOT FOUND THEN
         RETURN NULL;
     END IF;
@@ -1738,6 +1740,18 @@ BEGIN
     PERFORM finance.fn_roll_up_order_status(v_line.order_id);
     RETURN v_line.id;
 END;
+$$;
+
+-- An escrow refund of `p_amount` recorded on the line the escrow was bought on, or NULL when no line
+-- paid for it. Internal: only finance.fn_refund_escrow_to_payer calls it.
+CREATE OR REPLACE FUNCTION finance.fn_record_order_line_refund(p_escrow_id uuid, p_amount bigint)
+RETURNS uuid
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT finance.fn_record_line_refund(finance.fn_order_line_of_escrow(p_escrow_id), p_amount);
 $$;
 
 COMMENT ON FUNCTION finance.fn_record_order_line_refund(uuid, bigint) IS

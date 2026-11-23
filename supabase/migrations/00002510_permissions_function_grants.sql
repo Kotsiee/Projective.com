@@ -1281,6 +1281,17 @@ REVOKE ALL ON FUNCTION finance.fn_order_line_of_escrow (uuid) FROM PUBLIC, anon,
 REVOKE ALL ON FUNCTION finance.fn_order_line_delivery_began (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_roll_up_order_status (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_record_order_line_refund (uuid, bigint) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_record_line_refund (uuid, bigint) FROM PUBLIC, anon, authenticated;
+-- The refunds a buyer or provider starts (00001240 §1b, FBP DB21): the two user doors and their helper.
+REVOKE ALL ON FUNCTION finance.fn_line_sale_release (finance.order_lines) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.cancel_order_line (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.cancel_order_line (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.refund_session_forfeit (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.refund_session_forfeit (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.cancellable_order_lines (uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.cancellable_order_lines (uuid[]) TO authenticated;
+REVOKE ALL ON FUNCTION finance.session_forfeits (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.session_forfeits (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION finance.fn_carry_spend_cover (uuid, uuid, bigint) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_wallet_credit_fx (uuid, text, text, bigint, text, text, uuid, text, numeric, timestamptz) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_wallet_debit_fx (uuid, text, text, bigint, text, text, uuid, text, numeric, timestamptz) FROM PUBLIC, anon, authenticated;

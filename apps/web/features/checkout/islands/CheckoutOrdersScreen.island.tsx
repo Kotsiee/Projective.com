@@ -1,22 +1,33 @@
 import type { JSX } from "preact";
+import { useSignal } from "@preact/signals";
 import "../styles/checkout.css";
 import "../styles/checkout-confirmation.css";
 import "../styles/checkout-orders.css";
 import { itemKindMeta } from "@projective/types/finance";
 import { Icon } from "@projective/ui/icons";
 import { MetaLine } from "@projective/ui/display";
+import { CommitReview } from "@projective/ui/feedback";
 import { basketHref, checkoutStepHref, ordersHref } from "../core/basket-model.ts";
 import { Amount } from "../components/Amount.tsx";
-import type { OrderHistoryEntry, OrderHistoryPage, OrderStatus } from "../types/checkout-types.ts";
+import { CheckoutService } from "../core/CheckoutService.ts";
+import type {
+	OrderHistoryEntry,
+	OrderHistoryLine,
+	OrderHistoryPage,
+	OrderStatus,
+} from "../types/checkout-types.ts";
 
 /**
  * CheckoutOrdersScreen — the `/checkout/orders` BODY: every past order of the acting account, newest
  * first, twenty to a page (MARKETPLACE CK3).
  *
- * **Everything here is a link; nothing here is state.** The owner switch, each receipt and the pager
- * are anchors whose hrefs come from `basket-model`'s builders, so every view of the history is a URL a
- * buyer can bookmark or be sent, and Back walks the pages. The page boundaries are the server's opaque
- * tokens, carried and never built.
+ * **Everything here is a link, but one act.** The owner switch, each receipt and the pager are anchors
+ * whose hrefs come from `basket-model`'s builders, so every view of the history is a URL a buyer can
+ * bookmark or be sent, and Back walks the pages. The page boundaries are the server's opaque tokens,
+ * carried and never built. The one act is Cancel on a digital product whose sale is still clearing
+ * (FBP DB21, the server's `line.cancel`): it opens the package {@link CommitReview} (§B.8) — the amount,
+ * the purchase, where it goes back to, then "Cancel purchase", its one tier-1 commit — and once the door
+ * has refunded the buyer the page re-reads, so the server-rendered history shows the refund.
  *
  * **A history row reprints the receipt.** Its figures are server-formatted `MoneyView`s through
  * {@link Amount}; its facts are MetaLine text. Each line links to its home (the purchases view, the
@@ -53,6 +64,20 @@ export default function CheckoutOrdersScreen(props: CheckoutOrdersScreenProps): 
 
 	const { ownerKey, entries, older, newer } = initial;
 	const owners = initial.owners.length > 1 ? initial.owners : [];
+	const target = useSignal<OrderHistoryLine | null>(null);
+	const open = useSignal(false);
+	const ask = (line: OrderHistoryLine) => {
+		target.value = line;
+		open.value = true;
+	};
+	const confirm = async (): Promise<string | null> => {
+		const entitlement = target.value?.cancel?.entitlement;
+		if (!entitlement) return null;
+		const out = await CheckoutService.cancelPurchase(entitlement);
+		if (!out.ok) return out.message ?? "That purchase couldn't be cancelled just now.";
+		globalThis.location.reload();
+		return null;
+	};
 
 	return (
 		<div class="cko-orders">
@@ -86,7 +111,9 @@ export default function CheckoutOrdersScreen(props: CheckoutOrdersScreenProps): 
 				? <NoOrders owner={ownerKey} name={initial.ownerName} />
 				: (
 					<ol class="cko-orders__list" aria-label={`Orders for ${initial.ownerName}`}>
-						{entries.map((entry) => <OrderEntry key={entry.id} entry={entry} owner={ownerKey} />)}
+						{entries.map((entry) => (
+							<OrderEntry key={entry.id} entry={entry} owner={ownerKey} onCancel={ask} />
+						))}
 					</ol>
 				)}
 
@@ -115,13 +142,37 @@ export default function CheckoutOrdersScreen(props: CheckoutOrdersScreenProps): 
 					</nav>
 				)
 				: null}
+
+			{target.value
+				? (
+					<CommitReview
+						visible={open}
+						title="Cancel this purchase?"
+						total={target.value.lineTotal.display}
+						rows={[
+							{ label: "Purchase", value: target.value.title },
+							{ label: "Goes back to", value: "The wallet that paid" },
+						]}
+						consequence="What you paid comes back now, and its files stop downloading."
+						commitLabel="Cancel purchase"
+						cancelLabel="Keep it"
+						onCommit={confirm}
+					/>
+				)
+				: null}
 		</div>
 	);
 }
 
 // #region Entry
 /** One past order: its reference opens the receipt, and each line links to where it lives now. */
-function OrderEntry({ entry, owner }: { entry: OrderHistoryEntry; owner: string }): JSX.Element {
+function OrderEntry(
+	{ entry, owner, onCancel }: {
+		entry: OrderHistoryEntry;
+		owner: string;
+		onCancel: (line: OrderHistoryLine) => void;
+	},
+): JSX.Element {
 	const receipt = checkoutStepHref("confirmation", null, owner, undefined, entry.id);
 	return (
 		<li class="cko-orders__entry">
@@ -155,7 +206,7 @@ function OrderEntry({ entry, owner }: { entry: OrderHistoryEntry; owner: string 
 								<div class="cko-orders__linebody">
 									<p class="cko-orders__linetitle">{line.title}</p>
 									<MetaLine size="xs" items={[itemKindMeta(line.itemType).label]} />
-									{line.home || line.reviewHref
+									{line.home || line.reviewHref || line.cancel
 										? (
 											<span class="cko-orders__links">
 												{line.home
@@ -174,6 +225,18 @@ function OrderEntry({ entry, owner }: { entry: OrderHistoryEntry; owner: string 
 														>
 															Review
 														</a>
+													)
+													: null}
+												{line.cancel
+													? (
+														<button
+															type="button"
+															class="cko-orders__cancel"
+															aria-label={`Cancel ${line.title}`}
+															onClick={() => onCancel(line)}
+														>
+															Cancel
+														</button>
 													)
 													: null}
 											</span>

@@ -56,12 +56,13 @@ CREATE TABLE finance.transactions (
         -- debits: the voluntary spends, then the involuntary recoveries (team_distribution and
         -- fx_conversion also credit the other side)
         'escrow_hold', 'order_payment', 'invoice_payment', 'transfer_out', 'team_distribution', 'payout',
-        'fx_conversion', 'fx_spread', 'chargeback', 'refund',
+        'fx_conversion', 'fx_spread', 'chargeback', 'refund', 'forfeit_refund',
         -- earned credits, through the pending window
         'escrow_release', 'escrow_release_vault_retention', 'fair_exit_release',
         'fair_exit_release_vault_retention', 'team_split', 'team_finder_fee', 'product_sale',
         -- money in, and the payer's own money back
-        'topup', 'transfer_in', 'escrow_refund', 'fair_exit_refund', 'payout_reversal', 'on_account_credit',
+        'topup', 'transfer_in', 'escrow_refund', 'fair_exit_refund', 'order_refund', 'payout_reversal',
+        'on_account_credit',
         -- the developer simulator (finance.simulate_wallet_transaction), never a real movement
         'simulated_escrow_lock', 'simulated_escrow_release', 'simulated_platform_fee',
         'simulated_split_payout', 'simulated_top_up', 'simulated_refund'

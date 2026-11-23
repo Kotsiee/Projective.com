@@ -5,6 +5,8 @@ import {
 } from "@projective/types/finance";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
+import { getUserClient } from "../../core/supabase.ts";
+import { refuseUnlessMoneyLive } from "./money-gate.ts";
 import type { BasketQuery } from "./basket-query.ts";
 import { listOwners, resolveOwner } from "./commerce-owner.ts";
 import { icsFor, readOrderHistory, readOrderPage } from "./live-orders.ts";
@@ -116,4 +118,81 @@ export class OrderBackendService {
 			return UNREACHABLE;
 		}
 	}
+
+	/**
+	 * Cancel a digital product purchase while its sale is still clearing (FBP DB21): the entitlement's
+	 * slug names the line, read under the caller's JWT, then `finance.cancel_order_line` refunds the
+	 * buyer and takes the seller's still-clearing credit back. A money write, so the switch comes first.
+	 */
+	static cancelLine(
+		entitlement: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ status: string; refundedMinor: number; currency: string }>> {
+		return refundCall("cancel", actor, async (db) => {
+			const { data: row, error: readError } = await db.schema("catalogue").from("entitlements")
+				.select("order_line_id").eq("slug", entitlement).maybeSingle();
+			if (readError) throw new Error(readError.message);
+			if (!row) return fail(404, { message: "That purchase doesn't exist." });
+			const { data, error } = await db.schema("finance").rpc("cancel_order_line", {
+				p_line_id: (row as { order_line_id: string }).order_line_id,
+			});
+			if (error) return refusal(error);
+			const out = data as { status: string; refunded_minor: number; currency: string };
+			return ok({ status: out.status, refundedMinor: Number(out.refunded_minor), currency: out.currency });
+		});
+	}
+
+	/**
+	 * Give a session forfeit back in full (FBP DB21; ruling M8, voluntary): `finance.refund_session_forfeit`
+	 * takes it from the provider's money still clearing first, then their wallet. A money write.
+	 */
+	static refundForfeit(
+		escrowId: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ refundedMinor: number; currency: string }>> {
+		return refundCall("forfeit", actor, async (db) => {
+			const { data, error } = await db.schema("finance").rpc("refund_session_forfeit", {
+				p_escrow_id: escrowId,
+			});
+			if (error) return refusal(error);
+			const out = data as { refunded_minor: number; currency: string };
+			return ok({ refundedMinor: Number(out.refunded_minor), currency: out.currency });
+		});
+	}
 }
+
+// #region Refunds
+/** A refund door's refusal (SQLSTATE + message) onto a ServiceResult. */
+function refusal<T>(error: { code?: string; message?: string }): ServiceResult<T> {
+	const message = error.message ?? "That couldn't be done just now.";
+	switch (error.code) {
+		case "42501":
+			return fail(403, { message });
+		case "22023":
+			return fail(422, { message });
+		case "P0002":
+			return fail(404, { message });
+		case "PO409":
+		case "PW402":
+			return fail(409, { message });
+		default:
+			return fail(502, { message: "That couldn't be done just now. Please try again." });
+	}
+}
+
+/** The money switch, then the call; an unexpected failure is a 503, never a throw into the route. */
+async function refundCall<T>(
+	label: string,
+	actor: ReadActor,
+	run: (db: ReturnType<typeof getUserClient>) => Promise<ServiceResult<T>>,
+): Promise<ServiceResult<T>> {
+	const blocked = refuseUnlessMoneyLive<T>(actor);
+	if (blocked) return blocked;
+	try {
+		return await run(getUserClient(actor.accessToken!));
+	} catch (error) {
+		console.error(`[orders:${label}]`, error instanceof Error ? error.message : error);
+		return UNREACHABLE as ServiceResult<T>;
+	}
+}
+// #endregion

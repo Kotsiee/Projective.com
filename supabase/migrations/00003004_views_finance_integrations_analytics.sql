@@ -184,7 +184,11 @@ WITH terms (currency, term, minor) AS (
       FROM finance.escrows e
      WHERE e.status = 'released' AND e.platform_fee_cents > 0
     UNION ALL
-    SELECT o.currency, 'fees_orders', o.platform_fee_minor
+    -- A digital product line refunded in full gives its fee back (FBP DB21): it no longer counts.
+    SELECT o.currency, 'fees_orders', o.platform_fee_minor - COALESCE((
+            SELECT pg_catalog.sum(l.platform_fee_minor) FROM finance.order_lines l
+             WHERE l.order_id = o.id AND l.item_type = 'digital_product'
+               AND l.status IN ('refunded', 'cancelled')), 0)
       FROM finance.orders o
      WHERE o.platform_fee_minor > 0
     UNION ALL
@@ -203,6 +207,7 @@ WITH terms (currency, term, minor) AS (
     SELECT ol.currency, 'losses_promos', ol.promo_discount_minor
       FROM finance.order_lines ol
      WHERE ol.promo_funded_by = 'platform'
+       AND NOT (ol.item_type = 'digital_product' AND ol.status IN ('refunded', 'cancelled'))
 ), per_currency AS (
     SELECT pg_catalog.upper(pg_catalog.btrim(t.currency)) AS currency,
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'in_cash'), 0)::bigint AS in_cash_minor,

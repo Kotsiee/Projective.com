@@ -3,6 +3,8 @@
 -- fiat rails (root CLAUDE.md §8 Decision #126, after #125).
 --
 --   1. Dispute resolution   — `charge.dispute.closed`: won unfreezes, lost claws back.
+--  1b. Refunds by request   — a buyer cancels a digital product line while its sale clears; a
+--                             provider gives a session forfeit back (FBP DB21).
 --   2. Withdrawals          — a payout debits the wallet, then leaves as a Stripe Transfer to the
 --                             owner's Connect account (Separate Charges & Transfers); a reversal,
 --                             the bank payout's outcome and the stale-pending sweep (Decision #202);
@@ -304,6 +306,286 @@ BEGIN
         'recovered_cents', v_from_payee + v_from_pending + v_recover, 'recovered_payee_cents', v_from_payee,
         'recovered_pending_cents', v_from_pending, 'unrecovered_cents', v_short));
 END;
+$$;
+-- #endregion
+
+-- #region 1b. Refunds a buyer or provider can start (FBP DB21; Decision #337, ruling M8)
+-- A digital product line its buyer cancels before the sale clears, and a session forfeit its provider
+-- gives back. A product dispute (non-delivery, a defective file) is the dispute engine's (00001260).
+
+-- The seller's still-clearing credit for a digital product line: the `product_sale` row of the
+-- line's order, in a wallet of the product's owner, of exactly the line's credit (the line, less a
+-- promo share the seller funded, less the line's fee: what place_wallet_order credited). Two lines of
+-- one seller with the same credit share an order, a wallet, an amount and a date, so either row is
+-- that line's. NULL once the sale has cleared, was partly taken back, or is on hold. The cancel door
+-- locks the row it names; the offer read (finance.cancellable_order_lines) only asks. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_line_sale_release(p_line finance.order_lines)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT pr.id
+      FROM finance.pending_releases pr
+      JOIN finance.wallets w ON w.id = pr.wallet_id
+      JOIN catalogue.products p ON p.id = (p_line).item_id
+     WHERE pr.order_id = (p_line).order_id AND pr.reason = 'product_sale'
+       AND pr.state = 'pending' AND pr.recovered_cents = 0
+       AND pr.amount_cents = (p_line).line_total_minor - (p_line).platform_fee_minor
+             - CASE WHEN (p_line).promo_funded_by = 'platform' THEN 0 ELSE (p_line).promo_discount_minor END
+       AND ((p.owner_team_id IS NOT NULL AND w.owner_type = 'team' AND w.owner_id = p.owner_team_id)
+         OR (p.owner_team_id IS NULL AND w.owner_type IN ('freelancer', 'user') AND w.owner_id = p.owner_user_id))
+     ORDER BY pr.id
+     LIMIT 1;
+$$;
+
+-- Which of these lines the caller may cancel now (read; FBP DB21): the lines of orders the caller can
+-- see that finance.cancel_order_line would accept, so the order history offers Cancel only where it
+-- works. The door re-checks everything under its locks.
+CREATE OR REPLACE FUNCTION finance.cancellable_order_lines(p_line_ids uuid[])
+RETURNS SETOF uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT l.id
+      FROM finance.order_lines l
+      JOIN finance.orders o ON o.id = l.order_id
+      LEFT JOIN catalogue.entitlements e ON e.order_line_id = l.id
+     WHERE l.id = ANY (COALESCE(p_line_ids, '{}'))
+       AND finance.fn_owner_visible(o.owner_type, o.owner_id)
+       AND l.item_type = 'digital_product' AND l.status = 'confirmed'
+       AND l.line_total_minor - l.promo_discount_minor > 0
+       AND o.fx_conversion_id IS NULL AND o.status <> 'invoiced'
+       AND NOT (e.first_delivered_at IS NOT NULL AND e.delivery_terms_accepted_at IS NOT NULL
+                AND COALESCE((SELECT f.enabled FROM security.feature_flags f
+                               WHERE f.key = 'finance.delivered_refund_refusal'), false))
+       AND (l.line_total_minor - l.platform_fee_minor
+              - CASE WHEN l.promo_funded_by = 'platform' THEN 0 ELSE l.promo_discount_minor END <= 0
+            OR finance.fn_line_sale_release(l) IS NOT NULL);
+$$;
+
+-- Cancel a digital product line (user door; FBP DB21 step 1): a member of the buying account (the
+-- order's own read rule, finance.fn_owner_visible), on a confirmed line whose seller's credit is still
+-- clearing. The buyer gets back what they paid for the line at once, into the wallet that paid
+-- (`order_refund`); the seller's pending row closes, taken back in full (no ledger line: that money
+-- never cleared); the line's fee, and a promo share the platform funded, stop counting
+-- (finance.v_conservation_identity); the entitlement becomes `refunded`, so the download route stops
+-- serving it; the line reads `cancelled`, or `refunded` when a file had been delivered; and the
+-- seller is told. ⚖️ A delivered line the buyer accepted the delivery terms for is refused while
+-- finance.delivered_refund_refusal is on (ruling A8, off until counsel). Once the sale has cleared there
+-- is no cancel: a product dispute in the same window is the route for a faulty or missing file.
+-- shortcut: an order paid through a currency conversion, or on account, is refused; build its refund
+-- path when either is switched on for products.
+CREATE OR REPLACE FUNCTION finance.cancel_order_line(p_line_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    l finance.order_lines;
+    o finance.orders;
+    e catalogue.entitlements;
+    r finance.pending_releases;
+    w finance.wallets;
+    p catalogue.products;
+    v_paid bigint;
+    v_credit bigint;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to cancel a purchase' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO l FROM finance.order_lines WHERE id = p_line_id FOR UPDATE;
+    IF FOUND THEN
+        SELECT * INTO o FROM finance.orders WHERE id = l.order_id FOR UPDATE;
+    END IF;
+    IF o.id IS NULL OR NOT finance.fn_owner_visible(o.owner_type, o.owner_id) THEN
+        RAISE EXCEPTION 'That purchase doesn''t exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF l.item_type <> 'digital_product' THEN
+        RAISE EXCEPTION 'Only a digital product can be cancelled here' USING ERRCODE = '22023';
+    END IF;
+    IF l.status <> 'confirmed' THEN
+        RAISE EXCEPTION 'This purchase was already refunded or cancelled' USING ERRCODE = 'PO409';
+    END IF;
+    v_paid := GREATEST(l.line_total_minor - l.promo_discount_minor, 0);
+    IF v_paid = 0 THEN
+        RAISE EXCEPTION 'Nothing was paid for this, so there is nothing to refund' USING ERRCODE = 'PO409';
+    END IF;
+    IF o.fx_conversion_id IS NOT NULL OR o.status = 'invoiced' THEN
+        RAISE EXCEPTION 'This order was paid in another currency or on account, so it can''t be cancelled here. Contact support.'
+            USING ERRCODE = 'PO409';
+    END IF;
+    SELECT * INTO e FROM catalogue.entitlements WHERE order_line_id = l.id FOR UPDATE;
+    IF e.first_delivered_at IS NOT NULL AND e.delivery_terms_accepted_at IS NOT NULL
+       AND COALESCE((SELECT f.enabled FROM security.feature_flags f WHERE f.key = 'finance.delivered_refund_refusal'), false) THEN
+        RAISE EXCEPTION 'This file has been downloaded, so it can''t be cancelled. If it didn''t arrive whole or is faulty, report a problem.'
+            USING ERRCODE = 'PO409';
+    END IF;
+
+    v_credit := l.line_total_minor - l.platform_fee_minor
+                - CASE WHEN l.promo_funded_by = 'platform' THEN 0 ELSE l.promo_discount_minor END;
+    IF v_credit > 0 THEN
+        SELECT * INTO r FROM finance.pending_releases
+         WHERE id = finance.fn_line_sale_release(l) AND state = 'pending' AND recovered_cents = 0
+           FOR UPDATE;
+        IF r.id IS NULL THEN
+            RAISE EXCEPTION 'The seller''s earnings from this sale are no longer clearing, so it can''t be cancelled here'
+                USING ERRCODE = 'PO409';
+        END IF;
+        UPDATE finance.pending_releases
+           SET recovered_cents = amount_cents, state = 'available', matured_at = pg_catalog.now()
+         WHERE id = r.id;
+    END IF;
+
+    SELECT x.* INTO w
+      FROM finance.transactions t
+      JOIN finance.wallets x ON x.id = t.wallet_id
+     WHERE t.ref_table = 'orders' AND t.ref_id = o.id AND t.reason = 'order_payment' AND t.direction = 'debit'
+     ORDER BY t.created_at, t.id
+     LIMIT 1;
+    IF w.id IS NULL OR pg_catalog.upper(w.currency) <> pg_catalog.upper(l.currency) THEN
+        RAISE EXCEPTION 'This order wasn''t paid from a wallet in its own currency, so it can''t be cancelled here. Contact support.'
+            USING ERRCODE = 'PO409';
+    END IF;
+    PERFORM finance.fn_wallet_credit(w.owner_id, w.owner_type, w.currency, v_paid, 'order_refund', 'order_lines', l.id);
+    UPDATE catalogue.entitlements SET status = 'refunded', updated_at = pg_catalog.now() WHERE id = e.id;
+    PERFORM finance.fn_record_line_refund(l.id, v_paid);
+
+    SELECT * INTO p FROM catalogue.products WHERE id = l.item_id;
+    IF p.owner_user_id IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            p.owner_user_id, 'order.line_refunded', 'A purchase was cancelled',
+            pg_catalog.format('A buyer cancelled their purchase of "%s" before the sale cleared, so it was refunded and its earnings will not reach your wallet.', l.title),
+            'order_lines', l.id,
+            pg_catalog.jsonb_build_object('amount_minor', v_paid, 'currency', l.currency)
+        );
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'line_id', l.id,
+        'status', (SELECT x.status FROM finance.order_lines x WHERE x.id = l.id),
+        'refunded_minor', v_paid, 'currency', l.currency);
+END;
+$$;
+
+-- Give a session forfeit back (user door; FBP DB21 step 3; ruling M8, voluntary): the escrow a seat or
+-- sitting paid its provider because the attendee cancelled inside the notice (cancel_cohort_membership:
+-- the escrow released, its seat cancelled, its sitting `cancelled_by_client`). Its payee, a person (a
+-- team's forfeit is refused until a team can decide one), returns what it paid them: from the release's
+-- rows still clearing first (`recovered_cents`), then their Available balance (`forfeit_refund`; the
+-- money is theirs to give, so pots are respected and a short balance refuses). The attendee gets the
+-- whole price back, the fee included (`escrow_refund`, finance.fn_refund_escrow_to_payer, which also
+-- records the order line refunded); the escrow reads `refunded`, so its fee stops counting; and the
+-- attendee is told. A forfeit already given back refuses.
+CREATE OR REPLACE FUNCTION finance.refund_session_forfeit(p_escrow_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    e finance.escrows;
+    r finance.pending_releases;
+    w finance.wallets;
+    v_left bigint;
+    v_take bigint;
+    v_from_pending bigint := 0;
+    v_back bigint;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to refund a session' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO e FROM finance.escrows WHERE id = p_escrow_id FOR UPDATE;
+    IF NOT FOUND OR e.payee_id IS DISTINCT FROM v_uid OR e.payee_type = 'team'::public.assignment_type THEN
+        RAISE EXCEPTION 'That session payment doesn''t exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF e.status <> 'released' OR e.cohort_membership_id IS NULL
+       OR NOT EXISTS (SELECT 1 FROM projects.cohort_memberships m WHERE m.id = e.cohort_membership_id AND m.status = 'cancelled')
+       OR (e.session_event_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM projects.session_events se
+             WHERE se.id = e.session_event_id AND se.status = 'cancelled_by_client'::projects.session_event_status)) THEN
+        RAISE EXCEPTION 'Only a session the attendee cancelled inside the notice can be refunded here, once'
+            USING ERRCODE = 'PO409';
+    END IF;
+
+    v_left := GREATEST(e.amount_cents - e.platform_fee_cents, 0);
+    FOR r IN
+        SELECT * FROM finance.pending_releases
+         WHERE escrow_id = e.id AND state = 'pending' AND recovered_cents < amount_cents
+         ORDER BY released_at, id
+           FOR UPDATE
+    LOOP
+        EXIT WHEN v_left = 0;
+        v_take := LEAST(v_left, r.amount_cents - r.recovered_cents);
+        UPDATE finance.pending_releases
+           SET recovered_cents = recovered_cents + v_take,
+               state = CASE WHEN recovered_cents + v_take = amount_cents THEN 'available'::finance.fund_state ELSE state END,
+               matured_at = CASE WHEN recovered_cents + v_take = amount_cents THEN pg_catalog.now() ELSE matured_at END
+         WHERE id = r.id;
+        v_left := v_left - v_take;
+        v_from_pending := v_from_pending + v_take;
+    END LOOP;
+    IF v_left > 0 THEN
+        SELECT x.* INTO w FROM finance.wallets x
+         WHERE x.id = COALESCE(
+            (SELECT pr.wallet_id FROM finance.pending_releases pr WHERE pr.escrow_id = e.id ORDER BY pr.released_at LIMIT 1),
+            (SELECT t.wallet_id FROM finance.transactions t
+              WHERE t.ref_table = 'escrows' AND t.ref_id = e.id AND t.direction = 'credit' AND t.reason = 'escrow_release'
+              ORDER BY t.created_at LIMIT 1));
+        IF w.id IS NULL THEN
+            RAISE EXCEPTION 'escrow: % paid no wallet this door can find', e.id USING ERRCODE = 'PL409';
+        END IF;
+        PERFORM finance.fn_wallet_debit(w.owner_id, w.owner_type, w.currency, v_left, 'forfeit_refund', 'escrows', e.id);
+    END IF;
+
+    UPDATE finance.escrows SET status = 'refunded' WHERE id = e.id;
+    v_back := finance.fn_refund_escrow_to_payer(e.id, e.amount_cents, 'escrow_refund');
+    IF e.payer_user_id IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            e.payer_user_id, 'escrow.refunded', 'Session refunded',
+            'The provider refunded a session you cancelled inside the notice, in full.',
+            'escrows', e.id,
+            pg_catalog.jsonb_build_object('amount_minor', v_back, 'currency', e.currency)
+        );
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'escrow_id', e.id, 'refunded_minor', v_back, 'currency', e.currency,
+        'recovered_pending_cents', v_from_pending, 'debited_cents', v_left);
+END;
+$$;
+
+-- The forfeits the caller could give back in one project (read; FBP DB21): what
+-- finance.refund_session_forfeit would accept, newest first, as `[{escrow_id, title, amount_minor,
+-- currency, cancelled_at}]`. Empty for anyone but their payee.
+CREATE OR REPLACE FUNCTION finance.session_forfeits(p_project_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+               'escrow_id', f.id, 'title', f.title, 'amount_minor', f.amount_cents,
+               'currency', f.currency, 'cancelled_at', f.cancelled_at) ORDER BY f.cancelled_at DESC), '[]'::jsonb)
+      FROM (
+        SELECT e.id, COALESCE(se.title, c.name) AS title, e.amount_cents, e.currency, m.cancelled_at
+          FROM finance.escrows e
+          JOIN projects.cohort_memberships m ON m.id = e.cohort_membership_id AND m.status = 'cancelled'
+          JOIN projects.cohorts c ON c.id = m.cohort_id AND c.project_id = p_project_id
+          LEFT JOIN projects.session_events se ON se.id = e.session_event_id
+         WHERE e.payee_id = auth.uid() AND e.payee_type <> 'team'::public.assignment_type
+           AND e.status = 'released'
+           AND (e.session_event_id IS NULL OR se.status = 'cancelled_by_client'::projects.session_event_status)
+      ) f;
 $$;
 -- #endregion
 

@@ -3628,6 +3628,16 @@ case is awaiting a response. A previewed case (the `disputeState` dev axis) is b
 `devDisputeCase` and never fetched. Model: `core/dispute-view.ts` (labels, tones, sentences, UTC
 times, the dev preview). Styles: `styles/session-disputes.css` (`sess-dispute*`, `dispute-dlg*`).
 
+**`SessionForfeits` (`features/projects/components/`, FBP DB21).** The host's forfeits, mounted in
+`ProjectSidebar` under `SessionDisputes` with the same props. Static text and controls under the same
+hairline label ("Forfeited sessions"): one row per `workspace.forfeits` entry, its title, its
+`MoneyView` and a tier-5 **Refund this forfeit** text button, which opens `CommitReview` (the amount;
+Session · Goes to · Comes from; **Refund in full**, its tier-1 commit, beside **Keep it**). After a
+refund the section re-reads the workspace. Renders nothing for anyone but the host, and with no
+forfeit. The order history's tier-5 **Cancel** on a digital product whose sale is still clearing
+(`CheckoutOrdersScreen`, `line.cancel`) opens the same `CommitReview` (Purchase · Goes back to;
+**Cancel purchase**), and the page re-reads on success.
+
 **`ReviewDialog` + `ReviewReplyThread` + `ReviewsBlock` (`features/reviews/`, `features/projects/components/overview/`, Decision #487).**
 How a client reviews what they completed, and how the reviewed side answers. `ReviewsBlock` is the
 Overview's aside region "Reviews" (server component, `Block` + `pjd-row` links, no card of its own):

@@ -46,6 +46,16 @@
 	color: var(--text-secondary);
 	font-variant-numeric: tabular-nums;
 }
+
+/* The host's forfeits (SessionForfeits, FBP DB21): one row each, unboxed. */
+.sess-dispute__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
 /* #endregion */
 
 /* #region Dialogs */

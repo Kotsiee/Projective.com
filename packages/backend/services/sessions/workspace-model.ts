@@ -426,6 +426,8 @@ export function toSessionWorkspace(raw: RawWorkspace, now: number): SessionWorks
 			? sittings.find((s) => s.id === raw.room_wanted_sitting_id) ?? null
 			: null,
 		disputes: disputesOf(raw.disputes),
+		// The live read adds a host's forfeits from finance (SessionBackendService.workspace).
+		forfeits: [],
 	};
 }
 

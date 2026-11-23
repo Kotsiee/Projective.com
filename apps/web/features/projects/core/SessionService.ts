@@ -57,4 +57,9 @@ export const SessionService = {
 	): Promise<ProjectsResult<{ disputeId: string; status: DisputeStatus }>> {
 		return postProjects(`/api/sessions/sittings/${encodeURIComponent(eventId)}/no-show`, { reason });
 	},
+
+	/** Give a forfeited seat or sitting back to its attendee in full (FBP DB21; the host only). */
+	refundForfeit(escrowId: string): Promise<ProjectsResult<{ refundedMinor: number; currency: string }>> {
+		return postProjects(`/api/sessions/forfeits/${encodeURIComponent(escrowId)}/refund`, {});
+	},
 };

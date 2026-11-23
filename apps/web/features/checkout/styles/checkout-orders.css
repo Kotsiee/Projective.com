@@ -187,7 +187,8 @@
 }
 
 .cko-orders__home,
-.cko-orders__review {
+.cko-orders__review,
+.cko-orders__cancel {
 	align-self: flex-start;
 	color: var(--primary);
 	font-size: var(--text-xs);
@@ -196,14 +197,25 @@
 }
 
 .cko-orders__home:hover,
-.cko-orders__review:hover {
+.cko-orders__review:hover,
+.cko-orders__cancel:hover {
 	text-decoration: underline;
 }
 
 .cko-orders__home:focus-visible,
-.cko-orders__review:focus-visible {
+.cko-orders__review:focus-visible,
+.cko-orders__cancel:focus-visible {
 	outline: none;
 	box-shadow: none;
+}
+
+/* Cancel (FBP DB21) is a button that reads as its sibling links: no box, no fill. */
+.cko-orders__cancel {
+	padding: 0;
+	border: none;
+	background: none;
+	font-family: inherit;
+	cursor: pointer;
 }
 
 .cko-orders__lineprice {

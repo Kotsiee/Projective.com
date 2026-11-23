@@ -771,14 +771,33 @@ function homeOf(row: LineRow, line: OrderLine, ctx: LineContext): OrderLineHome 
 }
 
 /**
- * One past line as the history lists it: the receipt's projection, reduced, its home and, for a
- * person's delivered product, its review. `holderType` is whose history this is.
+ * The page's product lines the caller may cancel now (FBP DB21): `finance.cancellable_order_lines`
+ * asks the cancel door's own questions, the seller's still-clearing credit included, which the
+ * buyer's RLS cannot read. Empty when the page sells no download.
+ */
+async function cancellableLines(
+	actor: ReadActor & { accessToken: string },
+	lines: readonly LineRow[],
+): Promise<ReadonlySet<string>> {
+	const ids = lines.filter((l) => l.fulfilment === "download").map((l) => l.id);
+	if (ids.length === 0) return new Set();
+	const { data, error } = await getUserClient(actor.accessToken).schema("finance")
+		.rpc("cancellable_order_lines", { p_line_ids: ids });
+	if (error) throw new Error(`finance.cancellable_order_lines failed: ${error.message}`);
+	return new Set(((data ?? []) as unknown[]).map(String));
+}
+
+/**
+ * One past line as the history lists it: the receipt's projection, reduced, its home, for a person's
+ * delivered product its review, and Cancel where the sale is still clearing. `holderType` is whose
+ * history this is.
  */
 function historyLineOf(
 	row: LineRow,
 	order: OrderRow,
 	ctx: LineContext,
 	holderType: string,
+	cancellable: ReadonlySet<string>,
 ): OrderHistoryLine {
 	const line = toLine(row, order, ctx);
 	const entitlement = row.fulfilment === "download" ? ctx.entitlements.get(row.id) : undefined;
@@ -789,6 +808,7 @@ function historyLineOf(
 		lineTotal: line.lineTotal,
 		home: homeOf(row, line, ctx),
 		reviewHref: entitlement ? purchaseReviewLink({ ...entitlement, holderType }) : null,
+		cancel: entitlement && cancellable.has(row.id) ? { entitlement: entitlement.slug } : null,
 	};
 }
 
@@ -820,6 +840,7 @@ export async function readOrderHistory(
 		lines = (data ?? []) as unknown as LineRow[];
 	}
 	const ctx = await lineContext(actor, lines);
+	const cancellable = await cancellableLines(actor, lines);
 	const byOrder = new Map<string, OrderHistoryLine[]>();
 	for (const row of lines) {
 		const order = window.rows.find((o) => o.id === row.order_id);
@@ -827,7 +848,7 @@ export async function readOrderHistory(
 		if (!order || own.length >= 200) continue;
 		byOrder.set(row.order_id, [
 			...own,
-			historyLineOf(row, order, ctx, owner.isEntity ? owner.ownerType : "user"),
+			historyLineOf(row, order, ctx, owner.isEntity ? owner.ownerType : "user", cancellable),
 		]);
 	}
 

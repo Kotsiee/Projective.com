@@ -1022,7 +1022,29 @@ An order line moves from `confirmed` to `refunded` or `cancelled` only as its mo
 (Decision #337, ruling M8; Decision #469). All five are internal: definers with no client grant,
 reached only through the refund doors (probe `order_refund_lifecycle.sql`).
 
-- **`finance.fn_record_order_line_refund(p_escrow_id, p_amount)` → uuid**: the one writer, called by
+- **`finance.cancel_order_line(p_line_id)` → jsonb** (user door, FBP DB21): a member of the buying
+  account (`fn_owner_visible`) cancels a confirmed digital product line whose seller's credit is still
+  clearing. The buyer is credited what they paid into the wallet that paid (`order_refund`); the
+  seller's `product_sale` row (`fn_line_sale_release`) closes with `recovered_cents = amount_cents`;
+  the entitlement becomes `refunded`; the line is written through `fn_record_line_refund`
+  (`cancelled`, or `refunded` once delivered); the seller is told (`order.line_refunded`). Refuses
+  PO409 once refunded, once cleared, when nothing was paid, for an FX or on-account order, and ⚖️ for
+  a delivered line the buyer accepted the terms for while `finance.delivered_refund_refusal` is on;
+  P0002 to anyone outside the account. Returns `{line_id, status, refunded_minor, currency}`.
+- **`finance.cancellable_order_lines(p_line_ids)` → setof uuid** (read): which of the lines the door
+  above would accept now, for the order history's Cancel.
+- **`finance.fn_line_sale_release(p_line)` → uuid** (internal, STABLE): the seller's still-pending
+  `product_sale` row of exactly the line's credit, in a wallet of the product's owner.
+- **`finance.refund_session_forfeit(p_escrow_id)` → jsonb** (user door, FBP DB21; ruling M8): the
+  payee (a person) of a seat or sitting the attendee cancelled inside the notice gives it back in
+  full: their release rows still clearing first (`recovered_cents`), then Available (`forfeit_refund`,
+  voluntary); the attendee gets the whole price (`fn_refund_escrow_to_payer`, `escrow_refund`); the
+  escrow becomes `refunded`; the attendee is told. Refuses PO409 for anything else, or twice.
+- **`finance.session_forfeits(p_project_id)` → jsonb** (read): the forfeits the caller could give back
+  in one project, `[{escrow_id, title, amount_minor, currency, cancelled_at}]`.
+- **`finance.fn_record_line_refund(p_line_id, p_amount)` → uuid** (internal, FBP DB21): the line-keyed
+  core of the writer below, which the product refund doors call directly.
+- **`finance.fn_record_order_line_refund(p_escrow_id, p_amount)` → uuid**: the escrow writer, called by
   `fn_refund_escrow_to_payer` in the refund's own transaction with the amount in the escrow's
   currency (the line's). It adds the amount to the line's `refunded_minor`, capped at what the buyer
   paid for the line, and stamps `refunded_at`. Refunded in full, the line becomes `refunded` when its

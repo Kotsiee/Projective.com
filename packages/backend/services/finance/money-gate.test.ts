@@ -17,6 +17,7 @@ import { MONEY_WRITES_OFF, MONEY_WRITES_OFF_CODE } from "./money-gate.ts";
 import { BillingBackendService } from "./BillingBackendService.ts";
 import { CheckoutBackendService } from "./CheckoutBackendService.ts";
 import { DisputeBackendService } from "./DisputeBackendService.ts";
+import { OrderBackendService } from "./OrderBackendService.ts";
 import { PaymentBackendService } from "./PaymentBackendService.ts";
 import { RevisionPurchaseBackendService } from "./revision-purchase.ts";
 import { WalletBackendService } from "./WalletBackendService.ts";
@@ -255,6 +256,11 @@ const OTHER_WRITES: [
 			),
 	],
 	["escalate a dispute", (actor) => DisputeBackendService.escalate(ID, actor)],
+	[
+		"cancel a purchase while it clears",
+		(actor) => OrderBackendService.cancelLine("ent-2345678abc", actor),
+	],
+	["give a session forfeit back", (actor) => OrderBackendService.refundForfeit(ID, actor)],
 	["resolve a dispute", (actor) =>
 		DisputeBackendService.resolve(
 			ID,

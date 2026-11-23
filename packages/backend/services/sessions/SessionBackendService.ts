@@ -1,4 +1,5 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import { DEFAULT_LOCALE, formatMoney } from "@projective/types/finance";
 import {
 	getAnonClient,
 	getServiceClient,
@@ -428,11 +429,34 @@ export class SessionBackendService {
 		const project = await db.schema("projects").from("projects").select("id").eq("slug", slug).maybeSingle();
 		if (project.error) return fail(502, { message: "This session couldn't be read just now." });
 		if (!project.data) return ok({ workspace: null });
+		const projectId = (project.data as { id: string }).id;
 		const { data, error } = await db.schema("projects").rpc("get_session_workspace", {
-			p_project_id: (project.data as { id: string }).id,
+			p_project_id: projectId,
 		});
 		if (error) return fail(502, { message: "This session couldn't be read just now." });
-		return ok({ workspace: data ? toSessionWorkspace(data as RawWorkspace, Date.now()) : null });
+		if (!data) return ok({ workspace: null });
+		const workspace = toSessionWorkspace(data as RawWorkspace, Date.now());
+		if (workspace.role !== "host") return ok({ workspace });
+		// The host's forfeits they may give back (FBP DB21), read from finance as the caller.
+		const forfeits = await db.schema("finance").rpc("session_forfeits", { p_project_id: projectId });
+		if (forfeits.error) return fail(502, { message: "This session couldn't be read just now." });
+		return ok({
+			workspace: {
+				...workspace,
+				forfeits: ((forfeits.data ?? []) as { escrow_id: string; title: string; amount_minor: number; currency: string }[])
+					.slice(0, 200)
+					.map((f) => ({
+						escrowId: f.escrow_id,
+						title: f.title.slice(0, 200),
+						amount: {
+							minor: Number(f.amount_minor),
+							currency: f.currency,
+							display: formatMoney(Number(f.amount_minor), f.currency, DEFAULT_LOCALE),
+							origin: null,
+						},
+					})),
+			},
+		});
 	}
 
 	/** Tick or un-tick a lesson for the viewer (a seated attendee only — the definer refuses anyone else). */

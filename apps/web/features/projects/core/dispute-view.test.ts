@@ -108,6 +108,7 @@ function workspace(role: SessionWorkspace["role"]): SessionWorkspace {
 		reviewable: null,
 		roomWanted: null,
 		disputes: [summary()],
+		forfeits: [],
 	};
 }
 // #endregion

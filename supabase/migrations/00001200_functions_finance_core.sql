@@ -66,7 +66,7 @@ CREATE OR REPLACE FUNCTION finance.fn_wallet_debit_fx(
 DECLARE
     v_voluntary CONSTANT text[] := ARRAY[
         'escrow_hold', 'order_payment', 'invoice_payment', 'transfer_out', 'team_distribution', 'payout',
-        'fx_conversion', 'fx_spread'
+        'fx_conversion', 'fx_spread', 'forfeit_refund'
     ];
     v_involuntary CONSTANT text[] := ARRAY['chargeback', 'refund'];
     v_wallet finance.wallets;

@@ -53,6 +53,7 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
 /** Helpers that pass the switch first, by file: a call to one counts as passing it. Each is checked. */
 const GATED_HELPERS: Readonly<Record<string, readonly string[]>> = {
 	"wallet-actions.ts": ["moneyGate", "contextFor"],
+	"OrderBackendService.ts": ["refundCall"],
 };
 
 /** Doors that move money: the scan must classify each as a write, or the classifier is broken. */
@@ -67,6 +68,8 @@ const KNOWN_WRITES = [
 	"move_pot_funds",
 	"pay_invoice",
 	"resolve_dispute",
+	"cancel_order_line",
+	"refund_session_forfeit",
 ];
 
 const GATE = /\b(?:refuseUnlessMoneyLive|moneyWritesLive)\s*[<(]/;

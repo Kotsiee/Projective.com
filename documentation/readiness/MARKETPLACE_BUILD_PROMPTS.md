@@ -59,7 +59,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | MK-27 | ⏸                  | — (#435, counsel)                       | Excluded                                                                                                                               |
 | MK-28 | 🟡 · Normal · PROD | FBP DB17 step 1 (🧑 vendor) → UI5       | A live feed with a staleness mark                                                                                                      |
 | MK-29 | 🟡 · Crit · UAT    | CK1 ✅ + the live run (§0.4)            | The live run is recorded                                                                                                               |
-| MK-31 | ❌ · Crit · UAT    | FBP DB6 ✅ → DB21 → MR3                 | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
+| MK-31 | ❌ · Crit · UAT    | FBP DB21 (step 2) → MR3                 | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
 
 Two rows of the **Listing view** section are left to live runs of prompts that landed here (§0.4):
 **MK-16** (a quote offer is paid at its price; CK7, #491) and **MK-12** (reserve a cohort seat; SC3,
@@ -103,7 +103,7 @@ finance SQL lane (FINANCE §0); FINANCE's order wins on a conflict.
 
 1. CK2 — landed (#536).
 2. **SC10**'s money half — no wait (CK2 has landed, #536).
-3. FBP **DB21 → MR3** — DB6 landed (#532).
+3. FBP **DB21 → MR3** — DB21's cancel and forfeit refund landed (#542); its dispute step is open.
 4. **CK4** — ⏳ DB21 (a refund reverses the tax); ⚖️ counsel before the switch. LEGAL LG8 follows
    it.
 5. **SC7** — ⏳ DB21 (a refund reverses the royalty too, #493 (D)); ⚖️ counsel before the grant
@@ -322,7 +322,8 @@ rows from §0.1.
 
 ### CK4 — Tax at checkout, built behind a switch that stays off
 
-> **Status 2026-11-23:** open; waits for FBP DB21, which has not landed at `f2e25929`.
+> **Status 2026-11-23:** open; waits for FBP DB21's step 2, the product dispute (its cancel and
+> forfeit refund landed, #542): both refund paths must reverse the tax.
 
 Narrows MK-20 (it stays 🟡 until the switch is on); narrows PRD-M5.
 
@@ -604,7 +605,8 @@ closing #312 (a), (e).
 
 ### SC7 — Request to Sell, the client's grant, and the royalty
 
-> **Status 2026-11-23:** open; waits for FBP DB21 (CK1 and DB19 have landed).
+> **Status 2026-11-23:** open; waits for FBP DB21's step 2, the product dispute (CK1, DB19 and DB21's
+> cancel have landed, #542): a refund on either path must reverse the royalty.
 
 Closes MK-46 (❌ → ✅).
 

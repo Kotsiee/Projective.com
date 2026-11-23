@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
-| **UAT**          | **72%** |           193 | 101 |  77 | 15 |              25 |
-| **Production**   | **65%** |           251 | 107 | 106 | 38 |              36 |
+| **UAT**          | **72%** |           193 | 101 |  78 | 14 |              25 |
+| **Production**   | **66%** |           251 | 107 | 107 | 37 |              36 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -44,14 +44,14 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | Cluster                                          | Flows | ✅ | 🟡 | ❌ |  ⏸ | Score |
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
-| MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 23 |  9 |  2 |   68% |
+| MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 24 |  8 |  2 |   70% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 29 | 36 | 10 |  2 |   64% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 25 | 15 |  3 |   60% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
 - **MVP:** ID-31 ❌ · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
-- **UAT:** ID-16, 20 · MK-29, MK-31 ❌ · PJ-21, 31 ❌, 39, 43 ❌, 60 · MW-14, 59
+- **UAT:** ID-16, 20 · MK-29, MK-31 · PJ-21, 31 ❌, 39, 43 ❌, 60 · MW-14, 59
 - **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62
 
 ## What breaks the most flows
@@ -198,7 +198,7 @@ PRODUCTION_READINESS.md.
 | MK-28 | Browse prices in a display currency                      | Any             | header switcher                                            | 🟡     | Normal   | PROD | Seeded rates only: the daily feed is built (#539) but its vendor is the owner's pick (#471), and no staleness mark yet (UI5) (PRD-F21) |
 | MK-29 | Receive and download a purchased product                 | Buyer           | `/checkout/confirmation` · `/files?source=purchases`       | 🟡     | Critical | UAT  | Built (CK1, #488): each product line writes its entitlement in the purchase's own transaction (`place_on_account_order` too) on a version frozen at publish into the policy-less `originals` bucket; `/api/downloads/[entitlement]/[fileId]` streams after an RLS gate and 404s a refunded, revoked or foreign purchase; the A8 box gates Pay; probes `product_delivery`, `product_delivery_race` green. Left: the live run in the app (wallet and a test-mode card, both files of a two-file bundle, a second buyer's 404, screenshots), not walked because the shared local stack was saturated and rebuilt mid-build; the per-entitlement daily ceiling (ASSET §6 gate 7) is not built |
 | MK-30 | Order confirmation, receipt, `.ics`, every past order     | Buyer           | `/checkout/confirmation`, `/checkout/orders`, `/api/checkout/{order,calendar}` | ✅     | High     | UAT  | CK3 (`f3ba4c3b`, #517): `/checkout/orders` lists every past order of the acting account, keyset-paged, each line linked home, and a block's receipt lists every sitting (closes #453 (c)); unit-tested (`order-history.test.ts`, 7 pass), the 25-order walk in the app not recorded. The receipt's `?order=` is a raw uuid (PRD-J6) |
-| MK-31 | Refund or cancel an order, line by line                  | Buyer, Operator | —                                                          | ❌     | Critical | UAT  | A line and its order are written `refunded` or `cancelled` as their escrows are refunded (DB19, #511), but neither a buyer nor an operator can start a refund yet: no `refunds.create`; buyer and provider refunds (DB21) open (PRD-F12) |
+| MK-31 | Refund or cancel an order, line by line                  | Buyer, Operator | —                                                          | 🟡     | Critical | UAT  | A line and its order are written `refunded` or `cancelled` as their escrows are refunded (DB19, #511), and a buyer cancels a digital product while its sale clears, the page saying what comes back (DB21, #542, `product_refunds.sql`). Left: the product dispute for a faulty or missing file (DB21 step 2) and an operator's card refund (MR3, PRD-F12) |
 
 ### Reviews
 
@@ -568,3 +568,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-23 | SC6 (#537): MK-44 🟡 → ✅ (no Clients link carries a uuid but `?event=`; a team's or a business's order names the entity and messages reach its owner; inquiries reach the board with their buyer) | 83% | 72% | 65% |
 | 2026-11-23 | SC11 (#541): MK-63 added 🟡 (a group session on rolling weekly times: a run opens for every week's session 1, four weeks ahead, and a buyer lands on the earliest with a seat or picks a later start; the seller's and buyer's walk is left); MK-59 re-read, still ❌ | 83% | 72% | 65% |
 | 2026-11-23 | DB9 (#337 ruling M5 (a), (b)): no row flips; MW-11 and MW-15 narrowed (an entity takes its owner's confirmed country's currency; nothing is priced outside the nine settlement currencies; a short-balance payout is returned and alerts); a human still enables the non-GBP settlement currencies in the Stripe Dashboard | 83% | 72% | 65% |
+| 2026-11-23 | DB21 (#542): MK-31 ❌ → 🟡 (a buyer cancels a digital product while its sale clears; the product dispute and an operator's card refund are left) | 83% | 72% | 66% |

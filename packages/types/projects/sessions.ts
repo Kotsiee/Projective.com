@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { FundingStatusSchema } from "../finance/funding.ts";
 import { DisputeSummarySchema } from "../finance/disputes.ts";
+import { MoneyViewSchema } from "../finance/wallet.ts";
 import { IntakeAnswersSchema } from "../services/intake.ts";
 
 /**
@@ -437,6 +438,14 @@ export const SessionVoteSchema = z.object({
 export type SessionVote = z.infer<typeof SessionVoteSchema>;
 
 /** Everything a session engagement's sidebar renders, for one viewer. */
+/** One forfeit a host may give back: the payment a late cancel sent them, in its own currency. */
+export const SessionForfeitSchema = z.object({
+	escrowId: uuid,
+	title: z.string().min(1).max(200),
+	amount: MoneyViewSchema,
+});
+export type SessionForfeit = z.infer<typeof SessionForfeitSchema>;
+
 export const SessionWorkspaceSchema = z.object({
 	projectId: uuid,
 	slug: z.string().min(1).max(120),
@@ -471,6 +480,12 @@ export const SessionWorkspaceSchema = z.object({
 	roomWanted: SessionSittingSchema.nullable(),
 	/** The no-show claims the viewer is party to: their own, or every claim on the engagement (host). */
 	disputes: z.array(DisputeSummarySchema).max(200),
+	/**
+	 * The forfeits the host may give back (FBP DB21; ruling M8): seats or sittings an attendee cancelled
+	 * inside the notice, whose payment went to the host (`finance.session_forfeits`). Empty for anyone
+	 * else, and once each is given back.
+	 */
+	forfeits: z.array(SessionForfeitSchema).max(200),
 });
 export type SessionWorkspace = z.infer<typeof SessionWorkspaceSchema>;
 

@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
 | **UAT**          | **71%** |           71 | 44 |  8 | 19 |           4 |
-| **Production**   | **48%** |          158 | 57 | 28 | 73 |          14 |
+| **Production**   | **49%** |          158 | 57 | 29 | 72 |          14 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -56,7 +56,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | C. Security & access control       |   36 | 18 |  4 | 14 |   59% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   18 |  3 |  7 |  8 |   42% |
-| F. Money, ledger & reconciliation  |   24 |  9 |  5 | 10 |   52% |
+| F. Money, ledger & reconciliation  |   24 |  9 |  6 |  9 |   54% |
 | G. Scheduled jobs & operations     |   10 |  5 |  2 |  3 |   63% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
@@ -219,7 +219,7 @@ Work orders for every open row, with the run order:
 | PRD-F9  | Ledger drift surfaced and alerted                                             | 🟡     | High     | PROD | Surfaced and alerted (#483, #507): `/admin/ledger` shows the open drift and the last 30 nightly conservation checks; every `finance.*` error and a nightly check silent for 26 hours alert by webhook and email digest (`ops.fn_claim_alerts`, `OpsAlertService`, `ops_alerts.sql`; a webhook post proven end to end locally). Left: a hosted send on both channels, once `OPS_CRON_SECRET` is in the hosted Vault (PRD-G6) and `OPS_ALERT_WEBHOOK_URL` / `OPS_ALERT_EMAIL` are set | DB16 ✅ + MR4 ✅; hosted send |
 | PRD-F10 | DB CHECKs on `escrows.status` and `wallets.owner_type`                        | ✅     | High     | PROD | DB8 (#538): `escrows.status` (five values, DEFAULT `held`), `wallets.owner_type` (five) and `transactions.reason` (29 codes) CHECKed in `00000017`, pinned to Zod by `ledger-reasons.contract.test.ts`                           | DB8 ✅ |
 | PRD-F11 | Failed payouts handled                                                        | ❌     | High     | PROD | Not built                                                                                                                                                                                                                        | SV8              |
-| PRD-F12 | Platform-initiated card refunds and the order lifecycle                       | ❌     | High     | PROD | No `refunds.create`; refunds are recorded only from `charge.refunded`; buyer and provider refunds (DB21) open. The order lifecycle is built (DB19, #511): an escrow refund marks the line it bought `refunded` or `cancelled` and the order rolls up from its lines; an account redeems a promo code once by default (`order_refund_lifecycle.sql`, `promo_redemption_concurrency.sql`)                                                                                     | DB21, MR3 |
+| PRD-F12 | Platform-initiated card refunds and the order lifecycle                       | 🟡     | High     | PROD | No `refunds.create`; refunds are recorded only from `charge.refunded`. Buyer and provider refunds: DB21 (#542) built the buyer's cancel of a digital product while its sale clears and the provider's forfeit refund (`product_refunds.sql`); the product dispute (DB21 step 2) and operator card refunds (MR3) are open. The order lifecycle is built (DB19, #511): an escrow refund marks the line it bought `refunded` or `cancelled` and the order rolls up from its lines; an account redeems a promo code once by default (`order_refund_lifecycle.sql`, `promo_redemption_concurrency.sql`)                                                                                     | DB21, MR3 |
 | PRD-F13 | Bonus held; team payout splits                                                | ❌     | Normal   | PROD | Not built                                                                                                                                                                                                                        | DB13, DB20       |
 | PRD-F14 | Plan and subscription checkout (Stripe Billing)                               | ❌     | High     | UAT  | Nothing can be bought (`services/finance/PlanBackendService.ts:17`), yet `business_plan_gates_enforced` is on, so a new entity is locked out of Business Pro and Pro Team features (caps, intervaled invoicing, split templates) | SBP S4, #252     |
 | PRD-F15 | The escrow holding period is ruled                                            | ❌     | Critical | PROD | Open, pending counsel (#337). Brief written 2026-11-18; awaiting counsel (#473, `FOUNDER_QUESTIONNAIRE.md` Part D). The escrow ages are measurable: `finance.read_escrow_age` (operators), probe `escrow_age.sql`; operators read them as `/admin/ledger`'s Escrow age section (FBP DB16, #483) | MR7, 🧑 counsel |
@@ -491,3 +491,4 @@ Work orders for every open row, with the run order:
 | 2026-11-23 | DB15 (#337 ruling M4): no row flips; PRD-F6 narrowed (publish of a product or session listing, session and seat booking, and switching paid calls on need a payout-ready seller; every route earnings take into a wallet counts at withdrawal, FCA N14); still 🟡 until DB14 step 2 (N8) | 76% | 71% |  48% |
 | 2026-11-23 | LG1 step 4 (#540): no row flips; the Copyright & Notice Policy and the Marketplace Licence Terms join the legal library as 1.0 drafts (PRD-M1's evidence) | 76% | 71% | 48% |
 | 2026-11-23 | DB9 (#337 ruling M5 (a), (b); #423 (B)): no row flips; PRD-F7 stays 🟡 with only a human step left (the eight non-GBP settlement currencies and their bank accounts enabled in the Stripe Dashboard): nothing is priced outside the nine settlement currencies, an entity takes its owner's confirmed country's currency, and a short-balance Transfer is returned and alerts | 76% | 71% | 48% |
+| 2026-11-23 | DB21 (#542): PRD-F12 ❌ → 🟡 (a buyer cancels a digital product while its sale clears; a provider gives a session forfeit back; the product dispute and MR3's card refunds are left) | 76% | 71% | 49% |

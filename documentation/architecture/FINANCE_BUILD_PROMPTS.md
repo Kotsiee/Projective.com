@@ -8,7 +8,7 @@
 > [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part C); the readiness rows add #423, #435
 > and #460–#472.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 17 open, 7 partly done, 27 done or superseded
+> **Verified against code 2026-11-23 at `f2e25929`.** 16 open, 8 partly done, 27 done or superseded
 > (§0 ledger). Runnable now: DB14, SV8, DB13 and DB20 (SQL lane, one at a time); SV5, UI1
 > and UI3 (app lane). DB17's last step waits on the owner's vendor pick (#471).
 >
@@ -151,7 +151,8 @@ Why this order:
 - **RED WP2 / WP11** (the wallet read path, SQL aggregates) wait for SV5. **RED WP4** (keyboard on
   money paths) waits for UI2, UI3 and UI5. **RED WP7** (the money sweep and its lint ban) waits for
   UI5 (and SBP S5).
-- **Marketplace:** CK4 (checkout tax, #490) and SC7 (#493) wait for DB21.
+- **Marketplace:** CK4 (checkout tax, #490) and SC7 (#493) wait for DB21's step 2 (steps 1 and 3
+  landed, #542).
 - **LEGAL_COMPLIANCE LG4** adds one enqueue line each to `fn_mature_pending_releases` and
   `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6 (landed, #532),
   whose clearing-window holds decide which escrows count as finally released (#530 (g)).
@@ -229,7 +230,7 @@ Readiness rules). A row stays 🟡 while a hosted or human step is left, named i
 | PRD-F9    | High · PROD             | 🟡  | No prompt: a hosted send on both channels (DB16 done, MR4 done; PRD-G6) | ruled (#507 (E)(3))             |
 | PRD-F10   | High · PROD             | ✅  | DB8 done (#538; N24)                                                    | —                               |
 | PRD-F11   | High · PROD             | ❌  | **SV8**                                                                 | ⚖️ M9 as built (no flag needed) |
-| PRD-F12   | High · PROD             | ❌  | **DB21** + **MR3** (DB19 done, #511)                                    | ruled (#470, #464)              |
+| PRD-F12   | High · PROD             | 🟡  | **DB21** step 2 + **MR3** (DB21 1, 3 #542; DB19 #511)                  | ruled (#470, #464)              |
 | PRD-F13   | Normal · PROD           | ❌  | **DB13 → DB20**                                                         | ruled (#468)                    |
 | PRD-F14   | High · UAT              | ❌  | SBP **S1 → S2 → S3 → S4**                                               | ruled (#252 (f); #472)          |
 | PRD-F15   | Critical · PROD         | ❌  | No prompt: counsel (MR7 done wrote the brief, #473)                     | ⚖️ counsel + Stripe             |
@@ -692,30 +693,27 @@ HOT: 00001200 (never beside PM-WP4).
 
 ### DB21 — Refunds a buyer or provider can start (M8)
 
+> **Status 2026-11-23:** partly done. Steps 1 and 3 landed in `DB21A_COMMIT` (Decision #542): a buyer
+> cancels a digital product while its sale clears (`finance.cancel_order_line`, the order history's
+> Cancel), and a provider gives a session forfeit back (`finance.refund_session_forfeit`, the
+> session sidebar's Refund this forfeit), proved by `supabase/probes/product_refunds.sql`. Step 2,
+> the product dispute, is open.
+
 ```text
-PROMPT DB21: Refunds a buyer or provider can start: an undelivered or defective product, and a
-forfeit given back
+PROMPT DB21 (the rest): A buyer disputes an undelivered or defective product while its sale clears
 
 ROLE: Ledger engineer.
 
-CONTEXT: FA CO25; FDD D-12. Decision #337, ruling M8: no refund on a digital product after its
-first download, except for non-delivery or a defective file, through a dispute, recovered from the
-seller's pending row (M3's order); a provider may refund a session forfeit voluntarily
-(finance-model.md §4).
-Read from the ruling's wording: before the first download, a buyer may cancel the line.
-DB6 has landed (#532: `on_hold` keyed by `pending_releases.hold_chargeback_id`). DB19's line states have landed (3041e5ef, #511: the line writer is
-finance.fn_record_order_line_refund, called by fn_refund_escrow_to_payer). CK1 has landed (#488,
-322c4dc9) and is the buyer's download path. Judge "downloaded" by ruling A8: the first completed
-delivery of any file of the line, read from catalogue.entitlements.first_delivered_at. Do not rely
-on files.download_events.item_id, which cascades on a hard purge (#488 (f)). The refusal stays
-behind finance.delivered_refund_refusal (00005001, off until counsel), and cancel_order_line reads
-it. A cancel or a buyer win also sets the line's entitlement to 'refunded', so
-/api/downloads/[entitlement]/[fileId] answers 404. The buyer's order view is /checkout/orders
-(CK3, f3ba4c3b).
-
-A product dispute after the seller's money has cleared (ruled: Decision #470, A): a product dispute
-may be opened only while the sale is still clearing (7 days), which is also when the seller's money
-can be held; the order page says so. M3's "cleared money is never clawed back" holds.
+CONTEXT: Decision #337, ruling M8: no refund on a digital product after its first download, except
+for non-delivery or a defective file, through a dispute, recovered from the seller's pending row
+(M3's order). Ruled (Decision #470, A): a product dispute may be opened only while the sale is still
+clearing (7 days), which is also when the seller's money can be held; the order page says so; M3's
+"cleared money is never clawed back" holds. Built (#542): finance.cancel_order_line, its read
+finance.cancellable_order_lines, finance.fn_line_sale_release (the seller's still-clearing row of a
+line) and the line-keyed finance.fn_record_line_refund, which a buyer win should reuse; the history's
+Cancel (CheckoutOrdersScreen). DB6 (#532) freezes pending rows keyed by
+pending_releases.hold_chargeback_id, which names card disputes only: a product dispute's freeze needs
+its own key beside it (and ck_pending_releases_hold_case widened), never a reuse of that column.
 
 FILES:
   - supabase/migrations/00000017_tables_finance.sql (an order-line subject on the dispute table
@@ -723,47 +721,31 @@ FILES:
     with order_line reserved for this prompt) and add no second subject column; if this prompt
     runs first, EX2 adopts its column instead. One design either way.
   - supabase/migrations/00001260_functions_finance_disputes.sql (open_order_line_dispute; the
-    refund on a buyer win)
-  - supabase/migrations/00001240_functions_finance_money_movement.sql (cancel_order_line before a
-    download; refund_session_forfeit) + 00002510
-  - catalogue.entitlements (read first_delivered_at; write the line's entitlement → 'refunded');
-    finance.delivered_refund_refusal (read, never switched on)
-  - packages/backend/services/finance/{OrderBackendService.ts, DisputeBackendService.ts}; the
-    buyer's order view, /checkout/orders (a tier-5 "Cancel" before a download, "Report a problem"
-    after); the
-    provider's session view (a tier-5 "Refund this forfeit"); the types
-  - supabase/probes/product_refunds.sql (new)
-  - finance-model.md §4 and §15, PRODUCT_SPEC.md §Orders, Refunds & Promo Codes and §Sessions (the
-    markers), PRODUCT_MANAGEMENT.md §3.5 (the line states), documentation/database/finance/*
+    refund on a buyer win) + 00002510
+  - packages/backend/services/finance/DisputeBackendService.ts; the buyer's order view,
+    /checkout/orders ("Report a problem" after a download); /admin/disputes lists order-line cases;
+    the types
+  - supabase/probes/product_refunds.sql (extend)
+  - finance-model.md §15, PRODUCT_SPEC.md §Orders, Refunds & Promo Codes (the dispute's "Not built
+    yet"), PRODUCT_MANAGEMENT.md §3.5 and §3.8, documentation/database/finance/*
 
 STEPS:
-  1. cancel_order_line(p_line): a member of the buying account, a download line whose entitlement
-     has no first_delivered_at, and the seller's row still pending. The buyer gets the
-     line's paid amount back at once ('order_refund'), the seller's pending row shrinks by its
-     credit, and the platform's fee on the line is reversed. The line reads cancelled (DB19).
   2. open_order_line_dispute(p_line, p_reason, p_evidence): non-delivery or a defective file, within
      the ruling's window. It freezes the seller's pending row for the line (on_hold, DB6); the
      operator desk rules it through the existing ruling flow; a buyer win refunds as step 1 does,
      from the frozen row.
-  3. refund_session_forfeit(p_escrow): the forfeit's payee gives back what the forfeit paid them,
-     from their pending money first, then Available (it is voluntary, so cleared money is theirs to
-     give). The buyer gets the forfeit back fee-free; the line reads refunded (DB19's writer).
 
-ACCEPTANCE: product_refunds.sql: a cancel before any download refunds, reverses the fee and marks
-the entitlement refunded; a cancel after a download is refused while delivered_refund_refusal is on
-(set inside the probe); a dispute freezes and a buyer win recovers from the frozen row; a
-provider's forfeit refund reaches the buyer. finance_invariants.sql and conservation_identity.sql
-pass. Screenshots of the order view's actions at 390 and 1440. Readiness: part of PRD-F12 (MR3
-completes it; USER_FLOWS MK-31).
+ACCEPTANCE: product_refunds.sql: a dispute freezes and a buyer win recovers from the frozen row;
+finance_invariants.sql and conservation_identity.sql pass. Screenshots of "Report a problem" at 390
+and 1440. Readiness: part of PRD-F12 (MR3 completes it; USER_FLOWS MK-31).
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
 `deno task test:probes:fresh`.
 SAME CHANGE: migrations edited in place; Zod + documentation/database/finance/*;
-PRODUCT_MANAGEMENT.md §3.5; the M8 markers removed for what this builds.
-HOT: 00001240, 00002510, apps/web/features/checkout/** (the #243 peers).
+PRODUCT_MANAGEMENT.md §3.5 and §3.8; the M8 dispute marker removed.
+HOT: 00001260, 00000017, 00002510, apps/web/features/checkout/** (the #243 peers).
 ```
-
 ### MR3 — An operator can refund a card payment, and money still moves in one place (PRD-F12, card half)
 
 ```text

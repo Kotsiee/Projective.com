@@ -128,4 +128,14 @@ export const CheckoutService = {
 		const q = qs.toString();
 		return getCheckout(`/api/checkout/order${q ? `?${q}` : ""}`);
 	},
+
+	/**
+	 * Cancel a digital product purchase while its sale is still clearing (FBP DB21), named by its
+	 * entitlement's slug. The buyer is refunded at once; the order history re-reads to show it.
+	 */
+	cancelPurchase(
+		entitlement: string,
+	): Promise<CheckoutResponse<{ status: string; refundedMinor: number; currency: string }>> {
+		return postCheckout(`/api/checkout/orders/${encodeURIComponent(entitlement)}/cancel`, {});
+	},
 };

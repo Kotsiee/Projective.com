@@ -184,8 +184,8 @@ both the freelancer’s time and the client’s capital.
 
 The Reschedule and Booked-inside-the-window rows are **Not built yet** (Decision #343, ruling C2
 (b)); events with no money behind them keep a 12-hour reschedule lockout. A late cancellation
-forfeits 100% (Decision #343, ruling C2 (a)); a provider may refund a forfeit voluntarily, **Not
-built yet** (Decision #337, ruling M8). The first 24 hours are the **review window**, distinct from
+forfeits 100% (Decision #343, ruling C2 (a)); a provider may refund a forfeit voluntarily, in full
+(Decision #337, ruling M8; FBP DB21). The first 24 hours are the **review window**, distinct from
 the 7-day **Pending** clearing that follows (Decision #343, ruling C2 (c)); the windows' values are
 in `finance-model.md` §4.
 
@@ -3340,6 +3340,10 @@ The commerce rules every order follows (Decision #337, ruling M8):
   **cancelled**, and one refunded in full after is **refunded** (Decision #469). The order is
   cancelled once every line is, and refunded once every line is refunded or cancelled with at least
   one refunded. **Built** (FBP DB19).
+- **A buyer may cancel a digital product while its sale is still clearing** (the days its seller's
+  money is held): what they paid comes back at once, the seller's earnings from it are taken back,
+  and its files stop downloading. Once the sale has cleared, a faulty or missing file is a dispute
+  (**Not built yet**, FBP DB21 step 2). **Built** (FBP DB21).
 - **An order's states are the ones it can reach.** An on-account order is **invoiced**; refunds and
   cancellations write **refunded** and **cancelled**; the never-written `processing` and
   `awaiting_payment` states are retired. **Built.**

@@ -198,7 +198,9 @@ through a ticket-level Fair Exit door. Today either act pays the freelancer 100%
 - **Client cancels inside the notice** (`session_cancel_notice_hours`, **24 h**): the sitting's
   money is **forfeit to the freelancer in full** (100%) — as built (`cancel_cohort_membership`,
   Decision #171) and ruled (Decision #343, ruling C2 (a)). The freelancer may refund a forfeit
-  voluntarily (Decision #337, ruling M8) — **Not built yet**.
+  voluntarily, in full (Decision #337, ruling M8; FBP DB21): the attendee gets the whole price back,
+  the fee included, taken from the provider's money still clearing first and then their wallet
+  (`finance.refund_session_forfeit`, offered on the session's sidebar).
 - **Freelancer cancels:** client is issued a 100% refund for all remaining sessions.
 - **Completed sessions:** paid in full to the freelancer once logged with presence, after a **24 h
   review window** (`session_payout_hours`, in which a no-show can be claimed) and then the standard
@@ -750,7 +752,12 @@ Governs shared wallets (Business / Team / Enterprise).
     automatically.
   - **A digital product** (Decision #337, ruling M8) is not refunded after its first download,
     except for non-delivery or a defective file, through a dispute; recovery comes from the seller's
-    pending row first (§7). **Not built yet.**
+    pending row first (§7). **While the sale clears** the buyer may cancel the line instead (FBP DB21,
+    `finance.cancel_order_line`): what they paid comes back to the wallet that paid, at once
+    (`order_refund`); the seller's still-clearing credit is taken back in full; the line's fee, and a
+    promo share the platform funded, stop counting; and the purchase stops downloading. ⚖️ A
+    delivered line is refused only once `finance.delivered_refund_refusal` is on. The dispute is
+    **Not built yet** (DB21 step 2).
   - **An escrow refund** is recorded on the order line it bought (ruling M8; Decision #469): partial
     refunds accumulate on the line, and refunded in full it is `cancelled` when no delivery had
     begun and `refunded` when it had. The order is `cancelled` when every line is, and `refunded`

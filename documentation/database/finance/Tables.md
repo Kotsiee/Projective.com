@@ -111,10 +111,12 @@ amounts (see `finance.chargebacks` for the dispute case they reference). A team 
 to the target wallet, and `fx_spread` for the margin debited beside the principal, all with
 `ref_table = 'fx_conversions'`. Both debit reasons are voluntary in `fn_wallet_debit_fx`, so a
 conversion never reaches earmarked money; statements count `fx_spread` as a fee. The rest of the
-list: `order_payment` and `invoice_payment` (spends), `on_account_credit` (credit drawn for an order
+list: `order_payment` and `invoice_payment` (spends), `order_refund` (a digital product line its
+buyer cancels, FBP DB21) and `forfeit_refund` (a provider giving a session forfeit back, voluntary;
+FBP DB21), `on_account_credit` (credit drawn for an order
 bought on account), `transfer_in` / `transfer_out` and `team_distribution` (both sides), `payout` and
 `payout_reversal`, `product_sale`, and the simulator's six `simulated_*` codes
-(`finance.simulate_wallet_transaction`). The CHECK holds all 29 (FINANCE DB8). `fn_wallet_debit`'s
+(`finance.simulate_wallet_transaction`). The CHECK holds all 31 (FINANCE DB8, DB21). `fn_wallet_debit`'s
 voluntary and involuntary lists and `fn_is_income_reason` classify them and may name nothing outside
 it (`supabase/probes/currency_integrity.sql`); `LEDGER_KIND_REASONS` files every non-simulated code
 in one ledger family (`ledger-reasons.contract.test.ts`).

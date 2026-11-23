@@ -191,6 +191,7 @@ export function emptyWorkspace(detail: ProjectDetail, kind: "normal" | "group"):
 		reviewable: null,
 		roomWanted: null,
 		disputes: [],
+		forfeits: [],
 	};
 }
 // #endregion
