@@ -693,7 +693,7 @@ HOT: 00001200 (never beside PM-WP4).
 
 ### DB21 — Refunds a buyer or provider can start (M8)
 
-> **Status 2026-11-23:** partly done. Steps 1 and 3 landed in `DB21A_COMMIT` (Decision #542): a buyer
+> **Status 2026-11-23:** partly done. Steps 1 and 3 landed in `6f11cc0a` (Decision #542): a buyer
 > cancels a digital product while its sale clears (`finance.cancel_order_line`, the order history's
 > Cancel), and a provider gives a session forfeit back (`finance.refund_session_forfeit`, the
 > session sidebar's Refund this forfeit), proved by `supabase/probes/product_refunds.sql`. Step 2,
