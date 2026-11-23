@@ -46,7 +46,7 @@
 | DB6  | A card dispute freezes the payee's still-clearing rows it funded (`hold_chargeback_id`); lost recovers them first | `daae69b1` (#532)      | `f2e25929` |
 | DB7  | Checkout integrity: charge assert, atomic promo, key re-check, second tab, `invoiced`                     | `24cbab02`             | `f2e25929` |
 | DB8  | ISO-code CHECKs on every currency column; escrow status, owner type and reason CHECKed; one exponent      | #538                   | `de8ec700` |
-| DB9  | Priced only in the nine settlement currencies; an entity's currency from its owner's confirmed country; a short-balance alert | this commit | `c1ba2353` |
+| DB9  | Priced only in the nine settlement currencies; an entity's currency from its owner's confirmed country; a short-balance alert | `1af8eabb`             | `c1ba2353` |
 | DB10 | On-account limit and approval threshold per currency (`finance.fn_param_minor`)                           | `f408e708`             | `f2e25929` |
 | DB11 | A product sale pays the seller's Standing-tapered commission; the Agency contract ruled B (#252)          | `9d15fcd0`             | `f2e25929` |
 | DB12 | A non-zero deadline bonus is refused (`ck_escrows_bonus_unfunded`)                                        | `4ff0ede2`             | `f2e25929` |
