@@ -804,7 +804,7 @@ SAME CHANGE: PRODUCT_SPEC.md §Digital Marketplace 3 and 5 (the markers removed)
 
 ### SC8 — A rights-holder reports a listing; an operator takes it down; the seller answers
 
-> **Status 2026-11-23:** open; waits for T&S R2. T&S R1 has landed (`R1_COMMIT`, #533): `ops.reports`
+> **Status 2026-11-23:** open; waits for T&S R2. T&S R1 has landed (`00f8e1f9`, #533): `ops.reports`
 > carries the 'notice' source, its CHECKs and an empty strict `ReportNoticeSchema` for SC8 to fill.
 
 Part of MK-47 (with T&S R2 and SC9; R1 landed).
@@ -816,7 +816,7 @@ answer
 ROLE: Full-stack engineer. Queue C, after T&S R2 has landed (the report route); T&S R1 (the
 ops.reports sink) has.
 
-CONTEXT (verified at b7280787; R1 at R1_COMMIT): there is no inbound copyright path (#393 flag
+CONTEXT (verified at b7280787; R1 at 00f8e1f9): there is no inbound copyright path (#393 flag
 (n), ruling B8: "a separate track, finished before the marketplace opens"). T&S R1 built
 ops.reports (database/ops/Tables.md): source 'notice' with reporter_user_id NULL, a notice jsonb
 CHECKed present exactly on a notice row and only with reason intellectual_property (#533's
