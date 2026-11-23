@@ -33,4 +33,12 @@ CREATE INDEX idx_contact_requests_email_created ON ops.contact_requests (email, 
 CREATE INDEX idx_contact_requests_user_created ON ops.contact_requests (user_id, created_at DESC) WHERE user_id IS NOT NULL;
 CREATE INDEX idx_contact_requests_guest_created ON ops.contact_requests (created_at DESC) WHERE user_id IS NULL AND NOT anonymous;
 CREATE INDEX idx_contact_requests_anonymous_created ON ops.contact_requests (created_at DESC) WHERE anonymous;
+-- #region [reports] ops.reports (T&S R1)
+-- The reviewer's queue, the reported person's history (R4, R3) and ops.file_report's two checks.
+CREATE INDEX idx_reports_status_created ON ops.reports (status, created_at DESC);
+CREATE INDEX idx_reports_reported_user ON ops.reports (reported_user_id) WHERE reported_user_id IS NOT NULL;
+CREATE INDEX idx_reports_reporter_created ON ops.reports (reporter_user_id, created_at DESC) WHERE reporter_user_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_reports_pending_per_reporter ON ops.reports (reporter_user_id, reported_subject_type, reported_subject_id)
+    WHERE status = 'pending' AND reporter_user_id IS NOT NULL;
+-- #endregion
 -- #endregion

@@ -62,3 +62,10 @@ SELECT TO authenticated USING (security.is_admin ());
 CREATE POLICY "Admins read contact request attachments" ON ops.contact_request_attachments FOR
 SELECT TO authenticated USING (security.is_admin ());
 -- #endregion
+
+-- #region [reports] ops.reports (T&S R1)
+-- A reporter reads the reports they filed; operators read every report. The reported person reads
+-- none, so the reporter is never projected to them. No write policy: the doors are definers.
+CREATE POLICY "Reporters and admins read reports" ON ops.reports FOR
+SELECT TO authenticated USING (reporter_user_id = auth.uid () OR security.is_admin ());
+-- #endregion

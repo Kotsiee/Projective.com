@@ -1286,13 +1286,17 @@ write doors as the Decision #147 public-copy leakage check, for hate speech and 
 
 **The reactive reporting workflow (private and public zones alike).**
 
-1. **File** — `POST /api/reports` (thin: Zod + auth) → a reports fat service. The client sends only
-   the subject (`subject_type`, `subject_id`) and a `reason`; the service confirms the reporter can
-   read the subject **under their own JWT** (a report is never a way to read something), then builds
-   the **evidence snapshot server-side** from the stored row — body, author, room/thread, timestamps,
-   and for a file its id, `content_hash` and a service-held copy — never from client-supplied text.
-2. **Store** — one `ops.reports` row, `status = 'pending'`. The snapshot is immutable: no `UPDATE`
-   path touches it, and deleting or editing the original afterwards leaves it intact.
+1. **File** — `POST /api/reports` (thin: Zod + auth; R2, not built) →
+   `ReportsBackendService.fileReport` (`packages/backend/services/moderation/`, built by T&S R1). The
+   client sends only the subject (`subject_type`, `subject_id`) and a `reason`; the service reads the
+   subject **under the reporter's own JWT** (a subject they cannot read answers 404 and nothing is
+   filed: a report is never a way to read something), then builds the **evidence snapshot
+   server-side** from the stored row — body, author, room/thread, timestamps, and for a file its id,
+   `content_hash` and a copy of the bytes at `evidence/{report_id}/{file_id}` — never from
+   client-supplied text, and files it through `ops.file_report` as the service role. Detectors file
+   through `fileAutomatedFinding` → `ops.file_automated_finding` (ids, categories and scores only).
+2. **Store** — one `ops.reports` row, `status = 'pending'`. The snapshot is immutable for every role
+   (`ops.fn_guard_report`), and deleting or editing the original afterwards leaves it intact.
 3. **Review** — an `ops.admin_users` reviewer resolves it `dismissed` or `actioned` with
    `resolution_notes`, through a `SECURITY DEFINER` door; the reporter's identity is never projected
    to the reported party.
@@ -1301,21 +1305,19 @@ write doors as the Decision #147 public-copy leakage check, for hate speech and 
    `penalty` component subtracts active penalty severity; a lower score can demote the rung
    (`org.standing_events` records `demoted`). The outcome is a mandatory notification.
 
-**Proposed `ops.reports` shape** — not migrated; it lands with its migration (`00000013_tables_ops`,
-edited in place), RLS policies, Zod schema and `documentation/database/ops/*` in one change:
-
-| Column | Type | Notes |
-| :----- | :--- | :---- |
-| `id` | uuid | PK. |
-| `reporter_user_id` | uuid | FK → `auth.users`. Never projected to the reported party. |
-| `reported_subject_type` | text | CHECK: `project_message` · `dm_message` · `stage_submission` · `file` · `profile` · `listing` · `service` · `project`. |
-| `reported_subject_id` | uuid | The subject row; deliberately not an FK (subjects span schemas and must outlive deletion). |
-| `reason` | text | CHECK against a closed reason vocabulary (Zod SSOT). |
-| `evidence_snapshot` | jsonb | Server-built at filing; immutable; Zod-typed per subject type (§1 JSONB Contracts). |
-| `status` | text | CHECK `pending` · `dismissed` · `actioned`; `DEFAULT 'pending'`. |
-| `resolution_notes` | text | Reviewer's notes; required when leaving `pending`. |
-| `resolved_by` / `resolved_at` | uuid / timestamptz | Set together on resolution. |
-| `created_at` | timestamptz | `DEFAULT now()`. |
+**The `ops.reports` shape** (migrated by T&S R1 in `00000013_tables_ops`; columns, CHECKs and
+indexes in [`database/ops/Tables.md`](../database/ops/Tables.md), Zod SSOT
+`@projective/types/ops` `reports.ts`). One sink for three sources (Decision #340 T4, #496 (A)):
+`source` `user` · `automated` · `notice`, with `reporter_user_id` set exactly on a `user` row
+(checked on INSERT, so its `ON DELETE SET NULL` lets a report outlive its reporter, #496 (d)),
+`detector` exactly on an `automated` row and a counsel-shaped `notice` block exactly on a `notice`
+row. The subjects are the eight above plus `review` (#487 (d)) and `workload_report` (PROJECTS EX4);
+`reported_user_id` is the author R4 penalises. The reason is a closed vocabulary (Decision #533):
+`contact_leakage` · `evasion_fragmentation` (the fragmentation detector's alone) · `harassment` ·
+`hate` · `sexual_content` · `child_safety` · `violence` · `illegal_content` · `spam_or_scam` ·
+`impersonation` · `intellectual_property` · `other`. A reporter reads their own rows, operators read
+all, the reported person reads none; no client role writes; one pending report per reporter and
+subject, 20 per reporter per day (`PR429`).
 
 **Why this split.** Proactive screening is spent only where content meets strangers — a small,
 bounded volume of profile, showcase and listing media — so a CPU container covers it; the private

@@ -39,6 +39,7 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `contact`       | Private     | 10 MiB · img,pdf,txt | `{user_id}`    | Files attached to a `/contact` request (Decision #276). **Operator read; service-role write.** |
 | `data_exports`  | **Service** | 50 MiB · zip     | `{user_id}`        | A person's copy of their own data (Decision #450). **Service-role only;** downloaded through a link minted per read. |
 | `originals`     | **Service** | 50 MiB · any     | `{product_id}`     | Sale originals frozen at publish (Decision #488, ruling A6). **Service-role only;** streamed to a buyer only by `/api/downloads/[entitlement]/[fileId]`. |
+| `evidence`      | **Service** | 50 MiB · any     | `{report_id}`      | A reported file's bytes, frozen at filing (T&S R1). **Service-role only;** read for a reviewer. |
 
 ---
 
@@ -315,6 +316,22 @@ originals/
         └── [file_id]
 ```
 
+### `evidence` (Service-role only — T&S R1)
+
+A reported file's bytes. When a person reports a `file`, `ReportsBackendService.fileReport` reads the
+`files.items` row under the reporter's own JWT (the read is the permission check), files the
+`ops.reports` row, then copies the object here **as the service role**, so deleting or replacing the
+original changes nothing a reviewer sees ([ops Tables.md](../ops/Tables.md)). A link or connector row
+has no bytes of ours and is not copied. There is **no storage policy at all**, like `verification`,
+and no `files.items` row points here. The 50 MiB ceiling and any type follow the library the bytes
+come from. How long a copy stays is the I1 retention table's, through identity's erasure chain.
+
+```text
+evidence/
+└── [report_id]/
+    └── [file_id]
+```
+
 ### `quarantine` (Restricted)
 
 The entry point for **all** user uploads. Files are moved to their target bucket only after passing
@@ -486,6 +503,7 @@ what a policy would check.
 | **`workspaceLocation(entityId, ...segments)`**                                | **`workspace/{entityId}/…`**                 |
 | `invoiceLocation(...)` · `verificationLocation(...)`                          | `invoices/…` · `verification/…`              |
 | `originalLocation(productId, versionId, fileId)` (Decision #488)              | `originals/{productId}/{versionId}/{fileId}` |
+| `evidenceLocation(reportId, fileId)` (T&S R1)                                 | `evidence/{reportId}/{fileId}`               |
 | `avatarLocation(...)` · `catalogueLocation(...)` · `publicAssetLocation(...)` | the three public buckets                     |
 
 > **`workspaceLocation()` is the one builder whose misuse is silent.** It takes the **team /

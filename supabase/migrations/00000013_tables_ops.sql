@@ -280,3 +280,72 @@ CREATE TABLE ops.alert_seen (
   CONSTRAINT alert_seen_delivery_fkey FOREIGN KEY (delivery_id) REFERENCES ops.alert_deliveries (id) ON DELETE RESTRICT
 );
 -- #endregion
+
+-- #region [reports] The one review sink (T&S R1; Decisions #148, #340 T4, #496 (A), #533)
+-- People's reports, automated findings and copyright notices land here, one row each, for a reviewer
+-- to resolve `dismissed` or `actioned` (R3's door). Written only by definer doors (00001665:
+-- ops.file_report, ops.file_automated_finding; SC8 adds the notice door), read by the reporter and by
+-- operators (00002019). The snapshot, the notice and who/what was reported never change after filing
+-- (ops.fn_guard_report, 00001897); nothing but the erasure chain deletes a row. Zod SSOT:
+-- @projective/types/ops (reports.ts), value for value.
+CREATE TABLE ops.reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  -- Where the row came from (#340 T4, #496 (A)): a person, a detector, or a rights-holder's notice.
+  source text NOT NULL,
+  -- The filing person, set exactly when source = 'user'. Checked on INSERT by the guard, not by a
+  -- CHECK here: erasing the reporter sets this NULL and the report must outlive them (#496 (d)).
+  -- Never projected to the reported person.
+  reporter_user_id uuid,
+  -- The detector that raised an automated finding; NULL on every other source.
+  detector text,
+  reported_subject_type text NOT NULL,
+  -- Deliberately not an FK: subjects span schemas and the report must outlive the subject's deletion.
+  reported_subject_id uuid NOT NULL,
+  -- The author R4 penalises. SET NULL when that account is erased; the snapshot keeps the record.
+  reported_user_id uuid,
+  reason text NOT NULL,
+  -- Built server-side at filing from the stored row (never client text), Zod-typed per subject type.
+  -- An automated finding's evidence is ids, categories and scores only: no payload is kept.
+  evidence_snapshot jsonb NOT NULL,
+  -- A notice row's block (complainant, the work, where it infringes, the statements): set exactly
+  -- when source = 'notice'. The fields are counsel's; SC8 fills the Zod shell (#496 (C)).
+  notice jsonb,
+  status text NOT NULL DEFAULT 'pending'::text,
+  resolution_notes text,
+  resolved_by uuid,
+  resolved_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT reports_pkey PRIMARY KEY (id),
+  CONSTRAINT reports_reporter_fkey FOREIGN KEY (reporter_user_id) REFERENCES auth.users (id) ON DELETE SET NULL,
+  CONSTRAINT reports_reported_user_fkey FOREIGN KEY (reported_user_id) REFERENCES auth.users (id) ON DELETE SET NULL,
+  CONSTRAINT reports_resolved_by_fkey FOREIGN KEY (resolved_by) REFERENCES auth.users (id) ON DELETE SET NULL,
+  CONSTRAINT reports_source_check CHECK (source = ANY (ARRAY['user'::text, 'automated'::text, 'notice'::text])),
+  CONSTRAINT reports_detector_check CHECK (
+    (source = 'automated') = (detector IS NOT NULL)
+    AND (detector IS NULL OR detector = ANY (ARRAY['nudenet'::text, 'ocr'::text, 'sightengine'::text, 'presidio'::text, 'fragmentation'::text]))
+  ),
+  -- A notice is always an intellectual-property claim (#496 (A)).
+  CONSTRAINT reports_notice_check CHECK (
+    (source = 'notice') = (notice IS NOT NULL)
+    AND (notice IS NULL OR (jsonb_typeof(notice) = 'object' AND reason = 'intellectual_property'))
+  ),
+  CONSTRAINT reports_subject_type_check CHECK (reported_subject_type = ANY (ARRAY[
+    'project_message'::text, 'dm_message'::text, 'stage_submission'::text, 'file'::text, 'profile'::text,
+    'listing'::text, 'service'::text, 'project'::text, 'review'::text, 'workload_report'::text
+  ])),
+  -- The closed reason vocabulary (Decision #533): REPORT_REASONS, value for value.
+  CONSTRAINT reports_reason_check CHECK (reason = ANY (ARRAY[
+    'contact_leakage'::text, 'evasion_fragmentation'::text, 'harassment'::text, 'hate'::text,
+    'sexual_content'::text, 'child_safety'::text, 'violence'::text, 'illegal_content'::text,
+    'spam_or_scam'::text, 'impersonation'::text, 'intellectual_property'::text, 'other'::text
+  ])),
+  CONSTRAINT reports_snapshot_check CHECK (jsonb_typeof(evidence_snapshot) = 'object' AND pg_column_size(evidence_snapshot) <= 65536),
+  CONSTRAINT reports_status_check CHECK (status = ANY (ARRAY['pending'::text, 'dismissed'::text, 'actioned'::text])),
+  -- Pending carries no resolution; leaving pending needs notes and a time (R3's door sets resolved_by
+  -- with them; it is not checked here because erasing the reviewer sets it NULL).
+  CONSTRAINT reports_resolution_check CHECK (
+    CASE WHEN status = 'pending' THEN resolution_notes IS NULL AND resolved_by IS NULL AND resolved_at IS NULL
+         ELSE resolved_at IS NOT NULL AND length(btrim(COALESCE(resolution_notes, ''))) > 0 END
+  )
+);
+-- #endregion

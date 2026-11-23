@@ -546,6 +546,12 @@ STEPS:
   4. The sweep. fn_purge_due_deletions returns the claimed objects, or a new
      security.claim_erased_objects(p_limit) does.
      - AccountLifecycleBackendService.sweepDue removes them with
+     - ops (T&S R1 landed first, so this arm is ERA1's): ops.reports has three FKs onto
+       auth.users, all ON DELETE SET NULL (reporter_user_id, reported_user_id, resolved_by), so a
+       report outlives everyone it names; classify them. The snapshot keeps what was reported and
+       the person's evidence/{report_id}/{file_id} copies keep their bytes: how long each stays is
+       the I1 retention table's (a moderation record, likely HOLD while a report is pending or its
+       penalty is active). A notice row's complainant is not a user (#496 (c)): counsel words it.
        getServiceClient().storage.from(bucket).remove(paths), then confirms each one.
      - A failure is retried on the next run, and it never un-erases the rows.
 

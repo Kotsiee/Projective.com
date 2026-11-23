@@ -149,6 +149,22 @@ VALUES (
     ) ON CONFLICT (id) DO NOTHING;
 -- #endregion
 
+-- #region [evidence] a reported file's bytes, frozen at filing (T&S R1)
+-- `{report_id}/{file_id}`: the copy ReportsBackendService takes when a file is reported, so deleting
+-- or replacing the original changes nothing a reviewer sees. No storage policy at all (00002017),
+-- like `verification`: only the service role reads or writes it. Any type, up to the platform's
+-- 50 MiB object ceiling, because the bytes are whatever the reported library file held.
+INSERT INTO
+    storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+        'evidence',
+        'evidence',
+        false,
+        52428800,
+        NULL
+    ) ON CONFLICT (id) DO NOTHING;
+-- #endregion
+
 -- #endregion
 
 -- #region Public edge-cached buckets

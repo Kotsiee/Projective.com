@@ -6,17 +6,40 @@ _Not yet documented._ This file is scaffolded to match the domain/kind structure
 See `brain2.md`'s Database section for the general migration-numbering and RLS conventions this
 domain follows once populated.
 
-## `ops.reports` — not migrated
+## `ops.reports` — the one review sink (T&S R1; Decisions #148, #340 T4, #496, #533)
 
-The user-reporting table of the Two-Zone moderation model (Decision #148) **does not exist yet**:
-`00000013_tables_ops.sql` defines six tables — `ops.admin_users`, `ops.log_entries`,
-`ops.scheduled_jobs`, `ops.http_job_dispatches`, `ops.contact_requests` and
-`ops.contact_request_attachments` — and no `ops.reports` (#340 (m)). Its proposed shape —
-`reporter_user_id`, `reported_subject_type`, `reported_subject_id`, `reason`, an immutable
-server-built `evidence_snapshot jsonb`, `status` (`pending` · `dismissed` · `actioned`) and
-`resolution_notes` — is in `SYSTEM_ARCHITECTURE.md` §Backend Services → Content moderation. It is
-documented here only when its migration, RLS policies and Zod schema land (see
-[../CLAUDE.md](../CLAUDE.md): this folder documents the migrated schema).
+Migration [`00000013_tables_ops.sql`](../../../supabase/migrations/00000013_tables_ops.sql) (region
+`[reports]`); doors [Functions.md](Functions.md) (`00001665`); guard trigger `trg_reports_guard`
+(`00001897`); RLS [Policies.md](Policies.md); indexes in `00004002`. Zod SSOT:
+`@projective/types/ops` (`reports.ts`: `ReportRowSchema`, `REPORT_REASONS`, `REPORT_SUBJECT_ROWS`,
+`ReportSnapshotSchema`, `AutomatedEvidenceSchema`, `ReportNoticeSchema`). People's reports, detector
+findings and copyright notices land in one table for a reviewer (R3) to resolve. Written only by the
+definer doors, called by `ReportsBackendService` as the service role; a report is a record — the guard
+refuses any change but its resolution, for every role, and no role holds DELETE (only the erasure
+chain, a definer, removes one). Lifecycle: [PRODUCT_MANAGEMENT.md](../../PRODUCT_MANAGEMENT.md)
+§3.5, "Report".
+
+| Column | Meaning |
+| :----- | :------ |
+| `id` | PK, `gen_random_uuid()`. Never a route (Decision #88). |
+| `source` | CHECK `user` · `automated` · `notice` (#340 T4, #496 (A)). |
+| `reporter_user_id` | The filing person: set exactly when `source = 'user'`, checked **on INSERT** by `ops.fn_guard_report`, not by a CHECK, because FK `auth.users(id)` `ON DELETE SET NULL` must let a report outlive its reporter (#496 (d)). Never projected to the reported person. |
+| `detector` | CHECK `nudenet` · `ocr` · `sightengine` · `presidio` · `fragmentation`; set exactly when `source = 'automated'`. |
+| `reported_subject_type` | CHECK `project_message` · `dm_message` · `stage_submission` · `file` · `profile` · `listing` · `service` · `project` · `review` (#487 (d)) · `workload_report` (PROJECTS EX4). |
+| `reported_subject_id` | The subject row. Deliberately not an FK: subjects span schemas and the report outlives the subject. |
+| `reported_user_id` | The author R4 penalises. FK `auth.users(id)` `ON DELETE SET NULL`. |
+| `reason` | CHECK the closed vocabulary (Decision #533): `contact_leakage` · `evasion_fragmentation` · `harassment` · `hate` · `sexual_content` · `child_safety` · `violence` · `illegal_content` · `spam_or_scam` · `impersonation` · `intellectual_property` · `other`. `evasion_fragmentation` is the fragmentation detector's alone (`ops.file_report` refuses it). |
+| `evidence_snapshot` | jsonb object, ≤ 64 KB. A user row: the stored row read under the reporter's JWT, `{subjectType, capturedAt, row}` (`ReportSnapshotSchema`, one shape per subject type). An automated row: ids, categories and scores only (`AutomatedEvidenceSchema`, strict). Immutable. |
+| `notice` | jsonb object, set exactly when `source = 'notice'`, and then `reason = 'intellectual_property'` (CHECK `reports_notice_check`). A Zod shell (`ReportNoticeSchema`) whose fields are counsel's; MARKETPLACE SC8 fills it and files notice rows through its own door. Immutable. |
+| `status` | CHECK `pending` · `dismissed` · `actioned`, `DEFAULT 'pending'`. Moves only pending → dismissed \| actioned, once. |
+| `resolution_notes` · `resolved_by` · `resolved_at` | NULL while pending; leaving pending needs notes and a time (CHECK `reports_resolution_check`). `resolved_by` (FK `auth.users`, `ON DELETE SET NULL`) is set by R3's door. |
+| `created_at` | `DEFAULT now()`. |
+
+Indexes (`00004002`): `idx_reports_status_created` (the reviewer's queue), `idx_reports_reported_user`
+(the author's history), `idx_reports_reporter_created` (the daily cap) and the partial unique
+`uq_reports_pending_per_reporter` (`reporter_user_id, reported_subject_type, reported_subject_id`
+WHERE pending), which holds one pending report per reporter and subject against a race. A reported
+file's bytes are copied to the service-only `evidence` bucket ([files Storage.md](../files/Storage.md)).
 
 ## `ops.log_entries` — production diagnostics and web vitals
 

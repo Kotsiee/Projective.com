@@ -83,6 +83,10 @@ ALTER TABLE ops.alert_deliveries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ops.alert_seen ENABLE ROW LEVEL SECURITY;
 -- #endregion
 
+-- #region [reports] The review sink (T&S R1): the reporter and operators read; no client writes
+ALTER TABLE ops.reports ENABLE ROW LEVEL SECURITY;
+-- #endregion
+
 ALTER TABLE org.business_profiles ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.freelancer_profiles ENABLE ROW LEVEL SECURITY;

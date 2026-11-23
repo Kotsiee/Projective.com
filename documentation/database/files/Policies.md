@@ -385,4 +385,9 @@ Full predicate, path convention and the metering consequence:
   `data_exports/{user_id}/{request_id}.zip`; a person downloads their own through a 60-second link the
   server mints after reading their request under their own JWT ([Storage.md](Storage.md)).
 
+## `storage.objects` — the `evidence` bucket (T&S R1)
+
+- **No policy at all** — service-role only, like `verification`. The reports service copies a reported
+  file's bytes to `evidence/{report_id}/{file_id}` at filing ([Storage.md](Storage.md)).
+
 See also [Tables.md](Tables.md) · [Functions.md](Functions.md) · [Storage.md](Storage.md).

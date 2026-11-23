@@ -44,3 +44,11 @@ CREATE TRIGGER trg_alert_seen_no_truncate
     FOR EACH STATEMENT
     EXECUTE FUNCTION ops.fn_alert_keep ();
 -- #endregion
+
+-- #region [reports] The review sink (T&S R1): function in 00001665
+-- The reporter is checked on filing; afterwards a report is a record and only its resolution moves.
+CREATE TRIGGER trg_reports_guard
+    BEFORE INSERT OR UPDATE ON ops.reports
+    FOR EACH ROW
+    EXECUTE FUNCTION ops.fn_guard_report ();
+-- #endregion

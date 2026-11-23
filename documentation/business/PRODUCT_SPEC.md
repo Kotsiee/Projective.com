@@ -1493,7 +1493,12 @@ directed at a participant, or explicit material sent to someone who has not enga
 all reportable, and illegal content is escalated beyond the platform as the law requires.
 
 **Reporting.** Any party who can see a message, submission, file, DM or public item can report it,
-choosing a reason. At filing, the platform freezes an **immutable snapshot** of what was reported —
+choosing a reason from one closed list (Decision #533): taking contact or payment off Projective ·
+harassment, threats or sharing someone's private details · hate · sexual content · content that
+sexualises or endangers a minor (its own reason, so it is reviewed first and escalated as the law
+requires) · violence · other illegal content · spam, a scam or fake activity · impersonation · using
+someone's work without permission · something else. Contact details split across messages is a
+reason only the fragmentation detector files. At filing, the platform freezes an **immutable snapshot** of what was reported —
 the content, its author, its context and timestamps — in the same spirit as the Evidence Vault
 (§Dispute Resolution 1), so editing or deleting the original afterwards changes nothing. A reviewer
 resolves each report as **dismissed** (no violation) or **actioned** (violation verified). The

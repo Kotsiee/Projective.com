@@ -883,11 +883,10 @@ pg_cron ── ops.scheduled_jobs 'moderation-drain' (every minute, http)
 
 - `ops.moderation_queue`: `id`, `message_kind`, `message_id`, `reason`, `enqueued_at`, `attempts`,
   `leased_until`, `last_error`.
-- **The review sink.** The proposed `ops.reports` shape (`SYSTEM_ARCHITECTURE.md` §Content
-  moderation) has `reporter_user_id` as an FK to a person. An automated finding has no reporter.
-  Either add `source text CHECK (source IN ('user','automated'))` and make `reporter_user_id`
-  nullable only when `source = 'automated'`, or keep a separate `ops.moderation_findings` table.
-  This is a schema decision for a human (flag (g)).
+- **The review sink.** Built (T&S R1; flag (g) ruled by Decision #340 T4): `ops.reports.source` is
+  `user` · `automated` · `notice` (#496 (A)), and `reporter_user_id` is set exactly on a `user` row.
+  A detector files through `ops.file_automated_finding` (service role) with ids, categories and
+  scores only ([`database/ops/Functions.md`](../database/ops/Functions.md)).
 
 **The analyzer request contract.** Projective's recognisers travel per request as
 `ad_hoc_recognizers`. They are version-controlled in TypeScript next to `comms.mask_pii`'s patterns,
@@ -1953,8 +1952,9 @@ ruling, Decision #447). A probe that signs in through GoTrue's password grant se
 ### 9.2 Supabase Storage: the bucket matrix
 
 **Authority:** [`database/files/Storage.md`](../database/files/Storage.md) (paths, policies, the
-upload pipeline) and `00005040_seed_storage_buckets.sql`. All twelve buckets are listed, including
-`workspace`, `contact` and `showcase`, which the brief did not name.
+upload pipeline) and `00005040_seed_storage_buckets.sql`. The twelve buckets the brief's pass found
+are listed, including `workspace`, `contact` and `showcase`, which the brief did not name, and
+`evidence` (T&S R1); `data_exports` and `originals` are in Storage.md.
 
 | Bucket          | Visibility                 | Size limit | Written by                                              | AV scan (**Proposed**, §6.4) | Publication gate (§6.3)         | Notes                                                                                            |
 | :-------------- | :------------------------- | :--------- | :------------------------------------------------------ | :--------------------------- | :------------------------------ | :----------------------------------------------------------------------------------------------- |
@@ -1966,6 +1966,7 @@ upload pipeline) and `00005040_seed_storage_buckets.sql`. All twelve buckets are
 | `contact`       | Private; operator read     | 10 MiB     | The contact pipeline only                               | Yes                          | none                            | Swept hourly when unsent (`contact-attachment-sweep`)                                            |
 | `invoices`      | Private                    | 20 MiB     | Service-generated                                       | n/a                          | n/a                             | PDFs are rendered per request today; stored PDFs are not built                                   |
 | `verification`  | Private, service role only | 20 MiB     | The service role                                        | Yes                          | n/a                             | **Never** Stripe Identity images: Stripe holds those                                             |
+| `evidence`      | Private, service role only | 50 MiB     | `ReportsBackendService` (a reported file's copy)        | Upstream (library)           | n/a                             | `{report_id}/{file_id}`; kept for the reviewer, retention per the I1 table (T&S R1)             |
 | `avatars`       | **Public**                 | 5 MiB      | `MediaBackendService` rendition cut                     | Upstream (library)           | **Required**                    | Served from `SUPABASE_PUBLIC_URL`                                                                |
 | `showcase`      | **Public**                 | 50 MiB     | The rendition cut                                       | Upstream                     | **Required** (frames for video) |                                                                                                  |
 | `catalogue`     | **Public**                 | 10 MiB     | The service role (catalogue media writes)               | Upstream                     | **Required**                    |                                                                                                  |

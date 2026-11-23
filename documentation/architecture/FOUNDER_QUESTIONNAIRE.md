@@ -1001,7 +1001,6 @@ slot B takes only prompts that leave `00002510` alone: PM-D7a, I·HK1, O·Q9, I�
 **For the owner, in parallel.** Each item unblocks a step below; a prompt reaching an unanswered one
 skips it.
 
-- #148 (g), the report reason vocabulary: T·R1 stops before step 1 without it.
 - #410 (c), RESTRICT on `enterprise_members.user_id`: I·HK1 runs without that one FK if it is
   refused.
 - #344 (f): SCH-WP7 step 6. PM §0.5 #3 (how a Fair Exit contest holds money): PM-WP4a step 6.
@@ -1016,7 +1015,7 @@ skips it.
 | Slot         | Order (serial inside the slot)                                                                                                                                    | Rules                                                                                                                                                                                                                                                                                                                     |
 | :----------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | A · money    | F·DB2 (live) → DB12 → DB3 → DB6 → DB16 → PM-WP4a → PM-WP4b → PM-P6 → PM-GH1 → SV8 → DB4 → DB5 → DB14 → DB15 → DB13 → DB20 → DB8 → DB9 → DB17 → DB18 → DB19 → DB21 | The PM money exits sit here: they hold `00001200` / `00001240` and wait only on DB3 + DB6. DB16 lands first so they prove conservation. DB14 never beside PM-D7a, PM-S3 or PM-WP9 (`00001110`, `00001850`).                                                                                                               |
-| B · the rest | ✅ M·MS1 → SCH-WP7 → S·S1 → PM-WP1 → T·R1 → I·HK1 → SCH-WP9 → PM-D7a → PM-S3 → T·R4 → T·P1d → T·R5 → T·R3 → S·S2 → SCH-WP6 → M·NT2 → M·SR1 → O·Q9 → I·MIN1        | M·MS1 has landed (`bbcf3506`); the next step starts once the stage-intensity change lands too. SCH-WP7, WP9 and WP6 never beside DB3 or DB15 (`00001155`); SCH-WP6 never beside DB13 or DB19 (`00001210`). I·HK1 never beside a slot-A writer of `00000017`. A step whose ruling is not in yet is skipped, not waited on. |
+| B · the rest | ✅ M·MS1 → SCH-WP7 → S·S1 → PM-WP1 → ✅ T·R1 → I·HK1 → SCH-WP9 → PM-D7a → PM-S3 → T·R4 → T·P1d → T·R5 → T·R3 → S·S2 → SCH-WP6 → M·NT2 → M·SR1 → O·Q9 → I·MIN1        | M·MS1 has landed (`bbcf3506`); the next step starts once the stage-intensity change lands too. SCH-WP7, WP9 and WP6 never beside DB3 or DB15 (`00001155`); SCH-WP6 never beside DB13 or DB19 (`00001210`). I·HK1 never beside a slot-A writer of `00000017`. A step whose ruling is not in yet is skipped, not waited on. |
 
 Slot A departs from FBP §0.1 on purpose: F·DB2 is already live, and DB3 + DB6 unblock four PM
 prompts (WP4a, WP4b, P6, GH1), so the dispute chain runs before DB16. Slot B leads with M·MS1

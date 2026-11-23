@@ -39,6 +39,7 @@ export const StorageBucket = z.enum([
 	"contact",
 	"data_exports",
 	"originals",
+	"evidence",
 ]);
 export type StorageBucket = z.infer<typeof StorageBucket>;
 
@@ -181,6 +182,14 @@ export const BUCKETS: Readonly<Record<StorageBucket, BucketMeta>> = {
 		anchor: "product_id",
 		purpose:
 			"Sale originals frozen at publish (Decision #488, ruling A6) — copied in by the catalogue service, streamed only by the entitlement gate.",
+	},
+	evidence: {
+		access: "service",
+		maxBytes: 50 * MiB,
+		allowedMime: null,
+		anchor: "report_id",
+		purpose:
+			"A reported file's bytes, frozen at filing (T&S R1) — copied in by the reports service, read only by the service role for a reviewer.",
 	},
 };
 
@@ -416,6 +425,11 @@ export function libraryLocation(
  */
 export function contactLocation(
 	userId: string,
+/** `evidence/{reportId}/{fileId}` — a reported file's frozen copy; service-role ONLY (T&S R1). */
+export function evidenceLocation(reportId: string, fileId: string): StorageLocation {
+	return { bucket: "evidence", path: join(reportId, fileId) };
+}
+
 	assetId: string,
 	filename: string,
 ): StorageLocation {

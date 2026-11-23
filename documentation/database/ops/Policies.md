@@ -57,6 +57,23 @@ storage policy is operator read of SENT attachments ([files Policies.md](../file
 `files.fn_can_read`'s contact arm, by operators once a request links them — a file removed or never
 sent is nobody's but its uploader's. Probe: [`supabase/probes/contact_requests.sql`](../../../supabase/probes/contact_requests.sql).
 
+## `ops.reports` (T&S R1)
+
+RLS enabled in `00002001` (region `[reports]`); policy in `00002019`; grants in `00002520`: everything
+revoked from `PUBLIC`, `anon`, `authenticated` and `service_role`, then `SELECT` to `authenticated`
+and `service_role`. **No** `INSERT`, `UPDATE`, `DELETE` or `TRUNCATE` for any role: reports arrive
+through the `00001665` definers (service role only), R3's door resolves them, and only the erasure
+chain, a definer, removes one.
+
+| Policy                            | Table     | Command | Role            | Rule                                                  |
+| :-------------------------------- | :-------- | :------ | :-------------- | :---------------------------------------------------- |
+| Reporters and admins read reports | `reports` | SELECT  | `authenticated` | `reporter_user_id = auth.uid() OR security.is_admin()` |
+
+The reported person reads none, so the reporter is never projected to them; a detector finding and a
+notice have no reporter, so only operators read them. The `evidence` bucket has no storage policy at
+all ([files Policies.md](../files/Policies.md)). Probe:
+[`supabase/probes/reports_sink.sql`](../../../supabase/probes/reports_sink.sql).
+
 ## `ops.alert_rules` · `ops.alert_deliveries` · `ops.alert_seen` (MR4, Decision #461)
 
 RLS enabled in `00002001` (region `[alerts]`), **no policy**: no client role reads or writes them.

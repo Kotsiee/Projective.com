@@ -170,6 +170,16 @@ GRANT SELECT ON ops.alert_deliveries, ops.alert_seen TO service_role;
 -- #endregion
 
 
+-- #region [reports] ops.reports (T&S R1)
+-- SELECT only: the reporter and operators pass the policy (00002019). No role holds INSERT, UPDATE or
+-- DELETE: reports arrive through the 00001665 definers, R3's door resolves them, and only the erasure
+-- chain (a definer) removes one.
+REVOKE ALL ON ops.reports FROM PUBLIC, anon, authenticated, service_role;
+
+GRANT SELECT ON ops.reports TO authenticated, service_role;
+-- #endregion
+
+
 -- --- from 0219_search_engine_weights.sql ---
 
 GRANT SELECT ON search.search_weights TO authenticated;

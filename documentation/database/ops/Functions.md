@@ -66,6 +66,25 @@ only sent — attachments and objects, moves, the guard, Remove, the sweep, the 
 guest ceilings and the sweep's job row) — 81 PASS in a rolled-back run on the shared database with
 the on-disk definitions spliced in.
 
+## The review sink (T&S R1; Decisions #148, #340 T4, #496, #533)
+
+Migration [`00001665_functions_ops_moderation.sql`](../../../supabase/migrations/00001665_functions_ops_moderation.sql);
+trigger `00001897` (`trg_reports_guard`, BEFORE INSERT OR UPDATE); grants in `00002510` (region
+`[reports]`). Every function has `search_path = ''`. Both doors are the service role's alone:
+`ReportsBackendService` reads the subject under the reporter's JWT before it calls `file_report`, and
+the detectors run server-side. SC8 adds the notice door here; R3 the reviewer's resolve door.
+
+| Function | Returns | What it does |
+| :------- | :------ | :----------- |
+| `file_report(reporter, subject_type, subject_id, reason, reported_user, snapshot)` — **`service_role`** | `jsonb` | SECURITY DEFINER. Files a `user` row, `pending`. A reporter, subject and reason are required and the snapshot is an object (`22023`); `evasion_fragmentation` is refused (`22023`, the detector's alone, #533). Serialises one reporter's filings on an advisory lock, then refuses a second pending report on the same subject (`23505`, backed by `uq_reports_pending_per_reporter`) and a 21st report in a rolling 24 hours (`PR429`, `REPORT_DAILY_CAP`). An unknown reason or subject type fails its CHECK (`23514`). Returns `{id, status, created_at}`. |
+| `file_automated_finding(detector, subject_type, subject_id, reported_user, reason, evidence)` — **`service_role`** | `jsonb` | SECURITY DEFINER. Files an `automated` row with no reporter and the named detector. The evidence is an object (`22023`); the service's strict Zod keeps it to ids, categories and scores. Penalises nobody: a reviewer actions it first (#340 T4). Returns `{id, status, created_at}`. |
+| `fn_guard_report()` | trigger | Every role, the owner included. INSERT: a `user` row names its reporter, an `automated` or `notice` row none (`23514`; #496 (d): on INSERT, so the reporter FK's `ON DELETE SET NULL` always runs). UPDATE: refuses (`42501`) any change to source, detector, subject, reason, snapshot, notice or `created_at`, and to the reporter or reported person except → NULL (erasure); a resolved report is final (`23514`), save `resolved_by` → NULL. |
+
+Probe: [`supabase/probes/reports_sink.sql`](../../../supabase/probes/reports_sink.sql) (the
+bucket, both doors' grants, filing, one pending per subject, the closed and person-only reasons, the
+service role's missing write grants, who reads, the guard for the owner, erasure, the resolution rule,
+the three sources' reporter and notice rules, and the daily cap): 9 PASS groups in a rolled-back run.
+
 ## Money, job and webhook alerts (MR4, Decision #461; OPS5)
 
 Migration [`00001660_functions_ops_alerts.sql`](../../../supabase/migrations/00001660_functions_ops_alerts.sql);

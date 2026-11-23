@@ -6,8 +6,8 @@
 > row of [`PRODUCTION_READINESS.md`](../readiness/PRODUCTION_READINESS.md) §D (§0.6 maps them),
 > under Decision #340's rulings (#345 for the safety node, §8).
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 19 open, 2 partly done, 6 done (§0 ledger).
-> Runnable now: LK1, P1d, P2d, R1 (🧑 at its first step), SN1 (🧑 to confirm at step 4); in
+> **Verified against code 2026-11-23 at `f2e25929`; R1 landed after it.** 18 open, 2 partly done, 7
+> done (§0 ledger). Runnable now: LK1, P1d, P2d, R4, SN1 (🧑 to confirm at step 4); in
 > `Projective-Safety`, N3's remux and N5.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -25,7 +25,7 @@ and Q0.2 (a) and (f); the questionnaire's Part C is the table.
   before it changes behaviour there. **⚖️** means ruled pending counsel: build it behind a flag that
   stays off, and never switch it on.
 - **Migrations are edited in place** (root `CLAUDE.md` §1). Every prompt names the category file to
-  edit. The one new category-1 file, `00001665_functions_ops_moderation.sql` (P1d creates it;
+  edit. The one new category-1 file, `00001665_functions_ops_moderation.sql` (R1 created it with the report doors;
   `00001660` is MR4's `ops_alerts`), is a new home, not a patch file.
 - **IDs.** H1 is the hash-matching prompt (§6); §8.3's H1–H5 are human setup steps. N0–N5 are node
   prompts, run in `Projective-Safety` (§8.4). Section numbers are kept from earlier versions (§2
@@ -49,12 +49,13 @@ and Q0.2 (a) and (f); the questionnaire's Part C is the table.
 | N2 | ClamAV `POST /scan/file`, the `macros` flag, signature age in `/healthz` (`Projective-Safety`)           | `d7e82a1`                     | `f2e25929` |
 | N4 | Presidio analyzer and anonymizer routes and the Tier 3 corpus; the node holds no recognisers             | `30c8bda`, `a4ccec5`          | `f2e25929` |
 | N6 | Withdrawn: the app calls Sightengine itself (SN4; Decision #345)                                         | —                             | `f2e25929` |
+| R1 | `ops.reports`, the one review sink: `user` · `automated` · `notice` sources, the twelve-reason vocabulary (#533), `ops.file_report` and `ops.file_automated_finding`, `ReportsBackendService`, the `evidence` bucket | `R1_COMMIT` | `R1_PARENT` |
 
 | Phase                        | Prompts                                                         | Why this order                                                                                                                                                                                                                                                                                                                      |
 | :--------------------------- | :-------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Any time**                 | LK1                                                             | App only (`services/files/link-scan.ts`). It closes PRD-D4, one of the two §D rows UAT needs.                                                                                                                                                                                                                                       |
 | **1 — The leakage pipeline** | P1d → P2a → P2b → P2c; P2d                                      | P1d builds Tier 1 and, in the same change, every Tier 2 category Tier 1 refuses (L8; PRODUCT_SPEC §Messaging 1.A: the database tier is the floor). P2a reuses P1d's categoriser for public copy. P2b widens the protected phase (T1) before P2c masks new surfaces with it. P2d closes the SEC grant leftovers.                     |
-| **2 — The moderation loop**  | R1 → R4 → R5 → R3 → R2                                          | SEC §3.3's order: the sink, the penalty writer, Standing, the reviewer, then the report button last, so it never renders before a reviewer can act on it (root `CLAUDE.md` §3.11).                                                                                                                                                  |
+| **2 — The moderation loop**  | R4 → R5 → R3 → R2                                               | SEC §3.3's order: the sink (R1, done), the penalty writer, Standing, the reviewer, then the report button last, so it never renders before a reviewer can act on it (root `CLAUDE.md` §3.11).                                                                                                                                                  |
 | **3 — The safety node**      | SN1 → SN2 → SN3 → SN4 → SN5; SN6 after R3 and P2b; H1 after SN2 | ClamAV, then the one admission contract, then the publication gate (NudeNet + OCR), then Sightengine, then video. SN1 can start now: E8 has merged and the node's N1 and N2 are built. It is file-disjoint from phases 1–2 apart from `00005060`. SN6 (Presidio) needs the review sink, the reviewer and the final phase predicate. |
 | **Last**                     | Z1                                                              | Docs sweep, the SEC status column and the decision rows.                                                                                                                                                                                                                                                                            |
 
@@ -63,12 +64,12 @@ lanes. `00002510` has one writer at a time across all tracks, the identity erasu
 
 | Wave    | This repo                                                                 | Node repo / you                                              | Waits for                                                                            |
 | :------ | :------------------------------------------------------------------------ | :----------------------------------------------------------- | :----------------------------------------------------------------------------------- |
-| 1 (now) | LK1 · R1 → R4 → R5 → R3 (SQL, serial) · P1d (SQL) · P2d (SQL) · SN1 → SN2 | N3's remux, N5; §8.3 H1 keys                                 | R1 stops at its 🧑 first                                                             |
-| 2       | R2 · SN3 · H1 · P2a → P2b → P2c                                           | Provision the UAT node (§8.3 H3); `MALWARE_SCAN_LIVE` in UAT | R3 and COMMS MS3 (R2); SN2 and R1 (SN3); SN2 (H1); PM-WP4b (P2a–P2c); SCH-WP10 (P2c) |
+| 1 (now) | LK1 · R4 → R5 → R3 (SQL, serial) · P1d (SQL) · P2d (SQL) · SN1 → SN2       | N3's remux, N5; §8.3 H1 keys                                 | —                                                                                    |
+| 2       | R2 · SN3 · H1 · P2a → P2b → P2c                                           | Provision the UAT node (§8.3 H3); `MALWARE_SCAN_LIVE` in UAT | R3 and COMMS MS3 (R2); SN2 (SN3); SN2 (H1); PM-WP4b (P2a–P2c); SCH-WP10 (P2c)        |
 | 3       | SN4 · SN5 · SN6                                                           | Sightengine's data-processing terms signed                   | P2a and a ruling on #344 (b) (SN4); SN4 and N3's remux (SN5); R3 and P2b (SN6)       |
 | —       | —                                                                         | A Web Risk key per hosted environment; counsel on H1         | PRD-D5 and PRD-D14 close outside code                                                |
 
-**SQL lane (Part B §B.0).** P1d, P2a, P2b, P2c, P2d, R1, R4, R5, R3, SN1 (its job), SN2 (its job),
+**SQL lane (Part B §B.0).** P1d, P2a, P2b, P2c, P2d, R4, R5, R3, SN1 (its job), SN2 (its job),
 SN3, SN4 (dials) and SN6 run SQL, and LK1 does if it adds its dial. At most **two SQL sessions at
 once** across all tracks, on disjoint migration files. Each announces its `deno task db:reset` to
 the other sessions, runs `deno task test:probes` after each reset, and finishes with its own clean
@@ -87,29 +88,30 @@ Track and step names are Part B's; COMMS IDs (MS1–MS5, NT1–NT5, SR1–SR4) a
 | P2b      | ⏳ PM-WP4b                                              | A cancelled project's cooling-off reads WP4b's lifecycle.                                                                                                                                                                                                 |
 | P2c      | ⏳ PM-WP4b, SCH-WP10                                    | Ticket and submission text (`00000015`, `00001850`) and scheduling event text (`00001860`). SCH-WP10 is built as `8851d4dc` on `claude/sch-wp10-calendar`, which is not on main (SCHEDULING §0). Reactions are out: COMMS MS5 pins them to one emoji set. |
 | P2d      | coordinate with PROJECTS CH1                            | Both edit the room policies in `00002012`; whichever runs second keeps the archive gate. COMMS SR1 pins `fn_nearest` / `fn_nearest_to_entity` (G18's function half), so P2d does only the sync triggers.                                                  |
-| R1, P1d  | I's erasure chain (coordinate)                          | `ops.reports`, `ops.refusal_counts` and the evidence copies are personal data. The arm lives in `00001060` (identity's hot file) and is classified in identity ERA1's `account_erasure_scope.sql`: whichever lands second adds it.                        |
+| P1d      | I's erasure chain (coordinate)                          | `ops.refusal_counts` is personal data, as are R1's `ops.reports` and `evidence` copies (landed, so ERA1 adds their arm). The arm lives in `00001060` (identity's hot file) and is classified in identity ERA1's `account_erasure_scope.sql`: whichever lands second adds it. |
 | R2       | ⏳ M·MS3                                                | The message menus live in the islands MS3 reworks.                                                                                                                                                                                                        |
 | R4       | not beside identity HK1                                 | Both edit `00000012_tables_security.sql` (HK1 is identity's Q0.2 (b) drops).                                                                                                                                                                              |
 | R5       | not beside O's read-path work                           | `services/explore/live-catalog.ts` and `00002520`.                                                                                                                                                                                                        |
 | SN4      | ⏳ P2a and the owners of the public-copy write services | The text screen runs in the same doors.                                                                                                                                                                                                                   |
 
-**Others wait on T:** MARKETPLACE SC8 waits for R1 and R2 (Decision #496: a `notice` row is filed
-only by SC8's door), and PROJECTS EX4 builds its workload-verdict appeal on R1, R3 and R4.
+**Others wait on T:** MARKETPLACE SC8 waits for R2 (R1 has landed with the `notice` source;
+Decision #496: a `notice` row is filed only by SC8's door), and PROJECTS EX4 builds its
+workload-verdict appeal on R1's sink (landed), R3 and R4.
 
 ### 0.2 Hot files (Part B §B.0) and other shared files
 
 | File                                                    | T writers                              | Other writers                                                     |
 | :------------------------------------------------------ | :------------------------------------- | :---------------------------------------------------------------- |
 | `00005060` (jobs)                                       | SN1, SN2, R5, SN6                      | F, M, P, C, OPS, PROJECTS FL1 (one writer at a time)              |
-| `00001060` (erasure)                                    | none (R1 and P1d hand their arms to I) | I (ERA1), SEC G16                                                 |
+| `00001060` (erasure)                                    | none (R1's and P1d's arms go to I)     | I (ERA1), SEC G16                                                 |
 | `00001300` (comms)                                      | P1d, P2b, P2c, P2d, SN6                | COMMS MS4, MS5; PROJECTS CH1–CH4; every CAS messaging step        |
-| `00002510` (grants)                                     | P1d, P2d, R1, R3, R4, SN6              | many                                                              |
+| `00002510` (grants)                                     | P1d, P2d, R3, R4, SN6                  | many                                                              |
 | `00002012` (comms policies)                             | P2d                                    | PROJECTS CH1                                                      |
 | `features/devtools` + `dev-seam.ts`                     | SN1, SN3, R3                           | identity SSO1, MFA1, MIN1; PROJECTS and PM (PROJECTS §0.2's list) |
 | `00001400` (search functions)                           | P2d                                    | COMMS SR3, SR4 (SR1 and SR2 have landed)                          |
 | `00002520` (table grants)                               | P2d, R5                                | many                                                              |
 | `00000012` (security tables)                            | R4                                     | identity HK1 (Q0.2 (b) drops)                                     |
-| `00000013` (ops tables), `00001665` (new)               | P1d, R1, R3, SN6                       | —                                                                 |
+| `00000013` (ops tables), `00001665` (R1's)              | P1d, R3, SN6                           | —                                                                 |
 | `00000016` (comms tables)                               | P2b, P2d                               | PROJECTS CH1–CH4                                                  |
 | `00001840` (comms triggers)                             | P2c, P2d, SN6                          | COMMS; PROJECTS CH1–CH4                                           |
 | `00005001` (platform params)                            | P2b, P2d, R4, SN1, SN2, SN3, SN4, SN6  | F (FX margin and dials)                                           |
@@ -120,8 +122,8 @@ only by SC8's door), and PROJECTS EX4 builds its workload-verdict appeal on R1, 
 ### 0.3 These cannot run in parallel inside T
 
 - P1d / P2b / P2c / P2d / SN6 (`00001300`)
-- P1d / P2d / R1 / R3 / R4 / SN6 (`00002510`)
-- P1d / R1 / R3 / SN6 (`00000013`, `00001665`)
+- P1d / P2d / R3 / R4 / SN6 (`00002510`)
+- P1d / R3 / SN6 (`00000013`, `00001665`)
 - SN1 / SN2 / R5 / SN6 (`00005060`)
 - R3 / SN1 / SN3 (devtools + `dev-seam.ts`)
 - SN2 / SN3 / SN5 / H1 (the upload and publish pipeline: `services/files/*`, `services/media/*`)
@@ -139,7 +141,6 @@ H1 is the ⚖️ item. No other stop here is ruled; each prompt holds its option
 
 | Prompt    | Question                                                                                                                                                                                      | Recommendation                                                                                                                                                                                   | Kind                                      |
 | :-------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------- |
-| R1        | The report reason vocabulary (Decision #148 flag (g); only `evasion_fragmentation` is ruled). It blocks R4, R5, R3 and R2, so settle it first                                                 | The eleven-reason list in R1                                                                                                                                                                     | Open since #148                           |
 | P2a       | Decision #147 flag (a): structured links (`org.profile_links`, a business's `website`) and article bodies                                                                                     | Structured links refuse only payment and messaging hosts; article bodies follow the free-text rule                                                                                               | Open since #147                           |
 | P2b       | The cooling-off length (T1 names the window, not its length)                                                                                                                                  | 30 days, its own dial                                                                                                                                                                            | Unruled value                             |
 | P2b       | A cold DM opened from a profile reached through Explore (T1 covers marketplace surfaces and connected people only)                                                                            | Protect a thread between people who were not connected when it opened                                                                                                                            | Gap in T1                                 |
@@ -187,7 +188,7 @@ header's READINESS line).
 | PRD-D5  | PROD · Normal   | LK1 + you (W1 done)    | —                                        | ✅ when each hosted environment has a Web Risk key and a recorded live lookup of the test threat URL                            |
 | PRD-D7  | PROD · High     | P1d                    | PJ-57 (with P2a–P2c and SN6)             | ✅ on P1d                                                                                                                       |
 | PRD-D8  | PROD · High     | P2a → P2b → P2c        | PJ-57                                    | 🟡 on P2a (public copy); ✅ on P2c                                                                                              |
-| PRD-D9  | PROD · Critical | R1 → R4 → R5 → R3 → R2 | PJ-58 → ✅ on R2                         | 🟡 on R3 (a reviewer can act); ✅ on R2 (people can report)                                                                     |
+| PRD-D9  | PROD · Critical | (R1 done) R4 → R5 → R3 → R2 | PJ-58 → ✅ on R2                         | 🟡 on R3 (a reviewer can act); ✅ on R2 (people can report)                                                                     |
 | PRD-D10 | PROD · Critical | SN2 → SN3              | PJ-49 (SN3 screens the group photo)      | ✅ on SN3                                                                                                                       |
 | PRD-D11 | PROD · High     | SN4                    | —                                        | ✅ on SN4                                                                                                                       |
 | PRD-D12 | PROD · Normal   | SN5                    | —                                        | ✅ on SN5                                                                                                                       |
@@ -408,8 +409,8 @@ FILES:
   - supabase/migrations/00001300_functions_comms_channels.sql (mask_pii; a shared categoriser;
     the protected-phase door for the send services)
   - supabase/migrations/00001320_functions_editorial_community.sql (fn_feedback_idea_screen)
-  - supabase/migrations/00000013_tables_ops.sql (ops.refusal_counts) and the new
-    00001665_functions_ops_moderation.sql (its writer; 00001660 is taken by ops_alerts);
+  - supabase/migrations/00000013_tables_ops.sql (ops.refusal_counts) and
+    00001665_functions_ops_moderation.sql (its writer, beside R1's report doors);
     00002019 (RLS); 00002510 (grants)
   - the send doors: MessagingBackendService.sendMessage (the one door; check that
     services/projects/live-writes.ts inserts no room message outside it),
@@ -715,82 +716,6 @@ SQL SESSION: at most two SQL sessions at once, on disjoint migration files; anno
 
 ## 5. Phase 2 — The moderation loop
 
-### R1 — `ops.reports`, the one review sink (T4)
-
-```text
-PROMPT R1: ops.reports — one review sink for people's reports and automated findings
-
-ROLE: Postgres + backend engineer. SEC R1/G19, §3.3; Decision #148 (a), (g); EPI flag (g)
-(Decision #340, ruling T4: the source column; ruling T2: evasion_fragmentation).
-Since RV1 (#487 (d)): the subject CHECK gains `review`. The `notice` source is already in the
-shape.
-
-🧑 DECISION — STOP before step 1 and put the reason vocabulary to me. Decision #148 flag (g) left
-it undesigned; only evasion_fragmentation is ruled. Recommended closed list, each with a
-person-readable label: contact_leakage · evasion_fragmentation · harassment · hate ·
-sexual_content · violence · illegal_content · spam_or_scam · impersonation ·
-intellectual_property · other. The list is the Zod SSOT and the SQL CHECK; R2's form shows the
-labels.
-
-FILES:
-  - supabase/migrations/00000013_tables_ops.sql (ops.reports)
-  - supabase/migrations/00001665_functions_ops_moderation.sql (P1d created it; the doors)
-  - supabase/migrations/00002019_policies_security_ops.sql (RLS); 00002510 (grants)
-  - supabase/migrations/00005040_seed_storage_buckets.sql (an `evidence` bucket: private, no
-    client policy, like `verification`)
-  - packages/types/ops/reports.ts (the row, the vocabulary, one evidence schema per subject type)
-  - packages/backend/services/moderation/ReportsBackendService.ts (new) + test
-  - supabase/probes/reports_sink.sql (new)
-  - documentation/database/ops/{Tables,Policies,Functions}.md, documentation/database/files/
-    Storage.md (the evidence bucket), SA §Content moderation (the "Proposed ops.reports shape"
-    becomes the migrated one), EPI §9.2
-
-STEPS:
-  1. ops.reports per SA's proposed shape, plus: source text NOT NULL CHECK (source IN ('user',
-     'automated', 'notice')) (#496 (A)); reporter_user_id set at filing exactly when source =
-     'user', checked on INSERT so the ON DELETE SET NULL below never trips it (#496 (d)); notice
-     jsonb, set exactly when source = 'notice': a Zod-typed shell that SC8 fills (the fields are
-     counsel's), and a notice row is filed only by SC8's door, never ops.file_report; detector text
-     (nudenet · ocr · sightengine · presidio · fragmentation), set exactly when automated;
-     reported_user_id (the author, whom R4 penalises). reporter_user_id ON DELETE SET NULL: a
-     report outlives its reporter. Indexes on (status, created_at) and (reported_user_id). The
-     subject types include a workload report: PROJECTS EX4 builds its workload-verdict appeal on
-     this sink, R3 and R4.
-  2. Immutable: a BEFORE UPDATE trigger refuses any change to evidence_snapshot, notice,
-     reporter, subject, source, detector and reason; status moves only pending → dismissed |
-     actioned, through R3's door. No DELETE grant to anyone but the erasure chain.
-  3. RLS: a reporter reads their own rows; security.is_admin() reads all; the reported person
-     reads nothing, so the reporter is never projected to them. No client INSERT or UPDATE.
-  4. Doors, service_role only: ops.file_report(p_reporter, p_subject_type, p_subject_id,
-     p_reason, p_reported_user, p_snapshot) — one pending report per reporter and subject, a
-     per-reporter daily cap (PR429) — and ops.file_automated_finding(p_detector, p_subject_type,
-     p_subject_id, p_reported_user, p_reason, p_evidence), whose evidence is ids, categories and
-     scores only.
-  5. ReportsBackendService.fileReport(actor, input): read the subject with the REPORTER's client
-     (the read is the permission check, SA:1228-1232); build the snapshot server-side from the
-     stored row (body, author, room or thread, timestamps; for a file its id, content_hash and a
-     copy of the bytes at evidence/{report_id}/{file_id}); then call the door.
-     fileAutomatedFinding serves the detectors. Both return ServiceResult<T>.
-
-ACCEPTANCE:
-  - reports_sink.sql: a filed user report is pending; its reporter reads it; the reported person
-    and a stranger read nothing; a client INSERT / UPDATE / DELETE → 42501; a snapshot change is
-    refused even as service_role; an automated row with a null reporter is accepted, a user row
-    with one is not; a notice row needs a null reporter and its notice block; a second pending
-    report on one subject by one reporter is refused.
-  - A unit test: a subject the reporter cannot read → 404 and nothing filed.
-SAME CHANGE: Zod + documentation/database/ops/* + SA §Content moderation + Storage.md and EPI §9.2
-for the bucket, in one change; PRODUCT_MANAGEMENT.md for the report states pending · dismissed ·
-actioned.
-SQL SESSION: at most two SQL sessions at once, on disjoint migration files; announce each
-`deno task db:reset`; run `deno task test:probes`; finish with your own clean
-`deno task test:probes:fresh`.
-ERASURE: reporter_user_id and the evidence copies are personal data. Hand the arm to identity's
-erasure chain (00001060); the I1 retention table decides how long evidence stays. They must be
-classified in identity ERA1's account_erasure_scope.sql: whichever of R1 and ERA1 lands second
-adds that.
-```
-
 ### R4 — The content-penalty writer
 
 ```text
@@ -798,7 +723,7 @@ PROMPT R4: An actioned report writes a penalty, from a content source that now e
 
 ROLE: Postgres engineer. SEC R4; Decision #148 (d) (Decision #340, ruling T4: content-report
 penalties land on the one Standing penalty term).
-DEPENDS: R1.
+DEPENDS: R1 (landed).
 
 FILES:
   - supabase/migrations/00000012_tables_security.sql (security.penalties source_type CHECK, :92)
@@ -884,7 +809,7 @@ PROMPT R3: The reviewer desk — /admin/reports
 
 ROLE: Full-stack engineer. SEC R3; SA §Content moderation steps 3-4 (Decision #340, ruling T4;
 PRODUCT_SPEC §Messaging 1.C "Reporting" and "Consequences tie into Standing").
-DEPENDS: R1, R4, R5.
+DEPENDS: R4, R5 (R1 landed).
 
 FILES:
   - supabase/migrations/00001665_functions_ops_moderation.sql: ops.list_reports_for_review (admin
@@ -909,7 +834,8 @@ STEPS:
      reporter that their report was reviewed.
   3. /admin/reports follows /admin/disputes (DisputeDeskScreen, DESK_TABS; the queue read is the
      gate: no session, a non-operator or no live database → 404). Tabs pending · actioned ·
-     dismissed; a filter by source and detector. An item shows its snapshot (automated: ids,
+     dismissed; a filter by source and detector; child_safety reports head the pending queue
+     (#533: reviewed first, escalated as the law requires). An item shows its snapshot (automated: ids,
      categories and scores, opening the referenced rows through an admin read), the author's
      refusal counts (ops.refusal_counts) and prior penalties.
   4. The reportsDesk axis (auto · samples · empty, cookie pj.dev.reports), shaped like
@@ -938,7 +864,7 @@ ROLE: Full-stack engineer. SEC R2; Decision #140 (the removed stub); root CLAUDE
 (Decision #340, ruling T4).
 DEPENDS: R3: the button never renders before a reviewer can act on it. WAITS: ⏳ M·MS3 (the
 message menus live in the islands it reworks; MS2 has landed). MARKETPLACE SC8 waits for this
-prompt and R1 (#496).
+prompt (#496; R1 has landed).
 ENTRY POINTS ADDED SINCE: the listing's entry point is USER_FLOWS MK-47's report half, and reviews
 on /view and /:handle/reviews carry a Report action too (#487 (d)). hide_review needs R3's
 operator UI.
@@ -955,8 +881,10 @@ FILES:
 STEPS:
   1. POST /api/reports { subjectType, subjectId, reason, note? } → 201; 404 when the reporter
      cannot read the subject; 409 when already reported; 429; 503.
-  2. The dialog lists R1's reason labels, an optional bounded note and a filed state, with one
-     filled button. Nothing tells the reported person who reported.
+  2. The dialog lists the person-readable reason labels (REPORT_REASON_LABELS over
+     PERSON_REPORT_REASONS, #533), an optional bounded note and a filed state, with one filled button. Nothing tells the reported
+     person who reported. ops.reports has no note column (SA: the client sends only the subject
+     and a reason): a note needs its column, edited into 00000013 in place, or is dropped.
   3. An entry point renders only where the viewer can read the subject, and never on their own
      content.
 
@@ -1108,8 +1036,8 @@ PROMPT SN3: Nothing reaches the Glass Front unscreened — the NudeNet and OCR g
 
 ROLE: Backend + infrastructure engineer. EPI §6.3; SEC §3.1-3.2, Z1, Z3, Z4, Z5, P-1, P-3, P-4;
 #340 (e), (f); Decision #148 (Decision #340, rulings T3 (a), T3 (b) and T2's frame density).
-DEPENDS: SN2, R1 (automated findings). WAITS: ⏳ MARKETPLACE SC4 (#494): until it lands, a bare
-UPDATE publishes a listing past the door, and so past this gate.
+DEPENDS: SN2 (R1, the automated-finding door, has landed). MARKETPLACE SC4 has landed (#535):
+only the door publishes a listing, so this gate holds for every publish.
 
 🧑 DECISION — STOP before step 5. Ruling T3 (a) says a library file made public is served as "a
 screened, metadata-stripped copy, the original private", and is silent on files that are not
@@ -1153,7 +1081,7 @@ STEPS:
      moderation_image_thresholds, sent with each /screen/* request (Decision #345 (e), ruled).
      clean → cut, write, attach. flagged → no public object; a 422
      with the category; the correction notice; the original stays uploaded and private; an
-     automated finding through R1 (detector nudenet or ocr; ids and scores only). unavailable →
+     automated finding through ReportsBackendService.fileAutomatedFinding (detector nudenet or ocr; ids and scores only). unavailable →
      503.
   4. Frames (ruling T2): an animated image goes to /screen/video (/screen/image answers 415 for
      one), which the node screens one frame every 2 s, at most 30, always including the first and
@@ -1189,7 +1117,7 @@ PROMPT SN4: Sightengine screens violence, hate symbols and toxic public text —
 ROLE: Integration engineer. SEC P-5 (the text half), Z6, §3.2 "open beyond EPI"; EPI §3.4
 (Decision #340, ruling T2 (b), (c) and T2.3: Sightengine, a registered sub-processor sent Glass
 Front material only).
-DEPENDS: SN3 (the gate and the frame set), P2a (the public-copy doors), R1.
+DEPENDS: SN3 (the gate and the frame set), P2a (the public-copy doors); R1 has landed.
 
 🧑 DECISION 1 — Decision #344 flag (b), unruled; stop before step 4. PRODUCT_SPEC §Messaging 1.C screens public
 text before publication and exempts nothing, and ruling T2 (b) makes the text classifier hosted.
@@ -1280,7 +1208,7 @@ window
 ROLE: Backend + Postgres engineer. EPI §6.2; SEC §2.4, T3-1 to T3-4 (Decision #340, ruling T2
 with T2.2 and T2.3: a rolling window, protected phase only, no payload kept, an
 evasion_fragmentation report, a penalty only after review; ruling T4: one sink).
-DEPENDS: R1, R3, P2b (the one predicate), P1d (the normaliser and the corpus). N4 (Presidio) is
+DEPENDS: R3, P2b (the one predicate), P1d (the normaliser and the corpus). N4 (Presidio) is
 built in Projective-Safety (30c8bda, a4ccec5): its tests/fixtures/pii_corpus.json holds six
 recognisers tuned against presidio-analyzer 2.2.362, ported from pii.test.ts; port them here. Its
 README's tuning notes apply: a phone number scores 0.4 without a context word and the corpus runs
@@ -1311,7 +1239,7 @@ STEPS:
   2. drainQueue: lease with FOR UPDATE SKIP LOCKED (leased_until = now() + 2 min); read the stored
      row through the service client; normalise as P1d does, keeping an offset map; POST the
      analyzer with the recognisers; leakage = max(score × category weight); over the threshold →
-     R1's fileAutomatedFinding (detector presidio; categories and scores, never span text); then
+     ReportsBackendService.fileAutomatedFinding (detector presidio; categories and scores, never span text); then
      delete the queue row, or record the attempt and back off.
   3. The fragmentation window (T2.2): for the sender and the thread or room, read their protected
      messages inside the window from the stored rows at drain time, so no second copy exists. If a
@@ -1579,7 +1507,7 @@ When you finish, do the closing duty (../Projective.com/documentation/reference/
 ### 8.6 Order at a glance
 
 1. **Rulings:** made (§8.2).
-2. **This repo, now:** LK1, P1d, P2d, R1 and SN1 (§0). SN2 follows SN1: it folds SN1's three hook
+2. **This repo, now:** LK1, P1d, P2d, R4 and SN1 (§0). SN2 follows SN1: it folds SN1's three hook
    points into one.
 3. **`Projective-Safety`:** N3's remux and N5 (N0–N2 and N4 are done). They may run in parallel
    sessions, but serialise any edits to `compose.yaml` and `contract/openapi.yaml`.

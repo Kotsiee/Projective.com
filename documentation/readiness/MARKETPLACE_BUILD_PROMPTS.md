@@ -82,7 +82,7 @@ Two rows of the **Listing view** section are left to live runs of prompts that l
 | MK-44 | 🟡 · Normal · UAT  | **SC6** (#500; ⏳ SC4)                            | Slug links; a team or business buyer is named                                                     |
 | MK-45 | ✅ · High · UAT    | **SC6** (ruled #500; ⏳ SC4)                      | The ruled team-editing scope is built (note clears)                                               |
 | MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                                       |
-| MK-47 | ❌ · High · PROD   | T&S R1 → R2 → **SC8**; **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands            |
+| MK-47 | ❌ · High · PROD   | T&S R2 → **SC8** (R1 landed); **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands            |
 | MK-57 | 🟡 · High · PROD   | **SC4**, if it takes #494 (a)                     | A direct write meets the doors' locks (#494 (A) 3–4)                                              |
 | MK-60 | 🟡 · High · UAT    | **SC4** (#488 (a))                                | The publish gate refuses a product with no file to deliver                                        |
 
@@ -117,7 +117,7 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 3. **RV2 → RV3** — RV2 runs now (RV1's doors are in); RV3 ⏳ RV2.
 4. **SC11**, **SC12** — each stops at its 🧑 first. SC11 writes `00001155`, so no SCH package runs
    beside it.
-5. T&S **R1 → R2** (their track) → **SC8**; **SC9** once per #393 phase (phase 1 runs now).
+5. T&S **R2** (their track; R1 landed) → **SC8**; **SC9** once per #393 phase (phase 1 runs now).
 
 **App lane** (up to three at once, file-disjoint): **SC13** now; **MKZ** last.
 
@@ -804,22 +804,24 @@ SAME CHANGE: PRODUCT_SPEC.md §Digital Marketplace 3 and 5 (the markers removed)
 
 ### SC8 — A rights-holder reports a listing; an operator takes it down; the seller answers
 
-> **Status 2026-11-23:** open; waits for T&S R1 and R2, neither landed at `f2e25929`. R1's text
-> already carries the 'notice' source (#496 (A)).
+> **Status 2026-11-23:** open; waits for T&S R2. T&S R1 has landed (`R1_COMMIT`, #533): `ops.reports`
+> carries the 'notice' source, its CHECKs and an empty strict `ReportNoticeSchema` for SC8 to fill.
 
-Part of MK-47 (with T&S R1 → R2 and SC9).
+Part of MK-47 (with T&S R2 and SC9; R1 landed).
 
 ```text
 PROMPT SC8: A rights-holder can report a listing, an operator can take it down, and the seller can
 answer
 
-ROLE: Full-stack engineer. Queue C, after T&S R1 and R2 have landed (ops.reports and the report
-route).
+ROLE: Full-stack engineer. Queue C, after T&S R2 has landed (the report route); T&S R1 (the
+ops.reports sink) has.
 
-CONTEXT (verified at b7280787): there is no inbound copyright path (#393 flag (n), ruling B8: "a
-separate track, finished before the marketplace opens"). T&S R1 (TRUST_SAFETY_BUILD_PROMPTS.md
-§R1) builds ops.reports, with a reason vocabulary that recommends intellectual_property; R2
-builds /api/reports and a listing entry point. PRD-D9 is ❌.
+CONTEXT (verified at b7280787; R1 at R1_COMMIT): there is no inbound copyright path (#393 flag
+(n), ruling B8: "a separate track, finished before the marketplace opens"). T&S R1 built
+ops.reports (database/ops/Tables.md): source 'notice' with reporter_user_id NULL, a notice jsonb
+CHECKed present exactly on a notice row and only with reason intellectual_property (#533's
+vocabulary), and @projective/types/ops ReportNoticeSchema, an empty strict shell for counsel's
+fields. R2 builds /api/reports and a listing entry point. PRD-D9 is ❌.
 
 The intake and the takedown (ruled: Decision #496, 2026-11-18; ⚖️ the notice regime — the fields
 a valid notice needs, the counter-notice, the repeat-infringer rule — stays counsel's): build the
@@ -828,9 +830,8 @@ mechanism behind a param that keeps the public form off until counsel's words ar
 an immutable, Zod-typed notice block that SC8 fills and files through its own rate-limited
 door, never ops.file_report. (B) The takedown is a hold on catalogue.listings that an operator
 door sets and lifts; setting it pauses the listing through set_listing_status's code path, and
-set_listing_status refuses 'published' while it stands. No new status. Re-verify R1 and R2 at
-HEAD and stop if either is missing (#496 (D)); add the 'notice' source yourself if R1 shipped
-without it. 🧑 Ask #496 flag (b) (a strike against the person or the owning workspace) before
+set_listing_status refuses 'published' while it stands. No new status. Re-verify R2 at HEAD and
+stop if it is missing (#496 (D)); R1 shipped the 'notice' source. 🧑 Ask #496 flag (b) (a strike against the person or the owning workspace) before
 step 4.
 
 STEPS:

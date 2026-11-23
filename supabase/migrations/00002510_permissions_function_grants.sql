@@ -2797,3 +2797,14 @@ GRANT EXECUTE ON FUNCTION ops.fn_deliver_alert_in_app (uuid, text, text) TO serv
 REVOKE ALL ON FUNCTION ops.fn_raise_alert (text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION ops.fn_raise_alert (text, text) TO service_role;
 -- #endregion
+
+-- #region [reports] The review sink (00001665, T&S R1)
+-- Both doors are the service role's alone: ReportsBackendService reads the subject under the
+-- reporter's JWT first, and the detectors run server-side. No client role files a report directly.
+-- The record guard runs only as a trigger.
+REVOKE ALL ON FUNCTION ops.fn_guard_report () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION ops.file_report (uuid, text, uuid, text, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.file_report (uuid, text, uuid, text, uuid, jsonb) TO service_role;
+REVOKE ALL ON FUNCTION ops.file_automated_finding (text, text, uuid, uuid, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ops.file_automated_finding (text, text, uuid, uuid, text, jsonb) TO service_role;
+-- #endregion

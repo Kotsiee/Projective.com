@@ -135,7 +135,7 @@ The operator's ruling is MW-59; it is not this file's row.
 | PJ-54 | 🟡 · High · UAT   | T&S LK1                                           | A link nobody could check goes through `/exit`                                                |
 | PJ-56 | 🟡 · High · MVP   | **CH4**; T&S SN1                                  | Attachment inserts are checked; a voice note survives a reload; files are scanned             |
 | PJ-57 | 🟡 · Crit · MVP   | T&S P1d → P2a → P2b → P2c; SN6                    | Tiers 1–3, the marketplace window and the cooling-off run                                     |
-| PJ-58 | ❌ · High · PROD  | T&S R1 → R4 → R5 → R3 → R2                        | A message or a file can be reported and triaged                                               |
+| PJ-58 | ❌ · High · PROD  | T&S R4 → R5 → R3 → R2 (R1 landed)               | A message or a file can be reported and triaged                                               |
 
 **Notifications** (50%)
 
@@ -236,7 +236,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
 11. **CH3**, then **CH4**'s audio column, **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
     slug.
-12. **EX4** (⏳ PM-WP5a and T&S R1, R3, R4).
+12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
 **App lane** (up to three at once, file-disjoint):
 
@@ -262,7 +262,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 - T&S LK1.
 - T&S SN1 → SN2 → SN3. The node repo `Projective-Safety` sits beside this one with N0–N4 built, so
   SN1 is runnable now.
-- T&S P1d → P2a → P2b → P2c, P2d, SN6, and R1 → R4 → R5 → R3 → R2.
+- T&S P1d → P2a → P2b → P2c, P2d, SN6, and R4 → R5 → R3 → R2 (R1 landed).
 - OPS CFG2.
 
 **Hot files across this file:**
@@ -317,7 +317,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3           | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
 | 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4           | Person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm; a blocked pair refuses                                                                                                 |
 | 31 | An owner-present run on your Zoom, Microsoft and Google accounts                                                                             | LP1           | Yes, in one sitting, once a public HTTPS origin exists                                                                                                                                                                   |
-| —  | T&S R1 (#148 (g)), P2a (#147 (a)), P2b's cooling-off and T&S §0.4 (SN1's production default); SCH-WP7 (#344 (f)); CD2's hosted prerequisites | their prompts | Their own                                                                                                                                                                                                                |
+| —  | T&S P2a (#147 (a)), P2b's cooling-off and T&S §0.4 (SN1's production default); SCH-WP7 (#344 (f)); CD2's hosted prerequisites | their prompts | Their own                                                                                                                                                                                                                |
 
 **For counsel** (build behind a switch that stays off; never switch it on):
 
@@ -1135,14 +1135,14 @@ Closes PJ-46 (🟡 → ✅) after PM-WP4a step 6.
 PROMPT EX4: A freelancer can appeal a moderator's bad-faith verdict on a workload report once,
 to a different operator, and a successful appeal reverses its penalty
 
-ROLE: Full-stack engineer. Queue S, after PM-WP5a and T&S R1, R3 and R4.
+ROLE: Full-stack engineer. Queue S, after PM-WP5a and T&S R3 and R4 (R1 has landed).
 
 CONTEXT (verified at e1ff027b; re-check every line):
   - This is W8 (PM §0.6's last bullet; PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md:536, :665), with no
     prompt. projects.fn_flag_bad_faith_report (00001140:7) is ungranted, so no moderator can
     call it. /admin/disputes reads finance.disputes only.
   - A workload report moves no money (#290, PRODUCT_SPEC.md:2963-2965), so its contest is an
-    appeal against a penalty, not a finance.disputes row. Its home is T&S R1's ops.reports, R3's
+    appeal against a penalty, not a finance.disputes row. Its home is ops.reports (T&S R1, landed; subject type workload_report), R3's
     /admin/reports desk and R4's penalty writer (TRUST_SAFETY_BUILD_PROMPTS.md:723-931).
 
 🧑 DECISION (before step 2): which verdict can be appealed. Recommended: only the moderator's
