@@ -2014,8 +2014,10 @@ REVOKE ALL ON FUNCTION scheduling.fn_event_alerts (uuid, uuid) FROM public, anon
 REVOKE ALL ON FUNCTION scheduling.fn_reminder_words (integer) FROM public, anon, authenticated, service_role;
 
 -- The seller console's write doors (00001170). INVOKER: the catalogue and marketplace policies are the
--- gate, so a caller can only ever create, edit or publish their own listing. The sales read is a
--- definer scoped to the caller's own listings inside its WHERE.
+-- gate, so a caller can only ever create or edit their own listing. set_listing_status is the
+-- exception (Decision #494 (B), #535): a client write to a listing's lifecycle columns is refused for
+-- every client role, so the publish door is a definer that checks the seller itself. The sales read
+-- is a definer scoped to the caller's own listings inside its WHERE.
 REVOKE ALL ON FUNCTION catalogue.create_listing (text, text, text, uuid, text, text)
 FROM public, anon;
 
@@ -2054,8 +2056,10 @@ REVOKE ALL ON FUNCTION catalogue.get_listing_rollups(uuid[], date, date) FROM pu
 GRANT EXECUTE ON FUNCTION catalogue.get_listing_rollups(uuid[], date, date) TO authenticated, service_role;
 
 -- The catalogue rebuild's doors (Decision #217): the showcase, the batch status action and duplicate.
--- INVOKER like the doors above, so the owner policies stay the gate. `fn_listing_file_ok` is the
--- file-ownership predicate those doors and save_listing call as the caller.
+-- The showcase and duplicate are INVOKER like the doors above, so the owner policies stay the gate;
+-- the batch status action is a definer like set_listing_status, which it calls per listing.
+-- `fn_listing_file_ok` is the file-ownership predicate those doors, save_listing and the media
+-- policy ask as the caller.
 REVOKE ALL ON FUNCTION catalogue.apply_listing_media (uuid, jsonb) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION catalogue.apply_listing_media (uuid, jsonb) TO authenticated, service_role;
@@ -2086,11 +2090,11 @@ REVOKE ALL ON FUNCTION catalogue.delete_listing (uuid) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION catalogue.delete_listing (uuid) TO authenticated, service_role;
 
--- Product versions and delivery (00001170, Decision #488). The freeze is reached from
--- set_listing_status, an INVOKER, so the seller's role needs it; it re-checks the seller and the
--- published status itself. The ready stamp and the delivery record are the service's word alone.
-REVOKE ALL ON FUNCTION catalogue.fn_freeze_product_version (uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION catalogue.fn_freeze_product_version (uuid) TO authenticated, service_role;
+-- Product versions and delivery (00001170, Decision #488). The freeze is reached only from
+-- set_listing_status, a definer since #535, so no client role calls it. The ready stamp and the
+-- delivery record are the service's word alone.
+REVOKE ALL ON FUNCTION catalogue.fn_freeze_product_version (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION catalogue.fn_freeze_product_version (uuid) TO service_role;
 REVOKE ALL ON FUNCTION catalogue.mark_product_version_ready (uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION catalogue.mark_product_version_ready (uuid) TO service_role;
 REVOKE ALL ON FUNCTION catalogue.fn_record_delivery (uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
