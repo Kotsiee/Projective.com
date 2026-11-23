@@ -6,8 +6,8 @@
 > PRD-A4. The rulings it builds on are the legal library's (#270), the AML posture (#336 I1) and
 > checkout tax (#490).
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 7 open, 1 partly done, 2 done (§0 ledger).
-> Runnable now: LG0, LG7; LG1 once its stop (a) is answered.
+> **Verified against code 2026-11-23 at `f2e25929`.** 6 open, 1 partly done, 3 done (§0 ledger).
+> Runnable now: LG7; LG1 once its stop (a) is answered.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -37,6 +37,7 @@ A landed prompt gets its row here.
 | :-- | :---------- | :----- | :------ |
 | LG2 | The counsel brief: FOUNDER_QUESTIONNAIRE Part E with the sign-off runbook (#528); E.1.7 filled from LG1's drift table (#531) | `b3148e47`, `9325e5df` | `dea66769` |
 | LG6 | Stripe first (#527): the operator seller tax-report CSV over the ledger, a private residence certificate shown to one client, finance-model §9 corrected | `6e7487ea` | `a3a1ace4` |
+| LG0 | The unbuilt IP workspace's three addresses answer 404 (owner ruling 2026-11-23), PRD-A4 ✅ | COMMIT_LG0 | `6621eeeb` |
 
 ### 0.1 Row → work order
 
@@ -49,7 +50,7 @@ A landed prompt gets its row here.
 | PRD-M5 | PROD | High     | CK4 + LG6 (landed, §0.0)            | 🟡 when CK4 lands with its switch off · ✅ when counsel confirms the obligations and its switch is on in the target environment                                       |
 | PRD-M6 | PROD | Normal   | **LG7** + X2                         | ✅ when the signals record on every money movement they cover, an operator can read them, and the Safety Hold is built behind its switch · 🟡 if only the signals land       |
 | PRD-M7 | PROD | High     | **LG8** (⏳ CK4)                     | 🟡 when built behind `platform_fee_tax_enabled` (off) · ✅ when counsel confirms and the switch is on                                                                        |
-| PRD-A4 | UAT  | Normal   | **LG0**                              | ✅ when no placeholder is reachable. It stays ✅ when LG4 and LG5 open the pages again                                                                                       |
+| PRD-A4 | UAT  | Normal   | LG0 (landed, §0.0)                   | ✅ when no placeholder is reachable. It stays ✅ when LG4 and LG5 open the pages again                                                                                       |
 
 **USER_FLOWS rows that move:**
 
@@ -108,7 +109,7 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 
 | Wave | Content / docs lane | SQL lane (serial)                                                                        | App lane                 | Waits for                                                                                       |
 | :--- | :------------------ | :--------------------------------------------------------------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------- |
-| 1    | **LG1** (steps 4, 6) | —                                                                                        | **LG0**                  | LG1 step 4: your answer to its stop (a); step 6's rest: LG7                   |
+| 1    | **LG1** (steps 4, 6) | —                                                                                        | —                        | LG1 step 4: your answer to its stop (a); step 6's rest: LG7                   |
 | 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                                           | (LG4/LG5's UI halves)    | LG4 builds once LG2's brief is sent and LG3 and FINANCE DB6 land (#530 (g)); counsel rules text |
 | 3    | —                   | **LG7** takes a turn in [the finance SQL lane](../architecture/FINANCE_BUILD_PROMPTS.md) | — (LG6 landed, §0.0)     | LG7: never beside MR8a/MR8b                                          |
 | 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (which waits for DB21)                                                                      |
@@ -137,7 +138,8 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
 
 **Decisions** (each prompt states the options and the recommendation):
 
-1. **LG0:** while the IP workspace is unbuilt, its addresses 404 (recommended) or 308 to `/legal`.
+1. **LG0:** ruled 2026-11-23 (owner): the unbuilt IP workspace's addresses answer 404, not a 308 to
+   `/legal`. Landed (§0.0).
 2. **LG1:** which new legal documents to add. Recommended now: a Copyright & Notice Policy (#496)
    and Marketplace Licence Terms (#493, product licences). A Data Processing Addendum with a
    sub-processor list should wait until the first business client asks for one. Seller tax duties go
@@ -288,49 +290,6 @@ said nothing new, and X2's went to IDENTITY. Nothing is left here.
 ---
 
 ## 3. New prompts
-
-### LG0 — The IP workspace answers 404 until it is built
-
-> **Status 2026-11-23:** open; runs now.
-
-Closes PRD-A4 (UAT).
-
-```text
-PROMPT LG0: No placeholder is reachable: /legal/workspace and its two pages answer 404 until
-LG4 builds them
-
-ROLE: Web engineer (Fresh routes). App lane. Not beside LG4 or LG5 (same routes).
-
-CONTEXT (verified at 197b0d0c; re-check every line):
-  - features/legal/workspace/routes/LegalWorkspaceScreens.tsx renders PagePlaceholder for
-    /legal/workspace, /audit-packs and /transfers (routes/(dashboard)/legal/workspace/*.tsx).
-    The only placeholder left besides it is /home (PRD-A1).
-  - Nothing links there: grep finds only robots.ts:38 (disallowed), restricted-surfaces.ts:26
-    (13–17 bounce) and tests/e2e/public-routes.spec.ts:692. The deed's record clause tells
-    readers the workspace "will" hold deeds; that sentence stays true.
-  - Root CLAUDE.md §3.11: a control that renders must do something; UAT means no placeholder
-    is reachable.
-
-🧑 STOP (architect default; confirm or override): 404 (recommended: the page does not exist
-yet, and a redirect would imply it has a home elsewhere), or a 308 to /legal.
-
-STEPS:
-  1. Red: a route test that GET /legal/workspace, /legal/workspace/audit-packs and
-     /legal/workspace/transfers answer 404 for a signed-in adult. It fails today.
-  2. Each handler throws the app's 404 (as other unbuilt addresses do; grep for the house
-     pattern). Keep the files, the reserved `workspace` segment (LEGAL_RESERVED_SLUGS), the
-     restricted-surface entry and the robots line. Delete the PagePlaceholder screens, and leave
-     one constant naming LG4 as the prompt that opens them.
-  3. Update the e2e expectation at public-routes.spec.ts:692.
-
-ACCEPTANCE: the three addresses 404 signed in, and a guest still meets the (dashboard) guard
-first. check, lint and test:unit are green.
-SAME CHANGE: ROUTING.md's IP workspace row ("reserved; 404 until LG4"); #270's index line gets
-"(workspace hidden until built, LG0)"; PRODUCT_SPEC sitemap row unchanged.
-```
-
-Readiness rows (§1.1): **PRD-A4** → ✅. MW-55's note changes to "Hidden until LG4 (PRD-A4 ✅)" and
-its status stays ❌.
 
 ### LG1 — The six legal documents say what the product does
 

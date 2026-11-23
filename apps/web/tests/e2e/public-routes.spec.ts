@@ -695,6 +695,23 @@ Deno.test({
 				},
 			);
 
+			// Signed in, each answers 404 until LG4 builds it (LG0); the guard still answers a guest first.
+			await t.step("the unbuilt IP workspace sends a guest to sign in", async () => {
+				for (
+					const path of [
+						"/legal/workspace",
+						"/legal/workspace/audit-packs",
+						"/legal/workspace/transfers",
+					]
+				) {
+					const res = await context.request.get(path, { maxRedirects: 0 });
+					assertEquals(res.status(), 302, path);
+					const to = new URL(res.headers()["location"] ?? "", BASE);
+					assertEquals(to.pathname, "/login", path);
+					assertEquals(to.searchParams.get("redirectTo"), path);
+				}
+			});
+
 			await t.step("robots.txt keeps crawlers out of the app and names the sitemap", async () => {
 				const res = await context.request.get("/robots.txt");
 				assertEquals(res.status(), 200);
