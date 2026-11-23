@@ -250,7 +250,7 @@ const RELEASE_V2: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 · finance-model.md §1.1 / §16.4 · Decision #198 (fee on the earned share only). Card processing costs: no clause until the owner rules (`packages/backend/services/finance/stripe-rails.ts` charges no Stripe fee to anyone; see this change's decision row). */
+/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 · finance-model.md §1.1 / §16.4 · Decision #198 (fee on the earned share only). Decision #531 (A), ruled 2026-11-23 (card processing costs are absorbed; `packages/backend/services/finance/stripe-rails.ts` charges no Stripe fee to anyone). */
 const FEES_V2: LegalClause = {
 	id: "fees",
 	heading: "The platform fee",
@@ -261,6 +261,7 @@ const FEES_V2: LegalClause = {
 			items: [
 				"The platform fee is 5% of each release, deducted from the payee at the moment of release. A rate agreed in writing with Projective may replace it for a particular payer.",
 				"No fee is charged on a refund, and on a Fair Exit the fee is charged only on the share the payee earns.",
+				"Projective pays the card processing costs: they are never added to what you pay or taken from what you are paid.",
 			],
 		},
 	],

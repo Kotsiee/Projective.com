@@ -158,7 +158,7 @@ export function aboutMetricTiles(metrics: PublicMetrics): MetricTile[] {
 		label: "Platform fee",
 		value: { text: formatFeePercent(metrics.platformFeeBp) },
 		caption:
-			"Taken from each payment as it's released. Card processing is passed through separately.",
+			"Taken from each payment as it's released. Projective pays card processing itself.",
 	});
 	return tiles;
 }

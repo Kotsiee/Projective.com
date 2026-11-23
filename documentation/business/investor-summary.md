@@ -31,7 +31,7 @@ yet the infrastructure for collaborative work remains broken.
 Our revenue model is designed for long-term scalability and user alignment.
 
 - **Transaction Fees**: A 5% service fee on every project stage completed (payment-processor fees
-  passed through separately). See `finance-model.md` for the authoritative fee model.
+  are absorbed by the platform, Decision #531 (A)). See `finance-model.md` for the authoritative fee model.
 - **SaaS Subscriptions**: Premium tiers for freelancer teams (advanced analytics) and enterprises
   (departmental controls).
 - **Asset Marketplace**: Commission on sales of digital templates, code, and design assets.

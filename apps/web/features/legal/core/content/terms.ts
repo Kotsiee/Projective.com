@@ -306,8 +306,8 @@ const CLOSING_V2: LegalClause = {
  * (500) · finance-model.md §1.2 and Decision #337 ruling M1 (the seller pays the marketplace commission
  * by Standing rung, `finance.place_wallet_order` / `finance.fn_effective_commission_bp`) · Decision #435
  * (buyer-currency charging is built but switched off) · Decision #490 (no tax collected while
- * `tax_collection_enabled` is off; services and sessions name the seller as responsible). Card processing
- * costs: no clause until the owner rules (see this change's decision row).
+ * `tax_collection_enabled` is off; services and sessions name the seller as responsible) · Decision #531
+ * (A), ruled 2026-11-23 (card processing costs are absorbed; `packages/backend/services/finance/stripe-rails.ts`).
  */
 const PAYMENTS_V2: LegalClause = {
 	id: "payments",
@@ -329,6 +329,7 @@ const PAYMENTS_V2: LegalClause = {
 				"Projective's service fee is 5% of each escrow release, deducted from the payee when the release happens.",
 				"A seller of a digital product pays a marketplace commission on each sale instead: 8%, falling to 6.5% as the seller's Standing rises. It is taken from the sale before the rest is credited to the seller.",
 				"No fee is charged on a refund.",
+				"Projective pays the card processing costs: they are never added to what you pay or taken from what you are paid.",
 				"A price is set in the seller's currency, and that is the currency it is charged and paid in; the seller receives it less the fee or commission above. You may see prices converted into your own currency; the conversion is for display and never changes what is charged or paid.",
 				"Projective does not add or collect tax at checkout today: you pay the price shown. If you sell a service or a session, you are responsible for any tax due on it.",
 			],

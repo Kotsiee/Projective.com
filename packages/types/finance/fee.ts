@@ -12,7 +12,8 @@
 /**
  * The canonical platform service fee in basis points — **500 bp = 5% flat** (CLAUDE.md §8 Decision #2;
  * `finance-model.md` §1.1 is canonical, and `investor-summary.md`'s 10% was corrected against it).
- * Stripe processing costs are passed through separately and are never folded into this number.
+ * Projective absorbs Stripe's processing costs (Decision #531 (A), ruled 2026-11-23): they are never charged to a payer or payee,
+ * and never folded into this number.
  *
  * The live authority is `security.platform_params.platform_fee_bp`, resolved per payer through
  * `finance.fn_effective_platform_fee_bp` (which lets a negotiated rate override it) for an escrow fee. A

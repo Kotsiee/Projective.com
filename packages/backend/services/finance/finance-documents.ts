@@ -105,7 +105,7 @@ export async function renderInvoicePdf(accessToken: string, invoiceId: string): 
 		{ kind: "row", left: { text: "Total", size: 13, bold: true }, right: { text: money(inv.total_cents, currency), size: 13, bold: true } },
 		{ kind: "space", points: 24 },
 		{ kind: "row", left: { text: `Reference ${String(inv.id)}`, size: 8 } },
-		{ kind: "row", left: { text: "Card processing fees are passed through at cost and are not part of the platform fee.", size: 8 } },
+		{ kind: "row", left: { text: "Projective pays the card processing fees; they are not added to this total.", size: 8 } },
 	);
 	return {
 		filename: `projective-invoice-${short(inv.id).toLowerCase()}.pdf`,

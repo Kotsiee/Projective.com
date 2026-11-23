@@ -1,12 +1,12 @@
 # Finance Model: Fees, Payouts & Wallet Architecture
 
-> **✅ Resolved (2026-07-12):** the platform service fee is **5%**, plus payment-processor (Stripe)
-> fees passed through — this is now canonical. `investor-summary.md` has been corrected from its
+> **✅ Resolved (2026-07-12):** the platform service fee is **5%** — this is now canonical. `investor-summary.md` has been corrected from its
 > former 10% figure to match. The escrow engine already operationalizes 5% —
 > `security.platform_params` `platform_fee_bp = 500` (migration `0305`), applied on escrow release
 > by `finance.fn_release_ticket_escrow`. Decision logged in the root `CLAUDE.md` "Resolved
-> Decisions" table. **Stripe processing costs are separate from the 5% and are passed through** (see
-> §1.1 and §9), not absorbed into the service fee.
+> Decisions" table. **Stripe processing costs are absorbed by Projective** (ruled 2026-11-23,
+> Decision #531 (A), replacing the 2026-07-12 pass-through): they are never charged to a payer or a
+> payee, and never folded into the 5%. No processing contribution is offered at checkout.
 
 ---
 
@@ -14,8 +14,8 @@
 
 ### 1.1 Project Service Fee
 
-- **Standard Service Fee:** 5% plus Stripe processing costs, applied to each project stage upon
-  escrow release.
+- **Standard Service Fee:** 5%, applied to each project stage upon escrow release. Projective pays
+  Stripe's processing costs out of it (Decision #531 (A)).
 - Split between platform operations, escrow management, and dispute mediation infrastructure.
 - **No paywall on freelancer _execution_ volume** — how much work a freelancer may hold concurrently
   is governed by the Workload Intensity ($W_i$) caps described in `PRODUCT_SPEC.md`, never by

@@ -171,10 +171,9 @@ line to `00001240`, so it takes the finance SQL lane (FINANCE_BUILD_PROMPTS.md �
 9. **LG8:** is the 5% fee VAT-inclusive (**A**, recommended: "flat 5%" stays true and payout maths
    is unchanged) or is VAT added on top (**B**: it changes finance-model, every payout preview and
    the landing's claims)?
-10. **#531 (A) and (B), found by LG1:** card processing costs are ruled passed through but built
-    absorbed: absorb (recommended at launch; the docs and the receipt change) or pass through (the
-    code changes). PRODUCT_SPEC §Dispute Resolution describes stage-work disputes that are not
-    built: mark them **Not built yet** (recommended) or build them.
+10. **#531 (B), found by LG1:** PRODUCT_SPEC §Dispute Resolution describes stage-work disputes that
+    are not built: mark them **Not built yet** (recommended) or build them. (A), card processing
+    costs, was ruled 2026-11-23: absorbed at launch.
 
 **Actions:**
 
@@ -296,8 +295,8 @@ said nothing new, and X2's went to IDENTITY. Nothing is left here.
 
 > **Status 2026-11-23:** partly done. Steps 1–3 and 5 landed in `9325e5df` (Decision #531), step 4
 > in `23d6adb9` (Decision #540: the Copyright & Notice Policy and the Marketplace Licence Terms).
-> Step 6 landed, its monitoring-signals clause with LG7 (LG7_COMMIT, #529); once that commit lands, LG1 moves to §0.0. Stop (b) is yours to supply. Contradictions waiting on you: #531 (A) card
-> processing costs and (B) stage-work disputes (#540 (A) was ruled the same day).
+> Step 6 landed, its monitoring-signals clause with LG7 (LG7_COMMIT, #529); once that commit lands, LG1 moves to §0.0. Stop (b) is yours to supply. One contradiction waits on you: #531 (B)
+> stage-work disputes (#531 (A) and #540 (A) were ruled the same day).
 
 Prepares PRD-M1. Nothing flips to ✅.
 

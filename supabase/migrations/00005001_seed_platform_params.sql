@@ -36,7 +36,7 @@ INSERT INTO security.platform_params (key, value, description) VALUES
     ('dispute_dismiss_presence_pct', '80'::jsonb,
         'A no-show claim is dismissed by the attendance audit when the room''s logs show the provider and the claimant each present for at least this percentage of the sitting (PRODUCT_SPEC §Dispute Resolution 3, Decision #212).'),
     ('platform_fee_bp', '500'::jsonb,
-        'Platform service fee in basis points: 5% (root CLAUDE.md §8 Decision #2 — finance-model.md is canonical; Stripe processing fees are passed through separately). An admin-approved finance.negotiated_rates row may override it per payer (finance.fn_effective_platform_fee_bp).'),
+        'Platform service fee in basis points: 5% (root CLAUDE.md §8 Decision #2 — finance-model.md is canonical; Stripe processing fees are absorbed by the platform, Decision #531 (A)). An admin-approved finance.negotiated_rates row may override it per payer (finance.fn_effective_platform_fee_bp).'),
     ('freelancer_bad_faith_penalty', '0'::jsonb,
         'Discovery-rank penalty severity applied to a freelancer whose report is audited bad-faith.'),
     ('client_no_adjust_penalty', '0'::jsonb,

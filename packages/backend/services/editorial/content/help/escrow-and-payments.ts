@@ -170,10 +170,11 @@ const howStageFundingWorks = helpArticle({
 });
 
 /**
- * Fees. Grounded in finance-model.md §1.1 (5%, processing passed through), §16.4 (the payer's
+ * Fees. Grounded in finance-model.md §1.1 (5%; processing absorbed), §16.4 (the payer's
  * effective rate; negotiated enterprise rates; truncated rounding — Decision #187) and the release
  * code (`finance.fn_release_ticket_escrow`: the fee is on the escrowed amount, a deadline bonus is
- * paid on top). The card-processing contribution is read from `ProcessingContribution.tsx`.
+ * paid on top). Card processing is absorbed by Projective (Decision #531 (A)); no contribution is
+ * offered (`processingOfferFor`, `live-buyer.ts`).
  */
 const fees = helpArticle({
 	slug: "fees",
@@ -181,7 +182,7 @@ const fees = helpArticle({
 	position: 2,
 	title: "Fees: the 5% service fee and card processing",
 	summary:
-		"Projective keeps a 5% service fee from each payment when its escrow is released to the freelancer; clients pay the listed price, and card processing is a separate cost you can choose to help cover.",
+		"Projective keeps a 5% service fee from each payment when its escrow is released to the freelancer; clients pay the listed price, and Projective pays the card processing itself.",
 	roles: ["client", "freelancer", "team", "business"],
 	faq: { rank: 3, question: "What does Projective charge?" },
 	related: ["what-is-escrow", "the-7-day-pending-window", "paying-by-card-and-currencies"],
@@ -225,11 +226,8 @@ const fees = helpArticle({
 			body: [
 				{
 					type: "p",
-					content: [
-						"Card networks charge to process a card payment, and that cost isn't part of the 5%. At card checkout you can tick ",
-						{ type: "strong", text: "Help cover the card processing fee" },
-						" to add it to your total. It is never ticked for you, and it isn't offered when you pay from your wallet, because then no card is involved.",
-					],
+					content:
+						"Card networks charge to process a card payment. Projective pays that cost itself: it is never added to what a client pays or taken from what a freelancer receives, so the 5% is all Projective charges.",
 				},
 			],
 		},

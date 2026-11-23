@@ -15,7 +15,8 @@ paths are now redirect stubs — do not edit them.
 - If you're adding a concrete number (a fee %, a split ratio, a time window) that `PRODUCT_SPEC.md`
   intentionally leaves abstract, add it to `finance-model.md` and cross-reference the relevant
   `PRODUCT_SPEC.md` section — don't invent a new standalone file for it.
-- **Platform fee (resolved 2026-07-12):** **5%** flat, plus Stripe processing fees passed through.
+- **Platform fee (resolved 2026-07-12):** **5%** flat. Stripe processing fees are absorbed by the
+  platform, never passed through (ruled 2026-11-23, Decision #531 (A)).
   `finance-model.md` is canonical; `investor-summary.md` was corrected from its former 10%. Use 5%
   in any new content; see root `CLAUDE.md` §8 "Resolved Decisions".
 
