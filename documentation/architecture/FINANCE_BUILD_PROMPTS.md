@@ -53,7 +53,7 @@
 | DB15 | Payout-ready before earning without a ticket: publish, booking (HINT `seller`), paid calls; N14           | DB15_COMMIT            | `DB15_PARENT` |
 | DB16 | Per-currency conservation identity, checked nightly, read on `/admin/ledger`; the seed conserves (#483)   | `85e7d4e4`             | `f2e25929` |
 | DB19 | Order lines written `refunded` / `cancelled`, the order rolls up, one promo redemption per account (#511) | `3041e5ef`             | `f2e25929` |
-| DB21 | A buyer cancels a product while its sale clears, or reports a faulty one (earnings frozen, an operator rules); a forfeit given back | `6f11cc0a`, DB21B_COMMIT | `f2e25929` |
+| DB21 | A buyer cancels a product while its sale clears, or reports a faulty one (earnings frozen, an operator rules); a forfeit given back | `6f11cc0a`, `4d0f928d` | `f2e25929` |
 | SV1  | Finance row schemas and `finance-tables.contract.test.ts`; its two CHECKs moved to DB8 step 3             | `4c9482a2`, `388d9952` | `f2e25929` |
 | SV2  | The wallet read: resolved scope (303), decidable approvals, per-currency reads, `pdfHref`                 | `d4c4a194`             | `f2e25929` |
 | SV3  | Recurring-rule actions; every automation control locked until its engine runs                             | `fdeb3018`             | `f2e25929` |
