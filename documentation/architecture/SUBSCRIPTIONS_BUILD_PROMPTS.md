@@ -1,57 +1,57 @@
 # Subscriptions Build Prompts — Claude Code Work Orders for `/pricing`, the Plan Ladder and Agency Scale
 
-> **Status: WORK ORDERS, not binding.** A sequenced series of self-contained Claude Code prompts that
-> make the subscription ladder sellable: a correct catalogue and entitlement state, a guest-readable
-> plan read, the public `/pricing` page, a plan checkout, and an agency tier. Every prompt cites its
-> evidence in [`SUBSCRIPTIONS_AUDIT.md`](SUBSCRIPTIONS_AUDIT.md) (finding IDs `L*`, `M*`, `G*`, `R*`,
-> `D*`) and Decision #252. Paste each prompt into its **own fresh session**, after the standard
-> header (§1).
+> **Status: WORK ORDERS, not binding.** Makes the subscription ladder sellable: a correct catalogue
+> and entitlement state, a guest-readable plan read, the public `/pricing` page, a plan checkout and
+> the agency tier. Evidence: [`SUBSCRIPTIONS_AUDIT.md`](SUBSCRIPTIONS_AUDIT.md) (`L*`, `M*`, `G*`,
+> `R*`, `D*`); readiness: [`PRODUCTION_READINESS.md`](../readiness/PRODUCTION_READINESS.md) PRD-F14
+> (row map in [`FINANCE_BUILD_PROMPTS.md`](FINANCE_BUILD_PROMPTS.md) §0.7). Ruling: Decision #252's
+> OWNER RULINGS (2026-10-30; the table is [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md)
+> Part C), with #472 for UAT.
 >
-> **Before you start:** merge the change that adds `SUBSCRIPTIONS_AUDIT.md` and this file. Run the
-> prompts in the §0 order. A prompt marked **🧑 DECISION** must stop and put the named question to a
-> human before it changes behaviour; it presents options with a recommendation. Nothing here
-> monetises execution capacity ($W_i$) or Standing — a prompt that would is wrong, whatever it says.
+> **Verified against code 2026-11-23 at `f2e25929`.** 9 open, 2 partly done, 1 done (§0 ledger).
+> Runnable now: S1, X1 and X2.
 >
-> **Status 2026-11-12 (re-verified in code at `8a3fd595`):** S0 is done (`94d22e84`). X1 and X2
-> are partly done: their 🧑 rulings and one PRODUCT_SPEC line each landed in `94d22e84`. S1–S8 and
-> Z1 have not started. Runnable now: S1, X1 and X2. S2 stops on the 🧑 Agency and Enterprise
-> storage figure. **Re-checked 2026-11-18 at `b7280787` (MONEY_BUILD_PROMPTS MR0):** S1–S4 have
-> still not started, and S4's wait on FINANCE_BUILD_PROMPTS DB2 is met (`dd3986e5`).
+> **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
+> (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
+
+- Paste each prompt into its **own fresh session**, after the standard header (§1), in the §0 order.
+  A **🧑 DECISION** stops at its step and puts the options, with a recommendation, to a human; the
+  rest of the prompt runs. Migrations are edited in place (root `CLAUDE.md` §1).
+- Nothing here monetises execution capacity ($W_i$) or Standing: a prompt that would is wrong,
+  whatever it says.
+- IDs `S`, `X` and `Z1` are this file's; `FINANCE_BUILD_PROMPTS.md` has its own Z1.
 
 ---
 
 ## 0. Run order & dependencies
 
-Re-verified in code 2026-11-12 at `8a3fd595`: only S0 has landed. None of these exist yet:
-`get_public_plan_catalogue`, `plan_prices`, `team_agency`, `custom_treasury_export`,
-`PricingBackendService`, `pricingHref`, `/api/finance/plans`, `features/pricing`, `/pricing` and any
-Stripe Billing event. `fn_active_plan` still ignores `subscription_grace_days`, `HELD_STATES` still
-holds `paused`, and `PlanBlock.tsx` still calls `formatMoney`. PUBLIC_ROUTES P8 landed
-(`9d5bc074`), so S7 now waits only for S6. Stale premises:
+### 0.0 Done
 
-- **S7:** the `megamenu-data.ts` Pricing link is gone. Pricing is now `LANDING_NAV_LINKS`
-  (`features/landing/core/header.ts`) plus `PRICING_HREF`
-  (`features/marketing/core/footer-links.ts`). Both have pointed at `/features#pricing` since
-  `c82008df`, which also moved the pricing section to `/features` (Decision #349).
-- **S6:** `/contact` reads `?intent=`, not `topic=plans`, so "Talk to us" is
-  `contactHref("sales")`.
-- **S8:** `test:e2e` still names `landing-hero.spec.ts`, which `21309eeb` deleted.
+`Text at` is the commit where the prompt's full text can still be read
+(`git show f2e25929:documentation/architecture/SUBSCRIPTIONS_BUILD_PROMPTS.md`).
 
-| Phase | Prompts | Why this order |
-| :-- | :-- | :-- |
-| **0 — Rulings** | S0 ✅ | Records the #252 answers so later prompts cite a ruling instead of re-arguing it. **Done 2026-10-30** (Wave 1.1): #252's OWNER RULINGS; the ruling table is `FOUNDER_QUESTIONNAIRE.md` Part C. |
-| **1 — Database & seeds** | S1 → S2 | S1 fixes state drift and adds the public catalogue read (no ruling needed beyond (m)). S2 adds annual prices and the agency tier (needs (a)–(c), (h)). |
-| **2 — Services & routes** | S3 → S4 | The read service and `/api/finance/plans` first; the checkout (S4) needs (f) and S3's contract. |
-| **3 — UI** | S5 → S6 → S7 | Fix the existing plan UI and the link helper; then the `/pricing` page; then the entry points (megamenu, footer, upgrade links). |
-| **4 — Verification** | S8 | Playwright across viewports, currencies and contrast modes. |
-| **Roadmap (not buildable yet)** | X1, X2 (partly: the 🧑 rulings) | Hierarchical treasury and agency importers. Each stops at a 🧑 DECISION and a spec entry. |
-| **Last** | Z1 | Docs sweep. |
+| ID | What landed                                                                                       | Commit     | Text at    |
+| :- | :------------------------------------------------------------------------------------------------ | :--------- | :--------- |
+| S0 | #252's OWNER RULINGS recorded on the row; finance-model.md §16.1 numbers; PRODUCT_SPEC §7 wording | `94d22e84` | `f2e25929` |
 
-Prompts that may **not** run in parallel because they edit the same files: S1/S2 (`00001220`,
-`00005030`, `entitlements.ts`) · S5/S6 (`features/pricing/`, `PlanBlock.tsx`) · S6/S7
-(`megamenu-data.ts`).
+### 0.1 Run order
 
----
+| Phase                           | Prompts      | Why this order                                                                                                                                                                               |
+| :------------------------------ | :----------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — Database & seeds**        | S1 → S2      | S1 fixes state drift, adds the public catalogue read and switches the business plan gates off for UAT (#472). S2 adds annual prices and the agency tier, and stops on its 🧑 storage figure. |
+| **2 — Services & routes**       | S3 → S4      | The read service and `/api/finance/plans` first; the checkout (S4) needs S3's contract.                                                                                                      |
+| **3 — UI**                      | S5 → S6 → S7 | Fix the existing plan UI and the link helper; then the `/pricing` page; then the entry points.                                                                                               |
+| **4 — Verification**            | S8           | Playwright across viewports, currencies and contrast modes.                                                                                                                                  |
+| **Roadmap (not buildable yet)** | X1, X2       | Hierarchical treasury and agency importers: ruled, each still to be specified.                                                                                                               |
+| **Last**                        | Z1           | Docs sweep.                                                                                                                                                                                  |
+
+- **S1 → S2 (to its stop) → S3 → S4 close PRD-F14** (High · UAT; USER_FLOWS MW-27, MW-20, MW-25,
+  MK-07, MK-24). They run as the second SQL session beside `FINANCE_BUILD_PROMPTS.md` §0.1's finance
+  SQL lane, in its Waves 2–3: before each starts, check that its FILES are disjoint from the
+  SQL-lane prompt running then. S4 never runs beside FBP DB6, DB9, MR3 or MR5 (`00001230` +
+  `stripe-webhook.ts`).
+- Prompts that may **not** run in parallel because they edit the same files: S1/S2 (`00001220`,
+  `00005030`, `entitlements.ts`) · S5/S6 (`features/pricing/`, `PlanBlock.tsx`). S7 needs S6.
 
 ## 1. Standard header — paste above EVERY prompt
 
@@ -66,10 +66,11 @@ Before writing code:
      documentation/CLAUDE.md, documentation/database/CLAUDE.md when SQL changes, packages/ui/CLAUDE.md
      for UI), then documentation/reference/guardrails.md and documentation/reference/pr-checklist.md.
   2. Read documentation/architecture/SUBSCRIPTIONS_AUDIT.md — the finding IDs cited below — and
-     Decision #252 in documentation/reference/decisions/decisions-122-126.md (with its rulings once
-     S0 has landed).
+     Decision #252 in documentation/reference/decisions/decisions-122-126.md, with its OWNER
+     RULINGS.
   3. Grep documentation/reference/decisions/README.md for the surface you touch and read the
-     decision files it names (at minimum #1, #58, #154, #178, #196, #224, #230, #231, #234).
+     decision files it names (at minimum #1, #58, #154, #178, #196, #224, #230, #231, #234, #238
+     and #472).
   4. Read finance-model.md §1.3 and §16 and PRODUCT_SPEC.md §Escrow, Wallets & Finance 7
      "Subscriptions, Allowances & Entitlements". The four axes are law: execution capacity and
      Standing are NEVER monetised; proposals are never sold a la carte and every tier has a ceiling;
@@ -103,8 +104,9 @@ Hard rules (merge gates — reject your own diff if any fails):
   - Footprint caps stay fail-open behind security.platform_params (proposal_allowance_enforced,
     footprint_caps_enforced, storage_quota_enforced all 'false'); a refusal records
     entitlement.denied from the APP layer (a RAISE rolls the event back). Plan-gate refusals are
-    PK402 → HTTP 402, never 403. business_plan_gates_enforced is 'true' and split templates are
-    always enforced — do not "make them fail open".
+    PK402 → HTTP 402, never 403. business_plan_gates_enforced is switched 'false' for UAT by S1 and
+    back to 'true' by S4 (#472); split templates are always enforced — do not "make them fail
+    open".
   UI (DESIGN_SYSTEM.md; root CLAUDE.md §3)
   - Pure CSS, strict BEM, token-only values (var(--*)). No hex/rgb, literal radius, duration, shadow,
     font-weight or breakpoint; no Tailwind, CSS-in-JS, inline style=, or UI-lib deps. Charts come
@@ -149,53 +151,22 @@ For UI prompts also run `deno task dev`, open the page as a guest AND as the see
 (documentation/database/Seed.md — marisdelacroix holds individual_pro; the Atelier Nova team holds
 team_pro), and capture screenshots at 1440, 900 and 390 px wide in light and dark, plus one with
 data-motion="reduced" and one with data-contrast="high".
+A prompt that closes or narrows a documentation/readiness/PRODUCTION_READINESS.md or USER_FLOWS.md
+row flips it in the same change, with both scoreboards and one §Score history line
+(FINANCE_BUILD_PROMPTS.md §0.7's flip rule).
 Commit on the branch you were given with a clear message; do not open a PR unless I ask.
-```
 
----
-
-## 2. Phase 0 — Rulings
-
-### S0 — Record the #252 owner rulings
-
-> **Status 2026-11-12:** Done in `94d22e84`. The 🧑 Agency and Enterprise storage figure is still
-> open (#252, ruling S2), so S2 still stops on it.
->
-> **✅ Done 2026-10-30 (Wave 1.1).** The owner answered (a)–(m) through `FOUNDER_QUESTIONNAIRE.md`
-> (S1–S8, M1's and M4's sub-questions, M10 (c)) and replaced the form's prices with a plan table.
-> The rulings are recorded on #252, the numbers in `finance-model.md` §16.1, and the §7 wording in
-> PRODUCT_SPEC. Changes the later prompts must carry:
->
-> - **S2:** the agency tier is `team_agency` "Agency" and shares its figures with the seeded
->   `enterprise` plan: £89/mo base, 15 seats, £6 a seat, annual by contract. Pro Team now includes
->   10 seats (+£3.50) and Business Pro 10 managers (+£4.00, £39/mo). Team Free has 3 seats and a
->   50/wk shared pool. Annual prices are explicit, and an extra seat on an annual plan costs 12 ×
->   monthly. Agency and Enterprise storage is still open (🧑).
-> - **S4:** team co-owners may buy too.
-> - **S6:** the fee stays 5 % on every plan; negotiated rates are contract terms only.
-
-```text
-PROMPT S0: Decision #252 — subscriptions, agency tier and /pricing rulings
-
-ROLE: Documentation steward. Docs only; no code.
-
-CONTEXT: Decision #252 logged thirteen open questions (a)–(m) from SUBSCRIPTIONS_AUDIT.md. Put each
-to me as a 🧑 DECISION with the options and the recommendation recorded in #252, then record the
-answers as "OWNER RULINGS" in the #252 row (question → answer → what it settles), the format of
-#238 and #250.
-
-FILES:
-  - documentation/reference/decisions/decisions-122-126.md (#252 row — append the rulings)
-  - documentation/reference/decisions/README.md (#252 index line — add "RULED (x)…")
-  - documentation/business/finance-model.md §1.3 + §16.1 (only the numbers I rule: agency price,
-    annual prices, the agency pool)
-  - documentation/business/PRODUCT_SPEC.md §7 "Agency scale" and "Public pricing" (replace each
-    "(pending Decision #252 (x))" with the ruled wording)
-
-ACCEPTANCE:
-  - Every flag in #252 reads RULED or STILL OPEN; no flag is silently dropped.
-  - grep -n "pending Decision #252" documentation/business/PRODUCT_SPEC.md lists only STILL OPEN flags.
-  - No code files changed.
+When you finish, do the closing duty (documentation/reference/build-prompts.md §2) in the same
+commit as the work:
+  - In documentation/architecture/SUBSCRIPTIONS_BUILD_PROMPTS.md: a done prompt leaves the file.
+    Delete its section and add its row to §0's Done ledger (ID · what landed · commit · text at
+    <commit>^). A partly done prompt keeps only its open steps, with their numbers unchanged, under
+    one rewritten Status line. A ruled 🧑 stop becomes the ruled step, with its decision number.
+  - Treat any step you built for another prompt the same way, in the file that holds it.
+  - Run git grep -n "<ID>" documentation/ and update every place that still calls it open: the
+    PRODUCTION_READINESS / USER_FLOWS Track cells, the audit's Status column, other prompts' waits,
+    and this file's row in documentation/reference/build-prompts.md §3.
+  - If the file has no prompts left, delete it, log it in build-prompts.md §4 and repoint its links.
 ```
 
 ---
@@ -209,14 +180,16 @@ PROMPT S1: Subscription state honours one rule, and guests can read the public p
 
 ROLE: Database + types engineer. Evidence: SUBSCRIPTIONS_AUDIT L13, L14, L15, L16. Ruling: #252 (m).
 
-STOP FIRST (🧑 DECISION, unless S0 recorded it): #252 (m) — which subscription states keep a plan's
-entitlements?
-  [1] trialing · active, and past_due for subscription_grace_days after current_period_end;
-      paused and later states fall back to the default plan (Recommended — a paused plan is not
-      paid; the grace window is already seeded and only needs reading)
-  [2] trialing · active · past_due · paused, with no grace window (today's TS behaviour)
+Which subscription states keep a plan's entitlements (ruled: Decision #252 (m), [1]): trialing ·
+active, and past_due for subscription_grace_days (7, already seeded) after current_period_end;
+paused and later states fall back to the default plan.
+
+Also in this change (ruled: Decision #472, A): nothing can be bought until S4, so the business plan
+gates go off for UAT. Root CLAUDE.md §3.11 forbids Pro-gated controls nobody can unlock.
 
 FILES:
+  - supabase/migrations/00005001_seed_platform_params.sql: business_plan_gates_enforced → 'false',
+    its description saying why (#472) and that S4 switches it back on
   - supabase/migrations/00001220_functions_finance_billing_entitlements.sql
       * finance.fn_active_plan: read security.platform_params.subscription_grace_days and apply the
         ruled state set.
@@ -237,10 +210,12 @@ FILES:
     window, a paused one, an expired one → fn_active_plan answers per the ruling; anon can execute
     get_public_plan_catalogue and cannot SELECT finance.plans.
   - documentation/database/finance/Functions.md (both functions), Policies.md (the anon door),
-    PRODUCT_MANAGEMENT.md:232 (which states keep entitlements).
+    PRODUCT_MANAGEMENT.md (which states keep entitlements), finance-model.md §16.1 (the gates'
+    switch is off for UAT).
 
 ACCEPTANCE:
   - The probe passes after `deno task db:reset`.
+  - A Business Free entity is not refused PK402 for monthly invoicing while the switch is off.
   - A TS unit test pins HELD_STATES to the SQL set (one list exported from plans.ts, read by both
     the service and the test).
   - `set role anon; select finance.get_public_plan_catalogue();` returns the 8 public plans.
@@ -248,14 +223,28 @@ ACCEPTANCE:
 
 ### S2 — Annual prices, the agency tier and the treasury-export flag
 
+> **Status 2026-11-23:** open; it stops on the 🧑 Agency and Enterprise storage figure. Unverified:
+> how "15 seats included, then £6 a seat" (and Pro Team's 10 + £3.50) is expressed beside
+> `team_seats` and `per_seat_cents`; the seeded plans still carry the earlier dials.
+
 ```text
 PROMPT S2: Annual prices and the agency team tier — catalogue rows, not a new money model
 
 ROLE: Database + types engineer. Evidence: SUBSCRIPTIONS_AUDIT L3, L4, L5, §1.3, §2.1, §2.2.
-Rulings needed: #252 (a) name, (b) prices and annual model, (c) agency pool, (h) enforcement family.
-If S0 has not recorded them, STOP and ask (🧑 DECISION) with #252's options.
 
-SPEC (assuming the recommended options — adapt to the rulings):
+RULED (Decision #252 (a), (b), (c), (h), recorded by S0 in 94d22e84; the full matrix is
+finance-model.md §16.1): the agency tier is team_agency "Agency" (audience team), and it shares its
+figures with the seeded enterprise plan: £89/mo base, 15 seats included, then £6.00 a seat a month,
+annual by custom contract. Individual Pro is £12.99/mo or £99/yr; Pro Team £29/mo or £280/yr with
+10 seats included (+£3.50 a seat); Business Pro £39/mo or £380/yr with 10 managers included (+£4.00
+a manager); Team Free has 3 seats and a 50/wk shared proposal pool. An extra seat on an annual plan
+costs 12 × its monthly price, prorated, never discounted. Agency: 300 proposals a week plus
+proposal_buffer_per_10h 18, finite and never seat-scaled; unlimited public projects; 730-day audit
+retention. Re-seed the existing plans to these dials too (the "Not built yet" marker in §16.1).
+🧑 DECISION still open (#252 ruling S2): Agency and Enterprise storage. Stop before seeding their
+storage_megabytes and ask; the rest runs.
+
+SPEC (per the rulings above):
   (1) Annual prices — a child price table, so one plan keeps one code and one entitlement set:
       supabase/migrations/00000017_tables_finance.sql (edited in place, beside finance.plans):
 
@@ -283,29 +272,30 @@ SPEC (assuming the recommended options — adapt to the rulings):
   (2) The agency tier — seed rows only, no enum change for the tier itself:
       00005030: INSERT INTO finance.plans (code, label, audience, tier, price_cents, currency,
       billing_interval, is_custom_priced, per_seat_cents, is_default, is_public, sort_order,
-      pricing_note) VALUES ('<ruled code, recommended team_agency>', '<ruled label, recommended
-      Agency>', 'team', 'enterprise', <ruled or NULL>, 'GBP', 'monthly', <ruled>, <ruled or NULL>,
-      false, true, 30, '<ruled note>');
-      Entitlements (plan_entitlements rows):
-        team_seats              limit  is_unlimited = true
-        team_public_projects    limit  <ruled, recommended 50>
-        weekly_proposals        limit  <ruled FINITE value, recommended 300> — never is_unlimited,
-                                       never scaled by seats (§2.2)
-        proposal_buffer_per_10h limit  <ruled, recommended 8>
-        storage_megabytes       limit  <ruled, recommended 2048000 (2 000 GiB)>
-        audit_log_retention_days limit <ruled, recommended 730>
+      pricing_note) VALUES ('team_agency', 'Agency', 'team', 'enterprise', 8900, 'GBP', 'monthly',
+      false, 600, false, true, 30, '<15 seats included; annual by custom contract>');
+      Entitlements (plan_entitlements rows; Agency carries every Pro Team entitlement unless the
+      ruling says otherwise):
+        team_seats              limit  is_unlimited = true (15 included; each further seat bills
+                                       per_seat_cents, expressed as Pro Team's re-seed expresses it)
+        team_public_projects    limit  is_unlimited = true
+        weekly_proposals        limit  300 — FINITE, never is_unlimited, never scaled by seats (§2.2)
+        proposal_buffer_per_10h limit  18
+        storage_megabytes       limit  🧑 (above): not seeded until ruled
+        audit_log_retention_days limit 730
         split_template_co_op / _finders_fee / _benevolent_dictator  flag true
         promoted_placement      flag true
         advanced_analytics      flag true
         custom_treasury_export  flag true
       NEVER seed discovery_boost on this plan (it would make ranking purchasable, Decision #178 (a)).
+      The seeded enterprise plan takes the same price and seats (ruled S2).
   (3) One new entitlement key: supabase/migrations/00000004_enums_domains.sql — add
       'custom_treasury_export' to finance.entitlement_key IN PLACE (the CREATE TYPE list), and to
       EntitlementKey in packages/types/finance/entitlements.ts. Do NOT add agency_seats (team_seats
-      + is_unlimited expresses it) or nested_split_rules (X1 has not defined it).
-  (4) PlanCode in packages/types/finance/plans.ts gains the agency code.
-  (5) Enforcement (#252 (h), recommended): team_public_projects stays in the fail-open footprint
-      family; custom_treasury_export is a tool flag enforced like split templates (PK402 → 402).
+      expresses it) or nested_split_rules (ruled out by #252 M10 (c)).
+  (4) PlanCode in packages/types/finance/plans.ts gains team_agency.
+  (5) Enforcement (ruled: #252 (h)): team_public_projects stays in the fail-open footprint family;
+      custom_treasury_export is a tool flag enforced like split templates (PK402 → 402).
 
 DOCS (same change — paste and adapt):
   documentation/database/finance/Tables.md §7:
@@ -313,9 +303,9 @@ DOCS (same change — paste and adapt):
       `billing_interval` (monthly/annual), `price_cents` (NULL = not offered), `currency`,
       `provider_price_ref` (the Stripe Price), `is_active`. Partial UNIQUE `(plan_id,
       billing_interval) WHERE is_active`. `finance.plans.price_cents` stays the monthly headline."
-    - "The seeded plans": add the agency row ("team | <price> | Unlimited seats; a finite dedicated
-      proposal pool; never buys capacity or Standing — Decision #252"), and change "Seeded with the
-      8 plans" to 9.
+    - "The seeded plans": add the agency row ("team | £89/mo | 15 seats included, then £6 a seat;
+      a finite dedicated proposal pool; never buys capacity or Standing — Decision #252"), and
+      change "Seeded with the 8 plans" to 9.
     - Entitlement matrix: a third team column for the agency tier with the values above.
     - Add `custom_treasury_export` to the key list in §9 Enums.
   documentation/business/finance-model.md §1.3 table + §16.1 team table: the agency column.
@@ -369,26 +359,25 @@ ACCEPTANCE:
   - curl as a guest returns 200 with the public plans and no `current`.
 ```
 
-### S4 — Plan checkout on Stripe Billing (🧑 DECISION (f))
+### S4 — Plan checkout on Stripe Billing (#252 (f))
 
 ```text
 PROMPT S4: Buying a plan — Stripe Billing Checkout and the subscription webhook
 
 ROLE: Payments engineer. Evidence: SUBSCRIPTIONS_AUDIT §0 last row, L4, L6, L7, §4.4. Needs S3.
 
-RULED #252 (f) (2026-10-30; S0 recorded it in `94d22e84`): [1] Stripe Billing Checkout, the buyers
-and period-end downgrades as recommended below. Skip this stop. ALSO (#472, 2026-11-18): the
-business plan gates are off for UAT; this change switches `business_plan_gates_enforced` back to
-`true` in `00005001` and shows a gated control unlocking by purchase.
-STOP FIRST (🧑 DECISION, unless S0 recorded #252 (f)): how is a plan paid?
-  [1] Stripe Billing Checkout, card only, recurring; the platform's own revenue, never the wallet
-      (Recommended — the wallet holds client money bound for escrow; a platform-initiated debit
-      there is the "least forgivable" surprise finance-model §16.6 warns about)
-  [2] A monthly debit from the subject's wallet
-  Also ask: who may buy for an entity (recommended: the team owner / a business member holding
-  manage_billing — Decision #238), and whether downgrades take effect at period end (recommended).
+How a plan is paid (ruled: Decision #252 (f), [1]): Stripe Billing Checkout, card only, recurring;
+the platform's own revenue, never a wallet debit (the wallet holds client money bound for escrow).
+Buyers: a team owner or co-owner (the team role filter must keep manage_billing for a co-owner), or
+a business member holding manage_billing (#238). Downgrades take effect at period end. ALSO (#472):
+S1 switched the business plan gates off for UAT; this change switches business_plan_gates_enforced
+back to 'true' in 00005001 and shows a gated control unlocking by purchase.
 
-SPEC ([1]):
+HANDLED_STRIPE_EVENTS gains the subscription events; FINANCE_BUILD_PROMPTS MR6's preflight reads
+that list, so it needs no edit. Never run beside FBP DB6, DB9, MR3 or MR5 (00001230 +
+stripe-webhook.ts); its old wait, FBP DB2, has landed (dd3986e5).
+
+SPEC:
   - packages/backend/services/finance/SubscriptionBackendService.ts (new — there is no existing
     one to extend): startCheckout(actor, { planCode, cycle, subject }) → { url } after: the actor
     may bill the subject; the plan is public, priced, of the subject's audience, not the current
@@ -418,6 +407,10 @@ ACCEPTANCE:
     finds one subscription_events row.
   - Stripe test mode only, with test keys from .env.local; the four test cards for success,
     decline, 3DS and insufficient funds.
+  - Readiness: closes PRD-F14 (USER_FLOWS MW-27, MW-20, MW-25, MK-07, MK-24). MK-24 → ✅ only once
+    an on-account order is walked live: finance.place_on_account_order (00001250:494) also needs a
+    KYB-verified business (fn_business_kyb_verified), and the plan gate sits in
+    finance.set_invoicing_terms (00001210:1438).
 ```
 
 ---
@@ -433,7 +426,7 @@ ROLE: Frontend engineer. Evidence: SUBSCRIPTIONS_AUDIT D11, §4.2. Needs S3 (pri
 
 FILES:
   - apps/web/features/settings/components/sections/billing/PlanBlock.tsx: render every price
-    through MoneyView with its GBP origin (drop formatMoney, :23). Keep the read-only copy until S4
+    through MoneyView with its GBP origin (drop formatMoney, :24). Keep the read-only copy until S4
     lands; once it has, the block offers "Change plan" (tier 4) → /pricing?target=<next plan>.
   - apps/web/features/proposals/components/AllowanceMeter.tsx:43-48: "Accelerate volume with Pro →"
     links to pricingHref(<the upgrade plan code the allowance read returns>) instead of
@@ -456,6 +449,10 @@ PROMPT S6: /pricing — two planes, three audiences, one comparison, in the view
 
 ROLE: Frontend engineer. Evidence: SUBSCRIPTIONS_AUDIT §4, §5 (D1–D10). Needs S3. Read
 DESIGN_SYSTEM.md Part D (GuestShell, slot resolvers §D.7.5), §B.4, §B.8, §B.9, §B.11, §C.1.
+Ruled (#252 S1, (l)): the three tabs read Individual · Team / Agency · Business / Enterprise, and
+Enterprise is a priced column; the fee is one sentence ("5% on every plan") and the Standing taper
+one line linking to help; a negotiated rate is a contract term, never a plan perk or a /pricing
+claim.
 
 FILES:
   - apps/web/routes/(public)/pricing.tsx — re-exports the controller.
@@ -481,8 +478,9 @@ FILES:
       * priced + S4 landed → tier-3 <Button> "Choose {label}" → POST
         /api/finance/subscriptions/checkout (guest → /join?redirectTo=/pricing?target=…)
       * priced, S4 not landed → no button; the meta line "Plan changes open soon" (§3.11)
-      * custom-priced → tier-4 outlined "Talk to us" → /contact?topic=plans
-      * price NULL (Business Pro today) → "Price coming soon", no button.
+      * custom-priced → tier-4 outlined "Talk to us" → contactHref("sales") (/contact reads
+        ?intent=, not topic=)
+      * price NULL → "Price coming soon", no button.
     The emphasised plan (target, else the plane's paid tier) sits on a SOLID --surface-1 region —
     never a nested card, never a translucent wash.
   - apps/web/features/pricing/components/PlanMatrix.tsx — the comparison as @projective/ui DataTable
@@ -517,21 +515,20 @@ ACCEPTANCE:
 ```text
 PROMPT S7: Every "Pricing" link leads to /pricing
 
-ROLE: Frontend engineer. Evidence: SUBSCRIPTIONS_AUDIT §0 row 3. Needs S6. Coordinate with
-flows/PUBLIC_ROUTES_BUILD_PROMPTS.md P8 (it owns the footer/megamenu sweep) — if P8 has landed,
-edit on top of it; if it is in flight, hand this change to that session.
+ROLE: Frontend engineer. Evidence: SUBSCRIPTIONS_AUDIT §0 row 3. Needs S6. It edits on top of
+PUBLIC_ROUTES P8 (landed, 73550174; text at f2e25929), which did the footer and megamenu sweep.
 
 FILES:
-  - apps/web/features/marketing/core/megamenu-data.ts: SECONDARY_LINKS "Pricing" → /pricing.
-    Desktop: add Pricing as a plain link after the four pillars (not a fifth megamenu — it has no
-    columns), with the same keyboard path as the pillar triggers.
-  - apps/web/features/marketing/components/PublicFooter.tsx: Pricing in the product link group.
-  - The landing page's pricing section (PUBLIC_ROUTES L4): its CTA → /pricing; it keeps the 5%
-    fee statement and does not restate plan prices (rollup, not restatement).
+  - apps/web/features/landing/core/header.ts (LANDING_NAV_LINKS "Pricing") and
+    apps/web/features/marketing/core/footer-links.ts (PRICING_HREF): both point at
+    /features#pricing since c82008df (Decision #349, which moved the pricing section to /features);
+    both → /pricing. megamenu-data.ts no longer carries a Pricing link.
+  - /features' pricing section: its CTA → /pricing; it keeps the 5% fee statement and does not
+    restate plan prices (rollup, not restatement).
   - The account popover allowance meter already moved in S5; the popover gains no new "Upgrade" row.
 
 ACCEPTANCE:
-  - grep -rn '"/help"' apps/web/features/marketing/core/megamenu-data.ts → no Pricing entry.
+  - No link points at /features#pricing any more: LANDING_NAV_LINKS and PRICING_HREF read /pricing.
   - The mobile drawer, desktop header and footer each reach /pricing by keyboard alone.
 ```
 
@@ -567,58 +564,57 @@ STEPS (each a t.step, each at 1440×900, 768×1024 and 390×844):
      scrolling.
   8. (S4 only) Choose Pro as individual_free → Stripe test Checkout URL returned (do not complete a
      real payment; stub at the network layer).
+  9. Fix the task first (PRD-K3): deno.json `test:e2e` (near :110) still lists
+     apps/web/tests/e2e/landing-hero.spec.ts, which 21309eeb deleted. Remove it from the list, and
+     drop the "landing-hero: /features' final search;" clause from `$comment:test:e2e` (near :109).
+     Check the exact text in deno.json before editing; the PUBLIC_ROUTES files that once owned this
+     leftover are deleted (text at f2e25929).
 
-ACCEPTANCE: `deno task test:e2e` runs catalogue + pricing green against a fresh `deno task dev`.
+ACCEPTANCE: `deno task test:e2e` runs catalogue + pricing green against a fresh `deno task dev`;
+PRD-K3 flips with it.
 Screenshots saved under the scratchpad, never committed. Clean up .playwright-mcp/ if created.
 ```
 
 ---
 
-## 7. Roadmap — not buildable until ruled and specified
+## 7. Roadmap — not buildable until specified
 
-### X1 — Hierarchical treasury (🧑 DECISION (d))
+### X1 — Hierarchical treasury (#252 (d))
 
-> **Status 2026-11-12:** Partly done. The 🧑 step landed in `94d22e84`: #252 (d) is ruled M10 (c)
-> [1] (one split rule plus per-engagement contribution agreements), and PRODUCT_SPEC §7 "Agency
-> scale" has one line on it. Still to do: the full spec entry, the finance-model.md numbers, the
-> decision-row schema sketch and X1-B.
+> **Status 2026-11-23:** the 🧑 step landed in `94d22e84` (#252 (d) ruled M10 (c) [1]; one
+> PRODUCT_SPEC §7 "Agency scale" line); the spec entry, the finance-model.md numbers, the
+> decision-row schema sketch and X1-B below are open.
 
 ```text
 PROMPT X1: Specify, do not build, a nested agency treasury
 
 ROLE: Product + finance architect. Docs only. Evidence: SUBSCRIPTIONS_AUDIT §2.4.
 
-Put #252 (d) to me: does an agency need sub-vaults (department → squad) at all, or are per-
-engagement contribution agreements (TEAMS_AUDIT F12) the real need? Options:
-  [1] Per-engagement contribution agreements on the existing single split rule (Recommended —
-      smallest change to the escrow-release path, and it is the gap teams already have)
-  [2] Squads as a team sub-entity with their own split rule, applied after the master vault cut
-  [3] Both
-For the chosen option, write the PRODUCT_SPEC.md entry, the finance-model.md numbers, and a
-schema sketch in a decision row — the release path's determinism and "every leaf sums to the
-release" property test are acceptance criteria of the LATER build prompt, which this prompt writes
-into this file as X1-B. Only then may an entitlement key (nested_split_rules or the ruled name) be
-added, in X1-B, never before.
+Ruled (Decision #252 (d) = M10 (c), [1]): per-engagement contribution agreements (TEAMS_AUDIT F12)
+on the existing single split rule; no squads as a sub-entity, and no nested_split_rules key.
+For it, write the PRODUCT_SPEC.md entry, the finance-model.md numbers, and a schema sketch in a
+decision row — the release path's determinism and "every leaf sums to the release" property test
+are acceptance criteria of the LATER build prompt, which this prompt writes into this file as X1-B.
+An entitlement key, if one is needed at all, is added only in X1-B, never before.
 ```
 
-### X2 — Agency ingestion (🧑 DECISION (g))
+### X2 — Agency ingestion (#252 (g))
 
-> **Status 2026-11-12:** Partly done. The 🧑 step landed in `94d22e84`: #252 (g) is ruled S8 (CSV
-> plus ClickUp first, attachments mounted), and PRODUCT_SPEC §7 marks it Planned in one line. Still
-> to do: the spec entry, the `integrations.providers` seed shape and X2-B.
+> **Status 2026-11-23:** the 🧑 step landed in `94d22e84` (#252 (g) ruled S8; PRODUCT_SPEC §7 marks
+> it Planned in one line); the spec entry, the `integrations.providers` seed shape and X2-B below
+> are open.
 
 ```text
 PROMPT X2: Specify, do not build, board importers and external mounts
 
 ROLE: Product + integrations architect. Docs only. Evidence: SUBSCRIPTIONS_AUDIT §2.5.
 
-Put #252 (g) to me: which sources (Jira, ClickUp, Asana, Linear, CSV), what maps to what (board →
-project, epic/list → stage, issue → ticket with its W_i weight chosen by the importer, never
-inferred), what is NOT imported (money, assignees who are not members, history), and whether
-attachments mount read-only like cloud-drive files (never counting against storage_megabytes) or
-are copied. Recommend CSV + one tracker first, attachments mounted. Write the PRODUCT_SPEC.md entry
-and the integrations.providers seed shape (no schema change — the connector substrate is generic),
-then append the build prompt here as X2-B.
+Ruled (Decision #252 (g) = S8): CSV plus ClickUp first, specified before any build; attachments
+mount read-only like cloud-drive files (never counting against storage_megabytes). Specify what
+maps to what (board → project, epic/list → stage, issue → ticket with its W_i weight chosen by the
+importer, never inferred) and what is NOT imported (money, assignees who are not members, history).
+Write the PRODUCT_SPEC.md entry and the integrations.providers seed shape (no schema change — the
+connector substrate is generic), then append the build prompt here as X2-B.
 ```
 
 ---

@@ -1,27 +1,40 @@
 # Legal & Compliance Build Prompts — closing PRODUCTION_READINESS §M
 
 > **Status: WORK ORDERS, not binding.** Claude Code prompts that take
-> [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) §M (Legal & compliance, 25% at 2026-11-19) to
-> 100%, and with it the "Legal, IP & compliance" flows of [USER_FLOWS.md](USER_FLOWS.md) (MW-55 –
-> MW-58) and ID-11. Written 2026-11-19 against `main` @ `197b0d0c`. All five open rows were
-> re-checked in code that day, and all five are still open.
+> [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) §M (Legal & compliance) to 100%, and with it
+> the "Legal, IP & compliance" flows of [USER_FLOWS.md](USER_FLOWS.md) (MW-55 – MW-58), ID-11 and
+> PRD-A4. The rulings it builds on are the legal library's (#270), the AML posture (#336 I1) and
+> checkout tax (#490).
 >
-> **Rollup, not restatement.** Three rows already have owners elsewhere, and this file links to
-> them:
+> **Verified against code 2026-11-23 at `f2e25929`.** 10 open, 0 partly done, 0 done (§0 ledger).
+> Runnable now: LG0, LG1, LG6, LG7.
 >
-> - PRD-M3's hosted half is [OPERATIONS_BUILD_PROMPTS.md](OPERATIONS_BUILD_PROMPTS.md) **OPS7**.
-> - PRD-M5's checkout and invoice half is
->   [MARKETPLACE_BUILD_PROMPTS.md](MARKETPLACE_BUILD_PROMPTS.md) **CK4** (#490).
-> - PRD-M6's dormant programme is
->   [IDENTITY_BUILD_PROMPTS.md](../architecture/IDENTITY_BUILD_PROMPTS.md) **X2**.
->
-> No work order covers the rest: the counsel-ready library behind PRD-M1, the chain of title behind
-> PRD-M4 (and PRD-A4), the seller tax documents, the AML signals and tax on the platform's own fees.
-> Those get new prompts, **LG0–LG9** (§3).
+> **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
+> (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
+
+**Rollup, not restatement.** Three rows already have owners elsewhere, and this file links to them:
+
+- PRD-M3's hosted half is [OPERATIONS_BUILD_PROMPTS.md](OPERATIONS_BUILD_PROMPTS.md) **OPS7**.
+- PRD-M5's checkout and invoice half is [MARKETPLACE_BUILD_PROMPTS.md](MARKETPLACE_BUILD_PROMPTS.md)
+  **CK4** (#490).
+- PRD-M6's dormant programme is
+  [IDENTITY_BUILD_PROMPTS.md](../architecture/IDENTITY_BUILD_PROMPTS.md) **X2**.
+
+No work order covers the rest: the counsel-ready library behind PRD-M1, the chain of title behind
+PRD-M4 (and PRD-A4), the seller tax documents, the AML signals and tax on the platform's own fees.
+Those get the prompts here, **LG0–LG9** (§3). ⚖️ items are built behind a switch that stays off; no
+agent turns one on, and no agent sets `reviewedAt`.
 
 ---
 
 ## 0. Map, run order and stops
+
+### 0.0 Done
+
+No LG prompt has landed (checked at `f2e25929`). A prompt that lands gets its row here.
+
+| ID | What landed | Commit | Text at |
+| :- | :---------- | :----- | :------ |
 
 ### 0.1 Row → work order
 
@@ -46,7 +59,7 @@
 | MW-57 | High     | ❌ → 🟡 when CK4 and LG6 land with their switches off · ✅ when the switches are on                            |
 | MW-58 | Normal   | ❌ → ✅ on LG7 (signals recorded and readable by an operator; the reporting programme stays dormant by ruling) |
 
-### 0.2 What today's re-check found
+### 0.2 Findings the prompts rely on (checked 2026-11-19, still true at `f2e25929`)
 
 These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 
@@ -89,18 +102,19 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 
 ### 0.3 Run order
 
-| Wave | Content / docs lane | SQL lane (serial)                                                     | App lane                 | Waits for                                                                                       |
-| :--- | :------------------ | :-------------------------------------------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------- |
-| 1    | **LG1** → **LG2**   | —                                                                     | **LG0**                  | Nothing. LG2 needs LG1's drift table and its 🧑 answers                                         |
-| 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                        | (LG4/LG5's UI halves)    | LG4 needs LG2's brief sent (not answered): it builds the mechanism, and counsel rules the words |
-| 3    | —                   | **LG7** takes a turn in [MONEY §1](MONEY_BUILD_PROMPTS.md)'s SQL lane | **LG6** (research first) | LG7: never beside MR8a/MR8b. LG6's reader after its 🧑                                          |
-| 4    | —                   | **LG8**, in Queue M after CK4                                         | —                        | CK4 (which waits for DB21)                                                                      |
-| Last | **LG9**             | —                                                                     | —                        | Everything above that can land                                                                  |
+| Wave | Content / docs lane | SQL lane (serial)                                                                        | App lane                 | Waits for                                                                                       |
+| :--- | :------------------ | :--------------------------------------------------------------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------- |
+| 1    | **LG1** → **LG2**   | —                                                                                        | **LG0**                  | Nothing. LG2 needs LG1's drift table and its 🧑 answers                                         |
+| 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                                           | (LG4/LG5's UI halves)    | LG4 needs LG2's brief sent (not answered): it builds the mechanism, and counsel rules the words |
+| 3    | —                   | **LG7** takes a turn in [the finance SQL lane](../architecture/FINANCE_BUILD_PROMPTS.md) | **LG6** (research first) | LG7: never beside MR8a/MR8b. LG6's reader after its 🧑                                          |
+| 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (which waits for DB21)                                                                      |
+| Last | **LG9**             | —                                                                                        | —                        | Everything above that can land                                                                  |
 
 **Hot files.** LG3 edits `00001120` (`claim_ticket`) and `00001150` (`fund_stage`, `fund_ticket`).
-PM-GH1, MR1, MR2, DB13 and DB14 write `00001150`, so LG3 never runs beside them. LG4, LG5 and LG7
-each edit `00002510` (one writer across all tracks) and `00005060` (jobs: one writer). LG4 adds one
-enqueue line to `00001240` and LG7 edits its withdrawal path, so both take MONEY's serial lane.
+PM-GH1, DB13 and DB14 write `00001150`, so LG3 never runs beside them. LG4, LG5 and LG7 each edit
+`00002510` (one writer across all tracks) and `00005060` (jobs: one writer). LG4 adds one enqueue
+line to `00001240` and LG7 edits its withdrawal path, so both take the finance SQL lane
+(FINANCE_BUILD_PROMPTS.md §0).
 
 **§M score projection** (weights: Critical 3 · High 2 · Normal 1; total 14):
 
@@ -163,26 +177,111 @@ enqueue line to `00001240` and LG7 edits its withdrawal path, so both take MONEY
 
 ## 1. Headers
 
-- **LG prompts:** paste [SECURITY_ACCESS_BUILD_PROMPTS.md](SECURITY_ACCESS_BUILD_PROMPTS.md) §1.1
-  above the prompt, with its step 4 changed to "verified at main @ 197b0d0c". Paste §1.2 after it,
-  with the rows given under each prompt below.
-- **CK4, OPS7, X2:** run them as their own files say, plus §2's deltas.
+### 1.1 Standard header — paste above every LG prompt
+
+```text
+You are working in the Projective monorepo (Deno 2.x; apps/web Fresh 2 + Vite + Preact islands
+with @preact/signals; packages/ui the pure-CSS BEM design system @projective/ui; packages/types
+the Zod SSOT @projective/types; packages/backend fat services @server/services/*;
+supabase/migrations Postgres with RLS everywhere; Supabase Auth (GoTrue)).
+
+Before writing code:
+  1. Read the root CLAUDE.md and every sub-directory CLAUDE.md on the paths you touch (always
+     documentation/CLAUDE.md; documentation/database/CLAUDE.md when SQL changes;
+     packages/ui/CLAUDE.md for UI), then documentation/reference/guardrails.md and
+     documentation/reference/pr-checklist.md.
+  2. Read the documentation/readiness/PRODUCTION_READINESS.md §M rows and the USER_FLOWS.md rows
+     your prompt names, and documentation/readiness/LEGAL_COMPLIANCE_BUILD_PROMPTS.md §0 (run
+     order, file locks, stops). If you touch 00001240 or 00000017, also read
+     documentation/architecture/FINANCE_BUILD_PROMPTS.md §0: its finance SQL lane decides when
+     you run.
+  3. Grep documentation/reference/decisions/README.md for the surface you touch and read the
+     decision files it names. If a decision already rules the behaviour you are about to change,
+     stop and ask me.
+  4. The CONTEXT below was verified at the commit it names. Re-check every file:line against the
+     current tree before relying on it; another track may have landed since. Report any premise
+     that no longer holds in your final message; never work around it silently.
+
+Hard rules (merge gates; reject your own diff if any fails):
+  - Migrations are consolidated and EDITED IN PLACE (vvvvtooo_type_purpose.sql); never an ALTER
+    patch or a "fix" file. Each statement in its category file (0 tables · 1 functions · 2
+    policies/grants: 00002500 schema grants, 00002510 function grants, 00002520 table grants · 3
+    views · 4 indexes · 5 seed). The Additive Rule: no dropped table, column or FK without my OK.
+  - SECURITY DEFINER functions pin search_path = '' and schema-qualify every name. RLS stays on.
+    A signed-in request runs under the user's JWT; the service role only before a session exists
+    or inside a definer/cron door.
+  - Thin routes (HTTP parse + Zod + auth guard); logic in packages/backend/services/* returning
+    ServiceResult<T> (Decision #10). Islands never import Supabase or @server/*; they fetch
+    /api/* through their feature's client service.
+  - A schema or RPC-contract change lands with its Zod schema, the backend mapper and
+    documentation/database/* in the same change; a route or URL change with ROUTING.md; an env
+    key with SYSTEM_ARCHITECTURE.md §Environment Variable Contract and .env.example (XXXX-XXXX
+    placeholders, never a real value).
+  - Signal-first state; no useState; useEffect only for browser APIs. Token-only pure CSS + BEM.
+    Path aliases only; JSDoc on exports; // #region blocks; no meta-comments.
+  - A NEW contradiction between source docs: do not pick a side; add a decision row (newest
+    decisions-*.md + README index line; re-check the next free number right before writing) and
+    ask me.
+  - 🧑 STOP or DECISION: stop at the named step, put the options and your recommendation to me,
+    and build nothing that depends on the answer until I give it. ⚖️: build behind a param or
+    flag that stays off; never switch it on. No agent sets reviewedAt.
+
+Verification: reproduce the defect first (a failing probe or test), then fix.
+  SQL: rollback-safe probes under supabase/probes/ (BEGIN … ROLLBACK); `deno task test:probes`;
+  `deno task db:reset` is standing-approved but announce it to concurrent sessions; finish with
+  your own clean `deno task test:probes:fresh`.
+  Always: `deno task check`, `deno task lint`, `deno task test:unit`, and `deno fmt` on the files
+  you touched only (never a directory). Compare any red unit test with main before calling it
+  yours (theme-engine failures are pre-existing, Decisions #96 (a) and #157 (m)).
+  UI-visible changes: `deno task dev`, sign in as the seeded personas
+  (documentation/database/Seed.md), capture 1440 and 390 px.
+This checkout may be shared with other sessions: never switch branch, never stash, stage only
+your own hunks. Commit on the branch you were given. Do not push or open a PR unless I ask.
+
+READINESS (Decision #444): in the same change, update documentation/readiness/
+PRODUCTION_READINESS.md: the row(s) given under your prompt — status, and evidence naming your
+commit and decision; recompute §M's line and the three tier rows of the Scoreboard (score =
+Σ weight × credit / Σ weight; ✅ 1 · 🟡 0.5 · ❌ 0; Critical 3 · High 2 · Normal 1; ⏸ rows
+excluded); add one line to §Score history. Update USER_FLOWS.md the same way if a flow's status
+changes. Use 🟡 when a hosted or human step is left, and name it; never flip a row on a test you
+did not run. A gap you find and do not fix gets a new row at the end of its area, never silence.
+
+When you finish, do the closing duty (documentation/reference/build-prompts.md §2) in the same
+commit as the work:
+  - In documentation/readiness/LEGAL_COMPLIANCE_BUILD_PROMPTS.md: a done prompt leaves the file.
+    Delete its section and add its row to §0's Done ledger (ID · what landed · commit · text at
+    <commit>^). A partly done prompt keeps only its open steps, with their numbers unchanged,
+    under one rewritten Status line. A ruled 🧑 stop becomes the ruled step, with its decision
+    number.
+  - Treat any step you built for another prompt the same way, in the file that holds it.
+  - Run git grep -n "<ID>" documentation/ and update every place that still calls it open: the
+    PRODUCTION_READINESS / USER_FLOWS Track cells, the audit's Status column, other prompts' waits,
+    and this file's row in documentation/reference/build-prompts.md §3.
+  - If the file has no prompts left, delete it, log it in build-prompts.md §4 and repoint its links.
+```
+
+### 1.2 CK4, OPS7 and X2
+
+Run them from their own files, with their own headers: CK4 in
+[MARKETPLACE_BUILD_PROMPTS.md](MARKETPLACE_BUILD_PROMPTS.md), OPS7 in
+[OPERATIONS_BUILD_PROMPTS.md](OPERATIONS_BUILD_PROMPTS.md) §2, X2 in
+[IDENTITY_BUILD_PROMPTS.md](../architecture/IDENTITY_BUILD_PROMPTS.md). Their rows here: CK4 narrows
+PRD-M5 (MW-57 stays ❌ until LG6), OPS7 flips PRD-M3, X2 shares PRD-M6 with LG7.
 
 ---
 
-## 2. Existing work orders — what changed
+## 2. Other files' prompts
 
-| Prompt | Source         | `<ROWS>` for §1.2                             | Delta (re-verified 2026-11-19 at `197b0d0c`)                                                                                                                                                                                                                                                                                      |
-| :----- | :------------- | :-------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CK4    | MARKETPLACE §3 | PRD-M5 (narrowed), MW-57 (stays ❌ until LG6) | No change to the prompt. It covers checkout and invoice tax and the buyer's VAT ID (reverse charge). The seller tax forms, platform reporting and tax-residence certificates are LG6's. LG8 reuses CK4's Stripe Tax engine, so CK4 should keep its calculation call behind one service function that LG8 can call for a fee line. |
-| OPS7   | OPERATIONS §3  | PRD-M3                                        | No change. M3's evidence names OPS7 already.                                                                                                                                                                                                                                                                                      |
-| X2     | Identity §11   | PRD-M6 (with LG7)                             | Its 🧑 stop is still open, and LG7 carries it (§0.4 item 8). On A, X2 builds only the dormant programme (the `aml.*` flags, the operator role, the review queue with no writer), and LG7 builds the signals and the Safety Hold. On B, LG7 builds both and X2 is marked done by LG7.                                              |
+This section held deltas onto CK4, OPS7 and X2. On 2026-11-23 CK4's moved into CK4 itself, OPS7's
+said nothing new, and X2's went to IDENTITY. Nothing is left here.
 
 ---
 
 ## 3. New prompts
 
 ### LG0 — The IP workspace answers 404 until it is built
+
+> **Status 2026-11-23:** open; runs now.
 
 Closes PRD-A4 (UAT).
 
@@ -220,10 +319,12 @@ SAME CHANGE: ROUTING.md's IP workspace row ("reserved; 404 until LG4"); #270's i
 "(workspace hidden until built, LG0)"; PRODUCT_SPEC sitemap row unchanged.
 ```
 
-§1.2 rows: **PRD-A4** → ✅. MW-55's note changes to "Hidden until LG4 (PRD-A4 ✅)" and its status
-stays ❌.
+Readiness rows (§1.1): **PRD-A4** → ✅. MW-55's note changes to "Hidden until LG4 (PRD-A4 ✅)" and
+its status stays ❌.
 
 ### LG1 — The six legal documents say what the product does
+
+> **Status 2026-11-23:** open; runs now.
 
 Prepares PRD-M1. Nothing flips to ✅.
 
@@ -305,10 +406,12 @@ SAME CHANGE: finance-model.md / PRODUCT_SPEC.md where they were the stale side;
 DESIGN_SYSTEM §C.1 only if a component changed; a decision row for any contradiction found.
 ```
 
-§1.2 rows: **PRD-M1** stays ❌, with the evidence "library brought current (LG1, <commit>); awaiting
-counsel". Add any new rows from step 5.
+Readiness rows (§1.1): **PRD-M1** stays ❌, with the evidence "library brought current (LG1,
+<commit>); awaiting counsel". Add any new rows from step 5.
 
 ### LG2 — One counsel brief for the legal library and every open ⚖️ item
+
+> **Status 2026-11-23:** open; runs after LG1.
 
 Prepares PRD-M1. Docs only.
 
@@ -326,6 +429,10 @@ CONTEXT:
     #490 (the tax obligation, (c) tax-exclusive display to consumers); #493 (the licence
     wording); #496 (the notice regime); PRD-M7 (tax on the platform's own fees); #270 (f)
     (`projective_partner`); the open items in LG1's drift table.
+  - One money question Part D lacks (MARKETPLACE_BUILD_PROMPTS.md §0.3, "For counsel"): may a
+    buyer-started refund of a card-paid line land in the wallet? UK consumer rules generally
+    expect a refund to the original payment method unless the buyer agrees otherwise; FBP DB21
+    credits the wallet, and MR3 keeps card refunds operator-only. Put it in E.2.
   - Findings that need counsel (LEGAL_COMPLIANCE_BUILD_PROMPTS.md §0.2): 2 (the assignor's
     signature), 3 (the word "deed"), 6 (US-framed tax documents for a GB platform), 8 (no
     cancellation-right step at checkout).
@@ -366,10 +473,12 @@ PRD-M1's evidence names the brief.
 SAME CHANGE: PRODUCTION_READINESS §Decisions awaiting a human; the decision row.
 ```
 
-§1.2 rows: **PRD-M1** stays ❌, with the evidence "counsel brief written <date> (Part E); awaiting
-counsel". No score changes.
+Readiness rows (§1.1): **PRD-M1** stays ❌, with the evidence "counsel brief written <date> (Part
+E); awaiting counsel". No score changes.
 
 ### LG3 — The maker accepts the deed and the payer the Escrow Terms, once per version (conditional)
+
+> **Status 2026-11-23:** open; runs only on A at §0.4 item 4, after LG2's brief is sent.
 
 Runs only if you choose **A** at §0.4 item 4. It strengthens the evidence LG4 references.
 
@@ -425,10 +534,12 @@ paragraph; PRODUCT_SPEC §Identity, Taxes & Compliance 4 (when the maker accepts
 row.
 ```
 
-§1.2 rows: **PRD-M2**'s evidence gains "the Escrow Terms and the deed at first commit (LG3)". It
-stays ✅. No score changes.
+Readiness rows (§1.1): **PRD-M2**'s evidence gains "the Escrow Terms and the deed at first commit
+(LG3)". It stays ✅. No score changes.
 
 ### LG4 — A signed transfer record on each final release
+
+> **Status 2026-11-23:** open; runs once LG2's brief is sent (not answered).
 
 PRD-M4 → 🟡, MW-56 → 🟡, MW-55 → 🟡.
 
@@ -437,7 +548,8 @@ PROMPT LG4: When a ticket's escrow finally releases, Projective issues a signed 
 naming the files (hashed on the server), the project, the parties and the IP setting
 
 ROLE: Backend engineer (Postgres + a Fresh job + crypto) with one UI page. SQL lane: 00002510,
-00005060 and one enqueue line in 00001240, taken in MONEY §1's serial lane.
+00005060 and one enqueue line in 00001240, taken in the finance SQL lane (FINANCE_BUILD_PROMPTS.md
+§0).
 
 CONTEXT (verified at 197b0d0c; re-check every line):
   - Release is per ticket: finance.fn_release_ticket_escrow (00001200:1341) moves the payout to
@@ -512,9 +624,12 @@ verify address); SYSTEM_ARCHITECTURE §Scheduled jobs and §Environment Variable
 LG1's convention; the decision rows.
 ```
 
-§1.2 rows: **PRD-M4** → 🟡; **MW-56** → 🟡 ("text pending counsel, PRD-M1"); **MW-55** → 🟡.
+Readiness rows (§1.1): **PRD-M4** → 🟡; **MW-56** → 🟡 ("text pending counsel, PRD-M1"); **MW-55** →
+🟡.
 
 ### LG5 — Audit packs
+
+> **Status 2026-11-23:** open; waits for LG4.
 
 PRD-M4 → ✅, MW-55 → ✅.
 
@@ -556,9 +671,11 @@ SAME CHANGE: documentation/database/*; ROUTING.md; SYSTEM_ARCHITECTURE §Schedul
 PRODUCT_SPEC (the rule on who gets which pack); the decision row.
 ```
 
-§1.2 rows: **PRD-M4** → ✅; **MW-55** → ✅.
+Readiness rows (§1.1): **PRD-M4** → ✅; **MW-55** → ✅.
 
 ### LG6 — Seller tax documents and platform reporting
+
+> **Status 2026-11-23:** open; its research runs now, its reader after the stop.
 
 Covers PRD-M5's payout half and MW-57, beside CK4.
 
@@ -609,10 +726,12 @@ SAME CHANGE: PRODUCT_SPEC §Identity, Taxes & Compliance 2 (as ruled; anything n
 so); finance-model §9; documentation/database/finance/*; the decision rows.
 ```
 
-§1.2 rows: **PRD-M5** → 🟡 once CK4 has also landed (each with its switch off); otherwise the row is
-narrowed only. **MW-57** follows the same rule.
+Readiness rows (§1.1): **PRD-M5** → 🟡 once CK4 has also landed (each with its switch off);
+otherwise the row is narrowed only. **MW-57** follows the same rule.
 
 ### LG7 — AML signals and the Safety Hold
+
+> **Status 2026-11-23:** open; runs now, to its stops (IDENTITY X2's included).
 
 PRD-M6 → ✅, MW-58 → ✅. Carries Identity X2's stop.
 
@@ -620,8 +739,8 @@ PRD-M6 → ✅, MW-58 → ✅. Carries Identity X2's stop.
 PROMPT LG7: Record the monitoring signals the AML-ready posture needs from day one, let an
 operator read them, and build the 72-hour Safety Hold behind a switch that stays off
 
-ROLE: Postgres engineer (money). SQL lane: a turn in MONEY §1's serial lane (00001240 withdrawal
-path, 00005001 params, 00002510). Never beside MR8a or MR8b.
+ROLE: Postgres engineer (money). SQL lane: a turn in the finance SQL lane (FINANCE_BUILD_PROMPTS.md
+§0; 00001240 withdrawal path, 00005001 params, 00002510). Never beside MR8a or MR8b.
 
 CONTEXT (verified at 197b0d0c; re-check every line):
   - Ruled, pending counsel (#336 I1; PRODUCT_SPEC §Identity, Taxes & Compliance 3 "Posture"):
@@ -673,9 +792,11 @@ Policy's monitoring clause (LG1's convention; it stays a draft); finance-model (
 dials); documentation/database/*; X2's status in IDENTITY_BUILD_PROMPTS; the decision row.
 ```
 
-§1.2 rows: **PRD-M6** → ✅ (🟡 if step 5 is deferred); **MW-58** → ✅.
+Readiness rows (§1.1): **PRD-M6** → ✅ (🟡 if step 5 is deferred); **MW-58** → ✅.
 
 ### LG8 — Tax on the platform's own fees
+
+> **Status 2026-11-23:** open; waits for MARKETPLACE CK4, which waits for FBP DB21.
 
 PRD-M7 → 🟡.
 
@@ -691,7 +812,8 @@ CONTEXT (verified at 197b0d0c; re-check every line):
     charges, records or invoices tax on them. CK4 taxes the buyer's order only.
   - The fee is "a flat 5%; it never tapers, and no plan buys a lower one" (root CLAUDE.md,
     finance-model.md). The landing's claims gate (#281) holds every figure on / and /features.
-  - CK4's Stripe Tax engine is the calculation to reuse (§2's CK4 delta).
+  - CK4's Stripe Tax engine is the calculation to reuse: CK4 keeps it behind one service function
+    you can call for a fee line (MARKETPLACE_BUILD_PROMPTS.md CK4 step 4).
 
 🧑 + ⚖️ STOP: A (recommended): the fee is tax-inclusive. The 5% stays 5%; where Projective must
 charge tax on it, the tax is inside it, so no payout, preview or claim changes and the
@@ -717,9 +839,11 @@ SAME CHANGE: finance-model.md (the fee's tax treatment, marked "Not switched on"
 PRODUCT_SPEC; documentation/database/finance/*; Zod; the decision row.
 ```
 
-§1.2 rows: **PRD-M7** → 🟡 (✅ when counsel confirms and the switch is on).
+Readiness rows (§1.1): **PRD-M7** → 🟡 (✅ when counsel confirms and the switch is on).
 
 ### LG9 — Close §M (last)
+
+> **Status 2026-11-23:** open; runs last.
 
 ```text
 PROMPT LG9: Re-verify every §M row and the five legal flows against HEAD, re-score, and hand off
@@ -733,10 +857,10 @@ STEPS:
   2. Recompute §M's line and the three tier rows of PRODUCTION_READINESS's Scoreboard and of
      USER_FLOWS's Scoreboard and cluster line; add one §Score history line in each file; bump
      **Last verified**.
-  3. Update this file's §0.1 with the final state, and mark each LG prompt done or open with its
-     reason.
+  3. Update this file's §0: every landed LG prompt sits in §0.0's ledger with its commit, and
+     §0.1 names what each open row still waits for.
 
 ACCEPTANCE: every number recomputes from the rows; no row cites a prompt that did not land.
 ```
 
-§1.2 rows: all §M rows, as found.
+Readiness rows (§1.1): all §M rows, as found.

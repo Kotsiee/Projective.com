@@ -1,242 +1,250 @@
 # Finance Build Prompts — Claude Code Work Orders for the Finance Engine, Stripe Rails & `/wallet`
 
-> **Status: WORK ORDERS, not binding. Refreshed 2026-10-30 against the owner's rulings (Wave 1.2).**
-> A sequenced series of self-contained Claude Code prompts for the finance engine, the Stripe rails,
-> `/wallet` and `/checkout`. Every prompt cites its evidence by finding ID: the IDs of
-> [`FINANCE_AUDIT.md`](FINANCE_AUDIT.md), the one finance audit: FA's `L` `W` `E` `S` `K` `H` `A`
-> `V` `R` `M` `Z` `C` `CO` `D`, as re-verified by FCA, which adds `N1`–`N34`. It cites its ruling as
-> `(Decision #337, ruling X)`, from the OWNER RULINGS on Decision #337 and the ruling table in
-> [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part C. The `X` contradictions and `D-`
-> items are FDD's, in the same file. The never-recorded "Decision #251" is superseded by #337, and
-> F0 is retired (ruling Q0.1).
+> **Status: WORK ORDERS, not binding.** The finance engine, the Stripe rails, `/wallet`, `/checkout`
+> and the money rows of [`PRODUCTION_READINESS.md`](../readiness/PRODUCTION_READINESS.md) §F (row
+> map: §0.7). Evidence: [`FINANCE_AUDIT.md`](FINANCE_AUDIT.md), the one finance audit (FA's `L` `W`
+> `E` `S` `K` `H` `A` `V` `R` `M` `Z` `C` `CO` `D`; FCA's `N` items; FDD's `X` and `D-` items).
+> Ruling: Decision #337's OWNER RULINGS, cited `(Decision #337, ruling X)` (the table is
+> [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part C); the readiness rows add #423, #435
+> and #460–#472.
 >
-> **Done, each re-verified in code on 2026-11-18 at `b7280787` (MONEY_BUILD_PROMPTS MR0):** A12 and
-> CO20 (`660c9658`); DB1's remainder, N1 and N5 (`172f9d66`; N1's cron job,
-> `finance-sweep-card-payments`, is registered by the Wave 1 jobs session in `e18489d4`); DB7 except
-> the per-account promo cap and the refunded and cancelled writers (`24cbab02`; the rest is DB19);
-> SV1's Zod half (`4c9482a2`, `388d9952`; its two CHECKs are DB8's); SV2 (`d4c4a194`); DB10
-> (`f408e708`); SV6 (`d2d7a07e`); SV3 (`fdeb3018`); SV4 (`f691a0bb`); DB11, step 6 included (ruled
-> B, `9d15fcd0`); DB2 (`dd3986e5`); DB4 (`b61486be`); DB12 (`4ff0ede2`); DB5 (`bc35b27b`); DB3, all
-> seven steps (`44382c08`). **Partly done:** UI1 (D6, D11), UI2 (D16), UI6 (step 3's accent,
-> `8b63f2b0`; steps 4–6 and the press scale, `1d8fc3e6`), DB14 (step 1's assignee half, built
-> differently in `660c9658`), and four that Decision #435 (`1d8fc3e6`) built in part: DB8 (step 4's
-> SQL exponent), DB9 (step 1, as `currencyForCountry`), SV5 (step 1's pins; its contract test is not
-> written) and DB18 (absorbed: conversion inside a purchase; the own-wallet Convert is not built).
-> Every other prompt has not started.
+> **Verified against code 2026-11-23 at `f2e25929`.** 20 open, 8 partly done, 23 done or superseded
+> (§0 ledger). Runnable now: DB6, DB14, DB15, DB8, DB9, SV8, DB13, DB20 and DB17 (SQL lane, one at a
+> time); SV5, UI1 and UI3 (app lane).
 >
-> **How to use it:** paste each prompt into its **own fresh session**, after the standard header
-> (§1), in the §0 order. A prompt marked **🧑 DECISION** stops at the named step and puts the
-> options, with a recommendation, to a human before it changes that behaviour; the rest of the
-> prompt runs. Migrations are **edited in place** (root `CLAUDE.md` §1), so every prompt names the
-> category file to edit. Line numbers are as of 2026-10-30: grep before trusting one.
+> **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
+> (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
+
+- Paste each prompt into its **own fresh session**, after the standard header (§1), in the §0.1
+  order. A **🧑 DECISION** stops at its step and puts the options, with a recommendation, to a
+  human; the rest of the prompt runs. **⚖️** marks a rule ruled but pending counsel: build behind a
+  flag that stays off.
+- Migrations are **edited in place** (root `CLAUDE.md` §1), so every prompt names its category file.
+  Line numbers were right when each prompt was written: grep before trusting one.
+- IDs: `DB` (SQL), `SV` (services), `UI` (islands), `E` (end-to-end), `Z1` (docs) and `MR`, the
+  money readiness prompts merged in from `readiness/MONEY_BUILD_PROMPTS.md` on 2026-11-23 with their
+  IDs unchanged (map at the end). The never-recorded "Decision #251" is superseded by #337.
 
 ---
 
 ## 0. Run order, conflicts and open decisions
 
-**Re-verified in code 2026-11-18 at `b7280787` (MONEY_BUILD_PROMPTS MR0):** the header's Done and
-Partly-done sets hold at HEAD, and no other prompt has started. Since `8a3fd595`: DB2, DB4, DB12, DB5
-and DB3 landed (DB3 in `44382c08`, which also touched `00001155`, `00001220` and `00001895`);
-Decision #435 (`1d8fc3e6`) shipped conversion inside purchases and with it the partial DB8, DB9, SV5
-and DB18 steps above; #456 and #457 (`35dfe268`) changed how a bought service and a One-Off fund
-their escrow and rewrote parts of `00001210` and `00000017`. Waits met: the jobs session
-(`e18489d4`), SCH-WP2's interim (`6882e0be`), DB2 (SBP S4's) and DB3 (DB14's, PM-WP4's and
-PM-GH1's); SCH-WP6, PM-WP1, PM-WP4 and PM-GH1 have not started. Stale premises: DB13 step 2's
-`ck_projects_deadline_bonus_format` no longer exists (only a comment at `00001100:298` and the setup
-copy say "pipelines only"); DB14 step 1's assignee half is already refused outright (42501,
-`projects.fn_ticket_immutability_guard`), so its work-status half and step 2 remain; DB8 step 4 is
-half done, because `fn_minor_units_text` (`00001240:261-272`) still hard-codes Stripe's zero-decimal
-list; DB8's "every INSERT writes `held`" no longer holds (`00001200:1098` inserts `reserved`, #430);
-DB8's reason list and DB16's classes lack `fx_conversion` and `fx_spread` (`00001200:69`) and the
-reasons #456 and #457 write; UI2 cites `canDecide` at `:474` (now `WalletHome.island.tsx:523`); and
-UI6's status note lists as open the `scale(0.99)`, `?edit=1` and dropped-params items `1d8fc3e6`
-fixed.
+### 0.0 Done
 
-**Since then:** every 🧑 stop in §0.5 is ruled (DB13 #468, DB17 #471, DB19 #469, DB21 #470), and
-[`readiness/MONEY_BUILD_PROMPTS.md`](../readiness/MONEY_BUILD_PROMPTS.md) now orders what remains
-against PRODUCTION_READINESS §F: DB16 first (its Wave 1), then DB6 → DB14 → DB15 among the UAT rows
-(Wave 2), then DB8 → DB9 → SV8 → DB13 → DB20 → DB19 → DB21 → DB17 (Wave 3). Its §4 gives each
-prompt here a readiness delta (what went stale, and which §F row it closes): paste it with the
-prompt. DB16 still runs before DB8, because its reason classes and its seed rework are what DB8's
-reason CHECK needs; the facts gathered while they queued are the "Input" notes on each entry.
+`Text at` is the commit where the prompt's full text can still be read:
+`git show f2e25929:documentation/architecture/FINANCE_BUILD_PROMPTS.md`, or for an `MR` row
+`git show f2e25929:documentation/readiness/MONEY_BUILD_PROMPTS.md`.
+
+| ID   | What landed                                                                                               | Commit                 | Text at    |
+| :--- | :-------------------------------------------------------------------------------------------------------- | :--------------------- | :--------- |
+| F0   | Superseded: Decision #337's OWNER RULINGS carry FA §4.6's flags (ruling Q0.1 (c)); never run              | — (#337)               | `f2e25929` |
+| DB1  | Deposit rules and pots written through doors only; `update_deposit_rule`; `finance_invariants.sql`        | `660c9658`, `172f9d66` | `f2e25929` |
+| DB2  | Refunds, dispute updates, cancelled payouts and out-of-order disputes ledgered                            | `dd3986e5`             | `f2e25929` |
+| DB3  | Enterprise KYB, inbound-transfer capability, approval expiry, fee fallback, no release in a dispute       | `44382c08`             | `f2e25929` |
+| DB4  | Payout schedules run as withdrawals by their author; the cron route and job                               | `b61486be`             | `f2e25929` |
+| DB5  | Pots are earmarks: doors, allocation on matured income, `finance.pot_movements`                           | `bc35b27b`             | `f2e25929` |
+| DB7  | Checkout integrity: charge assert, atomic promo, key re-check, second tab, `invoiced`                     | `24cbab02`             | `f2e25929` |
+| DB10 | On-account limit and approval threshold per currency (`finance.fn_param_minor`)                           | `f408e708`             | `f2e25929` |
+| DB11 | A product sale pays the seller's Standing-tapered commission; the Agency contract ruled B (#252)          | `9d15fcd0`             | `f2e25929` |
+| DB12 | A non-zero deadline bonus is refused (`ck_escrows_bonus_unfunded`)                                        | `4ff0ede2`             | `f2e25929` |
+| DB16 | Per-currency conservation identity, checked nightly, read on `/admin/ledger`; the seed conserves (#483)   | `85e7d4e4`             | `f2e25929` |
+| DB19 | Order lines written `refunded` / `cancelled`, the order rolls up, one promo redemption per account (#511) | `3041e5ef`             | `f2e25929` |
+| SV1  | Finance row schemas and `finance-tables.contract.test.ts`; its two CHECKs moved to DB8 step 3             | `4c9482a2`, `388d9952` | `f2e25929` |
+| SV2  | The wallet read: resolved scope (303), decidable approvals, per-currency reads, `pdfHref`                 | `d4c4a194`             | `f2e25929` |
+| SV3  | Recurring-rule actions; every automation control locked until its engine runs                             | `fdeb3018`             | `f2e25929` |
+| SV4  | Checkout refuses before Stripe is touched; its tests; the `checkoutPayment` dev axis                      | `f691a0bb`             | `f2e25929` |
+| SV6  | "Wallet covers" counts only the wallet that pays                                                          | `d2d7a07e`             | `f2e25929` |
+| MR0  | The finance work orders refreshed, §F Track cells set, the money decision pack ruled (#466–#472)          | `19697b94`             | `f2e25929` |
+| MR1  | An unclaimed escrow binds no payee on any project kind, so it is refunded, never paid (#474)              | `47f493c6`             | `f2e25929` |
+| MR2  | A brief settles its escrow before it cancels; nothing archives while money is held (#479)                 | `18f0ed13`             | `f2e25929` |
+| MR4  | Money alerts by webhook and email digest, with a dead-man check (#507); OPS5 extended the pipeline        | `322c4dc9`, `c93f6a18` | `f2e25929` |
+| MR6  | A read-only `deno task stripe:preflight` and the SA §Stripe 1.4 go-live runbook (#476)                    | `cb01469d`, `e9e36f8d` | `f2e25929` |
+| MR7  | One counsel brief (`FOUNDER_QUESTIONNAIRE.md` Part D, #473) and the Escrow age reader                     | `14f36cb0`             | `f2e25929` |
 
 ### 0.1 Run order
 
-Two lanes run side by side. The **SQL lane** runs one finance SQL prompt at a time, because nearly
-all of them share `00001240`, `00001210`, `00000017` or `00002510`; a second SQL session may run
-beside it only from another track, on disjoint migration files (`FOUNDER_QUESTIONNAIRE.md` §B.0).
-The **app lane** runs up to three code or UI prompts at once, file-disjoint. P0 items lead both
-lanes. The waves are indicative: inside a wave, §0.2 and §0.3 still decide what may overlap.
+**This is the finance SQL lane.** It was `MONEY_BUILD_PROMPTS.md` §1 until 2026-11-23; the
+MARKETPLACE, PROJECTS, OPERATIONS and LEGAL_COMPLIANCE readiness files point here for it. A money
+prompt from another track takes a turn in it, and this order wins on a conflict.
 
-| Wave | SQL lane (serial)                                                                                  | App lane (parallel, file-disjoint)                                                       |
-| :--- | :------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------- |
-| Done | ✅ DB1 · ✅ DB7 · ✅ DB19 (#511) · ✅ N1 · ✅ N5                                                   | ✅ SV1 Zod half (CHECKs → DB8)                                                           |
-| 1    | ✅ DB10 per-currency thresholds (P0)                                                               | ✅ SV6 wallet covers (P0) · ✅ SV2 wallet honesty (P0) · UI1 styles (partly: D6, D11)    |
-| 2    | ✅ DB11 seller commission (P0)                                                                     | ✅ SV4 checkout service (P0; after SV6) · ✅ SV3 locks and recurring actions (after SV2) |
-| 3    | DB16 conservation identity                                                                         | UI2 island and money-verb tiers (partly: D16; after UI1)                                 |
-| 4    | ✅ DB12 bonus refused → ✅ DB2 webhooks → ✅ DB3 money doors → DB6 dispute freeze → SV8 failed payout | UI6 checkout gates (partly: steps 3–6; after UI2)                                        |
-| 5    | ✅ DB4 payout schedules → ✅ DB5 pots                                                              | UI4 ledger and charts (after UI1) · UI3 rows, pots, locks (after SV3, DB5)               |
-| 6    | DB14 ticket and funding gates (partly: step 1) → DB15 payout-ready gate                            | SV7 seller-side refusals (after DB15)                                                    |
-| 7    | DB13 bonus held → DB20 team splits                                                                 | —                                                                                        |
-| 8    | DB8 currency integrity (partly: step 4) → DB9 settlement and entity currency (partly: step 1) → DB17 FX feed → DB18 conversion (absorbed by #435 inside purchases) | SV5 currency honesty (partly: step 1; after DB9) → UI5 estimates and MoneyView |
-| 9    | DB19 order lifecycle and promo cap → DB21 buyer and provider refunds                               | —                                                                                        |
-| 10   | E3 paid-call contract (after SCH-WP6)                                                              | E1 money lifecycle E2E → E2 visual matrix (after every UI prompt)                        |
-| Last | Z1 docs sweep                                                                                      |                                                                                          |
+Two lanes run side by side. The **SQL lane** runs one finance SQL prompt at a time, because nearly
+all of them share `00001240`, `00001210`, `00001200`, `00000017`, `00002510` or `00005060`; a second
+SQL session may run beside it only from another track, on disjoint migration files
+(`FOUNDER_QUESTIONNAIRE.md` §B.0). The **app lane** runs up to three code or UI prompts at once,
+file-disjoint. Inside a wave, §0.2 and §0.3 still decide what may overlap.
+
+| Wave    | SQL lane (serial)                                                                                                                  | App lane (parallel, file-disjoint)                                                                        |
+| :------ | :--------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| 2 (UAT) | PM **PM-GH1** (F23) → **DB6** (F5) → **DB14** → **DB15** (F6)                                                                      | **SV5** (F20) · **UI1**                                                                                   |
+| ✔       | **UAT checkpoint:** F5, F6, F14, F20 and F23 closed; re-score (MR9 step 1)                                                         |                                                                                                           |
+| 3       | **DB8** → **DB9** (F7, F10) → **SV8** (F11) → **DB13** → **DB20** (F13) → **DB21** → **MR3** (F12) → **DB17** (F21) → **MR5** (F8) | **UI2** → **UI6** · **UI4** (both after UI1) · **UI3** · **SV7** (after DB15) · **UI5** (after SV5, DB17) |
+| 4       | **MR8a → MR8b** (F16), alone: nothing else runs in the SQL lane beside them                                                        | —                                                                                                         |
+| Later   | **DB18** (after its 🧑 and DB17) · **E3** (after SCH-WP6)                                                                          | **E1** (after PRD-K3, the SQL lane through MR3, UI2, UI3, UI5) → **E2** (after every UI prompt)           |
+| Last    | **MR9** re-scores §F → **Z1** sweeps the docs                                                                                      |                                                                                                           |
+
+**SBP S1 → S2 (to its stop) → S3 → S4** (F14, UAT) run in Waves 2–3 as the second SQL session from
+another track: before each starts, check that its FILES are disjoint from the SQL-lane prompt
+running then. S4 never runs beside DB6, DB9, MR3 or MR5 (`00001230` + `stripe-webhook.ts`).
 
 Why this order:
 
-- **P0 first.** C15 (DB10), N3 (DB11), N7 (SV6), V6 and R5 (SV2), CO8 (SV4) and C13 (SV5) are FCA's
-  open P0 items; CO20, A12, N1, N5, CO4 and CO6 are done. C13 needs the one exponent list (DB8), so
-  its lane position is later than its priority.
-- **The conservation identity (DB16) runs early,** as FDD D-5 asks ("ship A with the P0 fixes").
-  Every later money prompt then proves it moved nothing it should not, and adds its own terms.
-- **Automation follows ruling M6's order:** payout schedules (DB4), then pots (DB5, UI3). The Income
-  Smoother stays locked and Planned (SV3).
-- **Disputes are one chain:** DB2 (out-of-order disputes, refunds) → DB3 (no release while a dispute
-  is open) → DB6 (the freeze, ruling M3) → DB21 (product disputes reuse the freeze).
-- **Bonuses follow ruling M7's two steps:** DB12 refuses them now; DB13 holds them with the escrow.
+- **UAT rows lead,** in the order of PRD's UAT critical path: F23 → F5 → F6, with F20 (SV5) and F14
+  (SBP) beside them. DB16 has landed, so every later money prompt proves in its own change that it
+  conserved money.
+- **Disputes are one chain:** DB6 (the freeze, ruling M3) → DB21 (product disputes reuse it) → MR3
+  (card refunds reuse DB21, DB19's line states and `/admin/ledger`).
 - **Currency follows ruling M5:** the CHECKs and the exponent list (DB8), settlement and entity
-  currency (DB9), fresh rates (DB17), then the conversion that needs all three (DB18).
+  currency (DB9), fresh rates (DB17), then the own-wallet conversion, if it is wanted (DB18).
+- **External reconciliation (MR5) runs after DB9 and MR3:** it reuses DB16's terms and DB9's
+  settlement currencies, and it has to recognise MR3's refunds.
+- **The journal runs last and alone:** it touches every money definer.
 
 ### 0.2 Prompts in this file that may not run in parallel
 
-- `00001240`: DB2, DB3, DB4, DB5, DB6, DB8, DB15, DB18, DB21, SV8.
-- `00001210`: DB3, DB9, DB10, DB11, DB13, DB15, DB19.
-- `00000017`: DB4, DB5, DB6, DB8, DB11, DB12, DB13, DB18, DB19, DB21.
-- `00001200`: DB3, DB8, DB10, DB13, DB16, DB17, DB20.
-- `00002510`: DB2, DB3, DB4, DB5, DB10, DB11, DB14, DB16, DB17, DB18, DB21 (SV7 if it adds a read).
-- `00005060`: DB4, DB16, DB17. (DB3 only names its two functions; the jobs session seeded their
-  rows.)
-- `00005001`: DB4, DB8, DB9, DB10, DB13, DB18. `00001830`: DB5, DB18, DB19.
-- `wallet-actions.ts`: SV3, DB4, DB5, DB14, DB18.
-- `CheckoutBackendService.ts`, `live-basket.ts`, `checkout-refusal.ts`, `commerce-*.ts`: SV4, SV5,
-  SV6, SV7, DB19.
-- The wallet stylesheets: UI1 with every UI prompt.
-- `WalletDialogs.tsx`, `WalletHome.island.tsx`: UI2, UI3, UI5, DB18.
+- `00001240`: DB6, DB8, DB15, DB18, DB21, SV8, MR8b.
+- `00001210`: DB9, DB13, DB15, MR8b. `00001200`: DB8, DB13, DB17, DB20, MR8a.
+- `00000017`: DB6, DB8, DB13, DB18, DB21, MR3, MR5, MR8a.
+- `00001230` + `stripe-webhook.ts`: DB6, DB9, MR3, MR5, MR8b.
+- `00002510`: DB14, DB17, DB18, DB21, MR3, MR5 (SV7 if it adds a read).
+- `00005060`: DB17, MR5. `00005001`: DB8, DB9, DB13, DB18. `00001830`: DB18, MR3, MR8a. `00003004`:
+  DB18, MR5, MR8a. `00001150`: DB13, DB14, MR8b.
+- `/admin/ledger` (`features/admin`, `LedgerHealthService`): MR3, MR5 and MR8b each add a section,
+  one at a time.
+- `wallet-actions.ts`: DB14, DB18. The checkout services (`CheckoutBackendService.ts`,
+  `live-basket.ts`, `checkout-refusal.ts`, `commerce-*.ts`): SV5, SV7.
+- The wallet stylesheets: UI1 with every UI prompt. `WalletDialogs.tsx`, `WalletHome.island.tsx`:
+  UI2, UI3, UI5, DB18.
 - `apps/web/features/checkout/**`: UI5, UI6, DB21. Check `git status` for the Decision #243 peers
   before any UI prompt.
 - `packages/ui` and `DESIGN_SYSTEM.md`: SV5, UI1, UI2, UI4, UI5, UI6, DB18. Pull before each edit.
 
 ### 0.3 Hot files shared with other tracks (§B.0)
 
-| Hot file                             | Finance prompts that write it                                                        | Other writers (never at the same time)                                                      |
-| :----------------------------------- | :----------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------ |
-| `00001240` (finance money)           | DB2, DB3, DB4, DB5, DB6, DB8, DB15, DB18, DB21, SV8                                  | PM-WP4                                                                                      |
-| `00005060` (jobs)                    | DB4, DB16, DB17 (DB3's two rows register now that both functions exist)             | the Wave 1 jobs session (first); comms, PM, scheduling and security packages that add a job |
-| `00001155` (sessions)                | DB3 (L9's forfeit path), DB15 (booking backstops)                                    | every SCH work package                                                                      |
-| `00001020` (workspaces)              | DB9 (entity wallet currency), DB10 (a threshold reader)                              | identity rank, archive and seat items; SA G4                                                |
-| `00001060` (erasure)                 | none                                                                                 | identity erasure, SEC G16                                                                   |
-| `00001300` (comms)                   | none (DB4 and SV8 only call `comms.fn_notify`)                                       | SEC L2/L4–L8, CAS messaging                                                                 |
-| `00002510` (grants)                  | DB2, DB3, DB4, DB5, DB10, DB11, DB14, DB16, DB17, DB18, DB21 (SV7 if it adds a read) | many                                                                                        |
-| `stripe-webhook.ts` + `00001230`     | DB2, DB6, DB9                                                                        | SBP S4                                                                                      |
-| `live-wallet.ts` / `wallet-scope.ts` | SV2, SV3, SV5, SV8, DB4, DB5, DB18                                                   | RED WP2                                                                                     |
-| `features/devtools` + `dev-seam.ts`  | SV4, UI3                                                                             | SBP S4, S6; IDG F6                                                                          |
+| Hot file                             | Finance prompts that write it                            | Other writers (never at the same time)                             |
+| :----------------------------------- | :------------------------------------------------------- | :----------------------------------------------------------------- |
+| `00001240` (finance money)           | DB6, DB8, DB15, DB18, DB21, SV8, MR8b                    | PM-WP4, LEGAL_COMPLIANCE LG7                                       |
+| `00005060` (jobs)                    | DB17, MR5                                                | PM-GH1; comms, PM, scheduling and security packages that add a job |
+| `00001150` (stage funding)           | DB13, DB14, MR8b                                         | PM-GH1 and every P-track SQL step on it                            |
+| `00001155` (sessions)                | DB15 (booking backstops), MR8b                           | every SCH work package                                             |
+| `00001020` (workspaces)              | DB9 (entity wallet currency)                             | identity rank, archive and seat items; SA G4                       |
+| `00002510` (grants)                  | DB14, DB17, DB18, DB21, MR3, MR5 (SV7 if it adds a read) | many                                                               |
+| `stripe-webhook.ts` + `00001230`     | DB6, DB9, MR3, MR5, MR8b                                 | SBP S4                                                             |
+| `live-wallet.ts` / `wallet-scope.ts` | SV5, SV8, DB18                                           | RED WP2                                                            |
+| `features/devtools` + `dev-seam.ts`  | UI3                                                      | SBP S4, S6; IDG F6                                                 |
 
 ### 0.4 Cross-track waits
 
-- **SCH-WP6** (paid consultations) waits for SV4 (B.3) and never runs beside DB11, DB13 or DB19,
-  which also edit `place_wallet_order` and the escrow holds. **E3** waits for SCH-WP2's interim,
-  SCH-WP6 and DB15.
-- **DB15** waits for SCH-WP2's interim to merge and runs while no SCH work package is running
-  (`00001155`, `00001510`). **DB3** needs no SCH package running either (`00001155`).
-- **DB3, DB4, DB16 and DB17** wait for the Wave 1 jobs session (`e18489d4`) to merge. DB4, DB16 and
-  DB17 then each own `00005060` only while they run. DB3 never edits it: the jobs session seeds
-  `finance-expire-spend-approvals` and `finance-sweep-idempotency-keys` dormant, and each registers
-  on the first reset after DB3's `finance.fn_expire_spend_approvals` /
-  `finance.fn_sweep_idempotency_keys` exists (matched by name).
-- **PM-WP4** (the Fair Exit floor, the ticket-level Fair Exit, removal refunds) waits for DB3 and
-  DB6 (B.3). DB13 and DB20 never run beside it: all three edit `00001200`'s release paths.
-- **PM's ghosting auto-approve** (FDD D-9 (a), `PM_BUILD_PROMPTS.md`) releases through
-  `fn_release_ticket_escrow`, so it lands after DB3 (no release while a dispute is open), and its
-  bonus is judged as DB13 rules.
-- **DB14** runs while no P-track SQL step edits `00001110`, `00001150` or `00001850`. **DB12 and
-  DB13** change the project setup copy (`apps/web/features/projects/components/setup/*`): tell the P
+- **SCH-WP6** (paid consultations) never runs beside DB13, which also edits `place_wallet_order` and
+  the escrow holds. **E3** waits for SCH-WP6 and DB15.
+- **DB15** runs while no SCH work package is running (`00001155`, `00001510`).
+- **PM-WP4** (the Fair Exit floor, the ticket-level Fair Exit, removal refunds) waits for DB6 (B.3).
+  DB13 and DB20 never run beside it: all three edit `00001200`'s release paths.
+- **PM-GH1** (the ghosting auto-approve, FDD D-9 (a)) is `PM_BUILD_PROMPTS.md`'s; it takes Wave 2's
+  first SQL slot here and judges a bonus as DB13 rules.
+- **DB14** runs while no P-track SQL step edits `00001110`, `00001150` or `00001850`. **DB13**
+  changes the project setup copy (`apps/web/features/projects/components/setup/*`): tell the P
   track.
-- **SBP S4** waits for DB2; DB6 and DB9 never run beside S4 (`stripe-webhook.ts`, `00001230`).
-- **RED WP2 / WP11** (the wallet read path, SQL aggregates) wait for SV2 and SV5. **RED WP4**
-  (keyboard on money paths) waits for UI2, UI3 and UI5. **RED WP7** (the money sweep and its lint
-  ban) waits for UI5 (and SBP S5).
-- **Identity:** MFA's AAL2 step-up on withdrawals and payout-account changes waits for the finance
-  SQL lane (`begin_payout`, `record_payout_account`), and so does IW-M13. DB9's sign-up suggestion
-  edits the identity track's wizard files (`apps/web/features/auth/core/*`): coordinate with
+- **SBP S4** never runs beside DB6, DB9, MR3 or MR5 (`stripe-webhook.ts`, `00001230`).
+- **RED WP2 / WP11** (the wallet read path, SQL aggregates) wait for SV5. **RED WP4** (keyboard on
+  money paths) waits for UI2, UI3 and UI5. **RED WP7** (the money sweep and its lint ban) waits for
+  UI5 (and SBP S5).
+- **Marketplace:** CK4 (checkout tax, #490) and SC7 (#493) wait for DB21.
+- **LEGAL_COMPLIANCE LG7** edits `00001240`'s withdrawal path in this lane, never beside MR8a or
+  MR8b.
+- **Identity:** MFA's AAL2 step-up on withdrawals and payout-account changes, and IW-M13, wait for
+  the finance SQL lane (`begin_payout`, `record_payout_account`). DB9's sign-up suggestion edits the
+  identity track's wizard files (`apps/web/features/auth/core/*`): coordinate with
   `IDENTITY_BUILD_PROMPTS.md`.
-- **Comms:** DB4's pause notice and SV8's fan-out use `comms.fn_notify` as it stands; a catalogue
-  row they add goes in `00005010`.
+- **Comms:** SV8's fan-out uses `comms.fn_notify` as it stands; a catalogue row it adds goes in
+  `00005010`.
 
 ### 0.5 Open decisions
 
 **🧑 stops in this file.** Each prompt runs up to its stop.
 
-| Prompt      | Question                                                                                    | Recommendation                                                                                            |
-| :---------- | :------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------- |
-| DB11 step 6 | Which fee an Agency's contract rate applies to: the new conflict with #187, flagged on #252 | B: an Agency contract covers its product-sale commission (and its payer fee when it buys); #187 unchanged |
-| DB13        | What "met" means for a deadline bonus, and against which deadline                           | **Ruled #468 (2026-11-18): A.** Per escrow, the ticket's due date; met when the work later approved was sent by it. #457's "no bonus" on a bought One-Off or Task was interim: after DB13 a buyer may add one |
-| DB17        | The daily FX provider (it must quote all 12 display currencies, NGN and AED included)       | **Ruled #471 (2026-11-18): A.** One commercial reference-rate API that covers all 12; the vendor and its plan are still the owner's |
-| DB18        | The conversion margin's value (Decision #337, ruling M5 (d))                                | **Ruled by Decision #435 (C):** `fx_spread_bp` = `{"default": 150}`, a per-currency map, seeded but switched off (`fx_checkout_enabled`) until counsel answers (d) below |
-| DB19        | What `cancelled` means beside `refunded`                                                    | **Ruled #469 (2026-11-18): A.** Refunded in full before any delivery began |
-| DB21        | A product dispute raised after the sale has cleared                                         | **Ruled #470 (2026-11-18): A.** Allowed only while the sale is still clearing |
-| DB16 step 1 | How the nightly identity treats the simulator's `simulated_*` rows, which fit no class      | Ruled 2026-11-12 (#423 (A)): no class, so a simulated movement shows as an imbalance                      |
-| DB9 step 3  | What settles: Stripe's GB country spec cannot hold AED, INR or NGN (a new conflict)         | Ruled 2026-11-12 (#423 (B)): the nine a GB platform settles; AED, INR and NGN are display-only            |
+| Prompt | Question                                                                                                                                                                    | Recommendation                                     |
+| :----- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------- |
+| DB18   | Whether to offer a free-standing own-wallet Convert at all: #435 built conversion only inside a purchase the payer confirms, and ruling M5 (c) asked for the own-wallet one | None yet: counsel's answer to #435 (d) comes first |
 
-**⚖️ ruled, pending counsel** (build behind a flag that stays off; never switch it on):
+**Ruled, and written into their prompts as steps:** DB9 step 3 (#423 (B)), DB13 (#468), DB17 (#471;
+the vendor is still the owner's pick), DB18's margin (#435 (C)), DB21 (#470), MR3 (#464), MR5 (#460)
+and MR8a (#463).
 
-- **M2's safeguarding question**, how long escrow may sit in the platform balance under Separate
-  Charges & Transfers: open with Stripe and counsel, with no owner position. Nothing here builds on
-  it.
-- **M9**, a failed bank payout stays in the connected account's Stripe balance: that is how it is
-  built (#202 (a)). SV8 only tells the right people and changes no money path, so it needs no flag.
+**⚖️ ruled, pending counsel** (build behind a flag that stays off; never switch it on). One brief
+holds all three: `FOUNDER_QUESTIONNAIRE.md` Part D (#473, MR7).
 
-**Still open from Wave 1, not this track's:** whether `project_stages.create_category` stays as a
-label (#338 P4, PM) and Agency and Enterprise storage (#252 S2, SBP S2).
+- **M2's safeguarding question:** how long escrow may sit in the platform balance under Separate
+  Charges & Transfers (PRD-F15). Nothing here builds on it.
+- **M9:** a failed bank payout stays in the connected account's Stripe balance, as built (#202 (a)).
+  SV8 only tells the right people and changes no money path, so it needs no flag.
+- **#435 (d):** whether converting a held balance is a regulated service. `fx_checkout_enabled`
+  stays off (PRD-F18), and DB18 waits.
 
-**New contradictions and questions** found while writing this file. They are listed here, not
-logged; the coordinator logs them.
-
-- (a) **Deadline bonus.** `PRODUCT_SPEC.md` (One-offs; Pipelines "the same") pays it "only if the
-  final stage is approved before the soft deadline"; `finance-model.md` §13 pays it "for delivery by
-  a stage's deadline", per stage. Both were written in Wave 1.1 from ruling M7, which does not say
-  what "met" means. → DB13's stop. **Ruled #468** (A), which also rules a new contradiction:
-  #457's "no bonus" on a bought One-Off or Task was interim.
-- (b) **Agency contracts.** `finance-model.md` §16.4 lets an Agency hold a
-  `finance.negotiated_rates` contract, but that table's `subject_type` CHECK allows only `business`
-  and `enterprise`. Part of #252's open flag. → DB11's stop.
-- (c) **Refunds after clearing.** Ruling M8 recovers a refunded digital product from the seller's
-  pending row (per M3), and M3 never claws back cleared money, so a refund after the 7-day window is
-  unruled. → DB21's stop. **Ruled #470** (A: only while the sale is still clearing).
-- (d) **Conversion and regulation.** Ruling M5 (c) converts held client balances between currencies.
-  That may be a regulated currency-exchange service: counsel should confirm before the margin is set
-  (DB18). A question, not a conflict between docs.
-- (e) **Stale, not a conflict:** `DESIGN_SYSTEM.md` §B.8 still lists #157 flag (j) as open, and F.3
-  describes the pre-#331 hero pills. Ruling E3 D-13 settles both; UI2 updates them.
+**Open, and not this track's:** whether `project_stages.create_category` stays a label (#338 P4,
+PM); Agency and Enterprise storage (#252 S2, SBP S2); and #472's UAT switch-off of the business plan
+gates (SBP S1, back on in S4).
 
 ### 0.6 Covered elsewhere, or Planned
 
-- **N2:** the interim switch-off and the money path are `SCHEDULING_BUILD_PROMPTS.md` SCH-WP2
-  (interim) and SCH-WP6 (Decision #343, ruling C1). E3 here checks FDD D-2's finance riders once
-  they merge.
-- **N16:** the 14-day ghosting auto-approve (FDD D-9 (a), ruling P3: Build) is
-  `PM_BUILD_PROMPTS.md`'s.
+- **N2:** the paid-call money path is `SCHEDULING_BUILD_PROMPTS.md` SCH-WP6 (Decision #343, ruling
+  C1; SCH-WP2's interim switch-off landed in `6882e0be`). E3 checks FDD D-2's finance riders once it
+  merges.
+- **N16:** the 14-day ghosting auto-approve (FDD D-9 (a), ruling P3: Build) is `PM_BUILD_PROMPTS.md`
+  PM-GH1's.
 - **FDD D-9 (b):** the Fair Exit floor (#338 P1) and the ticket-level Fair Exit (#338 P2 (a)) are
   PM-WP4's.
 - **FDD D-1, D-4** (#343 C2): the review-window name and the reschedule lockout are the scheduling
   track's.
 - **M1's `/pricing` copy** (#252 (l)) is `SUBSCRIPTIONS_BUILD_PROMPTS.md`'s. **#341 E2's lint ban**
-  on `formatMoney` / `Intl.NumberFormat` is `OPTIMIZATION_BUILD_PROMPTS.md`'s (RED WP7). **The
-  abandoned-basket nudge** (FA (t)) is MARKETPLACE_BUILD_PROMPTS CK5's, a comms emitter (built,
-  Decision #492).
-- **X4 / N31:** the root `CLAUDE.md` persona fix is the owner's edit (the root `CLAUDE.md` edit
-  `f1f10e31`). No prompt here touches a guardrail file.
+  on `formatMoney` / `Intl.NumberFormat` is `OPTIMIZATION_BUILD_PROMPTS.md`'s (RED WP7).
+- **Tax computation (A9)** (#490): Stripe Tax at checkout and on invoices, collected by the platform
+  on digital products only and added on top of the price, behind `tax_collection_enabled` (off until
+  counsel), as `readiness/MARKETPLACE_BUILD_PROMPTS.md` CK4, after DB21.
+- **X4 / N31:** the root `CLAUDE.md` persona fix is the owner's edit (`f1f10e31`). No prompt here
+  touches a guardrail file.
 - **Planned, no prompt:** the Income Smoother engine (ruling M6: a `PRODUCT_SPEC.md` entry first),
-  instant payouts and maintenance cycles (ruling P3), the Stripe-balance reconciliation (ruling M2
-  B; FA L6) and the wallet-plus-card split payment (CO17).
-- **Tax computation (A9) left "Planned"** (#490, owner rulings 2026-11-18): Stripe Tax at checkout
-  and on invoices, collected by the platform on digital products only and added on top of the
-  price, behind `tax_collection_enabled` (off until counsel), as
-  `readiness/MARKETPLACE_BUILD_PROMPTS.md` CK4, after DB21.
-- **The shadow double-entry journal (ruling M2 B) left "Planned"** (#463, owner rulings A · A,
-  2026-11-18): the public launch is its trigger, so it is built before PROD, and the money doors
-  write it in each movement's own transaction, as `readiness/MONEY_BUILD_PROMPTS.md` MR8a → MR8b,
-  once DB16 and MR5 have landed.
+  instant payouts and maintenance cycles (ruling P3), and the wallet-plus-card split payment (CO17).
+  The Stripe-balance reconciliation (FA L6) and the shadow journal (ruling M2 B) have left Planned:
+  MR5 (#460) and MR8a → MR8b (#463).
+
+### 0.7 PRODUCTION_READINESS §F row map
+
+**The flip rule.** A prompt that closes a row flips it in the SAME change (status, and evidence
+naming the commit or decision), recomputes both scoreboards and adds one §Score history line (§1's
+Readiness rules). A row stays 🟡 while a hosted or human step is left, named in its evidence (#507
+(E)(3)).
+
+| Row       | Crit · Gate             | Now | Closed by                                                               | Stops                           |
+| :-------- | :---------------------- | :-: | :---------------------------------------------------------------------- | :------------------------------ |
+| PRD-F1–F4 | Critical/High · MVP–UAT | ✅  | —                                                                       | —                               |
+| PRD-F5    | Critical · UAT          | 🟡  | **DB6** (the freeze and the payee clawback)                             | —                               |
+| PRD-F6    | High · UAT              | 🟡  | **DB14** (the remainder) → **DB15**                                     | —                               |
+| PRD-F7    | High · PROD             | 🟡  | **DB8 → DB9** (DB16 done, #483)                                         | ruled (#423)                    |
+| PRD-F8    | Critical · PROD         | ❌  | **MR5** (after DB9, MR3)                                                | ruled (#460)                    |
+| PRD-F9    | High · PROD             | 🟡  | No prompt: a hosted send on both channels (DB16 done, MR4 done; PRD-G6) | ruled (#507 (E)(3))             |
+| PRD-F10   | High · PROD             | ❌  | **DB8 step 2** (N24)                                                    | —                               |
+| PRD-F11   | High · PROD             | ❌  | **SV8**                                                                 | ⚖️ M9 as built (no flag needed) |
+| PRD-F12   | High · PROD             | ❌  | **DB21** + **MR3** (DB19 done, #511)                                    | ruled (#470, #464)              |
+| PRD-F13   | Normal · PROD           | ❌  | **DB13 → DB20**                                                         | ruled (#468)                    |
+| PRD-F14   | High · UAT              | ❌  | SBP **S1 → S2 → S3 → S4**                                               | ruled (#252 (f); #472)          |
+| PRD-F15   | Critical · PROD         | ❌  | No prompt: counsel (MR7 done wrote the brief, #473)                     | ⚖️ counsel + Stripe             |
+| PRD-F16   | High · PROD             | ❌  | **MR8a → MR8b**                                                         | ruled (#463)                    |
+| PRD-F17   | Critical · PROD         | 🟡  | No prompt: a human's live run of MR6's preflight (MR6 done, #476)       | human Dashboard acts            |
+| PRD-F18   | ⏸                       |  ⏸  | not scored (rides DB17 + counsel #435 (d))                              | —                               |
+| PRD-F19   | ⏸                       |  ⏸  | not scored (#343)                                                       | —                               |
+| PRD-F20   | High · UAT              | ❌  | **SV5 → UI5**                                                           | —                               |
+| PRD-F21   | High · PROD             | ❌  | **DB17 → UI5**                                                          | ruled (#471)                    |
+| PRD-F22   | Critical · UAT          | ✅  | MR2 done (#479)                                                         | —                               |
+| PRD-F23   | Critical · UAT          | ❌  | PM **PM-GH1** (PM-WP1 done, `07d853f6`)                                 | —                               |
+| PRD-F24   | Critical · UAT          | ✅  | MR1 done (#474)                                                         | —                               |
+| PRD-F25   | High · UAT              | ✅  | #522 (quote evidence)                                                   | —                               |
+
+**What no prompt here can close.** PRD-F15 needs counsel and Stripe; PRD-F17's live half is a
+human's run of MR6's preflight on the production account; PRD-F9's hosted send needs
+`OPS_CRON_SECRET` in the hosted Vault and the two alert targets set. Hosted dispatch of every job
+these prompts add (`finance-fx-daily`, `finance-stripe-reconcile`, PM-GH1's sweep) needs its bearer
+and `CRON_APP_URL` in the hosted Vault: PRD-G6, outside §F. PRD-F18 and F19 are ⏸ by decision (#435,
+#343) and are not scored.
 
 ---
 
@@ -254,18 +262,20 @@ Before writing code:
      packages/ui/CLAUDE.md for UI), then documentation/reference/guardrails.md and
      documentation/reference/pr-checklist.md.
   2. Read the evidence your prompt cites: documentation/architecture/FINANCE_AUDIT.md
-     (FCA: the re-verified FA IDs and N1-N34), FINANCE_AUDIT.md (FA) and
+     (FCA: the re-verified FA IDs and the N items), FINANCE_AUDIT.md (FA) and
      FINANCE_AUDIT.md (FDD: the X and D- items).
   3. Read the rulings: Decision #337's OWNER RULINGS (grep -n '^| 337 |'
      documentation/reference/decisions/decisions-122-126.md) and the ruling table in
      documentation/architecture/FOUNDER_QUESTIONNAIRE.md Part C. Then grep
      documentation/reference/decisions/README.md for the surface you touch and read what it names:
      at minimum #10, #122-#126, #152, #157, #186-#191, #196, #200, #202, #203, #211, #212, #234,
-     #239, #240, #243, #247, #252, #337, #338, #341 and #343.
+     #239, #240, #243, #247, #252, #337, #338, #341, #343, #423, #435, #460-#472, #483, #497,
+     #507 and #511.
   4. Read documentation/business/finance-model.md, the PRODUCT_SPEC.md section you touch and
      documentation/database/finance/{Tables,Functions,Policies}.md for the objects you change.
   5. Check documentation/architecture/FINANCE_BUILD_PROMPTS.md §0: if another session is writing
-     one of your files, wait.
+     one of your files, wait. Re-verify every premise and line number your prompt cites against
+     HEAD; a premise that no longer holds goes in your final message, never silently worked around.
 
 Hard rules (merge gates; reject your own diff if any fails):
   Rulings
@@ -281,10 +291,19 @@ Hard rules (merge gates; reject your own diff if any fails):
   - Every webhook effect claims finance.idempotency_keys ('stripe:<evt_id>') INSIDE the same SQL
     transaction as the effect (fn_claim_stripe_event). Replays must be no-ops.
   - Never drop or retype columns/FKs of escrows, wallets or stages without asking me.
-    finance.escrows.fx_* stay, marked reserved (Decision #337, ruling Q0.2 (d)).
-  - supabase/probes/finance_invariants.sql stays green. Once DB16 lands, so does
-    supabase/probes/conservation_identity.sql, and a prompt that adds a money flow adds its terms
-    to finance.v_conservation_identity in the same change.
+    finance.escrows.fx_* stay (Decision #337, ruling Q0.2 (d)); since #435 a converted purchase
+    writes them.
+  - supabase/probes/finance_invariants.sql and supabase/probes/conservation_identity.sql stay
+    green. A prompt that adds a money flow adds its terms to finance.v_conservation_identity in the
+    same change.
+  - Every user-initiated money write a finance service makes passes
+    packages/backend/services/finance/money-gate.ts first (FINANCE_BACKEND_LIVE, #497);
+    money-gate.gate.test.ts fails on a door called around it.
+  Stripe
+  - Never use a live key. Never change anything in the Stripe Dashboard, and never create, update
+    or delete a webhook endpoint, event destination, account setting or object on any Stripe
+    account: a human does all of these. Read-only calls with the .env.local TEST key only where
+    your prompt says so. Use the stripe:stripe-docs skill for any Stripe API fact, and cite it.
   SSOT & architecture
   - Migrations are consolidated and EDITED IN PLACE (supabase/migrations/vvvvtooo_type_purpose.sql).
     Never append ALTER TABLE ADD COLUMN / ALTER TYPE ADD VALUE patches or a new "fix" file. Each
@@ -341,414 +360,46 @@ Hard rules (merge gates; reject your own diff if any fails):
   - A NEW contradiction between source docs: do not pick a side. Add a decision row (the newest
     documentation/reference/decisions/decisions-*.md + a README index line; re-check the index for
     a number collision right before you write) and ask me.
+  Readiness
+  - This work closes or narrows rows of documentation/readiness/PRODUCTION_READINESS.md §F (this
+    file's §0.7) and the documentation/readiness/USER_FLOWS.md rows your prompt names. In the SAME
+    change: flip each row you close (status + evidence naming your commit or decision), recompute
+    BOTH scoreboards (tier table and area table) with the file's formula, add one §Score history
+    line, and update the USER_FLOWS rows and their scoreboard. Use 🟡 while a hosted or human step
+    is left, and name it (#507 (E)(3)). Never flip a row on a test you did not run.
 
 Verification: reproduce the defect first, then fix. A SQL probe lives in supabase/probes/: it sets
 \set ON_ERROR_STOP on, asserts through a pg_temp helper that raises 'PROBE FAIL: …' and ends in
 ROLLBACK; only a concurrency probe commits, gated on :{?disposable}. SQL sessions: at most 2 at once
-on the one local DB, on disjoint migration files; announce every `deno task db:reset` to the other
-sessions before you run it; run probes with `deno task test:probes` (a name filters them) and
-finish with your own clean `deno task test:probes:fresh`. Then `deno task check`, `deno task lint`,
-`deno task test:unit`, and `deno fmt` on the files you touched only (never a directory). Four
-theme-engine.test.ts failures are pre-existing (Decision #96(a)). UI prompts: `deno task dev`, the
-seeded personas (documentation/database/Seed.md), and screenshots at 1440, 900 and 390 px in light,
-dark, data-contrast="high" and data-motion="reduced".
-Commit on the branch you were given with a clear message; do not open a PR unless I ask.
+on the one local DB, on disjoint migration files; `deno task db:reset` is standing-approved
+(root CLAUDE.md), but announce every reset to the other sessions before you run it; run probes
+with `deno task test:probes` (a name filters them) and finish with your own clean
+`deno task test:probes:fresh`. Then `deno task check`, `deno task lint`, `deno task test:unit`, and
+`deno fmt` on the files you touched only (never a directory). Four theme-engine.test.ts failures
+are pre-existing (Decision #96(a)). UI prompts: `deno task dev`, the seeded personas
+(documentation/database/Seed.md), and screenshots at 1440, 900 and 390 px in light, dark,
+data-contrast="high" and data-motion="reduced".
+Concurrent sessions share this tree: never git stash, never switch branch, stage only your own
+hunks, and verify in a clean worktree before you commit. Commit on the branch you were given with a
+clear message; do not open a PR unless I ask. Finish with: what you built; the rows you flipped
+(old → new); every probe and test you ran, with its result; and every 🧑 question still open.
+
+When you finish, do the closing duty (documentation/reference/build-prompts.md §2) in the same
+commit as the work:
+  - In documentation/architecture/FINANCE_BUILD_PROMPTS.md: a done prompt leaves the file. Delete
+    its section and add its row to §0's Done ledger (ID · what landed · commit · text at
+    <commit>^). A partly done prompt keeps only its open steps, with their numbers unchanged, under
+    one rewritten Status line. A ruled 🧑 stop becomes the ruled step, with its decision number.
+  - Treat any step you built for another prompt the same way, in the file that holds it.
+  - Run git grep -n "<ID>" documentation/ and update every place that still calls it open: the
+    PRODUCTION_READINESS / USER_FLOWS Track cells, the audit's Status column, other prompts' waits,
+    and this file's row in documentation/reference/build-prompts.md §3.
+  - If the file has no prompts left, delete it, log it in build-prompts.md §4 and repoint its links.
 ```
-
----
-
-## 2. Phase 0 — Rulings
-
-### F0 — Superseded by Decision #337's OWNER RULINGS (ruling Q0.1 (c))
-
-F0 would have recorded FA §4.6's flags as "Decision #251". That number went to Teams W1. Decision
-#337 carries the flags, and the owner ruled them on 2026-10-30; Wave 1.1 applied the factual doc
-halves (ruling Q0.4). **Do not run F0.** Where each flag went:
-
-| FA flag                                        | Now                                                                      | Built by                  |
-| :--------------------------------------------- | :----------------------------------------------------------------------- | :------------------------ |
-| (a) deposit-rule and pot RLS                   | FCA A12, A4 (P0, no ruling)                                              | ✅ `660c9658`, `172f9d66` |
-| (b) `/wallet/create`                           | FDD X19, factual                                                         | ✅ Wave 1.1               |
-| (c) dispute freeze and clawback                | D-6 = ruling M3                                                          | DB6, DB21                 |
-| (d) Stripe key storage                         | factual                                                                  | ✅ Wave 1.1               |
-| (e) earning-gate breadth                       | D-7 = ruling M4                                                          | DB15, SV7                 |
-| (f) splits at payout                           | ruling M10 (a)                                                           | DB20                      |
-| (g) button tiers                               | D-13 = ruling E3 D-13; Save card and Approve stay tier 3 (DESIGN_SYSTEM) | UI2, UI6                  |
-| (h) no `/inspect` for finance documents        | ruling E3 FA (h)                                                         | UI4                       |
-| (i) Express-only; the fee account; SA's claims | FDD X13, X6, X14, factual                                                | ✅ Wave 1.1               |
-| (j) the Income Smoother                        | D-10 = ruling M6                                                         | SV3 (locked; Planned)     |
-| (k) the stale DESIGN_SYSTEM cite               | factual, not yet applied (`DESIGN_SYSTEM.md:1944`)                       | UI1                       |
-| (l) the reserved-funds colour                  | ruling E3 FA (l): keep the aurora violet                                 | UI1                       |
-| (m) platform settlement currency               | D-8 (a) = ruling M5 (a)                                                  | DB9                       |
-| (n) the default currency                       | D-8 (b) = ruling M5 (b)                                                  | DB9                       |
-| (o) own-wallet conversion                      | D-8 (c), (d) = rulings M5 (c), (d)                                       | DB18                      |
-| (p) per-user promo caps                        | D-12 = ruling M8                                                         | DB19                      |
-| (q) the product-sale fee rate                  | D-3 = ruling M1                                                          | DB11                      |
-| (r) refunds and cancellations                  | D-12 = ruling M8                                                         | DB19, DB21                |
-| (s) the FX docs                                | factual (the doc half ✅ Wave 1.1)                                       | DB17 (the seed comment)   |
-| (t) comments that code must make true          | CO6 ✅ (DB7); CO13 → DB19; CO15 → SV4                                    | —                         |
 
 ---
 
 ## 3. Phase 1 — Database RPCs, ledger gaps & webhook hardening
-
-### DB1 — ✅ Done: deposit rules and pots are written through doors only
-
-> **Status 2026-11-12:** Done, re-verified in code: `finance.wallet_pots` keeps only its SELECT
-> policy (`00002013`), `finance.update_deposit_rule` is in `00001240`, and the three probes exist.
-
-Shipped. A12 landed in `660c9658`: `finance.deposit_rules` is SELECT-only for clients (probe
-`deposit_rule_authority.sql`). `172f9d66` added the rest. `finance.wallet_pots` is SELECT-only
-(`00002013`, `00002520`; probe `wallet_pot_authority.sql`). `finance.update_deposit_rule` pauses,
-resumes, re-prices and archives a rule, re-stamping `created_by` on a re-price or a resume
-(`00001240`; `archived_at` on `00000017`; `trg_deposit_rules_immutable` in `00001830`; grants in
-`00002510`; probe `deposit_rule_authority.sql` §6–12). `supabase/probes/finance_invariants.sql`
-asserts three invariants: balance = ledger = newest `balance_after`; Σ pots ≤ balance; no pending or
-on-hold release already credited. `388d9952` fixed the `DepositRuleSchema` contract. Still open from
-DB1's scope: A13's service and UI halves (SV3, UI3). **Do not re-run this prompt.**
-
-### DB2 — Webhook coverage: refunds, dispute updates, cancelled payouts, out-of-order disputes
-
-> **Status 2026-11-12:** Done (H3's money events, H4, E3, N30's PBS half), awaiting the
-> coordinator's re-verification. `finance.record_charge_refunded` and
-> `finance.record_dispute_updated` (`00001230`, sharing `fn_open_chargeback`);
-> `record_dispute_closed` records a case it beat and survives the thaw collision;
-> `record_bank_payout` takes `canceled` (`00001240`); columns on `chargebacks`, `inbound_payments`
-> and the `bank_status` CHECK (`00000017`); probe `stripe_event_order.sql`. Built differently from
-> the text below: `record_charge_refunded` also takes `p_currency` and `p_livemode` (the sibling
-> doors' guard), and `payout.canceled` is its own `bank_status` value. Not built, no money moves:
-> `transfer.updated`, `identity.verification_session.processing`,
-> `v2.core.account[requirements].updated`.
-
-```text
-PROMPT DB2: Ledger every Stripe money event, in any delivery order
-
-ROLE: Payments engineer (Postgres + Stripe).
-
-CONTEXT: FA H3, H4 and E3, all still open (FCA §2.2): charge.refunded, charge.dispute.updated,
-charge.dispute.funds_withdrawn / funds_reinstated and payout.canceled are unhandled; a dispute
-closed before it is created strands the case; a thaw can collide with uq_escrows_ticket_base_held.
-No ruling is needed. DB6 (Decision #337, ruling M3) builds on step 3. A connected account's
-payout.canceled is a bank outcome: under ruling M9 (as built, #202 (a)) it moves nothing.
-
-FILES:
-  - supabase/migrations/00001230_functions_finance_stripe.sql (record_dispute_opened :1659; new
-    record_dispute_updated and record_charge_refunded)
-  - supabase/migrations/00001240_functions_finance_money_movement.sql (record_dispute_closed :37
-    and its thaw; record_bank_payout for payout.canceled)
-  - supabase/migrations/00000004_enums_domains.sql (a chargeback status, only if none fits)
-  - supabase/migrations/00002510_permissions_function_grants.sql (the new doors: service_role only)
-  - packages/types/finance/payments.ts (HANDLED_STRIPE_EVENTS; BankPayoutStatus if it gains
-    'canceled'), billing.ts (a chargeback status, if one is added)
-  - packages/backend/services/finance/stripe-webhook.ts (planStripeEvent) + stripe-webhook.test.ts;
-    PaymentBackendService.ts (dispatch; the stale card-path comment at :366-368, N30)
-  - supabase/probes/stripe_event_order.sql (new)
-  - documentation/database/finance/Functions.md; SYSTEM_ARCHITECTURE.md's webhook section links to
-    HANDLED_STRIPE_EVENTS instead of restating the list
-
-STEPS:
-  1. charge.refunded → finance.record_charge_refunded(p_event_id, p_payment_intent,
-     p_amount_refunded, p_refund_id), claiming 'stripe:<evt>' in the same transaction. The delta is
-     amount_refunded minus what is already ledgered for that intent, so partial refunds and replays
-     are exact. Debit the wallet the payment credited (fn_wallet_debit). If that would go negative,
-     record the shortfall on the payment row (the chargeback unrecovered_cents pattern) and an
-     ops.log_entries row. Never fail the webhook.
-  2. charge.dispute.updated → record_dispute_updated: chargebacks.status 'under_review' (or the
-     value that exists; add one in place only if none fits, with Zod and docs). No money moves.
-     funds_withdrawn and funds_reinstated are recorded on the chargeback with no ledger move
-     (opened and closed move the money), so they read "applied", not "ignored".
-  3. H4, out of order: when record_dispute_closed finds no chargeback, INSERT a resolved one keyed
-     on the Stripe dispute id; record_dispute_opened then sees it resolved and freezes nothing.
-  4. payout.canceled → record_bank_payout with the failed outcome (or 'canceled', if
-     BankPayoutStatus gains it in place with Zod and docs). Nothing moves in the ledger, and the
-     owner is told (SV8 widens who). It is NOT the transfer-failure path that credits the wallet.
-  5. E3: when a thaw (disputed → held) would break uq_escrows_ticket_base_held, leave the escrow
-     disputed, set a resolution note and write an ops.log_entries row for manual review. Never
-     raise out of the webhook.
-  6. Every event goes into HANDLED_STRIPE_EVENTS and planStripeEvent, with a unit test per plan.
-
-ACCEPTANCE:
-  - stripe_event_order.sql (ROLLBACK): closed-before-created leaves nothing disputed; replaying any
-    event changes nothing; a partial refund twice (5, then 8 cumulative) debits 5, then 3;
-    payout.canceled moves no money.
-  - stripe-webhook.test.ts covers the new events; the fixture replay test stays green;
-    finance_invariants.sql and (after DB16) conservation_identity.sql pass.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place (root §1); the Zod schema and
-documentation/database/finance/* with any status or contract change.
-HOT: 00001230 + stripe-webhook.ts (SBP S4 waits for this prompt), 00001240, 00002510.
-```
-
-### DB3 — Money-door gaps: enterprise KYB, inbound transfers, expiry, fee fallback, open disputes
-
-```text
-PROMPT DB3: Enterprise KYB, inbound vault transfers, approval expiry, the fee fallback, releases
-during a dispute, the owner backstop and the key sweep
-
-ROLE: Postgres engineer.
-
-CONTEXT: FA K4 (FDD X11: finance-model.md §10 marks the enterprise half Not built yet), V4, A16,
-S4, L9, V2 and L8, all still open (FCA §5; L9 now has three paths: F1200's ticket and fair-exit
-releases and S1155's forfeit). No ruling is needed. Decision #337, ruling Q0.3: the Wave 1 jobs
-session (e18489d4) seeds both of this prompt's jobs dormant in 00005060, each waiting by name for
-its function: 'finance-expire-spend-approvals' (hourly at :12) and 'finance-sweep-idempotency-keys'
-(daily at 04:27). This prompt writes the two functions and never edits 00005060.
-
-FILES:
-  - supabase/migrations/00001210_functions_finance_kyc_wallet.sql (fn_assert_business_spend;
-    transfer_funds :1944)
-  - supabase/migrations/00001240_functions_finance_money_movement.sql (begin_payout :248)
-  - supabase/migrations/00001220_functions_finance_billing_entitlements.sql
-    (fn_effective_platform_fee_bp)
-  - supabase/migrations/00001200_functions_finance_core.sql (fn_release_ticket_escrow :716,
-    fn_fair_exit_release :935; the stale "silent no-op" comment near :368, N30)
-  - supabase/migrations/00001155_functions_projects_sessions.sql (the forfeit release path): HOT
-  - supabase/migrations/00001895_triggers_derived_columns.sql (the owner backstop, beside the
-    vault-sync triggers)
-  - supabase/migrations/00002510_permissions_function_grants.sql
-  - supabase/probes/finance_doors.sql (new)
-  - documentation/database/finance/Functions.md, documentation/database/org/Functions.md (the
-    trigger), PRODUCT_MANAGEMENT.md §3.5 (Spend approval: expiry becomes a sweep),
-    finance-model.md §10 (remove K4's Not built yet)
-
-STEPS:
-  1. K4: fn_assert_business_spend, transfer_funds and begin_payout treat an 'enterprise' owner as
-     they treat 'business', reading its KYB as place_wallet_order already does
-     (org.enterprises.verification_level = 'verified'). One predicate, reused.
-  2. V4: transfer_funds INTO a team, business or enterprise wallet needs
-     fn_has_vault_capability(dest, 'add_funds') → PK403 'missing_permission: add_funds'.
-  3. A16: finance.fn_expire_spend_approvals moves pending rows past expires_at to 'expired' (the
-     existing value). Name it exactly that, with a default for any argument: the dormant job
-     'finance-expire-spend-approvals' registers itself on the first reset after the function
-     exists. Do not edit 00005060.
-  4. S4: fn_effective_platform_fee_bp RAISEs (PX500 'platform_fee_not_configured') when
-     platform_fee_bp is missing. A silent 0 would waive the fee.
-  5. L9: fn_release_ticket_escrow, fn_fair_exit_release and the S1155 forfeit release refuse
-     (PD409 'dispute_open') while fn_escrow_has_open_dispute is true, which makes F1260's comment
-     true. PM's ghosting auto-approve and PM-WP4 release through these and inherit the refusal.
-  6. V2: AFTER UPDATE OF owner_user_id ON org.teams and org.business_profiles → re-project the
-     vault (org.fn_sync_vault_permissions), beside the existing backstop triggers.
-  7. L8: finance.fn_sweep_idempotency_keys deletes finance.idempotency_keys past expires_at + 30
-     days, except scope 'stripe.webhook' (kept for replay safety; document why). The same name rule
-     as step 3 applies: the dormant job 'finance-sweep-idempotency-keys' registers itself.
-
-ACCEPTANCE:
-  - finance_doors.sql asserts each refusal and each allowed path: an unverified enterprise, a member
-    without add_funds, a missing fee param, a release during an open dispute, an owner change that
-    re-projects the vault.
-  - After your `deno task test:probes:fresh`, ops.scheduled_jobs and cron.job hold both jobs, and
-    scheduled_jobs.sql passes.
-  - grep -n "silent no-op" supabase/migrations/00001200_functions_finance_core.sql → none.
-  - finance_invariants.sql and conservation_identity.sql pass.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place; documentation/database/{finance,org}/*;
-PRODUCT_MANAGEMENT.md §3.5 (the approval lifecycle's writer); the finance-model.md §10 marker
-removed.
-HOT: 00001240, 00001155 (no SCH work package beside it), 00002510. Not 00005060: the jobs session
-owns both rows.
-```
-
-### DB4 — Payout schedules run (M6, first in the build order)
-
-> **Status 2026-11-12:** Done (A14, X17 / D-10's schedule half), awaiting the coordinator's
-> re-verification. `payout_schedules` gains `created_by`, `last_run_at`, `last_error`,
-> `failure_count` and a threshold CHECK (`00000017`); `finance.save_payout_schedule` and
-> `finance.fn_claim_due_payout_schedules`, with `fn_payout_schedule_strike`, `_next_run` and
-> `_available` internal (`00001240` §2); the FOR ALL policy and the INSERT / UPDATE grant are gone;
-> `instant_payout_fee_bp` is JSON null; `payout.schedule_paused` in the catalogue; the job
-> `finance-payout-schedules` (:03 / :18 / :33 / :48) and `POST /api/finance/cron/payout-schedules`;
-> `runPayoutSchedules` + `payout-schedules.ts`; `setPayout` calls the door; `schedule_not_running`
-> is gone from `WalletLockCode`, `LOCK_REASON` and `actionsFor`. Probes `payout_schedules.sql` and
-> `payout_schedule_race.sql`. Built differently from the text below:
->
-> - **The claim begins the payout** in its own transaction (steps 2 and 3 in one door): for each due
->   schedule it calls `finance.begin_payout` itself with `request.jwt.claim.sub` set to the author
->   (as `fn_deposit_charge_target` re-checks a deposit's author), so a second sweep, or a spend between
->   claim and transfer, can neither pay one Available twice nor turn a run into a false refusal. The
->   service then sends each Transfer through the send a manual withdrawal now shares
->   (`sendPayoutTransfer`). `begin_payout` itself is unchanged.
-> - **The Stripe idempotency key stays the payout's** (`payout_transfer:<payout id>`).
->   `payout_schedule:<schedule>:<run_at>` is the run's attempt key in `finance.idempotency_keys`,
->   one-to-one with its payout. A Stripe key of its own would differ from the one the stale-payout
->   sweep re-sends under, and could make a second Transfer.
-> - **Slots are calendar slots:** weekly runs each Monday and monthly on the 1st, both 00:00 UTC, so
->   they never drift. A Stripe refusal of a scheduled Transfer counts through `fail_payout`, once per
->   payout. A threshold below the currency's minimum is refused at save.
-> - **The race is its own probe** (`payout_schedule_race.sql`): `scripts/probes.ts` skips a whole
->   file that carries the `:{?disposable}` marker, which would have kept the rolled-back checks out of
->   every `test:probes` run.
-> - The seeds' schedules carry their owner as author and `instant = false`
->   (`supabase/seeds/gen/emit-finance.ts`, `07_finance.sql`).
->
-> Not done here: `WalletDialogs.tsx`'s Save sends no `currency`, so a multi-currency account is still
-> refused 422 until the dialog names one (UI2 / UI3).
-
-```text
-PROMPT DB4: Scheduled payouts execute through begin_payout, and the lock lifts
-
-ROLE: Payments engineer.
-
-CONTEXT: FA A14 (FCA: schedules save and never run; a client writes the table through a FOR ALL
-policy); FDD X17, D-10. Decision #337, ruling M6: each automation control stays locked until its
-engine runs, and payout schedules are built first. SV3 locks the scheduled modes
-('schedule_not_running'); this prompt builds the engine and lifts that lock. Instant payouts stay
-Planned (Decision #337, ruling P3): the fee is unset until priced.
-
-FILES:
-  - supabase/migrations/00000017_tables_finance.sql (payout_schedules in place: created_by,
-    last_run_at, last_error, failure_count)
-  - supabase/migrations/00001240_functions_finance_money_movement.sql (finance.save_payout_schedule;
-    finance.fn_claim_due_payout_schedules)
-  - supabase/migrations/00002013_policies_finance.sql + 00002520_permissions_table_grants.sql (the
-    "Manage own payout schedule" FOR ALL policy and the INSERT/UPDATE grant go: SELECT-only, as
-    A12 and A4 did)
-  - supabase/migrations/00002510_permissions_function_grants.sql
-  - supabase/migrations/00005001_seed_platform_params.sql (instant_payout_fee_bp → JSON null,
-    described "Planned; unset until priced (Decision #337, ruling P3)")
-  - supabase/migrations/00005010_seed_notification_catalog.sql (a payout.schedule_paused row, if
-    none exists)
-  - supabase/migrations/00005060_seed_scheduled_jobs.sql (http job 'finance-payout-schedules' on
-    FINANCE_CRON_SECRET)
-  - apps/web/routes/api/finance/cron/payout-schedules.ts (NEW: cron/payouts.ts is the stale-payout
-    sweep and stays as it is)
-  - packages/backend/services/finance/{payout-schedules.ts (new) + test, PaymentBackendService.ts,
-    wallet-actions.ts (setPayout calls the door), live-wallet.ts (actionsFor lifts the lock)}
-  - packages/types/finance/* (the schedule's Zod)
-  - supabase/probes/payout_schedules.sql (new)
-  - documentation/database/finance/*, finance-model.md §13 (remove the schedules' Not built yet),
-    PRODUCT_MANAGEMENT.md §3.5 (a payout schedule's states, if it gains any)
-
-STEPS:
-  1. finance.save_payout_schedule(p_owner_type, p_owner_id, p_currency, p_mode, p_threshold_cents,
-     p_destination_method_id, p_instant): SECURITY DEFINER, search_path pinned. It needs the owner
-     on a personal wallet, `withdraw` on a shared one; a destination is the owner's own active
-     payout method; p_instant = true refuses ('instant_payout_planned'); it stamps
-     created_by := auth.uid(). One row per (owner, currency), as today.
-  2. fn_claim_due_payout_schedules(p_limit int): FOR UPDATE SKIP LOCKED; weekly and monthly when
-     next_run_at ≤ now(); threshold when Available ≥ threshold. It advances next_run_at in the same
-     transaction. Amount = Available (DB5 later makes it Available minus earmarks), skipped below
-     fn_min_withdrawal_minor(currency).
-  3. The cron route → the service → the SAME begin_payout path as a manual withdrawal: payout-ready,
-     KYB, the author's `withdraw` re-checked at run time, Stripe idempotency key
-     'payout_schedule:<schedule>:<run_at>'.
-  4. A refusal (unready, an account issue, a lost capability) records last_error and counts
-     failure_count. Three in a row → active = false and a notice to the author (comms.fn_notify).
-     No retry loop.
-  5. actionsFor offers the scheduled modes again (SV3's lock reason goes); setPayout writes through
-     the door, in the action's currency (N17, fixed in SV3).
-
-ACCEPTANCE:
-  - Unit tests for the claim maths: weekly · monthly · threshold · below the minimum.
-  - payout_schedules.sql: a direct client UPDATE is refused (42501); a spend-only member cannot
-    save one; two concurrent claims never return the same schedule (dblink, under :{?disposable}).
-  - A cron route test: a wrong bearer → 404.
-  - finance_invariants.sql and conservation_identity.sql pass.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place; Zod + documentation/database/finance/* with the columns and
-the door; the finance-model.md §13 marker removed; PRODUCT_MANAGEMENT.md if a state appears.
-HOT: 00001240, 00002510, 00005060, live-wallet.ts.
-```
-
-### DB5 — Pots: the earmark engine (M6, second in the build order)
-
-> **Status 2026-11-12:** Done (A2, A3's doors and Σbp cap, L7), awaiting the coordinator's
-> re-verification. `00001240` §9: `fn_is_income_reason`, `fn_apply_pot_allocations`,
-> `fn_can_manage_pots`, `save_wallet_pot`, `move_pot_funds`, called from `fn_mature_pending_releases`
-> and `fn_wallet_credit_pending`'s zero-day branch. `00001200`: `fn_available_cents`, the earmark rule
-> in `fn_wallet_debit` (voluntary and involuntary reasons listed; any other raises) and pots in
-> `fn_reconcile_wallets`. `00000017` + `00001830`: `wallet_pots` gains `goal_cents`, `active`,
-> `archived_at` (`created_at` now `clock_timestamp()`), and `finance.pot_movements` is new and
-> append-only. `00003004`: `v_wallet_reconciliation.earmarked_cents` / `pot_drift_cents`. Step 6 is
-> DB4's `fn_payout_schedule_available`, now Available minus earmarks. Seeds: the two seeded pots open
-> with a `move_in` each. Probes: `wallet_pots.sql` (new), `finance_invariants.sql` §4 (a pot's
-> balance is its movements). Built differently from the text below: (a) the income set adds
-> `escrow_release_vault_retention` and `fair_exit_release_vault_retention`, because finance-model §13
-> earmarks "each inbound payout as it matures" and a team vault's only earned income is its cut;
-> `fn_wallet_credit_pending` now refuses any reason outside the set. (b) `save_wallet_pot` takes
-> `p_archive DEFAULT false`, and caps a wallet at 40 active pots (the read's bound). (c) The dev
-> simulator (`simulate_wallet_transaction`, which writes the balance itself) checks Available minus
-> earmarks too. (d) The pot doors accept a direct request: the engine runs, so only the surface
-> keeps SV3's `pots_not_running` lock, with new copy, until UI3. `00005001` is unchanged: the param's
-> description already says what `save_wallet_pot` reads. Not run: `conservation_identity.sql`
-> (DB16 has not landed). An earmark moves no money, so DB16 adds no pot term.
-
-```text
-PROMPT DB5: Pots are earmarks: the engine, its doors and the allocation on matured income
-
-ROLE: Ledger engineer.
-
-CONTEXT: FA A2, A3, L7 (FCA: pots are never allocated, have no movement door and no Σbp cap); A4
-is done (DB1). FDD X17, D-10. Decision #337, ruling M6: a pot is an earmark inside the wallet,
-never a separate balance, and pots come second in the build order, after DB4. The wallet's
-balance_cents stays the total; Available to spend = balance_cents − Σ pots. SV3 keeps any pot
-control locked ('pots_not_running') until UI3 ships the dialog on top of this prompt.
-
-FILES:
-  - supabase/migrations/00000017_tables_finance.sql (wallet_pots in place: goal_cents, archived_at;
-    a new finance.pot_movements table) + 00001830_triggers_finance.sql (pot_movements append-only,
-    like transactions)
-  - supabase/migrations/00001240_functions_finance_money_movement.sql (fn_available_cents;
-    fn_apply_pot_allocations; save_wallet_pot; move_pot_funds; the calls in
-    fn_mature_pending_releases :1745 and in fn_wallet_credit_pending's zero-day branch :1662; the
-    earmark rule in fn_wallet_debit; fn_claim_due_payout_schedules)
-  - supabase/migrations/00003004_views_finance_integrations_analytics.sql (v_wallet_reconciliation
-    includes pots, L7)
-  - supabase/migrations/00002510_permissions_function_grants.sql; 00005001 (tax_pot_default_bp is
-    read as save_wallet_pot's default)
-  - packages/types/finance/{methods.ts (WalletPotSchema, PotMovementSchema), wallet.ts (the
-    save_pot and move_pot actions)}; packages/backend/services/finance/{wallet-actions.ts,
-    live-wallet.ts}
-  - supabase/probes/wallet_pots.sql (new)
-  - documentation/database/finance/*, finance-model.md §13 (the engine half of the pots marker; UI3
-    removes the lock half), PRODUCT_MANAGEMENT.md §3.5 if a pot gains an archived state
-
-STEPS:
-  1. fn_available_cents(wallet) = balance_cents − Σ active pots. Enforce it in ONE place, inside
-     fn_wallet_debit (signature unchanged), by reason. A voluntary spend (an escrow hold, a checkout
-     payment, a transfer or distribution out, a payout, an invoice payment, a conversion) may not
-     reach earmarked money (PF402 'earmarked'). An involuntary recovery (a chargeback, dispute or
-     refund recovery) may, and then shrinks pots newest first, each with a pot_movements row, so
-     Σ pots ≤ balance always holds. List both sets of reasons explicitly; a reason in neither set
-     raises, so a new writer has to choose.
-  2. fn_apply_pot_allocations(p_wallet, p_amount, p_reason, p_ref_table, p_ref_id): income reasons
-     only (escrow_release, team_split, team_finder_fee, fair_exit_release, product_sale). Each
-     active pot with auto_allocate_bp > 0 earmarks ⌊p_amount × bp / 10000⌋, in created_at order;
-     dust stays unallocated; a zero amount writes nothing.
-  3. Call it on maturation (fn_mature_pending_releases) and in fn_wallet_credit_pending's zero-day
-     branch. Never on a top-up, refund or transfer, and never twice for one release.
-  4. save_wallet_pot(p_wallet, p_id, p_purpose, p_name, p_auto_allocate_bp, p_goal_cents): the
-     owner on a personal wallet, `distribute` on a shared one. Σ auto_allocate_bp over the active
-     pots ≤ 10000, under pg_advisory_xact_lock(hashtext('pots:' || wallet)). Archive only at
-     balance 0 (active = false, archived_at); never DELETE.
-  5. move_pot_funds(p_pot, p_amount, p_direction 'in' | 'out'): 'in' needs Available ≥ amount; 'out'
-     needs the pot's balance ≥ amount; the save capability; one pot_movements row.
-  6. fn_claim_due_payout_schedules (DB4) pays Available minus earmarks.
-  7. The service offers save_pot and move_pot only to a viewer the door would accept.
-
-ACCEPTANCE:
-  - wallet_pots.sql (ROLLBACK): a 30% tax pot and a 10% savings pot on a £1,000.01 matured release
-    earmark 300.00 and 100.00, and 600.01 stays available; Σbp 10001 refused; a spend into an
-    earmark refused; a chargeback recovery shrinks the newest pot; a replayed maturation allocates
-    once.
-  - finance_invariants.sql (Σ pots ≤ balance) and conservation_identity.sql pass: an earmark moves
-    no money, so the identity is unchanged.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place; Zod + documentation/database/finance/* with the columns,
-the table and the doors; the engine half of the finance-model.md §13 marker removed.
-HOT: 00001240, 00002510, live-wallet.ts.
-```
 
 ### DB6 — Disputes inside the seven-day window (M3)
 
@@ -762,8 +413,9 @@ only); FDD X9, D-6. Decision #337, ruling M3 (A): inside the 7-day clearing wind
 pending rows that the disputed payment funded go on_hold; a lost dispute recovers from them first,
 then from the payer, then as platform loss; a won one restores each row's original release date.
 Cleared money is never clawed back. PRODUCT_SPEC §Escrow, Wallets & Finance 5 states the published
-rule. Depends on DB2 (out-of-order disputes) and DB3 (no release while a dispute is open). N22 (the
-wallet read shows On hold) shipped with SV2.
+rule. DB2 (out-of-order disputes, dd3986e5) and DB3 (no release while a dispute is open, 44382c08)
+have landed; line numbers in 00001230 and 00001240 have moved since, so grep them. N22 (the wallet
+read shows On hold) shipped with SV2.
 
 FILES:
   - supabase/migrations/00001230_functions_finance_stripe.sql (record_dispute_opened :1659)
@@ -791,62 +443,39 @@ STEPS:
 ACCEPTANCE: dispute_window.sql walks hold → release (pending) → dispute opened (on_hold, not matured
 at +8 days) → lost (recovered from on_hold first, then the payer) and → won (pending again, maturing
 at its original time). finance_invariants.sql (invariant 3 covers on_hold) and
-conservation_identity.sql pass.
+conservation_identity.sql pass. Readiness: closes PRD-F5 (USER_FLOWS MW-19), and flips it to ✅
+only when the freeze AND the payee clawback hold in dispute_window.sql.
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
 `deno task test:probes:fresh`.
 SAME CHANGE: migrations edited in place; Zod + database docs with any column; PRODUCT_MANAGEMENT.md
 §3.5 (the fund-state lifecycle); the PRODUCT_SPEC.md and finance-model.md markers removed.
-HOT: 00001230 + stripe-webhook.ts (SBP S4), 00001240.
+HOT: 00001230 + stripe-webhook.ts (never beside SBP S4 or DB9), 00001240.
 ```
-
-### DB7 — ✅ Done: checkout integrity (the rest is DB19)
-
-> **Status 2026-11-12:** Done (`24cbab02`), re-verified: `p_expected_minor` in `place_wallet_order`
-> and `place_on_account_order`, PC409 `promo_exhausted` / `price_changed` / `payment_in_progress`,
-> and `invoiced`. DB19's remainder has not started.
-
-Shipped in `24cbab02`, re-checked against the code:
-
-- **Steps 1–2 are superseded by the shipped CO20 assert,** not by the drafted signature change.
-  `place_on_account_order` keeps `p_amount`, but only as the expected total. It is passed to
-  `place_wallet_order` as `p_expected_minor` (PC409 `price_changed` on any other net) and asserted
-  again against the order's `charged_minor` after the credit, under N5's advisory lock per business
-  and currency, with the idempotency key re-checked after the lock. No surplus can stay in the
-  wallet, so `fn_basket_net` is not needed (probe `on_account_amount.sql` §3, §5–6).
-- **Steps 3–7:** the promo row is read `FOR UPDATE` and redeemed atomically under `max_redemptions`
-  (PC409 `promo_exhausted`), and the code is recorded on the order (CO6, and CO7's record half);
-  `place_wallet_order` takes `p_expected_minor` (CO4); the key is re-checked after the basket lock
-  (CO10); a second card tab is refused `payment_in_progress` and resumes the live payment (CO11);
-  own-listing refuses an active team member for products, sessions and cohort seats (CO18). Probes
-  `checkout_charge_assert.sql` and `promo_redemption_concurrency.sql`.
-- **Step 8:** `invoiced` is written for on-account orders ("On account", nothing charged now).
-
-Not done, now DB19 (Decision #337, ruling M8): the per-account promo cap, the `refunded` and
-`cancelled` writers, and retiring `processing` and `awaiting_payment` in the enum comment (ruling
-Q0.2 (e)). **Do not re-run this prompt.**
 
 ### DB8 — Currency integrity: CHECKs, one exponent list, reserved FX columns
 
-> **Step 4 absorbed by Decision #435 (2026-11-16):** `finance.fn_currency_exponent` holds the one list
-> (0: BIF CLP DJF GNF ISK JPY KMF KRW PYG RWF UGX UYI VND VUV XAF XOF XPF; 3: BHD IQD JOD KWD LYD OMR
-> TND), mirrored by `currencyExponent` (`packages/types/finance/wallet.ts`) and pinned by
-> `fx-conversion.test.ts`. Step 5's `escrows.fx_*` are no longer reserved: a conversion writes them.
+> **Status 2026-11-23:** step 4's list landed in `1d8fc3e6` (Decision #435:
+> `finance.fn_currency_exponent`, `00001200:241`, mirrored by `currencyExponent` in
+> `packages/types/finance/wallet.ts` and pinned by `fx-conversion.test.ts`), but
+> `fn_minor_units_text` (`00001240:261`) still hard-codes Stripe's list; steps 1–3, step 4's rest
+> and steps 5–7 below are open. Run it after DB16 (landed, `85e7d4e4`), which made the seed
+> conserve.
 
-> **Input from the DB16 / DB8 / DB9 session (2026-11-12; nothing built):**
+> **Input from the DB16 / DB8 / DB9 session (2026-11-12), corrected 2026-11-23:**
 >
-> - **Run it after DB16.** DB16's seed rework removes the five reasons no function writes (FA N35),
->   which this CHECK would otherwise refuse at `db:reset`.
-> - **Step 2's writers.** `escrows.status`: every INSERT writes `held`; updates write `released`,
->   `refunded` and `disputed`; nothing writes `funded`. Its readers go with it: `00001020` (an
->   `IN ('held', 'funded')`, near :3956), `00001265:76`, `:87`, `funding-state.ts:98`,
->   `live-wallet.ts:270`, `wallet-ledger.ts:888`, `types/marketing/metrics.ts:29` and `EscrowStatus`
->   (`ledger.ts`). `wallets.owner_type`: the functions and the seed write `user`, `freelancer`,
->   `team` and `business`; Zod `WalletOwnerType` still admits `system`, which no row may hold
->   (system wallets are not materialised, ruling M2), so it goes, with Tables.md's mention.
->   `transactions.reason`: 21 codes plus the six `simulated_*` (FA N36 lists them). DB5 put two
->   partial lists in SQL, `fn_wallet_debit`'s voluntary and involuntary arrays (`00001200`) and
+> - **Step 2's writers.** `escrows.status`: an INSERT writes `held`, or `reserved` for a prepaid
+>   later stage (`00001200:1107`, #430); updates write `released`, `refunded` and `disputed`;
+>   nothing writes `funded`. Its readers go with it: `00001020` (an `IN ('held', 'funded')`, near
+>   :3956), `00001265:76`, `:87`, `funding-state.ts:98`, `live-wallet.ts:270`,
+>   `wallet-ledger.ts:888`, `types/marketing/metrics.ts:29` and `EscrowStatus` (`ledger.ts`).
+>   `wallets.owner_type`: the functions and the seed write `user`, `freelancer`, `team` and
+>   `business`; Zod `WalletOwnerType` still admits `system`, which no row may hold (system wallets
+>   are not materialised, ruling M2), so it goes, with Tables.md's mention. `transactions.reason`:
+>   21 codes plus the six `simulated_*` (FA N36 lists them), and since then #435's `fx_conversion`
+>   and `fx_spread` (`00001200:69`) and the reasons #456 and #457 write. DB5 put two partial lists
+>   in SQL, `fn_wallet_debit`'s voluntary and involuntary arrays (`00001200`) and
 >   `fn_is_income_reason` (`00001240`): build the CHECK from one list those guards read, and pin
 >   `LEDGER_KIND_REASONS` to it.
 > - **More unconstrained currency columns than FILES names:** `projects.maintenance_contracts` and
@@ -856,10 +485,9 @@ Q0.2 (e)). **Do not re-run this prompt.**
 > - **Acceptance, corrected.** `'EURO'` into a `char(3)` column fails `22001` (value too long)
 >   before any CHECK runs, so assert 23514 for it on the `text` columns; `'US'` pads to `'US '` and
 >   fails the regex with 23514 on both.
-> - **Step 4's one list** is `packages/ui`'s 24 codes not at 2: 0 for BIF CLP DJF GNF ISK JPY KMF
->   KRW PYG RWF UGX UYI VND VUV XAF XOF XPF, and 3 for BHD IQD JOD KWD LYD OMR TND. SQL's current 16
->   is Stripe's zero-decimal list: it puts MGA at 0 (ISO 4217 says 2) and has no 3-decimal code.
->   `to_char(…, 'FM9,999,…,990.000')` prints `1,234` and `1.234`.
+> - **Step 4's rest.** `fn_minor_units_text`'s 16 codes are Stripe's zero-decimal list: it puts MGA
+>   at 0 (ISO 4217 says 2) and has no 3-decimal code. `to_char(…, 'FM9,999,…,990.000')` prints
+>   `1,234` and `1.234`.
 
 ```text
 PROMPT DB8: Every currency column is a real ISO code, every status a known value, one exponent list
@@ -870,8 +498,8 @@ CONTEXT: FA C14, C10 (the SQL side) and C7; FCA N24 (no CHECK on escrows.status,
 wallets.owner_type or transactions.reason) and N13 / FDD X22 (fund_state is never written; Wave 1.1
 corrected the doc half, ruling Q0.4, and the T17 comment is the code half); SV1's SQL half (pot name
 ≤ 120 and approval reason ≤ 2000, as the Zod already says). Decision #337, ruling Q0.2 (d):
-finance.escrows.fx_* stay, marked reserved, because M5 (c) builds conversion now (DB18 writes the
-transactions' fx_* columns). The per-currency thresholds moved to DB10.
+finance.escrows.fx_* stay; they are no longer "reserved", because #435's conversion inside a
+purchase writes them. The per-currency thresholds were DB10's (done).
 
 FILES:
   - supabase/migrations/00000017_tables_finance.sql: CHECKs inside each CREATE TABLE —
@@ -881,13 +509,13 @@ FILES:
     wallet_pots.name ≤ 120; spend_approvals.reason ≤ 2000; the fund_state comment (:56-65)
   - supabase/migrations/00000015_tables_projects.sql (projects.currency),
     00000011_tables_org.sql (business_profiles and enterprises default_currency)
-  - supabase/migrations/00001200_functions_finance_core.sql (new finance.fn_currency_exponent(text)
-    IMMUTABLE); 00001240_functions_finance_money_movement.sql (fn_minor_units_text uses it)
+  - supabase/migrations/00001240_functions_finance_money_movement.sql (fn_minor_units_text uses
+    finance.fn_currency_exponent, which exists in 00001200)
   - supabase/migrations/00005001_seed_platform_params.sql and supabase/seeds/* (any seed a CHECK
     refuses)
   - supabase/probes/currency_integrity.sql (new)
-  - documentation/database/finance/Tables.md (the CHECKs; escrows.fx_* "reserved, Decision #337,
-    ruling Q0.2 (d)"), finance-model.md §11
+  - documentation/database/finance/Tables.md (the CHECKs; escrows.fx_* as #435 writes them),
+    finance-model.md §11
 
 STEPS:
   1. C14: the currency CHECKs, edited into each CREATE TABLE. char(3) columns keep their type.
@@ -895,21 +523,22 @@ STEPS:
      'funded' is written by no code, so set the DEFAULT, in place, to the value the hold door
      writes, and list 'funded' only if a writer exists); wallets.owner_type IN ('user',
      'freelancer', 'team', 'business', 'enterprise'); transactions.reason IN (every reason a
-     function writes — grep; a reason you cannot place is a finding to report, never to invent). No
-     escrow column is dropped or retyped.
+     function writes, #435's, #456's and #457's included — grep; a reason you cannot place is a
+     finding to report, never to invent), built from the ONE list fn_wallet_debit's arrays and
+     fn_is_income_reason read. No escrow column is dropped or retyped.
   3. SV1's two length CHECKs.
-  4. C10: fn_currency_exponent(p_ccy) returns 0, 2 or 3 from ONE list, equal to
-     packages/types/finance CURRENCY_EXPONENTS (SV5's contract test diffs the two).
-     fn_minor_units_text uses it (KWD three decimals; JPY and ISK none).
-  5. C7: nothing is dropped. Tables.md and finance-model.md §11 call escrows.fx_* reserved (verify
-     Wave 1.1's wording).
+  4. C10, the rest: fn_minor_units_text uses fn_currency_exponent (KWD three decimals; JPY and ISK
+     none) instead of its hard-coded list.
+  5. C7: nothing is dropped. Tables.md and finance-model.md §11 say escrows.fx_* are written by a
+     converted purchase (#435), not reserved.
   6. SQL reads security.platform_params.base_currency; a TS constant that must mirror it gets a
      contract test.
   7. N13 / X22: the T17 fund_state comment says what is written.
 
 ACCEPTANCE: currency_integrity.sql: 'usd', 'US' and 'EURO' → 23514; an unknown escrow status, owner
 type or reason → 23514; KWD 1234 formats as 1.234 and JPY 1234 as 1,234; the seeds load.
-finance_invariants.sql passes.
+finance_invariants.sql and conservation_identity.sql pass. Readiness: closes PRD-F10 (step 2) and,
+with DB9, PRD-F7.
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
@@ -921,20 +550,14 @@ HOT: 00001240.
 
 ### DB9 — Settlement per currency, and an entity's currency from its owner's country (M5 (a), (b))
 
-> **Step 1 absorbed by Decision #435 (2026-11-16):** `currencyForCountry` (`packages/types/finance/fx.ts`)
-> maps a country to its currency, clamped to the nine `settlement_currencies` (#423), else GBP. It
-> decides a BUYER's billing currency today; step 2 (an entity's wallet currency at creation) is still
-> to be built on it.
-
-> **Ruled 2026-11-12 (#423 (B)), and step 0 done** (test key, read-only): the platform account is GB
-> with default `gbp`; its balance is GBP only (5,322 available, nothing pending) and it lists no
-> payout bank account. Stripe's GB country spec holds settlement bank accounts in AUD CAD CHF CZK
-> DKK EUR GBP HKD HUF JPY NOK NZD PLN RON SEK SGD USD ZAR, so AED, INR and NGN can never settle here
-> (FA N37). `settlement_currencies` is GBP USD EUR CAD AUD JPY SGD CHF ZAR. AED, INR and NGN are
-> display-only: nothing is priced in them, and `currencyForCountry` maps their countries to the
-> platform base (GBP). A human adds the eight non-GBP settlement bank accounts in the Dashboard
-> before live payouts in them. Read "the 12" in steps 1 and 3 as these nine; DB17 still quotes all
-> 12 display currencies, because display conversion is unchanged.
+> **Status 2026-11-23:** step 0 was done read-only on 2026-11-12 (the platform account is GB,
+> default `gbp`, GBP balance only), and step 1 landed in `1d8fc3e6` (Decision #435:
+> `currencyForCountry`, `packages/types/finance/fx.ts`, clamped to the nine `settlement_currencies`,
+> else GBP; it decides a buyer's billing currency today); steps 2–4 below are open. Ruled #423 (B):
+> Stripe's GB spec cannot settle AED, INR or NGN (FA N37), so `settlement_currencies` is GBP USD EUR
+> CAD AUD JPY SGD CHF ZAR and those three are display-only; a human adds the eight non-GBP
+> settlement bank accounts in the Dashboard before live payouts in them (MR6's runbook). DB17 still
+> quotes all 12 display currencies.
 
 ```text
 PROMPT DB9: Money settles per currency, and an entity's currency comes from its owner's country
@@ -943,9 +566,10 @@ ROLE: Payments architect + Postgres engineer.
 
 CONTEXT: FA C17, C1 and C16 (FCA: team and business wallets take the creator's DISPLAY currency;
 projects default to USD; Stripe settles into one GBP balance); FDD X21, D-8. Decision #337, ruling
-M5 (a): per-currency Stripe balances for the 12 display currencies, so a payout transfers in the
-wallet's currency from a same-currency balance. Ruling M5 (b): an entity's currency comes from its
-owner's country through one map in countries.ts, and a project defaults to its owner's currency;
+M5 (a): per-currency Stripe balances for the nine settlement currencies (#423 (B)), so a payout
+transfers in the wallet's currency from a same-currency balance. Ruling M5 (b): an entity's currency
+comes from its owner's country through one map (currencyForCountry, #435), and a project defaults to
+its owner's currency;
 location and browser signals only SUGGEST the sign-up country, for the person to confirm, and choose
 a guest's display currency. These replace the decision DB9 used to stop on.
 
@@ -957,7 +581,7 @@ FILES:
   - supabase/migrations/00000015_tables_projects.sql (:84 DEFAULT 'USD'), 00000011_tables_org.sql
     (:253, :945), 00000023_tables_catalogue.sql (:84, :209)
   - supabase/migrations/00005001_seed_platform_params.sql (settlement_currencies)
-  - packages/types/finance/countries.ts (+ countries.test.ts); packages/types/org preferenceHints
+  - packages/types/finance/fx.ts (currencyForCountry: reuse it); packages/types/org preferenceHints
   - apps/web/features/auth/core/wizardValidation.ts (the identity track's wizard: coordinate) and
     apps/web/utils/currency-context.ts (a guest's display currency)
   - packages/backend/services/finance/stripe-rails.ts (:180-200, :381-385)
@@ -966,17 +590,11 @@ FILES:
     documentation/database/{finance,org,projects,catalogue}/Tables.md
 
 STEPS:
-  0. Read-only first: list the TEST platform account's balances per currency (stripe balance
-     retrieve with the test key from .env.local; never a live key). Adding a settlement bank
-     account or balance per currency is a Dashboard act for a human: report which of the 12 are
-     missing and carry on. The code below refuses what is not enabled.
-  1. countries.ts: one COUNTRY_CURRENCY map (ISO 3166 → one of the 12 display currencies, else the
-     platform base) and currencyForCountry(). A unit test pins every DISPLAY_CURRENCIES country.
   2. An entity's wallet currency at creation = currencyForCountry(the owner's confirmed country),
      never the display preference. A project takes its owner's currency in the create door; the
      'USD' column defaults go, in place (each writer sets the value): projects, business_profiles,
      enterprises and catalogue listings alike.
-  3. settlement_currencies (the 12, or those step 0 found enabled): a listing or a project cannot
+  3. settlement_currencies (the nine, seeded, #423 (B)): a listing or a project cannot
      be priced in a currency outside it (SV5 narrows packages/types/catalogue/catalogue.ts:147 to
      it). A Transfer Stripe refuses for an insufficient balance in its currency returns the money
      through the existing transfer-failure path and writes an ops.log_entries alert (C17).
@@ -987,218 +605,40 @@ STEPS:
 
 ACCEPTANCE: entity_currency.sql: a team created by a user whose confirmed country maps to EUR gets
 an EUR wallet whatever their display currency; a JPY owner's new project is in JPY; a listing priced
-outside settlement_currencies is refused. countries.test.ts covers the map. finance_invariants.sql
-passes.
+outside settlement_currencies is refused. finance_invariants.sql and conservation_identity.sql
+pass. Readiness: completes PRD-F7 (with DB8).
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
 `deno task test:probes:fresh`.
 SAME CHANGE: migrations edited in place; Zod + database docs with every default and column change;
 the PRODUCT_SPEC.md §6 and finance-model.md §11 markers removed for what this builds.
-HOT: 00001020, 00001230 + stripe-webhook.ts (not beside SBP S4), and the identity track's wizard
-files.
+HOT: 00001020, 00001230 + stripe-webhook.ts (never beside SBP S4 or DB6), and the identity track's
+wizard files.
 ```
 
-### DB10 — Per-currency thresholds (M5 (e), P0)
-
-> **Status 2026-11-12:** Done (`f408e708`): `finance.fn_param_minor` (`00001200`) resolves both
-> maps, and on account refuses PF402 `limit_not_configured` (`00001250`).
-
-```text
-PROMPT DB10: The on-account limit and the approval threshold are set per currency
-
-ROLE: Postgres engineer.
-
-CONTEXT: FA C15 (P0 whatever else is ruled, FDD D-8 (e)). One 2 500 000 minor-unit on-account limit
-serves every currency (about £236 in INR and £13k in JPY), and vault_approval_threshold_cents is one
-figure too. Decision #337, ruling M5 (e): both become per-currency maps shaped like
-min_withdrawal_minor. finance-model.md §14 and §15 and PRODUCT_SPEC.md §6 carry the markers.
-
-FILES:
-  - supabase/migrations/00005001_seed_platform_params.sql (on_account_limit_cents and
-    vault_approval_threshold_cents become JSON maps, {"default": …, "GBP": …, …}, in each
-    currency's minor units; the descriptions say so)
-  - supabase/migrations/00001200_functions_finance_core.sql (new finance.fn_param_minor(p_key text,
-    p_currency text): one resolver for every per-currency param; fn_min_withdrawal_minor may
-    delegate to it) + 00002510 (definer use only, no client grant)
-  - supabase/migrations/00001250_functions_finance_auto_fund_billing.sql (place_on_account_order
-    :559, get_on_account_standing :595), 00001210 (fn_business_threshold :138-151), 00001020 (the
-    threshold reader near :3847): HOT
-  - packages/backend/services/finance/live-buyer.ts (:752-761), packages/types/workspace/policy.ts
-    (:426) and every other TS reader of the two keys (grep)
-  - supabase/probes/on_account_amount.sql and business_spend_gate.sql (extend)
-  - documentation/database/finance/Functions.md, finance-model.md §14 and §15, PRODUCT_SPEC.md §6
-    (the M5 (e) markers)
-
-STEPS:
-  1. The maps. on_account_limit: GBP 2 500 000 as today, and about £25,000 in each other currency,
-     stated as dials pending product sign-off, like min_withdrawal_minor.
-     vault_approval_threshold: {"default": 0} (0 = no threshold, as today).
-  2. One resolver. A currency missing from on_account_limit with no "default" REFUSES on account
-     (PF402 'limit_not_configured'); it never falls back to a flat number. The threshold keeps
-     "0 = none" as its default.
-  3. Every reader, SQL and TS, goes through the resolver or the service that wraps it.
-
-ACCEPTANCE: on_account_amount.sql: an INR order is judged against the INR limit; a currency with no
-entry and no default is refused PF402. business_spend_gate.sql: a per-currency threshold applies in
-its own currency. finance_invariants.sql passes.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place; Zod for the param shapes; documentation/database/finance/*;
-the M5 (e) markers removed.
-HOT: 00001020 (not beside an identity step on it), 00002510.
-```
-
-### DB11 — The seller's commission on product sales (M1, P0) — 🧑 at step 6
-
-> **Status 2026-11-12:** Done (`9d15fcd0`), step 6 included: ruled B on 2026-10-31 (#252), and
-> `finance.negotiated_rates.subject_type` admits `team` (`00000017`); probe
-> `product_commission.sql`.
-
-```text
-PROMPT DB11: A product sale pays the seller's Standing-tapered commission
-
-ROLE: Postgres payments engineer.
-
-CONTEXT: FCA N3 (P0 revenue: finance.fn_effective_commission_bp has no caller, and product sales pay
-the buyer's 5%) and N19 (the Standing "commission paid" figure is computed in TS with Math.round
-from net volume); FDD X3, X4, D-3. Decision #337, ruling M1 (A): a product sale pays the seller's
-commission at their Standing rung (8% → 6.5%, finance.standing_commission_tiers); #187's payer-rate
-rule covers escrow fees only; the stage-completion fee never tapers. The 20% boost tier waits for
-boosts. The root CLAUDE.md persona fix (X4) is the owner's edit; do not touch it. The /pricing copy
-is SUBSCRIPTIONS_BUILD_PROMPTS' (#252 (l)).
-
-🧑 DECISION (step 6 only; steps 1-5 run): which fee an Agency's contract rate applies to, the new
-conflict flagged on Decision #252. An escrow fee is the PAYER's rate (#187), so an Agency (a team,
-and so a payee) has no escrow fee of its own. And finance.negotiated_rates.subject_type CHECKs
-('business', 'enterprise'), so a team cannot hold a contract row at all, although finance-model.md
-§16.4 names Agency commitments. Put this to me:
-  A: the payee's contract rate also applies to escrow fees on its own engagements, the lower of the
-     payer's and the payee's rates winning. Amends #187; both sides' previews must show that fee.
-  B (recommended): an Agency contract covers the commission on its product sales (the existing
-     marketplace_commission_bp column, which fn_effective_commission_bp already reads) and its
-     payer fee when it buys. #187 is unchanged; subject_type widens to 'team', in place.
-  C: only buyers (Business, Enterprise) hold a contract rate; strike the Agency "negotiable fee"
-     from finance-model.md §1.3 and §16.4.
-  Why B: one rate per escrow (the payer's) keeps a previewed fee the charged fee for both sides,
-  and M1 already makes the seller's own rate govern a sale. A is the only option that reaches an
-  agency's main revenue: the upgrade path if Agency sales ask for it.
-
-FILES:
-  - supabase/migrations/00001210_functions_finance_kyc_wallet.sql (place_wallet_order: the fee rate
-    :1746 and the product-sale fee :1857; the stale "silent no-op" comment beside it, N30)
-  - supabase/migrations/00000017_tables_finance.sql (order_lines: platform_fee_bp and
-    platform_fee_minor per line, in place)
-  - supabase/migrations/00001220_functions_finance_billing_entitlements.sql only if
-    fn_effective_commission_bp (:211) needs a fix; 00002510 if the seller preview needs a grant
-  - packages/types/finance/{order.ts, fee.ts}; packages/backend/services/finance/live-orders.ts (the
-    mapper) and wallet-standing.ts (:128-153, N19); the seller's earnings preview (grep the listing
-    editor's "you receive" figure)
-  - supabase/probes/product_commission.sql (new)
-  - documentation/database/finance/*, finance-model.md §1.2 and §16.4, PRODUCT_SPEC.md §Marketplace
-    "Direct Sale" (the M1 markers)
-
-STEPS:
-  1. For each digital_product line: fee = ⌊paid × fn_effective_commission_bp(seller_type, seller_id)
-     / 10000⌋ (truncated, #187), where paid is the line's amount after its promo share and the
-     seller is the line's owner_team_id, else its owner_user_id. Record the rate and the fee on the
-     line.
-  2. orders.platform_fee_minor stays the order's total fee (Σ lines); orders.platform_fee_bp stays
-     the payer's rate, which escrow lines use. The column comments say so.
-  3. Session, seat and engagement lines are escrow lines: their fee stays the payer's, charged at
-     release.
-  4. N19: the Standing "commission paid" and "at next level" figures read the recorded line fees and
-     the next rung's rate from standing_commission_tiers, never TS maths over net volume.
-  5. The seller's preview uses the same resolver (a STABLE read for the caller's own subject), so a
-     previewed commission is the charged one.
-  6. After the ruling: B → widen negotiated_rates.subject_type to 'team' (in place, Zod, docs) and
-     probe a team contract; A → the dual-rate resolver and both previews; C → strike the Agency
-     negotiable-fee text. Record the owner's answer on #252's row (re-check the index first).
-
-ACCEPTANCE: product_commission.sql: an L1 seller pays 8% and an L5 seller 6.5% on the same sale,
-truncated; a mixed basket charges each seller their own rate; an escrow line's fee is unchanged (the
-payer's). finance_invariants.sql passes (and conservation_identity.sql, if DB16 has landed).
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place; Zod + documentation/database/finance/* with the line
-columns; the M1 markers in finance-model.md and PRODUCT_SPEC.md removed.
-HOT: 00001210 (SCH-WP6 never beside it), 00002510 if a grant is added.
-```
-
-### DB12 — Deadline bonuses refused until they are funded (M7, step C)
-
-> **Status 2026-11-12:** Done (N4's step C, `4ff0ede2`), awaiting the coordinator's re-verification.
-> `finance.escrows.deadline_bonus_cents` carries `ck_escrows_bonus_unfunded` (`= 0`, edited in place
-> in `00000017`); `EscrowSchema.deadlineBonusCents` is `z.literal(0)`; `DEADLINE_BONUS_FUNDED`
-> (false, `@projective/types/projects`) guards the setup and help copy; probe
-> `escrow_bonus_unfunded.sql`. DB13 (the bonus held with its escrow) is still 🧑.
-
-```text
-PROMPT DB12: No unfunded deadline bonus can be paid
-
-ROLE: Postgres engineer.
-
-CONTEXT: FCA N4 (release pays amount + deadline_bonus_cents − fee, and nothing funds the bonus; only
-the seed writes the column, as 0); FDD D-11. Decision #337, ruling M7: C now (a CHECK refuses a
-non-zero bonus), then A (DB13). Decision #338 defers its D16-a to this ruling.
-
-FILES:
-  - supabase/migrations/00000017_tables_finance.sql (finance.escrows :115: the
-    deadline_bonus_cents CHECK becomes = 0, named ck_escrows_bonus_unfunded, in place; the column is
-    neither dropped nor retyped)
-  - the project setup copy that promises "+10%":
-    apps/web/features/projects/components/setup/setup-format.ts (DEADLINE_BONUS_PERCENT) and its
-    readers (tell the P track)
-  - supabase/probes/escrow_bonus_unfunded.sql (new)
-  - documentation/database/finance/Tables.md
-
-STEPS:
-  1. The CHECK. The seeds still load: they write 0.
-  2. Until DB13 lands, no surface promises a bonus amount (gate §3.11): the setup and ticket copy
-     show the deadline without "+10%". allow_deadline_bonuses keeps gating due dates as it does
-     today.
-
-ACCEPTANCE: escrow_bonus_unfunded.sql: an escrow with a bonus of 1 → 23514; a seeded escrow still
-releases amount − fee. The finance-model.md §13 marker stays: it already says a non-zero bonus is
-refused, and DB13 removes it.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place (a CHECK only); documentation/database/finance/Tables.md.
-```
-
-### DB13 — Deadline bonuses held with the escrow (M7, step A) — 🧑 before step 3
+### DB13 — Deadline bonuses held with the escrow (M7, step A)
 
 ```text
 PROMPT DB13: A deadline bonus is held with its escrow and paid only when the deadline is met
 
 ROLE: Ledger engineer.
 
-CONTEXT: FCA N4; FDD D-11. Decision #337, ruling M7 (A, after DB12's C): the bonus is held with the
-escrow at funding; release pays it when the deadline was met; otherwise it is refunded to the payer
-with no fee. One-offs and pipelines both offer it (the owner's answer; today
-ck_projects_deadline_bonus_format allows pipelines only). +10% (DEADLINE_BONUS_RATE = 0.1) is the
-starting dial.
+CONTEXT: FCA N4; FDD D-11. Decision #337, ruling M7 (A, after DB12's C, which landed in 4ff0ede2):
+the bonus is held with the escrow at funding; release pays it when the deadline was met; otherwise
+it is refunded to the payer with no fee. One-offs and pipelines both offer it (the owner's answer).
+ck_projects_deadline_bonus_format no longer exists: only a comment (00001100:298) and the setup
+copy still say "pipelines only". +10% (DEADLINE_BONUS_RATE = 0.1) is the starting dial.
 
-🧑 DECISION (before step 3): what "met" means. PRODUCT_SPEC.md (One-offs; Pipelines "the same") pays
-the bonus "only if the final stage is approved before the soft deadline"; finance-model.md §13 pays
-it "for delivery by a stage's deadline … when the deadline was met". This is a new contradiction
-(§0.5 (a)). RULED #468 (2026-11-18): A, and #457's "no bonus" on a bought One-Off or Task was
-interim, so DB13 offers a held bonus there too (MONEY_BUILD_PROMPTS §4, the DB13 delta). Skip the
-question; the options stay for the record:
-  A (recommended): per escrow, against the ticket's due date, which after a claim moves only with
-     both sides' agreement (Decision #338, ruling P5 (c)); met ⇔ the submission that is later
-     approved was SENT by it. The client's review time can never cost the freelancer the bonus.
-  B: PRODUCT_SPEC's wording, met ⇔ APPROVED by the deadline. Simple, but a client who waits keeps
-     the bonus: a perverse incentive beside a 14-day auto-approve.
-  C: per project, judged on the final stage only (PRODUCT_SPEC's one-off wording), paid with the
-     last release.
-  Write the ruling into PRODUCT_SPEC.md and finance-model.md in the same change, so they agree.
+What "met" means (ruled: Decision #468, A): per escrow, against the ticket's due date, which after a
+claim moves only with both sides' agreement (Decision #338, ruling P5 (c)); met ⇔ the submission
+that is later approved was SENT by it, so the client's review time never costs the freelancer the
+bonus. Write it into PRODUCT_SPEC.md and finance-model.md §13 in the same change, so they agree.
+#468 also rules #457's "no bonus" on a bought One-Off or Task interim: once this lands, a buyer may
+add a held bonus to a bought One-Off or Task at checkout, judged the same way. So this prompt also
+reaches place_wallet_order's One-Off line (00001210), marketplace.fn_buy_scoped_service (00001175)
+and the two configure dialogs (ScopeBriefModal.island.tsx, ServiceDetailModal.tsx), or names the
+follow-up that does.
 
 FILES:
   - supabase/migrations/00005001_seed_platform_params.sql (deadline_bonus_bp = 1000;
@@ -1207,8 +647,8 @@ FILES:
   - supabase/migrations/00000017_tables_finance.sql (escrows: DB12's ck_escrows_bonus_unfunded goes
     back to ≥ 0; the deadline the escrow was funded against, snapshot in place if the ruling needs
     it)
-  - supabase/migrations/00000015_tables_projects.sql and wherever ck_projects_deadline_bonus_format
-    lives (grep): allow one-offs
+  - supabase/migrations/00001100_functions_projects_read_access.sql (the :298 comment that still
+    names the retired format CHECK)
   - supabase/migrations/00001200_functions_finance_core.sql (fn_hold_ticket_escrow :370 holds
     amount + bonus; fn_release_ticket_escrow :716 pays it when met, else refunds it;
     fn_fair_exit_release :935 and the dispute split refund it): PM-WP4 edits these too, never in
@@ -1226,7 +666,8 @@ STEPS:
      amount + ⌊amount × deadline_bonus_bp / 10000⌋ from the payer in ONE hold (one debit, one escrow
      row), recording the bonus on the escrow. Every quote (stage funding, checkout, card lock) shows
      the same figure, and the payer's spend gate and approval count the whole hold.
-  2. One-offs: relax the format CHECK; the setup offers the bonus on both project types.
+  2. One-offs: correct that comment and the setup copy; the setup offers the bonus on both project
+     types, and a bought One-Off or Task offers it at checkout (#468).
   3. Release, per the ruling: met → the payee gets amount + bonus − fee (the fee on the amount only,
      as today); missed → amount − fee to the payee, and the bonus goes back to the payer at once as
      a fee-free 'deadline_bonus_refund' credit.
@@ -1235,7 +676,7 @@ STEPS:
 
 ACCEPTANCE: deadline_bonus.sql: the hold = amount + 10%; on time → paid; late → refunded fee-free to
 the payer; Fair Exit → refunded. finance_invariants.sql and conservation_identity.sql pass: a
-released bonus now has its funding term.
+released bonus now has its funding term. Readiness: closes PRD-F13 with DB20.
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
@@ -1248,12 +689,10 @@ SQL step on them).
 
 ### DB14 — No ticket enters work unfunded, and stage funding asserts its amount (N6, N8)
 
-> **Status 2026-11-12:** Partly done, built differently. Step 1's assignee half shipped in
-> `660c9658`: `projects.fn_ticket_immutability_guard` (BEFORE INSERT OR UPDATE) refuses a
-> client-role INSERT that names an assignee (42501), stricter than re-running
-> `fn_assign_ticket_core`'s checks. Remain: step 1's work-status half (an unassigned ticket can
-> still be born in a work status) and step 2 (`projects.fund_stage(p_project_id, p_stage_id)` has
-> no `p_expected_minor`).
+> **Status 2026-11-23:** step 1's assignee half landed in `660c9658`, built differently
+> (`projects.fn_ticket_immutability_guard`, BEFORE INSERT OR UPDATE, refuses a client-role INSERT
+> that names an assignee, 42501); step 1's work-status half and step 2 below are open
+> (`trg_ticket_escrow_sync` still fires AFTER UPDATE only; `fund_stage` has no `p_expected_minor`).
 
 ```text
 PROMPT DB14: No ticket enters work without a held escrow, and stage funding asserts its amount
@@ -1279,18 +718,19 @@ FILES:
   - documentation/database/projects/Functions.md, documentation/database/finance/Functions.md
 
 STEPS:
-  1. N6: BEFORE INSERT ON projects.tickets. A ticket born in a work status is refused (PF402, as the
-     UPDATE gate refuses entry into work without a held escrow). A ticket born with
-     current_assignee_id set runs the same payout-ready and assignment checks as
-     fn_assign_ticket_core. No role is exempt: a seed that needs an assigned ticket inserts it
-     unassigned and assigns it by UPDATE, so the existing gates run.
+  1. N6, the work-status half: BEFORE INSERT ON projects.tickets. A ticket born in a work status is
+     refused (PF402, as the UPDATE gate refuses entry into work without a held escrow). MR1 (#474)
+     already refuses an unclaimed ticket entering work on UPDATE (PF402, DETAIL reason 'unclaimed',
+     00001110:424): reuse its code; do not add a second one. No role is exempt: a seed that needs
+     an in-work ticket inserts it unassigned and moves it by UPDATE, so the existing gates run.
   2. N8: fund_stage refuses PC409 'price_changed' when p_expected_minor differs from what it would
      hold. The wallet path passes the quote it showed; the card settlement passes the payment
      amount.
 
-ACCEPTANCE: ticket_insert_gate.sql: an insert in work → PF402; an insert with an unready assignee →
-PK403; the normal create-then-assign path passes. stage_funding_prepaid.sql: a re-price between the
-quote and the commit → PC409, and nothing is held. finance_invariants.sql passes.
+ACCEPTANCE: ticket_insert_gate.sql: an insert in work → PF402; the normal create-then-assign path
+passes. stage_funding_prepaid.sql: a re-price between the quote and the commit → PC409, and nothing
+is held. finance_invariants.sql and conservation_identity.sql pass. Readiness: closes PRD-F6 with
+DB15.
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
@@ -1339,7 +779,7 @@ STEPS:
      the host, refusing PK403 'payout_not_ready' with HINT 'seller' (the buyer is not the one to
      act).
   3. Paid calls: save_owner_availability refuses turning paid_enabled on for an unready host. Paid
-     requests themselves stay refused until SCH-WP6 (SCH-WP2's interim).
+     requests themselves stay refused until SCH-WP6 (SCH-WP2's interim, landed in 6882e0be).
   4. N14: the withdrawal gate keys on the wallet's owner kind and earnings history. A user,
      freelancer or team wallet that has ever received an earned credit (escrow_release, team_split,
      team_finder_fee, *_vault_retention, fair_exit_release, product_sale, team_distribution,
@@ -1350,123 +790,18 @@ STEPS:
 ACCEPTANCE: payout_ready_gate.sql: publish refused for an unready seller and for a team with one
 unready shareholder; a blueprint publishes; a booking refused with HINT 'seller'; paid_enabled
 refused; a 0-day credit, a distribution and a transfer in no longer skip the withdrawal gate; a
-refund-only wallet withdraws without ID. finance_invariants.sql passes.
+refund-only wallet withdraws without ID. finance_invariants.sql passes. Readiness: closes PRD-F6
+with DB14 (USER_FLOWS MW-14).
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
 `deno task test:probes:fresh`.
 SAME CHANGE: migrations edited in place; the database docs of every schema touched; the M4 markers
 removed for the doors this builds (the roster half stays for SV7).
-HOT: 00001155 and 00001510 (no SCH work package running; SCH-WP2's interim merged first),
-00001240, 00001210.
+HOT: 00001155 and 00001510 (only while no SCH work package is running), 00001240, 00001210.
 ```
 
-### DB16 — ✅ Done: the conservation identity, checked nightly, with an ops reader (M2)
-
-> **Status (2026-11-18, Decision #483):** built with MONEY_BUILD_PROMPTS' DB16 delta and MR7's Escrow
-> age section. The held side counts `reserved` escrow too, and an FX-quoted on-account order is
-> counted in its credit currency; #483 (E) lists every premise that moved. The prompt below stays as
-> the record.
-
-> **Input from DB5 (2026-11-12):** pots are earmarks inside `wallets.balance_cents`, so
-> `finance.pot_movements` is not a money term: the identity counts wallet balances whole. Σ pots ≤
-> balance and "a pot's balance is its movements" are `finance_invariants.sql` §2 and §4, and
-> `fn_reconcile_wallets` logs either breach.
->
-> **Input from the DB16 / DB8 / DB9 session (2026-11-12; nothing built, stop ruled by #423 (A)):**
->
-> - **Step 1, the classes, read from the functions.** External-in: `topup`, `on_account_credit`.
->   External-out: `payout` less `payout_reversal`, `chargeback`, `refund` (to a card) and
->   `invoice_payment` (it settles an on-account receivable). Internal: `escrow_hold`,
->   `escrow_release`, `escrow_refund`, `fair_exit_release`, `fair_exit_refund`, `team_split`,
->   `team_finder_fee`, both `*_vault_retention`, `team_distribution`, `transfer_in`, `transfer_out`,
->   `order_payment` and `product_sale`. Revenue is no reason: it is released escrows'
->   `platform_fee_cents` and `orders.platform_fee_minor`. The simulator's six `simulated_*` fit no
->   class and are ruled to get none, so a simulated row shows as an imbalance.
-> - **Step 2, the terms, derived from the code.** Read the external terms from the event tables,
->   never from the ledger rows, or a credit with no cash (CO20's shape) balances itself. In: Σ
->   `inbound_payments.amount_received_cents` with a `transaction_id` (`settled_unapplied` included,
->   #200) + Σ `orders.total_minor` where `status = 'invoiced'`. Out: Σ payouts'
->   `amount_cents − reversed_cents` unless `failed` or `cancelled` + Σ
->   `inbound_payments.refunded_cents` + Σ lost chargebacks' `amount_cents` + Σ paid invoices'
->   `amount_due_cents`. Held: wallets + escrows `held` or `disputed` + `pending_releases` `pending`
->   or `on_hold` net of `recovered_cents` + the two fees − platform losses (lost chargebacks'
->   `unrecovered_cents` + `inbound_payments.refund_unrecovered_cents`). FCA §4.4's draft subtracts
->   the chargeback recovery and adds the unrecovered part on the right, which counts the loss twice:
->   the bank takes the whole disputed amount, so out carries all of it and the loss is the part no
->   wallet covered.
-> - **The seed does not conserve money** (FA N35): its 117,775,000 USD of `topup` has no
->   `inbound_payments` row behind it, team sales split where the door credits the team wallet, and
->   five reasons no function writes. Add `supabase/seeds/gen/emit-finance.ts` and the regenerated
->   `supabase/seeds/07_finance.sql` to FILES: write every seeded movement as its door writes it, so
->   the seeded DB balances. A draft of the view read −144,287,940 USD on the shared DB, which also
->   holds 46 `pending_releases` a peer run committed at 12:58 that day: prove the seed on a fresh
->   reset or a private stack.
-> - **The log row.** `ops.log_entries` allows level `warn`, `error` or `metric` and source `client`
->   or `server`, so the check writes source `server`, scope `finance.conservation`, `error` for an
->   imbalance and `metric` for a balanced night, its figures in `data`. No sweep deletes
->   `ops.log_entries`, so 30 nights stay readable.
-> - **N4's shape.** DB12's `ck_escrows_bonus_unfunded` refuses a non-zero bonus, so the probe drops
->   it inside its rolled-back transaction, or credits a payee past an escrow's net.
-
-```text
-PROMPT DB16: The money is all accounted for: a per-currency conservation identity, checked nightly
-
-ROLE: Ledger engineer.
-
-CONTEXT: FDD X6, X8, D-5; FCA §4.4 (CO20, N4, S5 and W4 would each show as an imbalance) and FA L5
-(the nightly drift writer has no reader). Decision #337, ruling M2 (A now): a per-currency
-conservation-identity view, checked nightly beside finance.fn_reconcile_wallets, with an ops reader
-for both. B, a shadow double-entry journal, is Planned: it is built when live money passes a pilot,
-an enterprise asks for an audit trail, or an auditor or regulator does. ⚖️ How long escrow may sit
-in the platform balance is open with Stripe and counsel; nothing here depends on it.
-
-FILES:
-  - supabase/migrations/00003004_views_finance_integrations_analytics.sql
-    (finance.v_conservation_identity) + 00003005_permissions_view_grants.sql (no client grant)
-  - supabase/migrations/00001200_functions_finance_core.sql (finance.fn_check_conservation(): one
-    ops.log_entries row per currency per night, source 'finance.conservation', level error on any
-    imbalance; finance.get_ledger_health(): a STABLE definer read for operators only,
-    security.is_admin(), returning the last 30 nights and the open drift rows)
-  - supabase/migrations/00002510_permissions_function_grants.sql
-  - supabase/migrations/00005060_seed_scheduled_jobs.sql (sql job 'finance-conservation-check',
-    after 'finance-reconcile-wallets')
-  - apps/web/routes/(dashboard)/admin/ledger.tsx (re-export) →
-    apps/web/features/admin/routes/LedgerHealthScreen.tsx, through
-    packages/backend/services/finance/LedgerHealthService.ts (new; ServiceResult)
-  - supabase/probes/conservation_identity.sql (new)
-  - documentation/database/finance/Functions.md and its views doc, finance-model.md §6 and §15 (the
-    M2 A markers), SYSTEM_ARCHITECTURE.md (Integration Blueprints 1: A now, B before scale),
-    ROUTING.md (/admin/ledger, operator-only; a bare /admin stays a 404)
-
-STEPS:
-  1. Classify every distinct finance.transactions.reason a function writes (grep the migrations):
-     external-in (a settled top-up or card payment, on-account credit), external-out (a completed
-     payout net of reversals, a chargeback recovery, a refund to a card), internal (both legs inside
-     the system) or revenue. A reason that fits none is a finding: stop and report it.
-  2. The identity, per currency: Σ external-in − Σ external-out = Σ wallet balances + Σ escrows held
-     or disputed + Σ pending_releases outstanding (pending or on_hold, net of recoveries) + Σ fees
-     retained (released escrows' platform_fee_cents, order fees) − Σ platform losses (unrecovered
-     chargebacks). Derive each term from the code, starting from FCA §4.4's draft, and prove it on
-     the seeded DB.
-  3. The nightly check runs after the reconcile job and never corrects anything.
-  4. The ops reader: /admin/ledger, operator-only and read-only, with DataTable, MetaLine and Tag
-     (status) and no new component; everyone else gets a 404.
-  5. From here on, every money prompt keeps this identity green and adds its own flow's terms (§1).
-
-ACCEPTANCE: conservation_identity.sql: the seeded DB balances in every currency; a probe-made credit
-with no cash (CO20's shape) and a released unfunded bonus (N4's shape) each show as an imbalance in
-their currency (ROLLBACK). The page renders for an operator and 404s for a member.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place; documentation/database/finance/* with the view, functions
-and job; ROUTING.md with the route; the M2 A markers removed.
-HOT: 00005060 (after the jobs session), 00002510.
-```
-
-### DB17 — A daily FX feed (M5 (f)) — 🧑 provider
+### DB17 — A daily FX feed (M5 (f))
 
 ```text
 PROMPT DB17: A daily FX feed keeps the rates fresh
@@ -1477,17 +812,16 @@ CONTEXT: FA C5 (FCA: only the seed 00005050 writes finance.fx_rates, so every co
 a rate dated 2026-08-01). Decision #337, ruling M5 (f): a daily FX feed and a staleness mark on
 every converted figure. The mark renders in SV5 and UI5. FxService already reads only GBP-quoted
 rows (FA (s)) and caches them 15 minutes in Deno KV, so a new day's rates reach every isolate
-within 15 minutes with no invalidation (RED's FX version key is optional).
+within 15 minutes with no invalidation (RED's FX version key is optional). #435 made the feed price
+conversions at checkout, not only display (PRD-F18 waits on it): a stale or wrong rate mis-prices a
+charge, so a partial feed is refused. If #435's conversion quote has its own staleness rule, make it
+and FxService's STALE_AFTER_MS one constant (grep both).
 
-🧑 DECISION (before step 1): the provider. It must quote all 12 display currencies (GBP USD EUR CAD
-AUD JPY INR SGD CHF ZAR NGN AED) daily, allow display use under its licence, and keep its key in the
-env contract. RULED #471 (2026-11-18): A. Skip the question; the vendor and its paid plan are
-still the owner's to pick, so build against the provider interface until a key exists:
-  A (recommended): one commercial reference-rate API that quotes all 12 against GBP, keyed in
-     .env.local (FX_FEED_URL, FX_FEED_API_KEY; XXXX-XXXX in .env.example).
-  B: the ECB reference rates (free, but 10 of the 12: no NGN or AED) plus a second source for those
-     two: two parsers and two failure modes.
-  Until the answer, build steps 2-4 against a provider interface with a fixture adapter only.
+The provider (ruled: Decision #471, A): one commercial reference-rate API that quotes all 12
+display currencies (GBP USD EUR CAD AUD JPY INR SGD CHF ZAR NGN AED) against GBP daily, allows
+display use under its licence, and is keyed in .env.local (FX_FEED_URL, FX_FEED_API_KEY; XXXX-XXXX
+in .env.example). The vendor and its paid plan are still the owner's to pick: until a key exists,
+build steps 2-4 against a provider interface with a fixture adapter only.
 
 FILES:
   - supabase/migrations/00001200_functions_finance_core.sql (finance.record_fx_rates(p_provider
@@ -1513,27 +847,30 @@ STEPS:
 
 ACCEPTANCE: FxService tests with the fixture adapter: a full feed records 12 rows; a missing
 currency records none and logs; a replay records nothing; a wrong bearer on the route → 404.
+Readiness: closes PRD-F21 with UI5 (USER_FLOWS MW-11, MK-28).
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
 `deno task test:probes:fresh`.
 SAME CHANGE: migrations edited in place; documentation/database/finance/* with the door and the job;
 SYSTEM_ARCHITECTURE.md's env contract with the new keys; the feed half of the M5 (f) marker removed.
-HOT: 00005060 (after the jobs session), 00002510.
+HOT: 00005060, 00002510.
 ```
 
-### DB18 — Conversion between one's own wallets at a disclosed margin (M5 (c), (d)) — 🧑 margin
+### DB18 — Conversion between one's own wallets at a disclosed margin (M5 (c), (d)) — 🧑 whether
 
-> **Absorbed by Decision #435 (2026-11-16).** The conversion engine shipped for purchases: locked quotes
-> (`finance.fx_quotes`), the append-only `finance.fx_conversions`, `fx_conversion` / `fx_spread` legs
-> stamped with `fx_*`, pinned refunds and reconciliation views (`database/finance/Functions.md`
-> §Paying in one's own currency). The margin is ruled (`fx_spread_bp` 150, switched off). NOT built:
-> the free-standing Convert action below — a conversion exists only inside a purchase the payer
-> confirms. Revisit it as its own decision.
+> **Status 2026-11-23:** the engine landed in `1d8fc3e6` for purchases only (Decision #435: locked
+> quotes in `finance.fx_quotes` through `finance.quote_fx_conversion` / `fn_execute_fx_quote`, the
+> append-only `finance.fx_conversions`, `fx_conversion` / `fx_spread` legs stamped with `fx_*`,
+> pinned refunds and reconciliation views; `database/finance/Functions.md` §Paying in one's own
+> currency), and the margin is ruled (#435 (C)). The free-standing Convert below is open and stops
+> on its 🧑 (§0.5): a conversion exists only inside a purchase the payer confirms. Reuse #435's
+> table, quote door and legs; FILES' "new" objects mostly exist.
 
 > **Input from DB5 (2026-11-12):** `finance.fn_wallet_debit` raises `22023` for a debit reason in
-> neither of its lists. The conversion's debit reason joins the voluntary list, so a conversion never
-> reaches earmarked money ("an earmarked amount refuses" in the acceptance below is that rule).
+> neither of its lists. The conversion's debit reason joins the voluntary list, so a conversion
+> never reaches earmarked money ("an earmarked amount refuses" in the acceptance below is that
+> rule).
 
 ```text
 PROMPT DB18: Convert between your own wallets at a disclosed margin
@@ -1543,28 +880,24 @@ ROLE: Ledger engineer, plus one dialog.
 CONTEXT: FA C4 (FCA: balances are stranded per currency; there is no own-wallet conversion); FDD
 D-8 (c), (d). Decision #337, ruling M5 (c): the owner chose to build the disclosed-spread conversion
 now. Ruling M5 (d): mid-market plus a disclosed margin, paid by whoever converts; the margin is a
-platform_params dial whose value is NOT set. Ruling Q0.2 (d): finance.escrows.fx_* stay reserved;
-this prompt writes the transactions' fx_* columns (T17 :77-79). Depends on DB5 (earmarks), DB9
-(settlement currencies) and DB17 (fresh rates).
+platform_params dial (ruled: Decision #435 (C), fx_spread_bp, a per-currency map seeded
+{"default": 150} and switched off by fx_checkout_enabled until counsel answers #435 (d)). This
+prompt writes the transactions' fx_* columns, as #435's purchase conversions do. DB5 (earmarks) and
+DB9's settlement currencies are in place; it depends on DB17 (fresh rates).
 
-🧑 DECISION: the margin's value (fx_conversion_margin_bp), still open (#337 M5 (d)). Build with the
-dial UNSET: the door refuses (PX500 'fx_margin_not_configured') and the Convert action shows locked
-('conversion_not_priced'). Put this to me:
-  A: one margin on every pair, e.g. 100 bp (1%): simple to disclose.
-  B (recommended): a per-currency map shaped like min_withdrawal_minor (majors low; NGN, INR, ZAR
-     and AED higher), because the platform's cost of rebalancing its per-currency Stripe balances
-     (DB9) differs by currency, and the margin has to cover it.
-  Ask counsel first whether converting held client money is a regulated currency-exchange service
-  (§0.5 (d)); set no value before the answer.
+🧑 DECISION (before step 1): whether to offer a free-standing own-wallet Convert at all. #435 built
+conversion only inside a purchase the payer confirms. Put it to me only after counsel has answered
+#435 (d) (is converting held client money a regulated currency-exchange service?); build nothing
+before the answer. If built, it stays locked ('conversion_not_priced') while fx_checkout_enabled is
+off.
 
 FILES:
-  - supabase/migrations/00000017_tables_finance.sql (new finance.fx_conversions: owner, from and to
-    wallet, from and to amounts, mid rate, margin bp, margin minor, as_of, idempotency_key) +
-    00001830_triggers_finance.sql (append-only)
+  - supabase/migrations/00000017_tables_finance.sql (finance.fx_conversions exists, #435: add only
+    what an own-wallet conversion needs, in place) + 00001830_triggers_finance.sql (append-only)
   - supabase/migrations/00001240_functions_finance_money_movement.sql
-    (finance.quote_wallet_conversion, finance.convert_between_own_wallets) + 00002510
-  - supabase/migrations/00005001_seed_platform_params.sql (fx_conversion_margin_bp: JSON null,
-    "unset until priced, Decision #337, ruling M5 (d)")
+    (finance.convert_between_own_wallets, on top of finance.quote_fx_conversion) + 00002510
+  - supabase/migrations/00005001_seed_platform_params.sql (fx_spread_bp and fx_checkout_enabled
+    exist: read them)
   - supabase/migrations/00003004 (finance.v_conservation_identity's conversion terms: out of X is
     external-out for X, into Y is external-in for Y, the margin is revenue)
   - packages/types/finance/{wallet.ts, fx.ts}; packages/backend/services/finance/{wallet-actions.ts,
@@ -1585,11 +918,11 @@ STEPS:
      transaction: debit 'fx_conversion_out', credit 'fx_conversion_in' (both with fx_rate, fx_base
      and fx_as_of) and one fx_conversions row. A replay returns the first result.
   3. The dialog: one tier-1 accent commit ("Convert £X"), the margin stated before it, a MoneyView
-     for every figure; locked while the dial is unset.
+     for every figure; locked while fx_checkout_enabled is off.
   4. Treasury: the ops reader (DB16) shows the net converted amount per currency. Rebalancing the
      Stripe balances is an ops act, not code.
 
-ACCEPTANCE: wallet_conversion.sql: with the dial unset → PX500; with it set inside the probe,
+ACCEPTANCE: wallet_conversion.sql: with fx_checkout_enabled off → refused; with it on inside the probe,
 GBP → EUR moves the quoted amounts, writes both fx columns and one conversion row; a stale rate
 refuses; an earmarked amount refuses; a replay changes nothing; conservation_identity.sql balances
 in both currencies. Screenshots of the Convert step at 390 and 1440.
@@ -1598,86 +931,9 @@ SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at 
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
 `deno task test:probes:fresh`.
 SAME CHANGE: migrations edited in place; Zod + documentation/database/finance/* with the table and
-the doors; the M5 (c), (d) markers removed only for what runs (the margin stays "not set"); the
+the doors; the M5 (c), (d) markers removed only for what runs (the switch stays off); the
 DESIGN_SYSTEM.md tier-1 list.
 HOT: 00001240, 00002510, live-wallet.ts, WalletDialogs.tsx (never beside UI3 or UI5).
-```
-
-### DB19 — ✅ Done: order lifecycle writers and one redemption per account (M8)
-
-> **Status 2026-11-19:** Done (Decision #511). The line writer sits in
-> `finance.fn_refund_escrow_to_payer`, not in a trigger on `finance.transactions`: since #435 (D) a
-> converted escrow's refund is credited in the payer's own currency, so a ledger row no longer
-> carries the line's amount (#511 (E)). Its delivery predicate leaves the digital-product rule to DB21.
-
-```text
-PROMPT DB19: Orders reach every state they can: refunded and cancelled lines, and one redemption per
-account
-
-ROLE: Postgres payments engineer.
-
-CONTEXT: FA CO7, CO13, CO25 (FCA: refunded and cancelled have no writer; there is no per-account
-cap); FDD D-12. DB7 (24cbab02) shipped invoiced, the recorded code and the atomic max_redemptions
-cap. Decision #337, ruling M8: an escrow refund makes its line refunded, and the order is refunded
-only when every line is; the lifecycle writes refunded and cancelled and retires processing and
-awaiting_payment (ruling Q0.2 (e): in the enum comment only, never dropped); one redemption per
-account per code by default, configurable per code. The digital-product and session-forfeit refunds
-are DB21's.
-
-🧑 DECISION (step 3): what `cancelled` means beside `refunded`. No source defines it. RULED #469
-(2026-11-18): A. Skip the question:
-  A (recommended): a line is cancelled when it is refunded in full before any delivery began (no
-     download, no sitting held, no work started), and refunded when it is refunded in full after.
-     The order is cancelled when every line is cancelled, and refunded when every line is refunded
-     or cancelled with at least one refunded.
-  B: cancelled only for an order the platform voids before money moves. It is never written today,
-     because an order is written once it is paid; every return is refunded.
-
-FILES:
-  - supabase/migrations/00000017_tables_finance.sql (promo_codes.max_redemptions_per_account
-    integer DEFAULT 1 CHECK (> 0), NULL = no per-account limit; order_lines.refunded_minor bigint
-    NOT NULL DEFAULT 0, never above the line's charge, and refunded_at; orders.status DEFAULT
-    'confirmed' instead of the retired 'processing')
-  - supabase/migrations/00000004_enums_domains.sql (the order_status comment :486-491: processing
-    and awaiting_payment retired, no writer)
-  - supabase/migrations/00001210_functions_finance_kyc_wallet.sql (place_wallet_order's promo block:
-    the per-account count; resolve_promo_code: the same refusal at preview; the order rollup
-    function beside them)
-  - supabase/migrations/00001830_triggers_finance.sql (an AFTER INSERT trigger on
-    finance.transactions for the refund reasons)
-  - packages/backend/services/finance/{live-basket.ts (resolvePromo), checkout-refusal.ts
-    (promo_already_used → buyer copy) + test, live-orders.ts}; packages/types/finance/order.ts (the
-    line state)
-  - supabase/probes/promo_redemption_concurrency.sql (extend), order_refund_lifecycle.sql (new)
-  - PRODUCT_MANAGEMENT.md §3.5 (Checkout order: the markers and the line states), finance-model.md
-    §15, PRODUCT_SPEC.md §Orders, Refunds & Promo Codes (the markers),
-    documentation/database/finance/*
-
-STEPS:
-  1. Per-account cap: under the promo row's existing FOR UPDATE, count this owner's orders (the
-     order's owner_type and owner_id) that used the code, in every status: a refund does not give a
-     redemption back. Refuse PC409 'promo_already_used'. The basket preview refuses first, so no
-     buyer sees a discount the database will refuse.
-  2. The line writer: ONE trigger on the refund reasons (enumerate them from the migrations:
-     escrow, fair-exit, session and seat refunds …) maps the refunded escrow to its line through the
-     existing links (order_lines.ticket_id, the seat membership's order line, the paid-revision
-     line, the 1-1 session line). A refund with no order line (a stage funded from the Finance tab)
-     touches no order. refunded_minor accumulates partial refunds (a Fair Exit split).
-  3. The rollup, per the ruling.
-  4. Retire processing and awaiting_payment in the comment; the column DEFAULT stops naming one.
-
-ACCEPTANCE: the promo probe: the same account's second use → PC409 at preview and at commit; two
-accounts both succeed; max_redemptions still holds under concurrency. order_refund_lifecycle.sql: a
-full escrow refund marks its line and, once every line is marked, the order; a 50% Fair Exit leaves
-the line partly refunded and the order confirmed. finance_invariants.sql passes.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place; Zod + documentation/database/finance/* with every column;
-PRODUCT_MANAGEMENT.md §3.5 (the order and line lifecycle); the M8 markers removed for what this
-builds.
-HOT: 00001210 (SCH-WP6 never beside it); the checkout services (never beside SV4, SV5, SV6, SV7).
 ```
 
 ### DB20 — Team splits below Pro and departed finders (M10 (a))
@@ -1707,7 +963,8 @@ STEPS:
 
 ACCEPTANCE: team_split_properties.sql: a Team Free team with a stored finder template releases as
 co_op; a departed finder gets 0 and the split still sums to the release less the fee; an upgraded
-team pays its finder again. finance_invariants.sql passes.
+team pays its finder again. finance_invariants.sql and conservation_identity.sql pass. Readiness:
+closes PRD-F13 with DB13.
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
@@ -1717,7 +974,7 @@ finance-model.md §5 marker removed.
 HOT: 00001200 (never beside PM-WP4).
 ```
 
-### DB21 — Refunds a buyer or provider can start (M8) — 🧑 at step 2
+### DB21 — Refunds a buyer or provider can start (M8)
 
 ```text
 PROMPT DB21: Refunds a buyer or provider can start: an undelivered or defective product, and a
@@ -1730,36 +987,42 @@ first download, except for non-delivery or a defective file, through a dispute, 
 seller's pending row (M3's order); a provider may refund a session forfeit voluntarily
 (finance-model.md §4).
 Read from the ruling's wording: before the first download, a buyer may cancel the line. Depends on
-DB6 (the on_hold machinery) and DB19 (the line states).
+DB6 (the on_hold machinery). DB19's line states have landed (3041e5ef, #511: the line writer is
+finance.fn_record_order_line_refund, called by fn_refund_escrow_to_payer). CK1 has landed (#488,
+322c4dc9) and is the buyer's download path. Judge "downloaded" by ruling A8: the first completed
+delivery of any file of the line, read from catalogue.entitlements.first_delivered_at. Do not rely
+on files.download_events.item_id, which cascades on a hard purge (#488 (f)). The refusal stays
+behind finance.delivered_refund_refusal (00005001, off until counsel), and cancel_order_line reads
+it. A cancel or a buyer win also sets the line's entitlement to 'refunded', so
+/api/downloads/[entitlement]/[fileId] answers 404. The buyer's order view is /checkout/orders
+(CK3, f3ba4c3b).
 
-🧑 DECISION (step 2): a product dispute raised after the seller's money has cleared. M3 never claws
-back cleared money; M8 recovers from the seller's pending row (§0.5 (c)). RULED #470 (2026-11-18):
-A. Skip the question:
-  A (recommended): a product dispute may be opened only while the sale is still clearing (7 days),
-     which is also when the seller's money can be held; the order page says so.
-  B: allowed later, and a refund past the window is the platform's loss.
-  C: allowed later and recovered from the seller's Available balance (contradicts M3's published
-     line).
+A product dispute after the seller's money has cleared (ruled: Decision #470, A): a product dispute
+may be opened only while the sale is still clearing (7 days), which is also when the seller's money
+can be held; the order page says so. M3's "cleared money is never clawed back" holds.
 
 FILES:
   - supabase/migrations/00000017_tables_finance.sql (an order-line subject on the dispute table
-    F1260 uses, in place)
+    F1260 uses, in place). Reuse PROJECTS EX2's dispute subject (finance.disputes.subject_kind,
+    with order_line reserved for this prompt) and add no second subject column; if this prompt
+    runs first, EX2 adopts its column instead. One design either way.
   - supabase/migrations/00001260_functions_finance_disputes.sql (open_order_line_dispute; the
     refund on a buyer win)
   - supabase/migrations/00001240_functions_finance_money_movement.sql (cancel_order_line before a
     download; refund_session_forfeit) + 00002510
-  - files.download_events (read only: a download by the buying account of the line's asset since
-    the order)
+  - catalogue.entitlements (read first_delivered_at; write the line's entitlement → 'refunded');
+    finance.delivered_refund_refusal (read, never switched on)
   - packages/backend/services/finance/{OrderBackendService.ts, DisputeBackendService.ts}; the
-    buyer's order view (a tier-5 "Cancel" before a download, "Report a problem" after); the
+    buyer's order view, /checkout/orders (a tier-5 "Cancel" before a download, "Report a problem"
+    after); the
     provider's session view (a tier-5 "Refund this forfeit"); the types
   - supabase/probes/product_refunds.sql (new)
   - finance-model.md §4 and §15, PRODUCT_SPEC.md §Orders, Refunds & Promo Codes and §Sessions (the
     markers), PRODUCT_MANAGEMENT.md §3.5 (the line states), documentation/database/finance/*
 
 STEPS:
-  1. cancel_order_line(p_line): a member of the buying account, a download line no member of that
-     account has downloaded since the order, and the seller's row still pending. The buyer gets the
+  1. cancel_order_line(p_line): a member of the buying account, a download line whose entitlement
+     has no first_delivered_at, and the seller's row still pending. The buyer gets the
      line's paid amount back at once ('order_refund'), the seller's pending row shrinks by its
      credit, and the platform's fee on the line is reversed. The line reads cancelled (DB19).
   2. open_order_line_dispute(p_line, p_reason, p_evidence): non-delivery or a defective file, within
@@ -1768,12 +1031,14 @@ STEPS:
      from the frozen row.
   3. refund_session_forfeit(p_escrow): the forfeit's payee gives back what the forfeit paid them,
      from their pending money first, then Available (it is voluntary, so cleared money is theirs to
-     give). The buyer gets the forfeit back fee-free; the line reads refunded (DB19's trigger).
+     give). The buyer gets the forfeit back fee-free; the line reads refunded (DB19's writer).
 
-ACCEPTANCE: product_refunds.sql: a cancel before any download refunds and reverses the fee; a cancel
-after a download is refused; a dispute freezes and a buyer win recovers from the frozen row; a
+ACCEPTANCE: product_refunds.sql: a cancel before any download refunds, reverses the fee and marks
+the entitlement refunded; a cancel after a download is refused while delivered_refund_refusal is on
+(set inside the probe); a dispute freezes and a buyer win recovers from the frozen row; a
 provider's forfeit refund reaches the buyer. finance_invariants.sql and conservation_identity.sql
-pass. Screenshots of the order view's actions at 390 and 1440.
+pass. Screenshots of the order view's actions at 390 and 1440. Readiness: part of PRD-F12 (MR3
+completes it; USER_FLOWS MK-31).
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
@@ -1783,181 +1048,267 @@ PRODUCT_MANAGEMENT.md §3.5; the M8 markers removed for what this builds.
 HOT: 00001240, 00002510, apps/web/features/checkout/** (the #243 peers).
 ```
 
+### MR3 — An operator can refund a card payment, and money still moves in one place (PRD-F12, card half)
+
+```text
+PROMPT MR3: Card refunds start inside Projective, are recorded with who and why, and settle
+through the existing webhook
+
+ROLE: Payments engineer.
+
+CONTEXT: finance-model.md §15: a card refund is made at Stripe (Dashboard or API) and arrives as
+charge.refunded. finance.record_charge_refunded (00001230:1975) debits the wallet the payment
+credited, by the newly refunded amount; whatever that wallet cannot cover is a platform loss, sent
+to ops. Nothing calls refunds.create (stripe-rails.ts), so today a human refunds in the Stripe
+Dashboard and Projective records neither who did it nor why.
+finance.v_ops_unledgered_payments (00003004:246) lists settled payments with no ledger credit, and
+the settlement_mismatch / business_archived payments awaiting a human (SA §Stripe, #200). #457 (b)
+adds captured payments whose engagement was refused. Each of these needs a card refund, and none
+has a door. DB16 (/admin/ledger, 85e7d4e4) and DB19 (3041e5ef) have landed; it needs DB21.
+
+Who may start a card refund (ruled: Decision #464, A): operators only, from /admin, for (i) a
+payment on v_ops_unledgered_payments and (ii) a top-up that support agrees to return while the
+wallet still holds it. Payers withdraw to their bank as today. The gate is security.is_admin() plus
+a sign-in within the last 10 minutes (the token's amr, org.fn_session_signed_in_at() as #450 uses),
+until MFA step-up (PRD-C17) replaces it. Read #464's FLAGS (a)-(d) before you build. The
+refund-destination question for counsel is carried by LEGAL_COMPLIANCE LG2's Part E.2
+(FOUNDER_QUESTIONNAIRE.md); MR7's Part D does not hold it.
+
+FILES:
+  - 00000017: finance.card_refunds (payment, amount_minor, currency, reason, requested_by,
+    provider_ref re_…, status requested|succeeded|failed|canceled, timestamps); RLS on, no client
+    policy
+  - 00001230: finance.begin_card_refund(p_payment, p_amount_minor, p_reason, p_idempotency_key)
+    (an operator definer); record_charge_refunded (see step 4); the refund.* processor door;
+    00001830 (append-only, status moves through doors only); 00002510
+  - packages/types/finance/payments.ts (HANDLED_STRIPE_EVENTS: add the refund lifecycle events the
+    pinned API version emits, verified with the stripe:stripe-docs skill); a Zod row schema
+  - packages/backend/services/finance/{stripe-rails.ts (refundParams, with an idempotency key
+    derived from the row), PaymentBackendService.ts or a new CardRefundService.ts, stripe-webhook.ts}
+  - apps/web/routes/api/finance/payments/[id]/refund.ts (thin; operator only, 404 otherwise)
+  - /admin/ledger: an "Unledgered payments" section with a "Refund to card" dialog
+  - supabase/probes/card_refund.sql (new); scripts/stripe-smoke.ts (a refund leg on stripe-mock)
+  - finance-model.md §15, SYSTEM_ARCHITECTURE.md §Stripe (table 1.1 and the webhook list),
+    documentation/database/finance/*, ROUTING.md, DESIGN_SYSTEM.md "Where tier 1 renders today"
+
+STEPS:
+  1. The ruling (above): nothing to ask.
+  2. The door records the request first, and refuses:
+     - an amount above what is refundable (captured − refunded − already requested);
+     - a payment with an open chargeback;
+     - a payment from the other mode.
+  3. The service calls refunds.create with the row's idempotency key, then binds re_… write-once.
+  4. The money moves ONLY in the webhook. record_charge_refunded learns two facts:
+     (a) a refund of a payment that was never credited (settled_unapplied without a transaction,
+         settlement_mismatch, business_archived) debits nothing, records no platform loss and
+         resolves the ops item;
+     (b) a refund Projective asked for links to its card_refunds row, and refund.failed marks it
+         failed.
+     A converted payment (#435) refunds the charged amount and debits the payer's pinned share.
+  5. The dialog shows the default (the full refundable amount), a required reason, and the wallet
+     effect before the commit: "Takes £X back from <wallet>; £Y would be a platform loss". It has
+     one tier-1 accent commit and one Dialog with a Signal visible.
+
+ACCEPTANCE: card_refund.sql (ROLLBACK) proves:
+  - refunding a settlement_mismatch payment records the row, and its simulated charge.refunded
+    debits nothing and resolves the item;
+  - a partial refund of a credited top-up debits the wallet by that part;
+  - a request above the refundable amount, and a payment with an open chargeback, are both refused;
+  - a replayed event changes nothing.
+Unit tests cover the idempotency key and the route's 404. The smoke has a refund leg. Screenshots
+of the dialog at 1440 and 390. conservation_identity.sql passes.
+
+SAME CHANGE: Zod + database docs; PRD-F12 narrowed. F12 flips to ✅ only once DB21 has landed too.
+USER_FLOWS MK-31's operator half; both scoreboards; one Score history line.
+HOT: 00001230 + stripe-webhook.ts (never beside SBP S4, DB6 or DB9), 00000017, 00002510.
+```
+
+### MR5 — The Stripe balance matches the ledger (PRD-F8)
+
+```text
+PROMPT MR5: An external reconciliation: what Stripe holds, matched line by line and in total
+against what the ledger says it should hold
+
+ROLE: Payments architect + ledger engineer.
+
+CONTEXT: FA L6; SYSTEM_ARCHITECTURE.md §Stripe says no reconciliation against the Stripe balance
+is built; finance-model.md §15 calls it an ops job. Why it can't wait for PROD: every internal check
+(fn_reconcile_wallets, DB16's identity) compares the ledger with itself. A missed or mis-applied
+webhook, where Stripe holds money the ledger never recorded or the reverse, is invisible to all of
+them. Only an external check sees it.
+Facts the design must respect:
+  - The platform is GB, with default gbp (#423 (B)). Until a human adds a currency's settlement
+    bank account, Stripe converts a charge in that currency into GBP at settlement, and its
+    balance transaction carries the exchange_rate.
+  - Stripe's fees come out of the platform balance and are never ledgered.
+  - Under Separate Charges & Transfers, money leaves the platform balance at the transfer
+    (begin_payout → transfers.create). It then sits in the connected account until that account's
+    automatic bank payout (bankPayoutContents assumes automatic payouts). A failed bank payout
+    stays there (M9).
+  - stripe-mock is stateless, so it can prove the calls but never the identity.
+DB16's terms have landed (85e7d4e4). It needs DB9 (the settlement currencies) and MR3 (card
+refunds).
+
+Taking L6 out of Planned (ruled: Decision #460, A): build it now, read-only and independent of the
+journal (MR8). It needs only the Stripe API and DB16's terms, and it is the one check that catches
+a lost webhook. The owner also ruled that MR5 waits for DB9 and MR3: re-verify each at HEAD before
+you build, and stop if one has not landed.
+
+FILES:
+  - 00000017: finance.stripe_balance_snapshots (as_of, livemode, currency, available, pending);
+    finance.stripe_reconciliation_runs (window, livemode, status, counts; unique on window +
+    livemode); finance.stripe_reconciliation_items (run, kind stripe_only | ledger_only |
+    amount_mismatch | unclassified, Stripe object id, ledger ref, amounts, currency,
+    resolved_at/by, note). RLS on, no client policy.
+  - 00001230: service-role record doors; an operator resolve door (it writes a note and never
+    moves money); 00002510
+  - 00003004: finance.v_stripe_expected_balance per settlement currency, built from DB16's terms
+  - 00005060: http job 'finance-stripe-reconcile', daily, after 'finance-conservation-check'
+  - apps/web/routes/api/finance/cron/stripe-reconcile.ts (FINANCE_CRON_SECRET, 404 otherwise)
+  - packages/backend/services/finance/StripeReconciliationService.ts + tests, over a READ-ONLY
+    Stripe port (balance.retrieve, balanceTransactions.list, the retrieves it needs; the port has
+    no write method) with a fixture adapter; stripe-rails.ts helpers
+  - LedgerHealthService + /admin/ledger: a "Stripe" section
+  - supabase/probes/stripe_reconciliation.sql (new); scripts/stripe-smoke.ts (a leg that proves the
+    calls)
+  - finance-model.md §15, SYSTEM_ARCHITECTURE.md §Stripe (replace "not built"), this file's §0.6,
+    FA L6's status, documentation/database/finance/*, Zod row schemas
+
+STEPS:
+  0. The ruling (above): nothing to ask.
+  1. Snapshot: balance.retrieve on the platform → one row per currency.
+  2. Activity: list the window's balance transactions [last run's end, now − 1 h), auto-paginated,
+     with the source expanded. Match each one to a ledger fact by id: a charge or payment to
+     inbound_payments.provider_ref (via the charge's payment_intent); a refund to the payment's
+     refund or to card_refunds; a dispute adjustment to chargebacks.provider_ref; a transfer or
+     its reversal to payouts.provider_ref; a fee to the fee total. A payout to the platform's own
+     bank is revenue leaving, with no ledger counterpart expected. Enumerate every type from the
+     docs. An unknown type is an 'unclassified' item and is never skipped. Ledger facts in the
+     window with no Stripe counterpart become ledger_only items.
+  3. The two identities, per settlement currency:
+     (a) Completeness: the previous snapshot plus the window's net activity equals this snapshot.
+         This proves the activity list is whole.
+     (b) Expected: Stripe (available + pending) equals the ledger's held side (DB16), less what was
+         already transferred out to connected accounts, less Stripe's fees, less the platform's
+         own payouts, plus adjustments. Read each balance transaction's own currency and amount,
+         so a USD charge settled as GBP reconciles in GBP, with its rate recorded.
+     A non-zero gap writes one ops.log_entries error (scope finance.stripe_reconciliation); MR4's
+     finance.* error rule already routes it (#507).
+  4. Connected accounts, bounded: only accounts with a payout in flight or a failed bank payout.
+     Compare balance.retrieve (stripeAccount) with what the ledger says sits there (M9).
+  5. Nothing is ever corrected. An operator resolves an item with a note.
+  6. A run records livemode. A test key reconciles test mode only (core/stripe.ts already refuses a
+     live key outside production).
+  7. Prove it against the real TEST-mode account, read-only, with the .env.local test key. Attach
+     the run's figures.
+
+ACCEPTANCE: unit tests with the fixture port prove:
+  - a complete window balances both identities;
+  - a charge Stripe has and the ledger lacks (a lost payment_intent.succeeded) gives one
+    stripe_only item and an error;
+  - a payout whose transfer Stripe lacks gives a ledger_only item;
+  - a USD charge settled as GBP reconciles in GBP;
+  - fees are accounted;
+  - re-running a window adds nothing.
+stripe_reconciliation.sql covers the doors and the view. The smoke leg passes on stripe-mock. One
+test-mode run is recorded. A wrong bearer gets a 404.
+
+SAME CHANGE: PRD-F8 ❌ → ✅ (test mode proven; the live run belongs to F17's runbook); USER_FLOWS
+MW-62; both scoreboards; one Score history line.
+HOT: 00000017, 00001230 (never beside SBP S4, DB6 or DB9), 00003004, 00005060, 00002510,
+stripe-rails.ts.
+```
+
+### MR8a / MR8b — The shadow double-entry journal (PRD-F16)
+
+```text
+PROMPT MR8a: The shadow double-entry journal — accounts, entries and the primitives that write
+them
+
+ROLE: Ledger architect.
+
+CONTEXT: The ledger is single-entry with materialised balances (00001200:44, :148). Ruling M2 B:
+"shadow double-entry written by every money definer once live money passes a pilot, an enterprise
+asks for an audit trail, or an auditor or regulator does." System wallets are not materialised
+(ruling M2; DB8 removes 'system' from WalletOwnerType), so system accounts live in the journal,
+never in finance.wallets. It needs MR5, a hard WAIT (#463 (a)); DB16 has landed. MR8b follows it.
+
+Ruled (Decision #463, owner, 2026-11-18: A · A): a public launch IS "live money past a pilot", so
+the journal is built before PROD (a journal added after live volume must be rebuilt from
+single-entry rows, which DB16 showed cannot tell cash from credit without the event tables). It is
+written inside the money primitives and the doors that move money without a wallet leg (escrow hold
+and release, fees, chargeback loss, settlement, conversion): one balanced entry per movement in the
+same transaction, as M2 says ("every money definer"), never an AFTER INSERT trigger on
+finance.transactions.
+
+FILES (MR8a): 00000017 (finance.journal_accounts: code, currency, kind, system; finance.
+journal_entries: occurred_at, source_kind, source_id, idempotency_key, transaction_id;
+finance.journal_lines: entry, account, wallet_id, debit_minor, credit_minor, exactly one of them
+> 0); 00001830 (append-only, plus a DEFERRABLE constraint trigger: Σ debit = Σ credit per entry per
+currency at commit); 00001200 (fn_wallet_credit, fn_wallet_debit, fn_wallet_credit_pending and
+the escrow hold and release write entries); 00003004 (finance.v_trial_balance per currency);
+supabase/seeds/gen/emit-finance.ts (the seed goes through doors since DB16, so the journal fills
+itself; regenerate 07_finance.sql); probes journal_balance.sql (new);
+documentation/database/finance/*, finance-model.md §6, SYSTEM_ARCHITECTURE.md (Integration
+Blueprints: B built).
+
+THE CHART (per currency; refine it in the change and document it): stripe_platform_cash ·
+connected_in_transit · wallet_liability (one control account, with a subledger by wallet_id) ·
+escrow_liability · pending_liability · fee_revenue · fx_spread_revenue · stripe_fees ·
+platform_loss · fx_position.
+
+STEPS (MR8a):
+  0. The ruling (above): nothing to ask.
+  1. Tables, the append-only trigger and the balance constraint.
+  2. The primitives and the escrow doors write their entries.
+  3. Before and after the change, measure fn_wallet_credit's cost (EXPLAIN ANALYZE on a seeded
+     wallet), and report both figures.
+
+ACCEPTANCE (MR8a): journal_balance.sql proves:
+  - every movement through the primitives and escrow doors writes one balanced entry;
+  - an unbalanced entry is refused at commit;
+  - the trial balance nets to zero per currency;
+  - the wallet_liability subledger equals balance_cents for every wallet;
+  - escrow_liability equals the held escrows.
+Every existing finance probe passes unchanged.
+```
+
+```text
+PROMPT MR8b: Every remaining money door writes the journal, and the journal ties to DB16 and MR5
+
+ROLE: Ledger engineer. Runs alone in the SQL lane: it touches 00001150, 00001155, 00001210,
+00001230, 00001240 and 00001260.
+
+STEPS:
+  1. Grep every door that changes money: card settlement, refunds, chargebacks and losses,
+     transfers and payouts (connected_in_transit), the fees, team splits and vault retention, Fair
+     Exit, session forfeits, orders and product sales, #435's conversions, MR3's card refunds.
+     Each writes its entry. A door you cannot place in the chart is a finding to report, never an
+     account to invent.
+  2. The ties:
+     - v_trial_balance's cash and liability accounts reproduce v_conservation_identity's two sides
+       per currency (DB16);
+     - stripe_platform_cash equals MR5's latest snapshot, less in-flight timing.
+     Each gap writes ops.log_entries (scope finance.journal), which MR4's pipeline routes.
+  3. /admin/ledger: a trial balance per currency.
+
+ACCEPTANCE: journal_balance.sql extended to every door; conservation_identity.sql and every other
+finance probe stay green; the seed's trial balance nets to zero.
+
+SAME CHANGE (MR8b): PRD-F16 ❌ → ✅; the M2 B markers in finance-model.md §6 and SA; both
+scoreboards; one Score history line.
+HOT: every finance SQL file. Nothing else runs in the SQL lane beside MR8a or MR8b.
+```
+
 ---
 
 ## 4. Phase 2 — Fat services & thin route controllers
 
-### SV1 — ✅ Zod half done (the CHECKs are DB8's)
-
-> **Status 2026-11-12:** Zod half done (`4c9482a2`, `388d9952`; `finance-tables.contract.test.ts`).
-> The two CHECKs are still DB8's, which has not started.
-
-Shipped in `4c9482a2` (+ `388d9952`): `EscrowSchema` (`payerBusinessId` nullable; `payerUserId`,
-`releasedAt` and `autoFunded` added; `status` is `EscrowStatus`),
-`ChargebackSchema.unrecoveredCents`, `WalletPageQuerySchema` / `parseWalletPageQuery` returning
-`{value, corrected}` with `walletPageSearch` building the canonical query, and
-`finance-tables.contract.test.ts`, which diffs every finance table's columns against its row schema
-(the parser is `packages/types/core/table-contract.ts`). Left: the two SQL CHECKs the Zod already
-promises (pot name ≤ 120, approval reason ≤ 2000), now DB8 step 3; the wallet routes do not parse
-with the schema yet (SV2). **Do not re-run this prompt.**
-
-### SV2 — `WalletBackendService` honesty: scope, approvals, per-currency reads, statements
-
-> **Status 2026-11-12:** Done (`d4c4a194`): `WalletContext.requested/resolved` with
-> `walletPageRedirect` (`notice=wallet-unavailable`), `SpendApprovalView.decidable`, `pdfHref` (no
-> `hasPdf`), `pending_release_days` and the on_hold read; no `UUID_RE` under `api/finance`. The
-> island still computes `canDecide` (UI2 step 1).
-
-```text
-PROMPT SV2: The wallet read says what is true: resolved scope, decidable approvals, per-currency
-reads
-
-ROLE: Backend engineer.
-
-CONTEXT: FA R5 and V6 (P0, FCA §1), A7, R10, R11 and R7 (finance routes still on UUID_RE); FCA
-N20 (the smoother projection uses floats and a hard-coded fee), N21 (the forecast hard-codes 7
-days), N22 (the pending read drops on_hold, which DB6 starts writing) and N25
-(DisputeBackendService is unguarded). SV1 shipped WalletPageQuerySchema, parseWalletPageQuery
-({value, corrected}) and walletPageSearch (4c9482a2), but the routes do not use them yet. N21's
-read is the wallet half of RED SC-4's pendingReleaseDays: the optimisation track reuses it.
-
-FILES:
-  - packages/backend/services/finance/{wallet-scope.ts (:112-120, :220-224), live-wallet.ts (:262
-    the pending read, :352-376 actionsFor, :436-447 the smoother, :498-527 smoother and pots, :1184
-    and :1372 the 7, :1748 hasPdf), WalletBackendService.ts, DisputeBackendService.ts (:56-159)}
-  - packages/types/finance/wallet.ts (SpendApprovalView.decidable, StatementRow.pdfHref,
-    BillRow.pdfHref, WalletContext.requested/resolved, an onHold figure)
-  - apps/web/routes/(dashboard)/wallet/{index,transactions,analytics,invoices}.tsx (parse with
-    parseWalletPageQuery; 303 on a scope mismatch or a corrected query)
-  - every apps/web/routes/api/finance/** route still on UUID_RE (z.uuid())
-  - unit tests beside each service file
-
-STEPS:
-  1. R5: resolveWalletContext returns {requested, resolved}. When they differ, every wallet page
-     answers 303 to the same path with w=<resolved>, without do and back, plus
-     notice=wallet-unavailable (FA §4.3). A corrected query 303s to walletPageSearch's canonical
-     form, so the island never has to repair its URL.
-  2. V6: SpendApprovalView.decidable = the viewer holds approve_spend on the wallet AND is not the
-     requester, from the same capability set the door uses.
-  3. A7 + N20: the smoother read is per wallet currency, in integer minor units, with the fee from
-     income_smoother_fee_bp (the smoother itself is Planned and locked, SV3; existing enrolments
-     stay readable). Pots: every pot, in created_at order, in its currency.
-  4. N21: the Upcoming forecast reads pending_release_days. N22: the read counts pending AND
-     on_hold; On hold is its own figure and is never dropped.
-  5. R10: pdfHref from /api/finance/{statements,invoices}/[id]/pdf when a PDF can be produced;
-     hasPdf goes. Every PDF refusal is JSON {code, message} with its status.
-  6. R7 + N25: z.uuid() on every finance route still on UUID_RE; DisputeBackendService's methods use
-     the guarded read/write wrappers their siblings use.
-
-ACCEPTANCE: unit tests: a scope mismatch (303, do stripped); a corrected query (303 to the canonical
-form); decidable for an approver, a distribute-only member and the requester; a two-currency
-smoother; on_hold counted; pdfHref present.
-
-SAME CHANGE: Zod with every view-type change; ROUTING.md with the wallet 303 and its notice, if it
-does not list them yet.
-HOT: live-wallet.ts / wallet-scope.ts (RED WP2 waits for this prompt).
-```
-
-### SV3 — Recurring-rule actions, and every automation control locked until it runs (M6)
-
-> **Status 2026-11-12:** Done (`fdeb3018`): the four recurring actions (`wallet-actions.ts`), the
-> three lock reasons (`live-wallet.ts`), and a multi-currency payout save is refused until the
-> action names a currency (N17).
-
-```text
-PROMPT SV3: Recurring-rule actions, and every automation control locked until its engine runs
-
-ROLE: Backend engineer.
-
-CONTEXT: FA A13 (the door shipped in 172f9d66; no service or UI calls it), A14, A6 and A2; FCA N17
-(setPayout writes to account.rows[0], an arbitrary currency). Decision #337, ruling M6: each
-automation control is locked behind a LockedDialog reason until its engine runs — payout schedules
-(DB4), then pots (DB5, UI3), then the Income Smoother, which is Planned and needs a PRODUCT_SPEC.md
-entry first (finance-model.md §1.4).
-
-FILES:
-  - packages/types/finance/wallet.ts (the WalletAction union; request schemas; lock reason codes)
-  - packages/backend/services/finance/{wallet-actions.ts, live-wallet.ts (actionsFor)}
-  - apps/web/routes/api/wallet/action.ts (Zod only; no new route)
-  - apps/web/features/wallet/core/{wallet-home.ts (:286-303: Upcoming rows carry their actions),
-    wallet-refusal.ts (the lock copy)}
-  - tests beside each
-
-STEPS:
-  1. pause_recurring · resume_recurring · edit_recurring (the amount) · archive_recurring →
-     finance.update_deposit_rule. Each is offered only to a viewer the door accepts (the owner, or
-     add_funds on a shared wallet). The copy for edit and resume says the rule then charges the
-     editor's own card (the door re-stamps created_by).
-  2. Locks: actionsFor returns them LOCKED with a reason, never absent while needed.
-     set_payout's scheduled modes → 'schedule_not_running' (DB4 lifts it); any pot control →
-     'pots_not_running' (UI3 lifts it); enrol_smoother → 'smoother_planned' (it stays until a
-     PRODUCT_SPEC.md entry and an engine exist). A manual payout stays savable.
-  3. N17: setPayout takes the currency from the action and writes that currency's schedule.
-
-ACCEPTANCE: wallet-actions tests per action; actionsFor tests for a holder, a non-holder and each
-lock; a multi-currency account saves the schedule in the currency it named.
-
-SAME CHANGE: Zod with the actions and lock codes. (No marker moves: the engines are not built.)
-HOT: live-wallet.ts / wallet-scope.ts, wallet-actions.ts.
-```
-
-### SV4 — Checkout service: blockers before charges, the right comparison, tests and an axis
-
-> **Status 2026-11-12:** Done (`f691a0bb`): `promo_not_applicable`,
-> `CheckoutBackendService.test.ts`, the stale-intent cancel (`card-payment-sweep.test.ts`) and the
-> `checkoutPayment` dev axis.
-
-```text
-PROMPT SV4: CheckoutBackendService refuses before Stripe is touched
-
-ROLE: Backend engineer.
-
-CONTEXT: FA CO8 (P0: a promo on escrow lines charges the card before the order fails), C8 (the
-commit compares the display total, CheckoutBackendService.ts:769), CO15 (stale requires_payment
-intents), CO29 (no dev axis) and CO30 (create, promo and replay untested); FCA N23 (the on-account
-headroom is shown in the display currency) and N34 (the checkout order, line and calendar routes
-pass ids unvalidated). DB7 (24cbab02) already passes the listing-currency charge to the database as
-p_expected_minor, raises PC409 promo_exhausted / price_changed / payment_in_progress, and resumes a
-live card payment. SCH-WP6 (paid consultations) waits for this prompt.
-
-FILES:
-  - packages/backend/services/finance/{CheckoutBackendService.ts (blockersFor; create: the
-    comparison :755-790; the on-account headroom :426, :452), live-basket.ts (resolvePromo :1200),
-    checkout-refusal.ts (+ test), PaymentBackendService.ts (sweepUnsettledCardPayments)}
-  - packages/backend/services/finance/CheckoutBackendService.test.ts (new)
-  - apps/web/features/checkout/core/basket-state.ts (:279-292: no resetAttempt() on PC409
-    payment_in_progress or a replay)
-  - apps/web/routes/api/checkout/{order,calendar}.ts (Zod at the edge, N34)
-  - apps/web/features/devtools/*, apps/web/utils/dev-seam.ts (the checkoutPayment axis): HOT
-
-STEPS:
-  1. CO8: a promo on a basket with any ticket, revision, seat or session line → the blocker
-     'promo_not_applicable', in resolvePromo AND blockersFor, before createCheckoutCardPayment.
-  2. C8: compare the listing-currency charge (charge.minor) with the client's expected amount; the
-     display total is never part of the price check.
-  3. checkout-refusal.ts maps the PC409 prefixes promo_exhausted, price_changed and
-     payment_in_progress to buyer copy; payment_in_progress resumes the returned payment.
-  4. N23: the on-account headroom is read in the charge currency (get_on_account_standing with it).
-  5. CO15: the N1 recovery sweep (the jobs session's 'finance-sweep-card-payments' job, POST
-     /api/finance/cron/card-payments) also cancels an intent still requires_* after 24 h (with an
-     idempotency key); the handled payment_intent.canceled webhook marks the row. No new job. The
-     abandoned-basket nudge is MARKETPLACE_BUILD_PROMPTS CK5's (built, Decision #492), not
-     this prompt's.
-  6. N34: Zod uuid on the order, line and calendar routes.
-  7. Dev Context Switcher: checkoutPayment (ok · declined · authenticate · timeout · unapplied ·
-     price_changed · promo_exhausted), applied in the service under the dev seam: DevOverrides +
-     DEV_DEFAULTS, DevOption list, DevContextPanel control, reflect() set AND delete.
-
-ACCEPTANCE: CheckoutBackendService.test.ts covers price_changed, a promo mismatch, a promo on escrow
-lines (no Stripe call, asserted with a spy), a prior-key replay, card-id ownership and the
-display-versus-listing comparison with a moved rate. A sweep test cancels a 25-hour-old intent and
-leaves a succeeded one to settle.
-
-SAME CHANGE: Zod with the blocker codes; the Dev Context Switcher axis in full.
-HOT: the checkout services (after SV6); features/devtools + dev-seam.ts (SBP S4, S6; IDG F6).
-```
-
 ### SV5 — Currency honesty: one exponent SSOT, estimates marked, nothing dropped
+
+> **Status 2026-11-23:** step 1's one list landed in `1d8fc3e6` (Decision #435: `currencyExponent`
+> in `packages/types/finance/wallet.ts`, mirrored by SQL `finance.fn_currency_exponent` and pinned
+> by `fx-conversion.test.ts`); step 1's contract test and steps 2–6 below are open.
 
 ```text
 PROMPT SV5: Every converted figure says it is an estimate, and no currency silently disappears
@@ -1966,7 +1317,10 @@ ROLE: Backend + types engineer.
 
 CONTEXT: FA C10, C13 (P0), C6, C9, C11, C12 and C20; FCA N33 (the personal "spent this month"
 converts each row, then sums). Decision #337, ruling M5 (f): every converted figure carries a
-staleness mark. Depends on DB8 (fn_currency_exponent) and DB9 (settlement_currencies).
+staleness mark. It no longer waits for DB8 or DB9: fn_currency_exponent exists (#435), and
+settlement_currencies is seeded (#423), so step 5's narrowing can run before DB9's SQL refusal.
+C13 is the point, and PRD-F20 is UAT-gated, so this runs in Wave 2: wallet-scope.ts still skips a
+currency that has no rate (PRD-F20 cites :324).
 
 FILES:
   - packages/types/finance/{wallet.ts (:1362-1407 the exponents and formatMoney), common.ts (:27),
@@ -1982,9 +1336,9 @@ FILES:
     stale, excluded[]})
 
 STEPS:
-  1. C10: one CURRENCY_EXPONENTS, a superset of the UI's 24 codes. The UI store imports it if
+  1. C10, the rest: currencyExponent (#435) is the one list. The UI store imports it if
      packages/ui may depend on @projective/types (check packages/ui/CLAUDE.md); otherwise it mirrors
-     it and the contract test pins the mirror.
+     it, and currency.contract.test.ts pins the TS, UI and SQL lists to each other.
   2. C13: aggregates (the hero total, Available, analytics sums) return estimated: true when any
      currency was converted, asOf (the oldest rate used), stale (any rate older than 24 h) and
      excluded (currencies with no rate). Never drop a currency silently; never sum mixed currencies
@@ -1995,47 +1349,17 @@ STEPS:
      every origin's rate at 4 significant figures, not 4 decimal places.
   5. C11: one toStripeAmount(minor, ccy) with tests: amounts in 3-decimal currencies rounded to a
      multiple of 10; ISK and UGX follow Stripe's 2-decimal API rule. Listing currencies narrow to
-     settlement_currencies (DB9).
+     settlement_currencies (seeded, #423).
   6. N33: "spent this month" sums per currency, then converts once.
 
 ACCEPTANCE: the contract test is green; unit tests for an aggregate with an unconvertible currency
 (it appears in excluded, and the hero total says so), a stale rate, the NGN rate label,
-toStripeAmount (KWD, JPY, ISK, GBP) and N33's order of operations.
+toStripeAmount (KWD, JPY, ISK, GBP) and N33's order of operations. Readiness: closes PRD-F20 with
+UI5 (USER_FLOWS MW-01).
 
 SAME CHANGE: Zod with the Aggregate; DESIGN_SYSTEM.md §C.1 with any packages/ui API change.
 HOT: live-wallet.ts / wallet-scope.ts (RED WP2 / WP11 wait for this), the checkout services
 (commerce-money.ts), packages/ui.
-```
-
-### SV6 — "Wallet covers" counts only the wallet that pays (N7, P0)
-
-> **Status 2026-11-12:** Done (`d2d7a07e`; tests in `commerce-owner.test.ts`).
-
-```text
-PROMPT SV6: "Wallet covers" counts only the wallet that will pay
-
-ROLE: Backend engineer.
-
-CONTEXT: FCA N7 (P0, with C13): "wallet covers" and the wallet-provider offer sum every wallet the
-owner has, converted to the display currency, while place_wallet_order debits only the
-charge-currency wallet (PF402 "Your wallet holds no …"). No ruling is needed.
-
-FILES: packages/backend/services/finance/{commerce-owner.ts (:324-343), CheckoutBackendService.ts
-(:371, :425, :528)}, apps/web/features/payments/core/stage-funding.ts (:43), and their tests.
-
-STEPS:
-  1. The cover is the charge-currency wallet's Available, read through the service (once DB5 lands,
-     Available minus earmarks, from the same read, never a TS subtraction).
-  2. The wallet provider is offered only when that wallet covers the charge. A buyer with money in
-     another currency is told which wallet would pay and that it does not cover the charge; never a
-     total across currencies.
-  3. The shortfall (CheckoutBackendService.ts:528) is computed in the charge currency.
-
-ACCEPTANCE: unit tests: an owner holding GBP 50 and EUR 100 is not offered the wallet for a GBP 80
-item and is offered it for a GBP 40 item; a stage quote follows the same rule.
-
-SAME CHANGE: Zod with any view change.
-HOT: the checkout services (SV4 follows this prompt).
 ```
 
 ### SV7 — Seller-side refusals and the roster's payout readiness (N12, M4)
@@ -2118,25 +1442,26 @@ STEPS:
 
 ACCEPTANCE: payout_lifecycle.sql: a team account's failed bank payout notifies the owner and each
 withdraw holder once; a replay notifies nobody again. A unit test for payoutBankFailed; a screenshot
-of the notice at 390 and 1440.
+of the notice at 390 and 1440. Readiness: closes PRD-F11 (USER_FLOWS MW-16).
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each reset announced first; finish with your own clean
 `deno task test:probes:fresh`.
 SAME CHANGE: migrations edited in place; Zod with the wallet flag; documentation/database/finance/*
 and database/comms docs for the catalog row; finance-model.md §8 only if its wording changes.
-HOT: 00001240, live-wallet.ts (after SV3).
+HOT: 00001240 (so it runs in the SQL lane), live-wallet.ts.
 ```
 
 ---
 
 ## 5. Phase 3 — Islands & design-system alignment
 
-### UI1 — Wallet stylesheet gates (partly fixed: D6 and D11 are done)
+### UI1 — Wallet stylesheet gates
 
-> **Status 2026-11-12:** Partly done: D6 and D11 hold (every reduced-motion block has its
-> `data-motion` twin). Steps 1–8 remain: no high-contrast block in `wallet-tokens.css`, no
-> `@supports not (backdrop-filter)`, no `wallet-contrast.test.ts`.
+> **Status 2026-11-23:** D6 (solid selection) and D11 (a `data-motion` twin for every reduced-motion
+> block, in all eight sheets) landed before this prompt ran and must stay; steps 1–8 below are open
+> (no high-contrast block in `wallet-tokens.css`, no `@supports not (backdrop-filter)`, no
+> `wallet-contrast.test.ts`).
 
 ```text
 PROMPT UI1: wallet/styles pass every §3 gate, the licensed aurora included
@@ -2154,7 +1479,6 @@ high-contrast static switch belongs there; apps/web/features/wallet/core/wallet-
 static-ground rules, the reserved-funds violet licence; the :1944 citation).
 
 STEPS:
-  ✅ D6 (solid selection) and D11 (reduced-motion twins in all eight sheets) are done: keep them.
   1. D1: a :root[data-contrast="high"] block in wallet-tokens.css: an opaque --wlt-hero-ink-soft, a
      stronger --wlt-glass-edge, opaque glass fills, and the aurora forced to the static ground.
   2. D2: hero ink ≥ 4.5:1 at every stop under the pill and the top row, in light and dark. The test
@@ -2183,10 +1507,11 @@ SAME CHANGE: DESIGN_SYSTEM.md's Wallet exception paragraph with D1, D2 and the v
 HOT: the wallet stylesheets (UI1 runs before the other UI prompts), DESIGN_SYSTEM.md.
 ```
 
-### UI2 — WalletHome and dialogs: honest gates, PDFs, money-verb tiers, focus (partly fixed: D16)
+### UI2 — WalletHome and dialogs: honest gates, PDFs, money-verb tiers, focus
 
-> **Status 2026-11-12:** Partly done: D16 only. `WalletHome.island.tsx:474` still computes
-> `canDecide`, and no statement or bill has a PDF action; every other step remains.
+> **Status 2026-11-23:** step 3's D16 landed with #331 (CSV is an icon ghost); steps 1–2, the rest
+> of step 3 and steps 4–6 below are open (`WalletHome.island.tsx:523` still computes `canDecide`; no
+> statement or bill has a PDF action).
 
 ```text
 PROMPT UI2: The island acts on what the server decided, and amber marks the money verbs
@@ -2197,10 +1522,11 @@ CONTEXT: FA V6, R10, R11, D17, D19, D24 and M2 (FCA §5: D16 was fixed by #331; 
 DESIGN_SYSTEM: Save card and Approve stay tier 3, as configuration and authorisation commits); FCA
 N15 and N32. Decision #337, ruling E3 D-13 (A): the wallet lane's Top up becomes tier 1 (accent);
 the hero pills stay glass (the #122 licence); amber marks every act that starts or commits a money
-flow, which rules #157 flag (j) the broad way. Depends on SV2 (and UI1 for the sheets).
+flow, which rules #157 flag (j) the broad way. SV2 has landed (d4c4a194); run it after UI1 (the
+sheets).
 
 FILES:
-  - apps/web/features/wallet/islands/{WalletHome.island.tsx (:306-409 effects, :474 canDecide),
+  - apps/web/features/wallet/islands/{WalletHome.island.tsx (:306-409 effects, :523 canDecide),
     WalletLane.island.tsx (:261-284)}
   - apps/web/features/wallet/components/{WalletDialogs.tsx (:453, the hand-dressed back link),
     InvoicesPanel.tsx, LedgerRow.tsx, LedgerFilters.tsx, UpcomingList.tsx}
@@ -2213,11 +1539,11 @@ FILES:
   - tests: apps/web/features/wallet/core/wallet-home.test.ts, wallet-intent.test.ts
 
 STEPS:
-  1. V6: Review renders if and only if approval.decidable; the client capability maths at :474 goes.
+  1. V6: Review renders if and only if approval.decidable; the client capability maths at :523 goes.
   2. R10: a tier-5 "PDF" row action for each statement or bill with a pdfHref. Receipts and PDFs
      download through fetch → saveBlob (as the CSV export does); a refusal shows the InlineNotice
      copy, never raw JSON.
-  3. Tiers: ✅ D16 (CSV is an icon ghost since #331). D17 Show N more → tier 4 neutral outlined.
+  3. Tiers: D17 Show N more → tier 4 neutral outlined.
      Save card and Approve stay tier 3 (DESIGN_SYSTEM "Commits that stay tier 3"). D19 Back to
      checkout → the Button href mode.
   4. D-13: the lane's Top up → tier 1 (LaneCreateButton's accent mode); Withdraw stays tier 4; the
@@ -2238,18 +1564,18 @@ this prompt.
 
 ### UI3 — Recurring rules, pots and locked automation in the wallet (M6)
 
-> **Inputs from DB5 (2026-11-12):** `POST /api/wallet/action` takes `save_pot` (`SavePotInputSchema`:
-> create, rename, re-weight, goal, `archive`) and `move_pot` (`MovePotInputSchema`: `in` / `out`).
-> `WalletOverview.potActions` lists the ones the viewer may take, and `WalletPotView.goal` carries the
-> goal; archived pots are not read. The doors already accept both; only the surface keeps
-> `pots_not_running` (copy: "Pots set money aside as income clears, but they can't be changed here
-> yet."), so lifting it is `actionsFor`'s `locked.push("pots_not_running")` line plus the copy.
-> **Also yours (the read was left as it was):** the wallet read's Available is still the whole
-> balance (`wallet-scope.ts` `availableOf`, the hero, the switcher, the allocation meter). It must
-> become balance − Σ active pots, with an Earmarked figure beside it, and capital must still sum.
-> Checkout's "wallet covers" (`commerce-owner.ts`) also reads the whole balance: a covered order whose
-> pots hold the difference is refused `PF402` `earmarked` at the door. Until UI3 ships, only the
-> seeded pots exist.
+> **Inputs from DB5 (2026-11-12):** `POST /api/wallet/action` takes `save_pot`
+> (`SavePotInputSchema`: create, rename, re-weight, goal, `archive`) and `move_pot`
+> (`MovePotInputSchema`: `in` / `out`). `WalletOverview.potActions` lists the ones the viewer may
+> take, and `WalletPotView.goal` carries the goal; archived pots are not read. The doors already
+> accept both; only the surface keeps `pots_not_running` (copy: "Pots set money aside as income
+> clears, but they can't be changed here yet."), so lifting it is `actionsFor`'s
+> `locked.push("pots_not_running")` line plus the copy. **Also yours (the read was left as it
+> was):** the wallet read's Available is still the whole balance (`wallet-scope.ts` `availableOf`,
+> the hero, the switcher, the allocation meter). It must become balance − Σ active pots, with an
+> Earmarked figure beside it, and capital must still sum. Checkout's "wallet covers"
+> (`commerce-owner.ts`) also reads the whole balance: a covered order whose pots hold the difference
+> is refused `PF402` `earmarked` at the door. Until UI3 ships, only the seeded pots exist.
 
 ```text
 PROMPT UI3: Upcoming rows act; pots become real; locked automation says why
@@ -2258,7 +1584,8 @@ ROLE: Frontend engineer.
 
 CONTEXT: FA A13 (the UI half), A3, D7, A14 and A6; FCA R13 (no wallet dev axes); FA CO29. Decision
 #337, ruling M6: lock each control until its engine runs; a pot is an earmark (Available ·
-Earmarked). Depends on SV3 (the actions and locks) and DB5 (the pot doors and actions).
+Earmarked). SV3 (the actions and locks, fdeb3018) and DB5 (the pot doors and actions, bc35b27b)
+have landed.
 
 FILES: apps/web/features/wallet/components/{UpcomingList,AccountRail,WalletDialogs}.tsx;
 apps/web/features/wallet/core/{wallet-home,wallet-state}.ts;
@@ -2274,8 +1601,8 @@ STEPS:
      money between accounts, so it is a configuration commit, like the payout schedule. The rail
      shows "Available · Earmarked" as MetaLine text in tabular-nums. The static pot box goes (D7).
      SV3's 'pots_not_running' lock lifts, and finance-model.md §13's lock note goes.
-  3. Locked automation: the Income Smoother's enrolment (and the scheduled payout modes, if DB4 has
-     not merged) open LockedDialog with SV3's reason copy. There is no savable control.
+  3. Locked automation: the Income Smoother's enrolment opens LockedDialog with SV3's reason copy.
+     There is no savable control. (DB4 has merged, so the scheduled payout modes are not locked.)
   4. Dev Context Switcher: walletVerification (unverified · pending · verified-not-ready · ready)
      and walletProcessor (up · down), applied to the viewer in resolveWalletContext under the dev
      seam:
@@ -2338,8 +1665,8 @@ CONTEXT: FA D30 and C13 / C6 (the render side); FCA N10 (money rendered without 
 nine figures, FundStageDialog, WalletDialogs' review, headline and done figures, the line detail's
 "Original"). Decision #337, ruling M5 (f): a staleness mark on every converted figure. Decision
 #341, ruling E2: a MoneyView for every visible figure; strings only in aria and sentences. The
-app-wide lint ban is the optimisation track's (RED WP7), after this prompt. Depends on SV5. Check
-git status first: peers may be editing apps/web/features/checkout/** (Decision #243).
+app-wide lint ban is the optimisation track's (RED WP7), after this prompt. Depends on SV5 and
+DB17. Check git status first: peers may be editing apps/web/features/checkout/** (Decision #243).
 
 FILES:
   - packages/ui display MoneyView (an estimate mark and a rate-date MetaLine) + its DESIGN_SYSTEM.md
@@ -2359,6 +1686,7 @@ STEPS:
 
 ACCEPTANCE: screenshots of the checkout summary with a converted line, and of the wallet hero with
 an excluded currency and a stale rate, at 390 and 1440, in light, dark and high contrast.
+Readiness: completes PRD-F20 and PRD-F21.
 
 SAME CHANGE: DESIGN_SYSTEM.md §C.1 with the MoneyView change; the M5 (f) marker removed.
 HOT: WalletDialogs.tsx (never beside DB18 or UI3), apps/web/features/checkout/**, packages/ui. RED
@@ -2367,10 +1695,10 @@ WP4 and WP7 wait for this prompt.
 
 ### UI6 — Checkout design gates and the commit's honesty (N28)
 
-> **Status 2026-11-12:** Partly done: step 3's accent landed in `8b63f2b0` (Decision #404), but
-> `checkout-commit-tier.test.ts` has no Buy Now entry. Steps 1–2 and 4–7 remain (`scale(0.99)` at
-> `checkout-payment.css:330`, text opacity at `checkout-body.css:509`, no `?edit=1` in
-> `CheckoutStepper.tsx`, and `payment.tsx`'s 302 keeps only `preselectFrom`'s ids).
+> **Status 2026-11-23:** steps 4–6 and step 1's press scale landed in `1d8fc3e6`, and step 3's
+> accent in `8b63f2b0` (Decision #404); the rest of step 1, step 2, step 3's COMMITS entry (Buy Now
+> is still missing from `checkout-commit-tier.test.ts`) and step 7 below are open. The style line
+> numbers in FILES have moved: grep for `transparent)` and `opacity`.
 
 ```text
 PROMPT UI6: Checkout passes the design gates, and the commit names the exact charge
@@ -2383,7 +1711,7 @@ query), N9 (Buy Now's Pay is tier 3 and missing from checkout-commit-tier.test.t
 stepper's Details link loops), N26 (the payment step's backward 302 drops display and the sim* dev
 axes) and N29 (Pay names the display estimate); FA D27 (PromoField's Apply) and D29 (translucent
 fills). Decision #337, ruling E3 D-13: amber marks every act that starts or commits a money flow.
-Depends on SV4 and UI2. Check git status first (the Decision #243 peers).
+SV4 has landed (f691a0bb); run it after UI2. Check git status first (the Decision #243 peers).
 
 FILES: apps/web/features/checkout/styles/{checkout-confirmation.css (:236, :612),
 checkout-body.css (:509), basket-body.css (:378, :765-767, :811, :968-975, :2151-2153),
@@ -2395,15 +1723,9 @@ spoken rate's locale).
 
 STEPS:
   1. N28 and D29: solid ramp tones and opaque tints; full ink; kind labels as inline meta text; the
-     static banner unboxed; press = scale(var(--btn-press-scale)); the reduced-motion rule mirrored
-     under :root[data-motion="reduced"].
+     static banner unboxed; the reduced-motion rule mirrored under :root[data-motion="reduced"].
   2. D27: Apply → tier 4 neutral outlined.
-  3. N9: Buy Now's Pay → severity="accent"; add it to COMMITS in checkout-commit-tier.test.ts.
-  4. N11: the completed Details step links with ?edit=1.
-  5. N26: the payment step's backward 302 keeps the search string (display, sim*), as Details does.
-  6. N29: the Pay label and the confirm dialog name the charged amount (the listing-currency
-     charge), with the estimate only as the rail's MetaLine; MoneyView's spoken rate uses the
-     viewer's locale.
+  3. N9: add Buy Now's Pay (already severity="accent") to COMMITS in checkout-commit-tier.test.ts.
   7. Mobile: confirm on a 390 px screenshot that the price and Pay move, never duplicate (§3.10).
 
 ACCEPTANCE: checkout-commit-tier.test.ts is green with Buy Now; screenshots of the basket, payment
@@ -2430,7 +1752,10 @@ E2E_CHROMIUM or the Playwright cache, waitUntil "commit", hydration retries). Do
 `playwright install`.
 
 CONTEXT: verifies the finance track against the rulings it built: Decision #337, rulings M1, M3,
-M5 (f), M6, M7, M8 and E3 D-13. Runs after the SQL lane (through DB21) and UI2, UI3 and UI5.
+M5 (f), M6, M7, M8 and E3 D-13, and the readiness series end to end. Runs after the SQL lane
+(through DB21 and MR3) and UI2, UI3 and UI5. `deno task test:e2e` names a deleted spec
+(landing-hero.spec.ts, PRD-K3): that fix is SUBSCRIPTIONS_BUILD_PROMPTS S8 step 9's; if it has not
+landed, make it first, or E1 cannot run.
 
 FILES:
   - apps/web/tests/e2e/wallet.spec.ts (new); apps/web/tests/e2e/_finance-fixtures.ts (new:
@@ -2475,6 +1800,9 @@ freelancer is paid):
   13. Clean-up: everything runs on data the fixture creates (a fresh stage on a seeded project).
       The spec header says the suite writes to the shared local DB and must not run during a
       peer's db:reset.
+  14. Readiness legs: an unclaimed service escrow refunds and pays nothing (MR1, #474); a brief's
+      cancel settles its escrow first (MR2, #479); a silent client's delivery auto-approves
+      (PM-GH1, once it has landed).
 
 ACCEPTANCE: `deno task test:e2e:wallet` passes twice in a row after a fresh `deno task db:reset`
 (announced to the other sessions first, like any reset).
@@ -2561,12 +1889,38 @@ SAME CHANGE: none beyond the probe (no rule changes here).
 
 ## 7. Last — Docs
 
+### MR9 — Close §F: re-verify, re-score, hand off
+
+```text
+PROMPT MR9: Re-verify every §F row against the code, re-score, and list what only a human can
+finish
+
+ROLE: Readiness auditor. No code changes; only documentation/readiness/*, this file and the
+decision log. Runs once at Wave 2's UAT checkpoint (step 1, UAT rows only) and again before Z1.
+
+STEPS:
+  1. For each PRD §F row (and at the Wave 2 UAT checkpoint, the UAT rows only): grep its evidence
+     at HEAD, run the probes it names (deno task test:probes <name>) and finish with one clean
+     deno task test:probes:fresh. Flip a status only with that evidence; correct any row a build
+     session over-claimed.
+  2. Recompute both scoreboards with the file's formula; add the §Score history line; bump
+     **Last verified**; refresh the §Critical path lines for MVP, UAT and PROD.
+  3. USER_FLOWS: re-verify MW-01, MW-11, MW-14, MW-16, MW-19, MW-27, MW-62, MK-09, MK-28, MK-31,
+     PJ-31, PJ-41 and PJ-42, then re-score.
+  4. In this file, do the closing duty for every prompt you find done (the §0.0 ledger) and bring
+     §0.7's row map to the statuses you set.
+  5. Final message: §F's score (old → new) and a table of what remains, with whose act it is:
+     counsel (F15, M9, #435 (d)), the live Stripe run (F17), the hosted alert send (F9), hosted
+     secrets (PRD-G6), and any 🧑 the owner deferred.
+```
+
 ### Z1 — Finance docs sweep and the audits' status columns
 
 ```text
 PROMPT Z1: Finance documentation sweep
 
-ROLE: Documentation steward. Runs after every prompt above has merged.
+ROLE: Documentation steward. Runs after every prompt above has merged, and after MR9's re-score
+has decided the statuses: Z1 sweeps the docs; it does not score.
 
 FILES: documentation/database/finance/*; business/finance-model.md; business/PRODUCT_SPEC.md
 (Wallet, Funding, Payouts, Multi-Currency, Orders); PRODUCT_MANAGEMENT.md §3.5 (fund state, deposit
@@ -2584,7 +1938,29 @@ SPEC: rollup, not restatement (documentation/CLAUDE.md rule 2). grep every "**No
 not edit the root CLAUDE.md: the X4 / N31 persona fix is the owner's (the root `CLAUDE.md` edit `f1f10e31`);
 report whether it has landed.
 
-ACCEPTANCE: every function, trigger, view and job named in DB2-DB21 and SV8 appears in
-documentation/database/finance/*; neither audit's status column has a blank cell; every #337 ruling
-reads built, open with an owner, or Planned.
+ACCEPTANCE: every function, trigger, view and job named in the DB, SV and MR prompts (those left
+here, and the §0.0 ledger's at their Text at commit) appears in documentation/database/finance/*;
+neither audit's status column has a blank cell; every #337 ruling reads built, open with an owner,
+or Planned.
 ```
+
+---
+
+## Map of merged files
+
+| Old place                                        | Went                                                                                                                      |
+| :----------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------ |
+| This file's §2 (F0) and the done DB, SV sections | done or superseded, §0.0                                                                                                  |
+| `readiness/MONEY_BUILD_PROMPTS.md` header        | this file's header (scope) and §0.1 (the finance SQL lane)                                                                |
+| MONEY §0 "What closes each §F row"               | §0.7 row map, with the flip rule                                                                                          |
+| MONEY §1 run order and hot files                 | §0.1 waves, §0.2 and §0.3                                                                                                 |
+| MONEY §2 readiness addendum                      | §1 standard header (Stripe, Readiness, the shared tree and the final message)                                             |
+| MONEY §3 decision pack                           | all ruled: each ruling written into its prompt (§0.5 lists them)                                                          |
+| MONEY §4 deltas for FBP prompts                  | folded into DB6, DB8, DB9, DB13, DB14, DB15, DB17, DB20, DB21, SV5, SV8, UI5, E1 and Z1; DB16's and DB19's dropped (done) |
+| MONEY §4 delta for PM-WP1                        | dropped: PM-WP1 landed in `07d853f6`                                                                                      |
+| MONEY §4 delta for PM-GH1                        | handed off to `PM_BUILD_PROMPTS.md` PM-GH1                                                                                |
+| MONEY §4 delta for SBP S1 → S4                   | `SUBSCRIPTIONS_BUILD_PROMPTS.md` §0 and S4                                                                                |
+| MONEY §5 MR0, MR1, MR2, MR4, MR6, MR7            | done, §0.0                                                                                                                |
+| MONEY §5 MR3, MR5, MR8a / MR8b                   | §3, after DB21                                                                                                            |
+| MONEY §5 MR9                                     | §7, before Z1                                                                                                             |
+| MONEY §6 "What no prompt here can close"         | §0.7, after the row map                                                                                                   |

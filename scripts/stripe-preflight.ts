@@ -1,6 +1,6 @@
 /**
  * `deno task stripe:preflight` proves a Stripe account is configured the way the code expects
- * (PRD-F17, MONEY_BUILD_PROMPTS MR6): the three event destinations (URL on APP_URL's host, enabled,
+ * (PRD-F17, FINANCE_BUILD_PROMPTS MR6): the three event destinations (URL on APP_URL's host, enabled,
  * pinned API version, exactly the handled events), the platform account (country, default currency,
  * activation, manual payouts of its own balance), the settlement currencies in its balance, and the
  * payout schedule of its connected accounts. The checks are

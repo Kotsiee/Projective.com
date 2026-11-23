@@ -3,7 +3,7 @@
  *
  * This is the one list the server's reader (`core/env.ts`), the Supabase CLI's `env()` references in
  * `supabase/config.toml`, the operator tooling under `scripts/` and `.env.example` are measured
- * against (SECRETS_CONFIG_BUILD_PROMPTS.md CFG1, PRD-H4/H5). `deno task deploy:check`
+ * against (OPERATIONS_BUILD_PROMPTS.md CFG1, PRD-H4/H5). `deno task deploy:check`
  * (`scripts/deploy-check.ts`, OPERATIONS_BUILD_PROMPTS.md OPS6, PRD-G8) reads its required list from
  * here and keeps no list of its own.
  *

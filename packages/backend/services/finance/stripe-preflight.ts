@@ -8,7 +8,7 @@ import { type Stripe, STRIPE_API_VERSION, type StripeMode } from "../../core/str
 
 /**
  * stripe-preflight.ts — the read-only proof that a Stripe account is configured the way the code
- * expects (PRD-F17, MONEY_BUILD_PROMPTS MR6). `deno task stripe:preflight` (`scripts/stripe-preflight.ts`)
+ * expects (PRD-F17, FINANCE_BUILD_PROMPTS MR6). `deno task stripe:preflight` (`scripts/stripe-preflight.ts`)
  * runs it; the go-live runbook that a human follows around it is SYSTEM_ARCHITECTURE §Stripe 1.4.
  *
  * ## Shape

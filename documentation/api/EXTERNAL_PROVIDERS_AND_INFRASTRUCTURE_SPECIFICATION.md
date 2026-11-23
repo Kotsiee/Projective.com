@@ -1557,7 +1557,7 @@ is the record. A channel with no registered transport is not claimed at all, so 
    all outbound delivery at once.
 4. Prove it: a POST to `/api/comms/dispatch` without the bearer answers 404; with it,
    `POST /api/comms/cron/dispatch` answers 200 with its counts; a mandatory notice's email delivery
-   moves `pending → queued → sent` within a minute (COMMS_DELIVERY CD2's `smoke:delivery`).
+   moves `pending → queued → sent` within a minute (COMMS_BUILD_PROMPTS CD2's `smoke:delivery`).
 
 **One entry point.** The SSOT named `dispatch-push` and `send-email`. One dispatcher fans out to one
 transport per channel instead, and those two names are now its transports. This is an
@@ -1811,7 +1811,7 @@ is the cost path at scale, behind the same `MailTransport`. The commented SendGr
      `RESEND_WEBHOOK_SECRET`. Prove it with
      Resend's test recipients: `delivered@resend.dev` leads to `delivered`; `bounced@resend.dev`
      suppresses the address for every category; `complained@resend.dev` suppresses it for
-     Marketing only (COMMS_DELIVERY CD2's `--send` cases).
+     Marketing only (COMMS_BUILD_PROMPTS CD2's `--send` cases).
 7. **Suppression follows PRODUCT_SPEC §Notifications rule 3 and Decision #339, ruling N3 (b).**
    - **A hard bounce** (`bounce.type = Permanent`) suppresses the address for email in **every**
      category, because it cannot receive mail. Its owner is told once, in the app

@@ -1,205 +1,192 @@
 # Marketplace Build Prompts — closing USER_FLOWS MK: Basket, checkout & orders · Reviews · Seller catalogue
 
 > **Status: WORK ORDERS, not binding.** Claude Code prompts that take three sections of
-> [USER_FLOWS.md](USER_FLOWS.md) to 100%: **Basket, checkout & orders** (MK-18–MK-31, 63% at
-> 2026-11-18), **Reviews** (MK-32–MK-34, 25%) and **Seller catalogue** (MK-35–MK-47, 66%). Written
-> 2026-11-18 against `main` @ `b7280787`. Every open row was re-checked in code that day by a
-> read-only audit, and every gap the rows name is still open (four row texts are stale, §0.4).
+> [USER_FLOWS.md](USER_FLOWS.md) to 100%: **Basket, checkout & orders** (MK-18–MK-31), **Reviews**
+> (MK-32–MK-34, MW-64) and **Seller catalogue** (MK-35–MK-47, MK-57, MK-60), plus the Listing view's
+> MK-12 and MK-16. The owner's rulings are Decisions #485–#506 (one per prompt), #525 for SC10–SC13
+> and #393 for the asset-delivery phases.
 >
-> **Rollup, not restatement.** Money rows already have work orders in
-> [`FINANCE_BUILD_PROMPTS.md`](../architecture/FINANCE_BUILD_PROMPTS.md) (FBP), sequenced by
-> [`MONEY_BUILD_PROMPTS.md`](MONEY_BUILD_PROMPTS.md) (MONEY), which owns the finance SQL lane.
-> Others sit in `SUBSCRIPTIONS_BUILD_PROMPTS.md` (SBP), `SCHEDULING_BUILD_PROMPTS.md` (SCH),
-> `TRUST_SAFETY_BUILD_PROMPTS.md` (T&S), `COMMS_BUILD_PROMPTS.md` and the #393 specs
-> ([`ASSET_DELIVERY_ARCHITECTURE.md`](../architecture/ASSET_DELIVERY_ARCHITECTURE.md),
-> [`ANTI_PIRACY_ENGINE.md`](../architecture/ANTI_PIRACY_ENGINE.md)). This file links to them and
-> adds only what changed (§2). Gaps with no work order get new prompts: **CK1–CK7** (checkout),
-> **RV1–RV3** (reviews), **SC1–SC9** (seller catalogue) and **MKZ** (the closing sweep).
+> **Verified against code 2026-11-23 at `f2e25929`.** 12 open, 4 partly done, 8 done (§0 ledger).
+> Runnable now: CK2, CK3, RV1, RV2, SC4, SC9 (phase 1), SC10, SC11, SC12, SC13.
+>
+> **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
+> (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
+
+**Rollup, not restatement.** Money rows have work orders in
+[`FINANCE_BUILD_PROMPTS.md`](../architecture/FINANCE_BUILD_PROMPTS.md) (FBP), which owns the finance
+SQL lane. Others sit in
+[`SUBSCRIPTIONS_BUILD_PROMPTS.md`](../architecture/SUBSCRIPTIONS_BUILD_PROMPTS.md) (SBP),
+[`SCHEDULING_BUILD_PROMPTS.md`](../architecture/SCHEDULING_BUILD_PROMPTS.md) (SCH),
+[`TRUST_SAFETY_BUILD_PROMPTS.md`](../architecture/TRUST_SAFETY_BUILD_PROMPTS.md) (T&S),
+[`COMMS_BUILD_PROMPTS.md`](../architecture/COMMS_BUILD_PROMPTS.md) and the #393 specs
+([`ASSET_DELIVERY_ARCHITECTURE.md`](../architecture/ASSET_DELIVERY_ARCHITECTURE.md),
+[`ANTI_PIRACY_ENGINE.md`](../architecture/ANTI_PIRACY_ENGINE.md)). Gaps with no work order get the
+prompts here: **CK** (checkout), **RV** (reviews), **SC** (seller catalogue) and **MKZ** (the
+closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given under it.
 
 ---
 
 ## 0. Map, run order and stops
 
+### 0.0 Done
+
+| ID  | What landed                                                                                         | Commit                                    | Text at    |
+| :-- | :-------------------------------------------------------------------------------------------------- | :---------------------------------------- | :--------- |
+| CK1 | Entitlements, product versions frozen into `originals`, the download route, the A8 box, Purchases   | `322c4dc9`, `82cdd7b7`, `197b0d0c` (#488) | `f2e25929` |
+| CK5 | `comms.fn_enqueue_basket_nudges`: one Marketing email per idle basket; Marketing opt-in at the root | `630468cb` (#492)                         | `f2e25929` |
+| CK6 | `deno task stripe:domains`, a redirect return lands once, the Apple Pay path (off), the runbook     | `322c4dc9`, `0d58d084` (#504)             | `f2e25929` |
+| CK7 | `place_wallet_order` prices an accepted quote offer into its engagement; its expiry bounds payment  | `667196d5`, `67a5c305`, `e0231287` (#491) | `f2e25929` |
+| SC1 | `CatalogueListingRowSchema` pins all 30 columns; `parseListingRow` is the one read boundary         | `5a95dbac`, `f2abf8e2` (#501)             | `f2e25929` |
+| SC2 | A bought Pipeline's stages keep the CREATE category; a tiered Pipeline and a session plan seeded    | `a0671fbe` (#503)                         | `f2e25929` |
+| SC3 | `projects.open_cohort` / `cancel_cohort`, the Cohorts block at `?cohort=`, one seeded cohort        | `322c4dc9`, `b87c276c` (#498)             | `f2e25929` |
+| SC5 | `ListingViewBeacon` writes deduped views; the rollup derives view and order counts; 91 days seeded  | `322c4dc9` (#506)                         | `f2e25929` |
+
 ### 0.1 Row → work order
 
 **Basket, checkout & orders**
 
-| Row   | Now · Crit · Gate  | Work order                                       | The row flips (or its note clears) when                                                                                                |
-| :---- | :----------------- | :----------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
-| MK-18 | ✅ · High · UAT    | **CK5** (#492)                                   | An idle basket gets one nudge, within consent (note clears)                                                                            |
-| MK-19 | ✅ · High · UAT    | —                                                | —                                                                                                                                      |
-| MK-20 | 🟡 · Crit · PROD   | **CK4** (ruled #490; ⚖️)                         | ✅ only once the tax switch is on in the target environment after counsel; CK4 alone narrows the note                                  |
-| MK-21 | ✅ · Crit · MVP    | — (CO17 is Planned, §0.5)                        | —                                                                                                                                      |
-| MK-22 | ✅ · Crit · MVP    | — (environment)                                  | —                                                                                                                                      |
-| MK-23 | 🟡 · High · UAT    | **CK6** + you, on a hosted domain                | Your device runs are recorded (Apple Pay on iOS Safari, Google Pay on Android Chrome, the PayPal return)                               |
-| MK-24 | 🟡 · Normal · UAT  | SBP S1 → S4 (MONEY §4 delta)                     | A business buys Business Pro, sets monthly invoicing and places an on-account order                                                    |
-| MK-25 | ✅ · Normal · UAT  | COMMS NT3 (email)                                | The approval notice also emails (note clears)                                                                                          |
-| MK-26 | 🟡 · Normal · UAT  | **CK2** (takes FBP DB19 step 1)                  | A seller issues a code; the same account's second use is PC409; the route is throttled                                                 |
-| MK-27 | ⏸                  | — (#435, counsel)                                | Excluded                                                                                                                               |
-| MK-28 | 🟡 · Normal · PROD | FBP DB17 → UI5 (MONEY §1 wave 3)                 | A live feed with a staleness mark                                                                                                      |
-| MK-29 | ❌ · Crit · UAT    | **CK1** (🧑 A6, A8)                              | A real checkout delivers every file of a bundle; a refunded line answers 404                                                           |
-| MK-30 | ✅ · High · UAT    | **CK3**                                          | Every past order is findable; a block's receipt names every sitting (note clears)                                                      |
-| MK-31 | ❌ · Crit · UAT    | FBP DB6 → DB19 → DB21 → MONEY MR3 (⏳ CK1, DB16) | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
+| Row   | Now · Crit · Gate  | Work order                              | The row flips (or its note clears) when                                                                                                |
+| :---- | :----------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| MK-20 | 🟡 · Crit · PROD   | **CK4** (ruled #490; ⚖️)                | ✅ only once the tax switch is on in the target environment after counsel; CK4 alone narrows the note                                  |
+| MK-23 | 🟡 · High · UAT    | CK6 ✅ + you, on a hosted domain (§0.4) | Your device runs are recorded (Apple Pay on iOS Safari, Google Pay on Android Chrome, the PayPal return)                               |
+| MK-24 | 🟡 · Normal · UAT  | SBP S1 → S4                             | A business buys Business Pro, sets monthly invoicing and places an on-account order                                                    |
+| MK-25 | ✅ · Normal · UAT  | COMMS NT3 (email)                       | The approval notice also emails (note clears)                                                                                          |
+| MK-26 | 🟡 · Normal · UAT  | **CK2** (DB19 built its cap, #511)      | A seller issues a code; a seller's code discounts only their lines; the route is throttled                                             |
+| MK-27 | ⏸                  | — (#435, counsel)                       | Excluded                                                                                                                               |
+| MK-28 | 🟡 · Normal · PROD | FBP DB17 → UI5                          | A live feed with a staleness mark                                                                                                      |
+| MK-29 | 🟡 · Crit · UAT    | CK1 ✅ + the live run (§0.4)            | The live run is recorded                                                                                                               |
+| MK-30 | ✅ · High · UAT    | **CK3** (partly)                        | Every past order is findable; a block's receipt names every sitting (note clears)                                                      |
+| MK-31 | ❌ · Crit · UAT    | FBP DB6 → DB21 → MR3                    | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
 
-Two rows of the **Listing view** section close here too, because their gap sits in checkout or in a
-door built below: **MK-16** (a quote offer is paid at its price) → **CK7** (built, #491; live run
-left); **MK-12** (reserve a cohort seat) → **SC3**.
+Two rows of the **Listing view** section are left to live runs of prompts that landed here (§0.4):
+**MK-16** (a quote offer is paid at its price; CK7, #491) and **MK-12** (reserve a cohort seat; SC3,
+#498).
 
 **Reviews**
 
-| Row   | Now · Crit · Gate  | Work order      | The row flips when                                                                                         |
-| :---- | :----------------- | :-------------- | :--------------------------------------------------------------------------------------------------------- |
-| MK-32 | ❌ · High · UAT    | **RV1** (🧑 ×4) | A completed buyer reviews, the seller is told and replies; the row cites T&S R2 for the report entry point |
-| MK-33 | ❌ · Normal · PROD | **RV2** (#486)  | Providers review clients, double-blind as ruled; the Client Trust Score and its warning run                |
-| MK-34 | ✅ · Normal · UAT  | **RV1**         | Real reviews replace seed-only data (note clears)                                                          |
-| MW-64 | ❌ · Normal · PROD | **RV3** (#489)  | Standing reads real reviews, and Elite can be reached (#58-63 (h))                                         |
+| Row   | Now · Crit · Gate  | Work order                        | The row flips when                                                                                                          |
+| :---- | :----------------- | :-------------------------------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| MK-32 | 🟡 · High · UAT    | **RV1** (partly: the product arm) | A delivered purchase is reviewed and the signed-in walk is recorded (§0.4); the row cites T&S R2 for the Report entry point |
+| MK-33 | ❌ · Normal · PROD | **RV2** (#486)                    | Providers review clients, double-blind as ruled; the Client Trust Score and its warning run                                 |
+| MW-64 | ❌ · Normal · PROD | **RV3** (#489)                    | Standing reads real reviews, and Elite can be reached (#58-63 (h))                                                          |
 
 **Seller catalogue**
 
-| Row   | Now · Crit · Gate  | Work order                                        | The row flips (or its note clears) when                                                |
-| :---- | :----------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------- |
-| MK-35 | ✅ · Crit · MVP    | **SC1** (landed, #501)                            | `catalogue.listings` has a pinned Zod row schema (note clears; PRD-I3 narrows)         |
-| MK-36 | ✅ · High · MVP    | — (T&S P2a refuses PII in listing copy)           | —                                                                                      |
-| MK-37 | 🟡 · High · UAT    | **CK1**                                           | ✅ once sale originals are private, frozen at publish (A6) and delivered               |
-| MK-38 | ✅ · Crit · MVP    | **SC2**                                           | The CREATE category is copied; a tiered Pipeline is seeded (note clears)               |
-| MK-39 | ✅ · High · UAT    | **SC2**                                           | A session plan is seeded (note clears)                                                 |
-| MK-40 | 🟡 · High · UAT    | **SC3** (✅, #498) → SCH-WP7                      | 🟡 after SC3 (a seller opens a cohort); ✅ after WP7 (sittings scheduled from the app) |
-| MK-41 | 🟡 · Crit · PROD   | **SC4** (#494) + T&S SN2 → SN3                    | ✅ once SN3 screens before publish; SC4 closes the write bypass and the emitter        |
-| MK-42 | ✅ · Normal · UAT  | **MKZ** (🧑 close #219 (d))                       | The note cites SA's sanctioned loosening                                               |
-| MK-43 | ✅ · Normal · UAT  | **SC5** (#506)                                   | Views are written and counted; 90 days are seeded                                      |
-| MK-44 | 🟡 · Normal · UAT  | **SC6** (#500; ⏳ CK1, SC4)                       | Slug links; a team or business buyer is named                                          |
-| MK-45 | ✅ · High · UAT    | **SC6** (ruled #500; ⏳ CK1, SC4)                 | The note states the ruled team-editing scope                                           |
-| MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                            |
-| MK-47 | ❌ · High · PROD   | T&S R1 → R2 → **SC8**; **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands |
-| MK-57 | 🟡 · High · PROD   | **SC4**, if it takes #494 (a)                     | A direct write meets the doors' locks (#494 (A) 3–4)                                   |
+| Row   | Now · Crit · Gate  | Work order                                        | The row flips (or its note clears) when                                                           |
+| :---- | :----------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------------------ |
+| MK-36 | ✅ · High · MVP    | **SC13** (#525); T&S P2a refuses PII in copy      | The note names file answers and numeric follow-ups                                                |
+| MK-37 | 🟡 · High · UAT    | CK1 ✅ + the live run (§0.4)                      | ✅ once the publish → copy → download run is walked live                                          |
+| MK-40 | 🟡 · High · UAT    | SCH-WP7 step 5 (SC3 ✅, #498)                     | ✅ once WP7 step 5 schedules later sittings from the app and the seller's walk is recorded (§0.4) |
+| MK-41 | 🟡 · Crit · PROD   | **SC4** (#494) + T&S SN2 → SN3                    | ✅ once SN3 screens before publish; SC4 closes the write bypass and the emitter                   |
+| MK-42 | ✅ · Normal · UAT  | **MKZ** (🧑 close #219 (d))                       | The note cites SA's sanctioned loosening                                                          |
+| MK-44 | 🟡 · Normal · UAT  | **SC6** (#500; ⏳ SC4)                            | Slug links; a team or business buyer is named                                                     |
+| MK-45 | ✅ · High · UAT    | **SC6** (ruled #500; ⏳ SC4)                      | The ruled team-editing scope is built (note clears)                                               |
+| MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                                       |
+| MK-47 | ❌ · High · PROD   | T&S R1 → R2 → **SC8**; **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands            |
+| MK-57 | 🟡 · High · PROD   | **SC4**, if it takes #494 (a)                     | A direct write meets the doors' locks (#494 (A) 3–4)                                              |
+| MK-60 | 🟡 · High · UAT    | **SC4** (#488 (a))                                | The publish gate refuses a product with no file to deliver                                        |
 
-**Score projection** (section score = Σ weight × credit / Σ weight; Critical 3 · High 2 · Normal 1;
-✅ 1 · 🟡 0.5 · ❌ 0; ⏸ excluded):
-
-| Section                   | Today | Path                                                                                        |
-| :------------------------ | ----: | :------------------------------------------------------------------------------------------ |
-| Basket, checkout & orders |   63% | CK1 74% → DB21 85% → CK2 87% → CK6 + you 91% → SBP S4 93% → DB17 94% → CK4 switched on 100% |
-| Reviews                   |   25% | RV1 75% → RV2 100%                                                                          |
-| Seller catalogue          |   65% | CK1 69% → SC4 72% → SC3 + WP7 80% → SC5 81% → SC6 83% → SN3 89% → MK-47 96% → SC7 100%      |
-
-What UAT needs from these sections: **CK1** and the MK-31 chain (the cluster's two Critical · UAT
-❌s in the Scoreboard), **RV1**, **SC3** + SCH-WP7, **SC5**, **SC6**, **CK2**, **CK6** + you and SBP
-S4.
+SC10, SC11 and SC12 each add a new MK row in the change that lands them (#525). Section scores live
+in USER_FLOWS' Scoreboard. What UAT still needs from these sections: the live runs (§0.4), the MK-31
+chain (DB21 → MR3), RV1's product arm, SC4, SC6, CK2, SCH-WP7 step 5, CK6's device runs and SBP S4.
 
 ### 0.2 Run order
 
 The global rules hold: at most **two SQL sessions** on the one local DB, on disjoint migration
 files; one writer at a time for `00002500` / `00002510` / `00002520` across **all** tracks. The
 order below is priority and dependency (⏳); the file locks decide what may overlap. Before every
-SQL prompt, compare its files with what is running (`git status`, and §0 of MONEY, SECURITY_ACCESS
-and this file).
+SQL prompt, compare its files with what is running (`git status`, and §0 of FINANCE,
+[IDENTITY](../architecture/IDENTITY_BUILD_PROMPTS.md) and this file).
 
-**Queue M — money files** (`00001210` `place_wallet_order`, `00000017`). Each takes a turn in MONEY
-§1's serial SQL lane; MONEY's order wins on a conflict.
+**Queue M — money files** (`00001210` `place_wallet_order`, `00000017`). Each takes a turn in the
+finance SQL lane (FINANCE §0); FINANCE's order wins on a conflict.
 
-1. **CK1** — MK-29, and the download record MONEY's DB21 delta asks for. It edits neither `00001240`
-   nor `00000017`, so it can be the second SQL session beside MONEY's Wave 2 once `00002510` is
-   free.
-2. **CK7 → CK2** — CK7 ran ahead of CK1 by owner ruling (#491 (1)) and has landed; CK2 ⏳ CK1. CK2's
-   🧑 is ruled (#485), and CK2 waits here for CK7 and for FBP DB16, because #485 (a) adds a
-   conservation-identity term.
-3. MONEY's **DB19 → DB21 → MR3** — ⏳ CK1 (DB21 step 1), DB6 and DB16. CK2 has taken DB19 step 1.
-4. **CK4** — ⏳ DB21 (a refund reverses the tax); 🧑 ruled #490, ⚖️ counsel before the switch.
-5. **SC7** — ⏳ CK1, DB19 and DB21 (a refund reverses the royalty too, #493 (D)); 🧑 ruled #493, ⚖️
-   counsel before the grant switch. The last change to the money path in this file.
+1. **CK2** — runs now: CK1, CK7 and FBP DB16 have landed, and DB19 built its per-account cap.
+2. **SC10**'s money half — no wait, but never beside CK2 (`00001210`).
+3. FBP **DB21 → MR3** — ⏳ DB6.
+4. **CK4** — ⏳ DB21 (a refund reverses the tax); ⚖️ counsel before the switch. LEGAL LG8 follows
+   it.
+5. **SC7** — ⏳ DB21 (a refund reverses the royalty too, #493 (D)); ⚖️ counsel before the grant
+   switch. The last change to the money path in this file.
 
 **Queue C — everything else**, as the second SQL session whenever its files are disjoint from what
-is running. It shares that slot with SBP S1–S4 (MONEY §1) and the SAC prompts.
+is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 
-1. **SC4 → SC6** — ⏳ CK1 (`00001170`). SC4 leads: the write bypass is live and wider than its
-   CONTEXT says (#494), and SC4 also writes `00002018` and `00002020`.
-2. **RV1** — ⏳ SAC1 (`00002500`, `00002510`). Better after CK3, which gives it an entry point.
-3. **SC2 → SC3 → SCH-WP7** — the seed generator is one writer at a time; `00001155` runs with no
-   other SCH package.
-4. **CK5** — built (#492): the nudge is Marketing, opt-in at the root, and off until counsel (⚖️).
-5. **SC5 → RV2 → RV3.** RV3's 🧑 is ruled (#489), and RV3 waits here for RV2.
-6. T&S **R1 → R2** (their track) → **SC8** (rulings #496; ⚖️ counsel words the regime); **SC9** once
-   per #393 phase.
+1. **SC4 → SC6** — SC4 runs now (`00001170`, and `00002018` / `00002020`); SC6 ⏳ SC4.
+2. **RV1**'s product arm — runs now.
+3. **RV2 → RV3** — RV2 runs now (RV1's doors are in); RV3 ⏳ RV2.
+4. **SC11**, **SC12** — each stops at its 🧑 first. SC11 writes `00001155`, so no SCH package runs
+   beside it.
+5. T&S **R1 → R2** (their track) → **SC8**; **SC9** once per #393 phase (phase 1 runs now).
 
-**App lane** (up to three at once, file-disjoint): **SC1** (landed, #501) and **CK6** now; **CK3**
-⏳ CK1 (`live-orders.ts`); **MKZ** last.
+**App lane** (up to three at once, file-disjoint): **CK3** and **SC13** now; **MKZ** last.
 
 **Hot files across this file:**
 
-| File                                             | Writers here            | Writers elsewhere (never at the same time)                        |
-| :----------------------------------------------- | :---------------------- | :---------------------------------------------------------------- |
-| `00001210` (`place_wallet_order`, promo, orders) | CK1, CK7, CK2, CK4, SC7 | FBP DB9, DB10, DB11, DB13, DB15, DB19; SCH-WP6                    |
-| `00000017` (finance tables)                      | CK2, CK4, SC7           | FBP DB6, DB8, DB19, DB21; MONEY MR3, MR5                          |
-| `00001170` (catalogue doors)                     | CK1, SC4, SC6           | —                                                                 |
-| `00001155` (sessions, cohorts)                   | SC3                     | every SCH package; FBP DB15                                       |
-| `00005060` (jobs)                                | CK5, RV1, RV2           | FBP DB16, DB17; PM-WP1, PM-GH1; MONEY MR4, MR5                    |
-| `00002500` / `00002510` / `00002520` (grants)    | every SQL prompt here   | SAC1 holds `00002500` + `00002510` while it runs; then by name    |
-| `supabase/seeds/gen/*` (+ `db:seed:generate`)    | CK1, RV1, SC2, SC3, SC5 | FBP DB16 (`emit-finance.ts`)                                      |
-| `features/checkout/**`, `live-orders.ts`         | CK1, CK3, CK4, CK6, CK7 | FBP DB21, UI5, UI6                                                |
-| `USER_FLOWS.md`, `PRODUCTION_READINESS.md`       | every prompt            | every readiness track: edit your rows and the computed lines only |
+| File                                             | Writers here          | Writers elsewhere (never at the same time)                        |
+| :----------------------------------------------- | :-------------------- | :---------------------------------------------------------------- |
+| `00001210` (`place_wallet_order`, promo, orders) | CK2, CK4, SC7, SC10   | FBP DB9, DB10, DB11, DB13, DB15; SCH-WP6                          |
+| `00000017` (finance tables)                      | CK2, CK4, SC7         | FBP DB6, DB8, DB21, MR3, MR5                                      |
+| `00001170` (catalogue doors, `save_listing`)     | SC4, SC6, SC10, SC12  | —                                                                 |
+| `00001155` (sessions, cohorts)                   | SC10, SC11            | every SCH package; FBP DB15                                       |
+| `00005060` (jobs)                                | RV2, SC11             | FBP DB17, MR5; PM-GH1                                             |
+| `00002500` / `00002510` / `00002520` (grants)    | every SQL prompt here | one writer at a time across all tracks                            |
+| `supabase/seeds/gen/*` (+ `db:seed:generate`)    | RV1, RV2, RV3         | —                                                                 |
+| `features/checkout/**`, `live-orders.ts`         | CK3, CK4, SC10        | FBP DB21, UI5, UI6                                                |
+| `USER_FLOWS.md`, `PRODUCTION_READINESS.md`       | every prompt          | every readiness track: edit your rows and the computed lines only |
 
 ### 0.3 Human stops on this path
 
 Answer them in one sitting and each prompt runs straight through. Each prompt keeps its own 🧑
-block, so a question you defer still stops the build at the right step.
+block, so a question you defer still stops the build at the right step. Ruled stops are written into
+their prompts with their decision numbers.
 
-| #  | Question                                                                                         | Prompt              | Recommendation                                                                                          |
-| :- | :----------------------------------------------------------------------------------------------- | :------------------ | :------------------------------------------------------------------------------------------------------ |
-| 1  | #393 A6: sale originals as a third zone, snapshotted at publish                                  | CK1                 | Yes, as the spec recommends                                                                             |
-| 2  | #393 A8 (⚖️): what "downloaded" means for the refund rule                                        | CK1                 | The first completed delivery (or a reader session, once one exists), expressly accepted before Pay      |
-| 3  | #458 (b): an accepted quote offer left unpaid                                                    | CK7                 | **Ruled #491:** the offer's own expiry bounds payment (A); built                                        |
-| 4  | Who issues a promo code, and who funds it                                                        | CK2                 | **Ruled #485 (2026-11-18): A.** Seller-funded, own products; the platform pays for its codes (#485 (a)) |
-| 5  | DB19 `cancelled` vs `refunded`; DB21 a dispute after clearing (#344 (l)); MR3 who refunds a card | MONEY §3 #3, #8, #9 | As MONEY §3 recommends                                                                                  |
-| 6  | The tax model (⚖️)                                                                               | CK4                 | **Ruled #490:** Stripe Tax on digital products only, tax-exclusive; off until counsel                   |
-| 7  | Is the abandoned-basket nudge marketing (⚖️)                                                     | CK5                 | **Ruled #492:** A; Marketing made opt-in at the root; built, off until counsel                          |
-| 8  | Review eligibility, window and edits, the reply, one aggregate (#244 (e))                        | RV1                 | RV1's four recommendations                                                                              |
-| 9  | The reveal rule, Client Trust Score v1 (#244 (c)), the warning, one name or two                  | RV2                 | **Ruled #486:** double-blind; a Bayesian mean with named deductions; demote and acknowledge; one score. |
-| 10 | What Standing's peer track is                                                                    | RV3                 | **Ruled #489:** B, the client track alone, for all 20 points; a review recomputes its subject.          |
-| 11 | What a seller sets when opening a cohort, and what happens if it under-fills                     | SC3                 | **Ruled #498:** A; cancel any time before sitting 1; queue places restored; close by sitting 1    |
-| 12 | Who may edit a team's listing (#312 (a), (e))                                                    | SC6                 | **Ruled #500:** A, tightened: holders edit any team listing and create; delete: the creator or an admin |
-| 13 | The royalty: who sets it, its order against commission; who may request; ⚖️ licence words        | SC7                 | **Ruled #493:** approved as asked, 0–50% of net; `exclusive_transfer`/`licensed_use`; stops on erasure  |
-| 14 | ⚖️ Which notice-and-takedown regime                                                              | SC8                 | **Ruled #496:** a `notice` source and a takedown hold; the regime itself stays counsel's                |
-| 15 | #393 A1–A5, A7, A9–A11 and B1–B10                                                                | SC9                 | **Ruled #499:** A2 reads only (signed uploads stay); the rest per phase, as the spec recommends         |
-| 16 | Close #219 (d) as sanctioned                                                                     | MKZ                 | Yes: SA already names it the second sanctioned loosening                                                |
-| 17 | Who `catalogue.listing_published` tells, and on which publish                                    | SC4                 | **Ruled #494:** the owning party's followers, in a daily digest, on a listing's first publish only      |
-| —  | SCH-WP7 step 6 (#344 (f)); SBP S4's (f)                                                          | their prompts       | Their own                                                                                               |
+| #  | Question                                                                                        | Prompt        | Recommendation                                           |
+| :- | :---------------------------------------------------------------------------------------------- | :------------ | :------------------------------------------------------- |
+| 1  | #494 (a): does MK-57 ride in SC4's change                                                       | SC4           | Yes: the same grants and the same fix                    |
+| 2  | #494 (d): may a published listing lose its last cover or stage                                  | SC4           | No: refuse it PG422, as the gate does                    |
+| 3  | #496 (b): does a strike count against the person or the owning workspace                        | SC8           | Asked before step 4                                      |
+| 4  | #393 A1, A3–A5, A7, A9–A11 and B1–B10 (A2, A6 and A8 are ruled)                                 | SC9           | Per phase, as the spec recommends                        |
+| 5  | Per-hour rounding; whether a per-session listing may vary its lengths; a seat priced per hour   | SC10          | None yet: the prompt asks                                |
+| 6  | Rolling templates: the horizon and its opener, the capacity, an empty chain, beside Open cohort | SC11          | None yet: the prompt asks                                |
+| 7  | Plan files: frozen or live, whether a manual reveal notifies, readable after a refund           | SC12          | None yet: the prompt asks                                |
+| 8  | File answers: where they live, their limits and scan; a number's starting value in a follow-up  | SC13          | None yet: the prompt asks                                |
+| 9  | Close #219 (d) as sanctioned                                                                    | MKZ           | Yes: SA already names it the second sanctioned loosening |
+| —  | SCH-WP7 step 6 (#344 (f)); SBP S4's (f)                                                         | their prompts | Their own                                                |
 
-**For counsel** (build behind a switch that stays off; never switch it on): A8's wording, the tax
-obligation and its tax-exclusive display (#490 (c)), the nudge's consent basis, SC7's licence
-wording, SC8's notice regime, and one question to add to MONEY MR7's brief: **may a buyer-started
-refund of a card-paid line land in the wallet?** UK consumer rules generally expect a refund to the
-original payment method unless the buyer agrees otherwise. DB21 credits the wallet and MR3 keeps
-card refunds operator-only.
+**For counsel** (build behind a switch that stays off; never switch it on): the tax obligation and
+its tax-exclusive display (#490 (c)), the nudge's consent basis (CK5, built off), A8's refund
+refusal (`finance.delivered_refund_refusal`, #488), SC7's licence wording, SC8's notice regime, and
+one question that [LEGAL LG2](LEGAL_COMPLIANCE_BUILD_PROMPTS.md)'s brief carries: **may a
+buyer-started refund of a card-paid line land in the wallet?** UK consumer rules generally expect a
+refund to the original payment method unless the buyer agrees otherwise. DB21 credits the wallet and
+MR3 keeps card refunds operator-only.
 
-### 0.4 Stale text found on 2026-11-18
+### 0.4 Live runs left by landed prompts
 
-Fix each in the prompt named, or in MKZ if that prompt has already landed.
+Each was blocked locally (a shared, saturated stack; scripted sign-in refused at the Turnstile
+check, #447). Record each run in its row's evidence; MKZ step 1 checks them.
 
-| Where                                                  | Says                                                   | Truth                                                                   | Fix in |
-| :----------------------------------------------------- | :----------------------------------------------------- | :---------------------------------------------------------------------- | :----- |
-| USER_FLOWS MK-29                                       | `live-orders.ts:376`                                   | The note is `:359`; the download gate `:386`                            | CK1    |
-| `ASSET_DELIVERY_ARCHITECTURE.md` §2                    | `00001210:1892`, `live-orders.ts:342`                  | `:2153`, `:386`                                                         | CK1    |
-| USER_FLOWS MK-16                                       | "after LV2's checkout lands"                           | LV2 has landed (#457); the branch is still missing                      | #491   |
-| USER_FLOWS MK-40                                       | `schedule_sitting` has no caller, so SCH-WP7 closes it | No door opens a group cohort at all; WP7 schedules sittings of one      | SC3    |
-| USER_FLOWS MK-44                                       | "quotes cannot be acted on"                            | `QuotePanel only="host"` is in `ClientDrawerBody.tsx:213` (#458)        | SC6    |
-| USER_FLOWS MK-45                                       | "—"                                                    | #312 flags (a) and (e) are open                                         | SC6    |
-| `FINANCE_AUDIT.md` A9                                  | `F1200:~788`                                           | `00001200:1413`                                                         | #490   |
-| `database/comms/Functions.md:131-135`                  | `fn_enqueue` has no caller                             | `00001510:3143` calls it                                                | CK5 ✅  |
-| `database/reviews/Tables.md:43`                        | the landing testimonials read the table                | `testimonials()` is dead (#349)                                         | RV1    |
-| `00002018:52-63`, `database/reviews/Policies.md:14-15` | no table records a product purchase                    | `finance.order_lines` does                                              | RV1    |
-| `packages/types/profile/tabs.ts:180`                   | `freelancer` = "fellow freelancer"                     | the RPC's `author_role = 'freelancer'` is a provider reviewing a client | RV2    |
-| FBP header                                             | DB3 is uncommitted                                     | committed in `44382c08` (MONEY's addendum already says so)              | MKZ    |
-| USER_FLOWS MK-47                                       | "21 rulings open"                                      | A2 ruled (#499); A6 and A8 are CK1's (#488)                             | SC9    |
+- **CK1** (#488 (m)): a wallet and a test-mode card purchase, both files of a two-file bundle, a
+  second buyer's 404, screenshots of the confirmation and Purchases → MK-29, MK-37.
+- **CK7** (#491): request → offer → accept → pay → the engagement's board, the quote card captured →
+  MK-16.
+- **SC3** (#498): the seller opens a cohort, and a buyer reserves a seat and checks out → MK-12,
+  MK-40.
+- **RV1** (#487): complete → review → the seller is notified → replies, signed in → MK-32.
+- **CK6** (#504), yours: `--apply` on a hosted host, then Apple Pay (iOS Safari), Google Pay
+  (Android Chrome) and PayPal, recorded in the providers spec §4.3 F → MK-23.
 
 ### 0.5 Not in this file
 
 - **MK-21's wallet + card split** (CO17) is Planned with no prompt (FBP §0.6). Un-planning it is
   your call; then it needs a `PRODUCT_SPEC.md` entry first.
-- **MK-27** (pay in your own currency) stays ⏸ until counsel answers #435 (d) (MONEY MR7).
+- **MK-27** (pay in your own currency) stays ⏸ until counsel answers #435 (d)
+  (`FOUNDER_QUESTIONNAIRE.md` Part D).
 - **MK-41's screening** is T&S SN2 → SN3; the safety node lives outside this repo (PRD-D10).
 - **MK-56** (a business buys a One-Off) is ruled individuals-only for now (#457).
-- **PRD-M5's seller tax forms** (1099 / W-9) are a payout-side question. CK4 covers checkout and
-  invoice tax only.
+- **PRD-M5's seller tax forms** (1099 / W-9) are a payout-side question:
+  [LEGAL LG6](LEGAL_COMPLIANCE_BUILD_PROMPTS.md). CK4 covers checkout and invoice tax only.
 
 ---
 
@@ -221,12 +208,12 @@ Before writing code:
      documentation/reference/pr-checklist.md.
   2. Read documentation/readiness/USER_FLOWS.md (your rows) and
      documentation/readiness/MARKETPLACE_BUILD_PROMPTS.md §0 (run order, file locks, stops). If
-     you touch 00001210 or 00000017, also read MONEY_BUILD_PROMPTS.md §1-§2: its SQL lane decides
-     when you run.
+     you touch 00001210 or 00000017, also read documentation/architecture/
+     FINANCE_BUILD_PROMPTS.md §0: its finance SQL lane decides when you run.
   3. Grep documentation/reference/decisions/README.md for the surface you touch and read the
      decision files it names. If a decision already rules the behaviour you are about to change,
      stop and ask me.
-  4. The CONTEXT below was verified at main @ b7280787. Re-check every file:line against the
+  4. The CONTEXT below was verified at the commit it names. Re-check every file:line against the
      current tree before relying on it; another track may have landed since. Report any premise
      that no longer holds in your final message; never work around it silently.
 
@@ -242,8 +229,8 @@ Hard rules (merge gates; reject your own diff if any fails):
   - Money: integer minor units; floor every cut; dust to a named sink. Every balance move goes
     through finance.fn_wallet_credit / fn_wallet_debit / fn_wallet_credit_pending. Every Stripe
     effect claims finance.idempotency_keys inside the same transaction. supabase/probes/
-    finance_invariants.sql stays green; once FBP DB16 lands, so does conservation_identity.sql,
-    and a new money flow adds its terms to finance.v_conservation_identity.
+    finance_invariants.sql and conservation_identity.sql stay green, and a new money flow adds
+    its terms to finance.v_conservation_identity.
   - Stripe: never a live key; never change the Dashboard, an endpoint or an account setting. Use
     the stripe:stripe-docs skill for any Stripe API fact.
   - Thin routes (HTTP parse + Zod + auth guard); logic in packages/backend/services/* returning
@@ -271,8 +258,8 @@ Hard rules (merge gates; reject your own diff if any fails):
     write (numbers collide across peers). A NEW contradiction between source docs: do not pick a
     side; log it and ask me.
   - 🧑 DECISION: stop at the named step, put the options and your recommendation to me, and build
-    nothing that depends on the answer until I give it. ⚖️: build behind a param or flag that
-    stays off; never switch it on.
+    nothing that depends on the answer until I give it. A stop already ruled reads "RULED #NNN":
+    build the ruling. ⚖️: build behind a param or flag that stays off; never switch it on.
 
 Verification: reproduce the defect first (a failing probe or test), then fix.
   SQL: rollback-safe probes under supabase/probes/ (\set ON_ERROR_STOP on, a pg_temp helper that
@@ -289,6 +276,19 @@ Verification: reproduce the defect first (a failing probe or test), then fix.
 This checkout is shared with other sessions: never switch branch, never stash, stage only your
 own hunks, verify in a clean worktree. Commit on the branch you were given. Do not push or open a
 PR unless I ask.
+
+When you finish, do the closing duty (documentation/reference/build-prompts.md §2) in the same
+commit as the work:
+  - In documentation/readiness/MARKETPLACE_BUILD_PROMPTS.md: a done prompt leaves the file.
+    Delete its section and add its row to §0's Done ledger (ID · what landed · commit · text at
+    <commit>^). A partly done prompt keeps only its open steps, with their numbers unchanged,
+    under one rewritten Status line. A ruled 🧑 stop becomes the ruled step, with its decision
+    number.
+  - Treat any step you built for another prompt the same way, in the file that holds it.
+  - Run git grep -n "<ID>" documentation/ and update every place that still calls it open: the
+    PRODUCTION_READINESS / USER_FLOWS Track cells, the audit's Status column, other prompts' waits,
+    and this file's row in documentation/reference/build-prompts.md §3.
+  - If the file has no prompts left, delete it, log it in build-prompts.md §4 and repoint its links.
 ```
 
 ### 1.2 Readiness addendum — paste after every prompt
@@ -310,121 +310,21 @@ ran, with its result; every 🧑 question still open.
 
 ---
 
-## 2. Existing work orders — what changed since they were written
+## 2. Other files' prompts
 
-Paste the source file's own header, then MONEY's addendum where MONEY names one, then the prompt as
-written, then the delta below, then §1.2 with the rows given. Only the delta is new.
-
-| Prompt        | Source                 | `<ROWS>` for §1.2                                  | Delta (re-verified 2026-11-18 at `b7280787`)                                                                                                                                                                                                                                                                       |
-| :------------ | :--------------------- | :------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DB6           | FBP §3 · MONEY §4      | (MK-31's prerequisite)                             | MONEY's delta stands. Nothing here changes it.                                                                                                                                                                                                                                                                     |
-| DB19          | FBP §3 · MONEY §4      | MK-31 (with DB21)                                  | **Skip step 1 if CK2 has landed**: CK2 builds the per-account cap with the seller's codes. Step 2's links: #457 gave `order_lines` its `project_id` / `escrow_id` for this trigger, and CK1's entitlement carries a product line's status (`refunded`).                                                            |
-| DB21          | FBP §3 · MONEY §4      | MK-31 → ✅ only once MR3 lands too                 | MONEY's delta asks whether the buyer's download path writes `files.download_events`: **CK1 is that path**, so run DB21 after CK1, and judge "downloaded" by ruling A8 as CK1 records it. A cancel or a buyer win also sets CK1's entitlement to `refunded` (the route then 404s). The buyer's order view is CK3's. |
-| MR3           | MONEY §5               | MK-31's operator half                              | Carry the refund-destination question (§0.3, counsel) into MR7's brief.                                                                                                                                                                                                                                            |
-| DB17 → UI5    | FBP · MONEY §4         | MK-28 → ✅                                         | MONEY's delta stands.                                                                                                                                                                                                                                                                                              |
-| SBP S1 → S4   | SBP · MONEY §4         | MK-24 → ✅ once an on-account order is walked live | MONEY's delta stands. `place_on_account_order` (`00001250:494-617`) also needs a KYB-verified business; the plan gate sits in `set_invoicing_terms` (`00001210:~1240`).                                                                                                                                            |
-| SCH-WP7       | SCH §… (`:1045`)       | MK-40 → ✅ (with SC3)                              | Run right after SC3, in the same slot: SC3 opens the cohort, and step 5 schedules its later sittings. Its 🧑 at step 6 (#344 (f)) stands. Step 8 (`cancelSeat`, S-22) closes Calls & sessions MK-53, which is not this file's row.                                                                                 |
-| T&S P2a       | T&S §… (`:496`)        | —                                                  | Add `reviews.entity_reviews.title`, `comment` and `reply_comment` to the public copy it refuses at the floor (RV1 makes them writable).                                                                                                                                                                            |
-| T&S R1 → R2   | T&S (`:722`, `:926`)   | MK-47 (with SC8, SC9)                              | `ops.reports`' proposed subject CHECK (SA:1265-1279) has `listing` but no `review`: add `review`. R1's `source` also takes `notice`, with no reporter (#496 (A)). R2's listing entry point is MK-47's report half, and RV1's reviews need a Report action from it.                                                 |
-| T&S SN2 → SN3 | T&S (`:1029`, `:1082`) | MK-41 → ✅                                         | SN3 hooks `cutShowcaseRendition` in `live-catalogue-writes.ts`. SC4 must have landed first, so no listing reaches `published` around the gate.                                                                                                                                                                     |
-| COMMS NT3     | COMMS                  | MK-25's note (and MK-13's)                         | CK5's email rides it.                                                                                                                                                                                                                                                                                              |
+This section held deltas onto other files' prompts. On 2026-11-23 each moved into its target prompt,
+or was dropped because its target had landed. Run those prompts as their own files say, with §1.2's
+rows from §0.1.
 
 ---
 
 ## 3. Basket, checkout & orders — new prompts
 
-### CK1 — A bought product reaches its buyer (ASSET Phase 0)
-
-Closes MK-29 (❌ → ✅) and MK-37's delivery half; clears MK-08's note.
-
-```text
-PROMPT CK1: A bought product reaches its buyer — entitlements, frozen versions, the originals
-zone, the download route and the purchases view (ASSET_DELIVERY_ARCHITECTURE.md §14 Phase 0)
-
-ROLE: Full-stack engineer (Postgres + Deno services + one view). Queue M: you hold 00001210 and
-00001170 while this runs.
-
-CONTEXT (verified at b7280787; re-check every line):
-  - No buyer can receive a purchased file. finance.place_wallet_order (00001210:1326) inserts the
-    product line at ~:2153-2166, keeping only `manifest -> 0`, and never writes
-    finance.order_lines.asset_id (00000017:1305). live-orders.ts prints "the seller hasn't
-    attached files" (:359) because the download link needs asset_id (:386). files.fn_can_read
-    (00001160) has no purchase arm.
-  - A product's files are catalogue.products.file_manifest jsonb (00000023:91): entries are
-    AttachmentRefSchema {name, mime, size, fileId?} (packages/types/catalogue/offer.ts:46-63, at
-    most 24), each fileId a seller library files.items row in the private personal / workspace
-    bucket, checked by catalogue.fn_listing_file_ok (00001170:235-257) inside save_listing. The
-    `catalogue` bucket is public and images-only (00005040:162-170). The seller fills it through
-    features/catalogue/components/edit/offer/AttachmentList.tsx.
-  - The design: ASSET_DELIVERY_ARCHITECTURE.md §3 invariants, §4 storage isolation, §6 the
-    protected request pipeline, §10 the data model (product_versions and entitlements now;
-    deliveries and licence_tokens are later phases), §11 the route contract, §12 config and the
-    two Dev Context Switcher axes, §14 Phase 0. PRODUCT_SPEC.md §Digital Marketplace 6 and 7.
-    ROUTING.md §Proposed: asset delivery and protection, and the purchases view
-    `/files?source=purchases`.
-  - files.download_events exists (00000010:319). MONEY's DB21 delta judges "downloaded" from it:
-    what you record is what DB21 reads.
-
-🧑 DECISION (before step 2) — the two #393 rulings Phase 0 depends on. Put both to me with the
-spec's recommendation:
-  A6: sale originals are a third zone, exempt from automatic elevation, and snapshotted at
-      publish, never shared with the seller's working copy (recommended; amends PRODUCT_SPEC
-      §Assets & Attachments).
-  A8 (⚖️): what counts as "downloaded" for the refund rule. Recommended: the first completed
-      delivery of any file of the line (a reader session joins this once a reader exists), and
-      the buyer expressly accepts that at checkout, before Pay, on any line with files.
-
-STEPS:
-  1. Red first: supabase/probes/product_delivery.sql buys a seeded product as a seeded persona
-     and asserts an entitlement exists for the line. It fails today.
-  2. Schema, in place (§10): the files.asset_purpose / variant_tier values (00000004), the
-     entitlement_status enum, catalogue.product_versions and catalogue.entitlements with the
-     `ent-` slug (security.fn_slug_guard('ent'), Decision #88), indexes (00004012), the private
-     `originals` bucket with no policy (00005040), RLS and grants (00002020, 00002520, 00002510
-     by name). Decide and document what order_lines.asset_id now means (the entitlement's
-     version, or reserved); never drop it.
-  3. Publish freezes a version (A6): set_listing_status's publish arm (00001170) writes the next
-     product_versions row from file_manifest. Bytes cannot be copied into `originals` from SQL:
-     design the service-side copy plus a definer that marks the version ready, and say how a
-     purchase made before then behaves (the route answers 503 + Retry-After, never a broken
-     file). A re-publish with changed files makes a new version; an entitlement keeps its own
-     (updates_until is a later phase: leave it NULL and say so).
-  4. Purchase writes the entitlement (§10 "Money path"): inside place_wallet_order, in the same
-     transaction as its order line, held by the order's owner. Prove that place_on_account_order
-     reaches it too. A concurrency probe (two parallel checkouts of one product) passes.
-  5. GET/HEAD /api/downloads/[entitlement]/[fileId] (§6, §11): a thin route over
-     DeliveryBackendService.stream; the holder, or a member of the holding entity, only;
-     streamed through the app, never a signed read URL (ruling A2's recommendation); §5.4's
-     header matrix; Range / 206 and 304; 404 for anything not entitled, a refunded entitlement
-     included. Record each completed delivery (entitlements.first_delivered_at and a
-     files.download_events row): that is the A8 fact.
-  6. Checkout: on /checkout/payment, a line with files carries the A8 acknowledgement (a required
-     disclosure, InlineNotice + a checkbox that gates Pay, its words in PRODUCT_SPEC). The
-     confirmation's download lines link to the route, and live-orders.ts / OrderLineRow stop
-     printing "hasn't attached".
-  7. The purchases view `/files?source=purchases`: every entitlement the acting account holds,
-     newest first, each file downloadable, a refunded one shown as such. Follow the /files
-     feature's layout; add a component only if the roster lacks one (then DESIGN_SYSTEM §C.1).
-  8. Seed: at least two seeded products whose manifests point at real seeded files (uploaded by
-     the bucket seeding), so a fresh `deno task db:reset` can be walked end to end. Dev Context
-     Switcher: pj.dev.delivery and pj.dev.entitlement (§12).
-
-ACCEPTANCE: product_delivery.sql is green (the entitlement is written; a refunded or a foreign
-entitlement 404s through the service; concurrency holds); finance_invariants.sql passes. Live, as
-a seeded buyer: pay by wallet, then by card in test mode, and download every file of a two-file
-bundle; a second persona gets 404 on the first's URL; the A8 box gates Pay. Screenshots of the
-confirmation and the purchases view.
-
-SAME CHANGE: ASSET_DELIVERY_ARCHITECTURE.md (Phase 0 built; §2's stale refs corrected);
-PRODUCT_SPEC.md §Digital Marketplace 6-7 (markers; A6 and A8's words); ROUTING.md (the routes
-move from Proposed to live); documentation/database/{catalogue,files,finance}/*; Zod
-(packages/types/catalogue/*); the decision row (A6, A8 ruled; Decision #393 updated).
-```
-
-§1.2 rows: **MK-29** ❌ → ✅ (and its stale `:376`); **MK-37** → ✅ if originals are private and
-snapshotted; **MK-08**'s note cleared.
-
 ### CK2 — Sellers issue promo codes; one redemption per account; a throttled route
+
+> **Status 2026-11-23:** step 3 landed in `3041e5ef` (FBP DB19, #511: the per-account cap, with its
+> column from step 2); steps 1, 2 and 4–6 below are open, and step 1 and 2 keep only what is left.
+> Every wait is met (CK1, CK7, FBP DB16).
 
 Closes MK-26 (🟡 → ✅).
 
@@ -432,14 +332,15 @@ Closes MK-26 (🟡 → ✅).
 PROMPT CK2: A seller issues and retires promo codes for their own products; an account redeems a
 code once by default; the promo route is throttled
 
-ROLE: Full-stack engineer. Queue M: 00000017, 00001210 (after CK7).
+ROLE: Full-stack engineer. Queue M: 00000017, 00001210.
 
-CONTEXT (verified at b7280787; re-check every line):
-  - finance.promo_codes (00000017:992-1021) has no issuer column. It is definer-only (00001210
+CONTEXT (verified at b7280787; DB19's lines at f2e25929; re-check every line):
+  - finance.promo_codes (00000017:992-1035) has no issuer column. It is definer-only (00001210
     ~:1129; grants 00002520 ~:813). Its only writers are seeds and probes
-    (supabase/seeds/07_finance.sql:243); the only function write is redemption_count (00001210
-    ~:1880). There is no max_redemptions_per_account (FA CO7, which is FBP DB19 step 1, not
-    started). routes/api/basket/promo.ts has no rate limit (FA CO22, "Open, no prompt").
+    (supabase/seeds/07_finance.sql:243); the only function write is redemption_count (00001210).
+    DB19 built the per-account cap (#511): max_redemptions_per_account (00000017:1010) and
+    finance.fn_promo_uses, refused PC409 'promo_already_used' at preview and at commit.
+    routes/api/basket/promo.ts has no rate limit (FA CO22, "Open, no prompt").
   - Rules: PRODUCT_SPEC.md §Digital Marketplace 6 ("each account may redeem a code once; a code
     may allow more"); finance-model.md §1.2 (the seller's commission is taken on what the buyer
     paid for the line, after any promo) and §15; Decision #337 ruling M8. #457 prices a One-Off
@@ -448,31 +349,22 @@ CONTEXT (verified at b7280787; re-check every line):
   - The seller's console is /catalogue (apps/web/features/catalogue/**), with URL-addressed views
     (`?view=`).
 
-🧑 DECISION (before step 2): who may issue a code, and who funds the discount. Put this to me:
-  A (recommended): a seller (a person, or a team member holding the team's catalogue capability)
-     issues codes for their own product listings (all of them, or chosen ones); the seller funds
-     the discount, and commission is taken on the discounted price, as finance-model §1.2
-     already says. Platform-wide codes stay operator-only, unchanged.
-  B: as A, and a seller's code may also cover their session lines.
-  C: platform codes only; an ops door replaces the seller one.
-  RULED #485 (2026-11-18): A. The team issuer asks catalogue.fn_manages_listing /
-  org.fn_member_can('team', …, 'publish_listings') (#485 (b)). #485 (a) RULED: the platform
-  pays for a platform code. The seller is credited as if the code had not applied (commission on
-  the line before the platform's share). The cost is a new v_conservation_identity term, so CK2
-  also waits for FBP DB16.
+Who issues a code, and who funds it (ruled: Decision #485, 2026-11-18, A): a seller (a person, or
+a team member holding publish_listings: catalogue.fn_manages_listing / org.fn_member_can('team',
+…, 'publish_listings'), #485 (b)) issues codes for their own product listings, all of them or
+chosen ones; the seller funds the discount, and commission is taken on the discounted price, as
+finance-model §1.2 says. Platform-wide codes stay operator-only. #485 (a): the platform pays for a
+platform code. The seller is credited as if the code had not applied (commission on the line
+before the platform's share); the cost is a new finance.v_conservation_identity term (DB16 has
+landed, #483).
 
 STEPS:
-  1. Red first: extend supabase/probes/promo_redemption_concurrency.sql. Today the same
-     account's second use succeeds (it should be PC409), and no seller can create a code.
-  2. Schema in place: the issuer (owner type + id; NULL = the platform), the listing scope,
-     archived_at (nothing is hard-deleted), and max_redemptions_per_account integer DEFAULT 1
-     CHECK (> 0), with NULL meaning unlimited. Doors (SECURITY DEFINER, search_path ''):
+  1. Red first: extend supabase/probes/promo_redemption_concurrency.sql: no seller can create a
+     code today.
+  2. Schema in place: the issuer (owner type + id; NULL = the platform), the listing scope and
+     archived_at (nothing is hard-deleted). Doors (SECURITY DEFINER, search_path ''):
      finance.save_promo_code, archive_promo_code and list_own_promo_codes, each checking the
      capability itself.
-  3. FBP DB19 step 1, here: under the promo row's existing FOR UPDATE, count this owner's orders
-     that used the code, in every status (a refund does not give a redemption back). Refuse
-     PC409 'promo_already_used'. resolve_promo_code refuses first, so no basket shows a discount
-     the commit will refuse; checkout-refusal.ts maps it to buyer copy.
   4. In a mixed basket a seller's code discounts only that seller's eligible lines.
   5. Throttle POST /api/basket/promo per account and per client key with the helper the auth
      routes use (apps/web/utils/client-key.ts; routes/api/auth/confirm.ts): 429 with
@@ -480,14 +372,13 @@ STEPS:
   6. UI: a Promotions view in the seller console (`/catalogue?view=promotions`, in ROUTING.md):
      create, list (code · discount · n of m redeemed · expiry, as MetaLine text), archive.
 
-ACCEPTANCE: the promo probe: one account's second use → PC409 at preview and at commit; two
-accounts both succeed; max_redemptions holds under concurrency; a seller's code never discounts
-another seller's line; commission is on the discounted price. A 30-request burst on the promo
+ACCEPTANCE: the promo probe: DB19's per-account and concurrency arms stay green; a seller's code
+never discounts another seller's line; commission is on the discounted price; a platform code
+credits the seller in full and conservation_identity.sql passes. A 30-request burst on the promo
 route draws 429s. finance_invariants.sql passes. Screenshots of the Promotions view.
 
-SAME CHANGE: PRODUCT_SPEC.md §Digital Marketplace 6 and finance-model.md §15 (the per-account
-marker removed; the issuer rule as ruled); FBP DB19 (step 1 marked done by CK2); FINANCE_AUDIT.md
-CO7 and CO22; finance-model.md §1.2 ("after any seller-funded promo", #485 (a));
+SAME CHANGE: PRODUCT_SPEC.md §Digital Marketplace 6 and finance-model.md §15 (the issuer rule as
+ruled); FINANCE_AUDIT.md CO22; finance-model.md §1.2 ("after any seller-funded promo", #485 (a));
 documentation/database/finance/*; Zod; ROUTING.md; the decision row.
 ```
 
@@ -495,46 +386,41 @@ documentation/database/finance/*; Zod; ROUTING.md; the decision row.
 
 ### CK3 — Every past order, and a block's receipt names every sitting
 
+> **Status 2026-11-23:** steps 1–4 landed in `f3ba4c3b` (`/checkout/orders`, keyset-paged, each line
+> linked home, a block's every sitting; `order-history.test.ts`); step 5 and the paperwork below are
+> open. Decision #517 is an index line only, and USER_FLOWS MK-30 still carries the old note.
+> Unverified: whether the 25-order walk and the screenshots were run.
+
 Clears MK-30's note.
 
 ```text
 PROMPT CK3: A buyer finds every past order, and a block's receipt names every sitting
 
-ROLE: App engineer (services + islands). App lane, after CK1 (you share live-orders.ts).
+ROLE: Docs engineer, with one readiness row. App lane.
 
-CONTEXT (verified at b7280787):
-  - readOrderPage (packages/backend/services/finance/live-orders.ts:524-546) returns the named
-    order plus the 20 most recent (limit(20) at :530); findOrder (:556) fetches one outside that
-    window. No order-history route exists (apps/web/routes, ROUTING.md).
-  - Decision #453 flag (c): OrderLineRow labels a block by its first sitting, because
-    order_lines keeps only scheduled_at.
-  - `?order=` names an order on /checkout/confirmation (ROUTING.md:629). Orders have no prefixed
-    slug (there is no fn_slug_guard('ord')).
+CONTEXT (verified at f2e25929):
+  - f3ba4c3b built /checkout/orders (ROUTING.md's paragraph under the checkout steps;
+    packages/backend/services/finance/order-history.ts; CheckoutOrdersScreen.island.tsx) and the
+    block's sitting list (OrderLineRow.tsx, SittingList).
+  - That ROUTING paragraph says `?order=` carries the order's raw uuid, "a Decision #88 gap,
+    USER_FLOWS MK-61". MK-61 is #522's seat-sharing row, so the gap has no row.
 
 STEPS:
-  1. Red first: a unit test that a buyer's 21st order is unreachable from any list.
-  2. An order history for the acting account, following the basket's owner switch (personal,
-     team, business): keyset-paged on (created_at, id), never offset. Put it under an existing
-     segment, because a new top-level segment needs SECURITY_ACCESS SAC5's reserved-handle work.
-     Propose the path in ROUTING.md first (recommended: `/checkout/orders`); each row opens the
-     existing confirmation view by `?order=`.
-  3. Each line links to its home: a download line to CK1's purchases view, an engagement to its
-     project, a session or seat to its session workspace.
-  4. #453 (c): a block's line lists every sitting, read from the sittings through the line's
-     session link, never copied onto order_lines.
   5. If `?order=` carries a raw uuid, that is a Decision #88 gap: add a row for it (USER_FLOWS or
-     PRODUCTION_READINESS). Do not mint slugs here: 00000017 belongs to Queue M.
+     PRODUCTION_READINESS) and point ROUTING's paragraph at its real ID. Do not mint slugs here:
+     00000017 belongs to Queue M.
 
-ACCEPTANCE: a seeded buyer with 25+ orders (seed or create them) pages through all of them; a
-three-sitting block lists three times on its receipt; the keyset reader has unit tests.
-Screenshots.
+ACCEPTANCE: the gap has its own row and ROUTING names it; #517's row records what f3ba4c3b built,
+with the 25-order walk and the screenshots if they were not run.
 
-SAME CHANGE: ROUTING.md; the decision row closing #453 (c).
+SAME CHANGE: ROUTING.md; the decision row #517 (its body in decisions-122-126.md) closing #453 (c).
 ```
 
 §1.2 rows: **MK-30**'s note cleared (it stays ✅).
 
 ### CK4 — Tax at checkout, built behind a switch that stays off
+
+> **Status 2026-11-23:** open; waits for FBP DB21, which has not landed at `f2e25929`.
 
 Narrows MK-20 (it stays 🟡 until the switch is on); narrows PRD-M5.
 
@@ -544,12 +430,11 @@ switch that stays off until the owner and counsel rule
 
 ROLE: Payments engineer (Stripe + Postgres). Queue M, after DB21: 00000017, 00001210, 00001200.
 
-CONTEXT (verified at b7280787):
-  - There is no tax anywhere. taxNote: null in CheckoutBackendService.ts:215 (with a "no tax
-    engine" comment), checkout-ssr.ts:269 and live-orders.ts:476; fn_generate_consolidated_
-    invoice hard-codes v_tax bigint := 0 (00001200:1407; FINANCE_AUDIT A9's "F1200:~788" is
-    stale). Zod already accepts tax as an input (packages/types/finance/checkout.ts:441-538,
-    order.ts:245-256).
+CONTEXT (verified at b7280787; line refs at f2e25929):
+  - There is no tax anywhere. taxNote: null in CheckoutBackendService.ts:217 (with a "no tax
+    engine" comment), checkout-ssr.ts:289 and live-orders.ts:658; fn_generate_consolidated_
+    invoice hard-codes v_tax bigint := 0 (00001200:1416). Zod already accepts tax as an input
+    (packages/types/finance/checkout.ts:441-538, order.ts:245-256).
   - A9 is "Planned, no prompt" (FBP §0.6) and PRD-M5 is ❌. PRODUCT_SPEC.md :3539-3555 promises
     tax documents (1099, W-9, EU reverse charge).
   - The platform charges the buyer itself under Separate Charges & Transfers, settles in the
@@ -559,26 +444,18 @@ CONTEXT (verified at b7280787):
     API (calculations, transactions, reversals, registrations, product tax codes) before you
     design anything.
 
-🧑 + ⚖️ DECISION (before step 2): the tax model. Put this to me, and say plainly that counsel must
-confirm the obligation before any switch goes on:
-  A (recommended): the platform calculates tax on every order, card and wallet alike, at the
-     order (never at top-up), with Stripe Tax: a calculation at /checkout/payment's preview, a
-     tax transaction recorded at commit and reversed on refund. A business buyer may give a VAT
-     ID on /checkout/details for reverse charge. Invoices carry tax lines from the stored
-     calculation. Registrations are yours, in the Stripe Dashboard. All of it behind
-     `tax_collection_enabled` (a platform param, off).
-  B: no tax collected at launch; checkout, receipts and invoices say plainly that prices exclude
-     tax and who is responsible for it, in words counsel approves. Still behind a param, so A can
-     follow.
-  Either way, a table for me to confirm: which product tax code a digital product, a service
-  engagement and a session each take.
-  RULED #490 (2026-11-18): A, split by kind · tax added at checkout (tax-exclusive) · the codes as
-  tabled in #490 (C) · wait for DB21. The engine is A's whole, but the platform collects only on
-  the kinds tax_collected_kinds names (digital_product by default); every other line says the
-  seller is responsible for any tax on their work. Skip this block when you run: re-verify DB21 at
-  HEAD and stop if it has not landed (#490 (f)). Counsel still confirms before any switch goes on.
+The tax model (ruled: Decision #490, 2026-11-18, A split by kind; ⚖️ counsel confirms the
+obligation before any switch goes on): the platform calculates tax at the order, card and wallet
+alike (never at top-up), with Stripe Tax: a calculation at /checkout/payment's preview, a tax
+transaction recorded at commit and reversed on refund. A business buyer may give a VAT ID on
+/checkout/details for reverse charge. Invoices carry tax lines from the stored calculation.
+Registrations are mine, in the Stripe Dashboard. Tax is added at checkout (tax-exclusive). The
+platform collects only on the kinds `tax_collected_kinds` names (digital_product by default);
+every other line says the seller is responsible for any tax on their work. The product tax codes
+are as tabled in #490 (C). All of it behind `tax_collection_enabled` (a platform param, off).
+Re-verify DB21 at HEAD and stop if it has not landed (#490 (f)).
 
-STEPS (for A; for B, steps 1, 3 and 5 only):
+STEPS:
   1. Red first: a unit test that a GB consumer buying a digital product, with the switch on, sees
      a tax line; an invoice probe that v_tax is not 0 when the switch is on.
   2. Schema in place: the tax amount, jurisdiction and calculation reference on orders and lines
@@ -587,7 +464,8 @@ STEPS (for A; for B, steps 1, 3 and 5 only):
      details change. With the switch off, today's behaviour exactly, pinned by a test.
   4. Commit: the calculation reference is recorded inside place_wallet_order's transaction; the
      Stripe tax transaction is created after commit, idempotently (finance.idempotency_keys), and
-     reversed by the refund paths (DB21, MR3).
+     reversed by the refund paths (DB21, MR3). Keep the Stripe Tax calculation behind one service
+     function that LEGAL LG8 can call for a fee line.
   5. Invoices: fn_generate_consolidated_invoice sums the stored tax lines, and the PDF shows them.
 
 ACCEPTANCE: with the switch off, every existing checkout and invoice test passes unchanged. With
@@ -601,136 +479,9 @@ decision row.
 ```
 
 §1.2 rows: **MK-20** stays 🟡 with the note "built, off pending counsel"; → ✅ when the switch is on
-in the target environment. **PRD-M5** narrowed (the checkout half).
-
-### CK5 — The abandoned-basket nudge
-
-Clears MK-18's note.
-
-```text
-PROMPT CK5: A basket left idle gets one reminder, within the notification rules
-
-ROLE: Backend engineer (Postgres jobs + comms). Queue C: 00005060 and the comms emitter.
-
-CONTEXT (verified at b7280787):
-  - The catalogue row exists: basket.abandoned (00005010:89; email, low, group window 3 days,
-    lead 1 day), key in packages/types/comms/catalog.ts:109. Nothing emits it. The queue worker
-    exists and names "basket nudges" (00005060 ~:144). comms.fn_enqueue already has a caller
-    (00001510:3143), whatever documentation/database/comms/Functions.md:131-135 says.
-  - The two tracks each hand it to the other: COMMS NT1 step 6 (COMMS_BUILD_PROMPTS.md:848) gives
-    the caller to FBP SV4; SV4 step 5 (FBP:1906) and FBP §0.6 give it back (FA (t), CO15). This
-    prompt owns it.
-  - Email delivery is COMMS NT3's; until NT3 lands, the nudge is in-app.
-
-🧑 ⚖️ DECISION (before step 2): is the nudge marketing? Recommended A: treat it as marketing — sent
-only to a person whose notification preferences allow the category, with a one-step opt-out in
-every message, never to a 13-17 account — and counsel confirms. B: a service message, sent to
-everyone with a basket, if counsel agrees.
-
-STEPS:
-  1. Red first: a probe. A basket with a line, idle past the lead time, enqueues nothing today.
-  2. A daily job (00005060) and a definer finder: baskets with at least one live line, untouched
-     for the row's lead time, whose owner has not ordered since and has not been nudged inside
-     the group window. One notice per basket per window. The payload names the lines but never a
-     price that may have changed: the link opens /checkout, which reprices.
-  3. Respect preferences and quiet hours exactly as comms.fn_notify does for other low notices.
-
-ACCEPTANCE: the probe: an idle basket → one enqueue; a second run inside the window → none; a
-checked-out or emptied basket → none; an opted-out person → none.
-
-SAME CHANGE: documentation/database/comms/Functions.md (the stale "no caller" line, and the new
-emitter); COMMS_BUILD_PROMPTS.md NT1 step 6 and FBP SV4 step 5 / §0.6 (both now say CK5 owns
-it); FINANCE_AUDIT.md (t) / CO15; the decision row.
-```
-
-§1.2 rows: **MK-18**'s note cleared (it stays ✅).
-
-### CK6 — Express pay you can prove
-
-MK-23 → ✅ once your device runs are recorded.
-
-```text
-PROMPT CK6: Apple Pay, Google Pay and PayPal can be proven on a hosted domain
-
-ROLE: Payments / front-end engineer. App lane.
-
-CONTEXT (verified at b7280787):
-  - Built: apps/web/features/checkout/components/ExpressCheckoutElement.tsx (Stripe's Express
-    Checkout Element with a deferred intent, provider `express`, Decision #153);
-    features/payments/core/stripe-js.ts:57-79; capability flags in
-    routes/api/checkout/session.ts:9-17.
-  - Missing: apps/web/static has no .well-known; no domain is registered as a payment method
-    domain; nothing proves the PayPal redirect return. documentation/api/
-    EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md §F (:447-452).
-  - Use the stripe:stripe-docs skill for the current payment-method-domain and Apple Pay domain
-    association requirements.
-
-STEPS:
-  1. Serve the Apple Pay domain association file at the path Stripe requires, from a committed
-     public file or an env-driven value, as Stripe's current docs say (it is not a secret).
-  2. `deno task stripe:domains`: lists, and with --apply registers, payment method domains for
-     the hosts in env, idempotently, refusing a live key. It never prints or stores a secret.
-     The human runs --apply; you only dry-run it.
-  3. Prove the redirect return: a PayPal (or any redirect method) return to /checkout/payment
-     with redirect_status lands on the confirmation exactly once — a unit test, and a Playwright
-     test in test mode where the method is offered.
-  4. A runbook (EPI spec §F, linked from SYSTEM_ARCHITECTURE.md §Integration Blueprints):
-     register the domains, then pay a test-mode order on a real iPhone (Safari, Apple Pay) and an
-     Android phone (Chrome, Google Pay), and record each run where the runbook says.
-
-ACCEPTANCE: the association path serves the right body and content type locally; the task's dry
-run lists the hosts; the redirect tests pass.
-
-SAME CHANGE: the runbook; SYSTEM_ARCHITECTURE.md §Environment Variable Contract and .env.example
-for any key; the decision row.
-```
-
-§1.2 rows: **MK-23** stays 🟡 ("built; the device runs are yours") until the runs are recorded, then
-✅.
-
-### CK7 — An accepted quote is paid at its price (adjacent: MK-16)
-
-Closes MK-16 (Listing view, 🟡 → ✅).
-
-```text
-PROMPT CK7: An accepted quote offer is paid at its offered price and becomes its funded engagement
-
-ROLE: Postgres payments engineer. Queue M: 00001210, after CK1.
-
-CONTEXT (verified at b7280787):
-  - #458 (LV5) lets a seller answer a request with a priced offer that the buyer accepts into one
-    basket line, a one_off_service line (00001177 ~:499, ~:769). Its flag (a): checkout has no
-    quote branch. place_wallet_order has no offer path, so the line falls into the
-    listing-priced branch (00001210 ~:1547-1590, fn_scoped_service_price), and the engagement
-    call (~:2047) passes no p_terms. marketplace.fn_buy_scoped_service (00001175:743) already
-    takes p_terms, and fn_write_blueprint_stages has the seam (#457 (B)). LV2's wait is met.
-  - Its flag (b): an accepted offer has no payment deadline.
-
-🧑 DECISION (before step 3): an accepted offer left unpaid. Recommended A: the offer's own
-seller-set expiry (3-30 days, #458) still bounds payment; past it the line refuses PC409 and the
-buyer may ask again. B: a fixed payment window after acceptance (a platform dial).
-  RULED #491 (2026-11-18): A, and CK7 runs ahead of CK1 in queue M. BUILT in #491's change; only
-  the live run (request → offer → accept → pay → board, the quote card captured) is left, so MK-16
-  stays 🟡 until it is recorded.
-
-STEPS:
-  1. Red first: a probe. Accept a seeded offer priced below the listing, check out: today the
-     line is charged the listing's price, or refused.
-  2. place_wallet_order: a line that names an offer is priced from the offer (accepted, the
-     buyer's own, not superseded, not expired, in the same currency) and handed to
-     fn_buy_scoped_service as p_terms, so its milestones are the offer's checklist in one escrow
-     (#458's ruling). Refusals in checkout's own words (checkout-refusal.ts).
-  3. The ruled deadline.
-
-ACCEPTANCE: the probe: the order and the escrow equal the offer; a superseded or expired offer
-refuses; finance_invariants.sql passes. Live: request → offer → accept → pay → the engagement's
-board shows the milestones.
-
-SAME CHANGE: documentation/database/{finance,marketplace}/*; PRODUCT_SPEC.md (the deadline
-rule); the decision row closing #458 (a) and (b).
-```
-
-§1.2 rows: **MK-16** 🟡 → ✅ (and its stale "after LV2" text).
+in the target environment. **PRD-M5** narrowed (the checkout half). **MW-57** stays ❌ until LEGAL
+LG6 lands too (then 🟡, both switches off). The seller tax forms, platform reporting and
+tax-residence certificates are LG6's.
 
 ---
 
@@ -738,109 +489,63 @@ rule); the decision row closing #458 (a) and (b).
 
 ### RV1 — A buyer reviews what they completed; the seller replies once
 
-Closes MK-32 (❌ → ✅); clears MK-34's note.
+> **Status 2026-11-23:** steps 1, 2, 4, 5, 7 and 9 landed in `b8958f1d` (#487, with `406fe3ac`) for
+> engagements and sessions, as ruled. Steps 3, 6 and 8 below are open for the product arm, which
+> ruling 5 held for CK1's delivery record; CK1 has landed (#488).
+
+Closes MK-32 (🟡 → ✅).
 
 ```text
 PROMPT RV1: A buyer reviews what they completed — an engagement, a purchase or a session — and
 the seller replies once
 
-ROLE: Full-stack engineer (Postgres doors + services + one dialog). Queue C: the reviews files,
-00002500 / 00002510 / 00002520 (after SAC1), 00005010, 00005060, the review seeds.
+ROLE: Full-stack engineer (Postgres doors + services + one dialog). Queue C: 00001670 (the
+review doors), 00002510, the review seeds.
 
-CONTEXT (verified at b7280787; re-check every line):
-  - One table, reviews.entity_reviews (00000019:5-47): a polymorphic target (review_target_type:
-    user, freelancer, business, team, service_blueprint, product), reviewer_user_id, a nullable
-    project_id, rating numeric(3,2) from 1 to 5, title, comment (at least 100 characters),
-    reply_comment (at least 100) and replied_at. UNIQUE(target_entity_id, reviewer_user_id,
-    project_id): NULLs are distinct, so it bounds nothing without a project. No indexes.
-  - RLS has one SELECT policy, USING (true) (00002018:49-50); its comment (:52-63) says writes
-    wait for "the engagement-checked review RPC". But 00002500:204 GRANTs ALL on the schema's
-    tables to anon and authenticated (Decision #83 flagged it), so RLS is the only barrier.
-  - trg_update_ratings (00001800:42-44) runs reviews.recalculate_entity_rating (00001005:22-69),
-    which writes rating_average / rating_count onto six owner tables (guarded by
-    security.fn_guard_derived_columns, 00001895:86).
-  - Readers: live-view.ts:423-474 (listing reviews; verifiedEngagement = project_id !== null;
-    reciprocal hard-coded false) and :504-560; live-profile.ts:590-605; org.get_profile_reviews
-    (00001040:598-643). UI: features/view/islands/ReviewsPanel.island.tsx (#evp-reviews) and
-    features/profile/islands/ReviewsList.island.tsx. Nothing writes a review; nothing reads
-    reply_comment.
-  - Notices seeded, never emitted: review.received (00005010:91, URL /{handle}/reviews, which is
-    wrong for a listing target) and review.reminder (:92). session_events.review_asked_at exists
-    (00000015:922-925).
-  - Rules: PRODUCT_SPEC.md §Reputation 3 (:3303-3326): Atomic Reviews (a project or service is
-    "completed, or a freelancer must have exited"); Entity Consolidation ("only one aggregate
-    review per business-freelancer engagement"); Reciprocity is RV2's. The spec is silent on the
-    window, edits, the reply and moderation. Decision #244 flag (e) asks this work order to rule
-    the one-aggregate scope.
-  - Anchors that exist: projects.status `completed`; stage_assignments.status `released` (ended
-    after work began); session_events `completed` with attendance; a `completed` cohort
-    membership; an order line with fulfilment `download`, whose verified purchase is CK1's
-    entitlement.
-  - Seeds: 37 listing reviews with project_id NULL (seeds/05_catalogue.sql:438-477, from
-    seeds/gen/reviews.ts) and 4 engagement reviews (06_projects.sql:223-228); none has a reply.
-  - No report path exists yet (T&S R1, R2 not started).
+CONTEXT (verified at f2e25929; re-check every line):
+  - The engagement and session arms are built (#487): every review carries exactly one anchor
+    (project_id · cohort_membership_id · order_line_id, ck_entity_reviews_one_anchor, 00000019);
+    the doors are 00001670 (submit_review … hide_review, get_reviewables, get_review_actions);
+    ReviewDialog opens at `?review=<projectSlug>` on the project Overview. submit_review refuses
+    an order_line anchor PT501 "product reviews open once a purchase records its delivery"
+    (00001670 ~:506).
+  - CK1 has landed (#488): catalogue.entitlements (order_line_id UNIQUE; status active ·
+    refunded · revoked; first_delivered_at) and `/files?source=purchases`. CK3's
+    `/checkout/orders` (f3ba4c3b) lists every order. Neither links `?review=` (#487 (c)).
+  - The 16 seeded product reviews wait in PRODUCT_REVIEWS_AWAITING_DELIVERY
+    (supabase/seeds/gen/reviews.ts; #487 (h)).
 
-🧑 DECISIONS (one sitting, before step 2). Put each with its recommendation:
-  1. Who may review what. Recommended: the client side of a completed engagement, or of a seat
-     released after work began, reviews the provider (freelancer, team or business): one review,
-     shown on the listing the engagement came from through its anchor. A buyer whose entitlement
-     is active and has been delivered at least once reviews the product. The attendee of a
-     completed sitting, or of a completed cohort membership, reviews the session listing. Nobody
-     reviews themselves, their own team or their own business; a 13-17 account never writes one.
-  2. The window and edits. Recommended: open for 30 days from the anchor's completion; the author
-     may edit until the window closes or the seller replies, whichever comes first; the author
-     may withdraw a review (hidden, kept), never delete it.
-  3. The reply. Recommended: one public reply per review, by the target's owner or a member
-     holding the entity's catalogue or profile capability, editable for 7 days. The comment's
-     100-character floor stays; the reply's becomes 1-1,000 characters.
-  4. #244 (e), one aggregate. Recommended: one review per (anchor, reviewing party, target),
-     where a business client is one party however many of its members took part.
+The product arm (ruled: Decision #487, rulings 1–6 as recommended; ruling 5 held this arm for
+CK1): a buyer whose entitlement is active and has been delivered at least once reviews the
+product. The window, edits, the reply and one review per (anchor, party, target) are as for the
+other arms (rulings 2–4); the anchor completes at its first delivery. Nobody reviews their own
+product; a 13-17 account never writes one.
 
 STEPS:
-  1. Red first: supabase/probes/reviews_writer.sql. As authenticated, a direct INSERT into
-     reviews.entity_reviews succeeds today (it should be 42501), and no door exists.
-  2. Schema in place: an explicit anchor (nullable FKs to the project or seat, the order line,
-     the sitting or the cohort membership, with a CHECK of exactly one on door-written rows),
-     edited_at, withdrawn_at, hidden_at + hidden_reason (operator), a unique index for ruling 4,
-     and the indexes the readers need (00004xxx).
-  3. Doors (SECURITY DEFINER, search_path '', every name qualified): submit_review, edit_review,
-     withdraw_review, reply_to_review and edit_reply; reviews.hide_review for an ops.admin_users
-     member. Eligibility lives in the doors. 00002500: the schema's tables become SELECT-only for
-     anon and authenticated (the GRANT ALL goes); 00002510 grants the doors by name.
-  4. The rating trigger counts visible reviews only (neither withdrawn nor hidden).
-  5. review.received goes to the target's owners through comms.fn_notify, with a URL that fits
-     the target (a listing → its /view page at #evp-reviews; a profile → /{handle}/reviews); fix
-     the catalogue row. review.reminder: a daily job (00005060) asks once per eligible anchor and
-     sets review_asked_at for sittings.
-  6. UI: one ReviewDialog, addressable as `?review=<anchor slug>` on the surface that hosts it
-     (in ROUTING.md), opened from the anchor's home: CK3's order history and CK1's purchases
-     view (if they have landed; otherwise leave a FLAG), the project's completion surface, and
-     the session workspace after a sitting. Reply and Edit are tier-5 text actions on the review,
-     shown to whoever may use them; the reply renders under the review.
-  7. Readers: verifiedEngagement means "has an anchor"; the reply shows; hidden and withdrawn
-     reviews leave every reader, every aggregate and the public part of the data export.
-  8. The seed obeys the rule you ship: regenerate seeds/gen/reviews.ts so every seeded review has
-     a seeded anchor (never relax the CHECK for seed data), and seed two replies.
+  3. The product arm in the doors: submit_review takes an order_line anchor whose entitlement is
+     active, delivered and held by the reviewer's party, in place of today's PT501; each refusal
+     keeps its own SQLSTATE. Extend supabase/probes/reviews_writer.sql red first.
+  6. Entry points: `?review=` from CK3's `/checkout/orders` rows and from the purchases view on a
+     delivered entitlement (in ROUTING.md).
+  8. The seed obeys the rule you ship: anchor the 16 PRODUCT_REVIEWS_AWAITING_DELIVERY reviews on
+     seeded, delivered entitlements (never relax the CHECK for seed data).
      `deno task db:seed:generate`, then `deno task db:reset` (announce it).
-  9. If the UI branches on a review-eligibility state, that state gets its Dev Context Switcher
-     control.
 
-ACCEPTANCE: reviews_writer.sql: direct writes are refused for anon and authenticated; each refusal
-(no anchor, not the reviewer, self or own entity, outside the window, a duplicate under ruling 4,
-a minor) has its SQLSTATE; a valid review moves the target's average, and hiding it moves it back;
-there is one reply only. Live, as two seeded personas: complete → review → the seller is notified
-→ replies → both render on /view and on /{handle}/reviews. Screenshots.
+ACCEPTANCE: reviews_writer.sql: a review on a delivered entitlement succeeds and moves the
+product's average; an undelivered, refunded, revoked or foreign one is refused with its SQLSTATE;
+every seeded product review has an anchor. Live, as two seeded personas: buy → download → review
+→ the seller is notified → replies → both render on /view. Screenshots.
 
-SAME CHANGE: PRODUCT_SPEC.md §Reputation 3 (the ruled rules); PRODUCT_MANAGEMENT.md (the review
-lifecycle: submitted · edited · withdrawn · hidden, and the reply); documentation/database/
-reviews/* (Tables.md:43 and Policies.md:14-15 corrected, and the 00002018 comment); Zod inputs;
-ROUTING.md; the decision row closing #244 (e) and #83's reviews half.
+SAME CHANGE: PRODUCT_SPEC.md §Reputation 3 (the product arm); documentation/database/reviews/*;
+Zod inputs; ROUTING.md; Seed.md; the decision row closing #487 (c) and (h).
 ```
 
-§1.2 rows: **MK-32** ❌ → ✅ (the "What's missing" cell cites T&S R2 for the user-facing Report
-entry point); **MK-34**'s note cleared.
+§1.2 rows: **MK-32** 🟡 → ✅ once the product arm lands and the signed-in walk (§0.4) is recorded;
+the "What's missing" cell cites T&S R2 for the user-facing Report entry point.
 
 ### RV2 — Providers review clients; the Client Trust Score and its warning
+
+> **Status 2026-11-23:** open, and runnable: RV1's doors are in (#487), which is all it waits for.
 
 Closes MK-33 (❌ → ✅).
 
@@ -848,9 +553,11 @@ Closes MK-33 (❌ → ✅).
 PROMPT RV2: The provider reviews the client too, double-blind; the Client Trust Score and its
 warning
 
-ROLE: Full-stack engineer. Queue C, after RV1.
+ROLE: Full-stack engineer. Queue C: 00001670 (RV1's doors), 00005060, the review seeds.
 
-CONTEXT (verified at b7280787):
+CONTEXT (verified at b7280787; RV1's state at f2e25929):
+  - RV1 built the doors (00001670) and the one-anchor reviews (#487). #487 (g): the seed's
+    provider-to-client reviews left with RV1; RV2 re-seeds them through its door.
   - PRODUCT_SPEC.md §Reputation 3: Reciprocity (ratings feed the "Client Trust Score") and a
     Warning System (a search penalty, a warning modal, "Informed Consent" before a proposal or a
     hire). :3419-3423: until the score's weighting is defined, a business shows its client rating
@@ -859,26 +566,23 @@ CONTEXT (verified at b7280787):
   - Decision #244 flag (c): the Client Trust Score "has no definition or weighting".
   - org.get_profile_reviews already reads author_role = 'freelancer' (a provider reviewing a
     client), and live-view.ts:504-560 shows a project owner's client reviews (#142).
-    packages/types/profile/tabs.ts:180 labels `freelancer` "fellow freelancer", which is wrong.
+    packages/types/profile/tabs.ts:181 labels `freelancer` "fellow freelancer", which is wrong.
   - finance-model.md §16.7: review_sentiment 1.75, review_count 1.00, a cold-start prior of 5
     pseudo-reviews per track, volume saturating at 50.
 
-🧑 DECISIONS (before step 2):
-  1. Reveal. Recommended: double-blind. Neither side's review of the other is visible until both
-     have submitted or the window closes, so neither can retaliate. It becomes a spec rule.
-  2. Client Trust Score v1. Recommended: the Bayesian mean of providers' ratings of the client
-     with §16.7's prior, with disputes lost and ghosting auto-approvals (PM's 14-day rule) as
-     named deductions, shown only past 3 reviews. I propose the numbers; you set them.
-  3. The warning. Recommended: below 3.0 with at least 3 reviews, a demotion weight in Explore's
-     project-opening ranking (search.search_weights), and a modal a freelancer must acknowledge
-     before applying or accepting a hire (logged: that is the Informed Consent).
-  4. One score or two (Client vs Business Trust Score). Recommended: one score per client party,
-     a person or a business, under one name. Log the contradiction as a decision row either way.
-  RULED #486 (2026-11-18): all four as recommended; skip this stop. The numbers: k = 5 at the
-  client-track mean; −0.25 per dispute the client opened and lost (resolved_release) in 12
-  months, capped at −1.00; ghosting −0.10 each, capped at −0.50, dormant until #337 P3's
-  auto-approve is built; floor 1.00; shown from 3 reviews; warned below 3.00. The `client_trust`
-  coefficient is unset (#486 (c), proposal 2.50). RV2 waits for RV1, re-verified at HEAD.
+Ruled (Decision #486, 2026-11-18, all four as recommended):
+  1. Reveal: double-blind. Neither side's review of the other is visible until both have
+     submitted or the window closes, so neither can retaliate. It becomes a spec rule.
+  2. Client Trust Score v1: the Bayesian mean of providers' ratings of the client, k = 5 at the
+     client-track mean; −0.25 per dispute the client opened and lost (resolved_release) in 12
+     months, capped at −1.00; ghosting −0.10 each, capped at −0.50, dormant until #337 P3's
+     auto-approve is built; floor 1.00; shown from 3 reviews.
+  3. The warning: below 3.00 with at least 3 reviews, a demotion weight in Explore's
+     project-opening ranking (search.search_weights; the `client_trust` coefficient is unset,
+     #486 (c), proposal 2.50), and a modal a freelancer must acknowledge before applying or
+     accepting a hire (logged: that is the Informed Consent).
+  4. One score per client party, a person or a business, under one name (the Client vs Business
+     Trust Score contradiction is logged in #486).
 
 STEPS:
   1. Red first: a provider cannot review a client today, and the SELECT policy shows every
@@ -906,7 +610,9 @@ weight is added; documentation/database/{reviews,search}/*; Zod; the decision ro
 
 ### RV3 — Standing reads real reviews
 
-Closes MW-64 (new, #489; ❌ → ✅). It keeps Standing honest once RV1 writes reviews.
+> **Status 2026-11-23:** open; waits for RV2.
+
+Closes MW-64 (new, #489; ❌ → ✅). It keeps Standing honest now that RV1 writes reviews.
 
 ```text
 PROMPT RV3: Standing's review component reads the reviews people actually wrote
@@ -919,16 +625,13 @@ peer_rating_avg) / 10 × 20 (00001030:74), but no SQL writes either average; onl
 writer (Seed.md:118), while the reviews table's two tracks are client and provider.
 finance.ratings (00000017:365-374) is an unread legacy table.
 
-🧑 DECISION (before step 2): what the peer track is. Recommended A: reviews between providers who
-shared an engagement (teammates, freelancers on the same stages), written through RV1's doors on
-the shared anchor. B: drop the peer track from the formula until it is specified, and weight the
-client track alone.
-RULED #489 (2026-11-18): B, and a review recomputes its subject; skip this stop. The
+The peer track (ruled: Decision #489, 2026-11-18, B): drop it from the formula until it is
+specified and weight the client track alone, and a review recomputes its subject. The
 component is client_rating_avg / 5 × 20, the Bayesian mean of the subject's visible, revealed
 client reviews (k = 5 at the delivery track's corpus mean); peer_rating_avg stays, reserved,
 never written. A review write (RV1's submit, edit, withdraw, hide; RV2's reveal) calls
-org.fn_recompute_standing for the reviewed subject only (#58 (e) narrowed for reviews). At HEAD:
-the seed reads client_rating_avg from the cached rating_average, not a literal (only peer is,
+org.fn_recompute_standing for the reviewed subject only (#58 (e) narrowed for reviews). At
+b7280787: the seed reads client_rating_avg from the cached rating_average, not a literal (only peer is,
 seeds/11_standing.sql:116); no standing probe exists yet; fn_recompute_standing (00001030:51)
 does not pin search_path = '', so RV3 pins it. #489 (a) ruled: the component is 0 until
 the subject's first client review, then the prior applies. #489 (b): dispute_free is also 0 until
@@ -956,243 +659,81 @@ the decision row closing #58-63 (h)'s ratings half.
 
 ## 5. Seller catalogue — new prompts
 
-### SC1 — `catalogue.listings` has a Zod row schema
-
-Clears MK-35's note; narrows PRD-I3.
-
-```text
-PROMPT SC1: catalogue.listings has a Zod row schema, pinned to the table
-
-ROLE: TypeScript engineer. App lane (no SQL).
-
-CONTEXT (verified at b7280787): catalogue.listings (00000023:170-244) has 30 columns. The service
-types it with a plain interface, CatalogueListingRow (packages/backend/services/catalogue/
-live-catalogue.ts:67-95; 27 fields, missing order_count, rating_average and rating_count), and
-LISTING_COLUMNS (:118). packages/types/catalogue/*.ts holds projections and inputs only. PRD-I3
-(PRODUCTION_READINESS.md). The pattern: packages/types/finance/finance-tables.contract.test.ts
-(a ROWS map with derived / rename / omitted, and columnDrift / tableColumns from
-packages/types/core/table-contract.ts); local examples are
-packages/types/catalogue/client-pipeline.contract.test.ts and
-packages/types/projects/projects-tables.contract.test.ts.
-
-STEPS:
-  1. Red first: a contract test for catalogue.listings that fails against today's 27-field type.
-  2. CatalogueListingRowSchema: every column, enums from their SSOT, derived columns marked.
-     CatalogueListingRow becomes its z.infer, and LISTING_COLUMNS derives from the schema's keys,
-     so the two cannot drift.
-  3. Parse at the one read boundary where the service maps rows, not in every caller.
-  4. List the catalogue tables still without a row schema in PRD-I3's evidence. Do not build
-     them.
-
-ACCEPTANCE: the contract test passes, and fails if a column is added without the schema;
-`deno task check` and `deno task test:unit` are green.
-
-SAME CHANGE: documentation/database/catalogue/Tables.md (names the schema); PRD-I3's evidence.
-```
-
-§1.2 rows: **MK-35**'s note cleared; **PRD-I3** narrowed (listings done; the comms message tables
-remain).
-
-### SC2 — A bought Pipeline keeps its CREATE category; the seed gains a tiered Pipeline and a plan
-
-Clears MK-38's and MK-39's notes.
-
-```text
-PROMPT SC2: A bought Pipeline keeps its stages' CREATE category, and the seed holds a tiered
-Pipeline and a planned session
-
-ROLE: Postgres + seed engineer. Queue C: 00001175, supabase/seeds/gen/*.
-
-CONTEXT (verified at b7280787):
-  - marketplace.fn_write_blueprint_stages (00001175:284; the INSERT at :373-405) copies intensity
-    and tier prices but not create_category. The source is catalogue.listings.create_category
-    (00000023:196, per listing; the blueprint has no such column), joined through
-    listings.service_blueprint_id. The target, project_stages.create_category (00000015:329), is
-    written only by projects.create_stage (00001130:505, :543). #417 flags (c) and (f).
-  - #338 P4 (whether the category stays a label) is open (PM_BUILD_PROMPTS.md:142), but
-    documentation/database/projects/Tables.md:221 already documents it as "a label… never a
-    weight". Copying a label is safe either way; do not weight it.
-  - Seeds: supabase/seeds/gen/emit-catalogue.ts emitMarketplace (:99-185) emits no
-    allow_tiered_intensity, no stage intensity or low / high prices, and no session_plan or
-    session_rolling (#411 (f)); the corpus types are in gen/corpus.ts. Only the app fixture
-    svc-brandpipe01 is tiered.
-
-STEPS:
-  1. Red first: extend supabase/probes/service_instantiation.sql to assert that a bought
-     Pipeline's stages carry the listing's create_category. It fails today.
-  2. Copy it in fn_write_blueprint_stages, so all three callers get it.
-  3. Seed one tiered Pipeline (allow_tiered_intensity, per-stage low / high prices) and one
-     1-on-1 session listing with a session_plan, through the corpus and the emitter;
-     `deno task db:seed:generate`, then `deno task db:reset` (announce it).
-  4. Seed.md: its sources table and Known gaps.
-
-ACCEPTANCE: the probe is green. On a fresh reset, the tiered Pipeline's /view shows its tiers and
-the session listing shows its plan; stage_intensity_terms.sql is green.
-
-SAME CHANGE: documentation/database/{marketplace,projects}/*; Seed.md; the decision row closing
-#417 (c), (f) and #411 (f).
-```
-
-§1.2 rows: **MK-38** and **MK-39**'s notes cleared.
-
-### SC3 — A seller opens a cohort, and the waitlist hears about it
-
-MK-40 ❌ → 🟡 (✅ after SCH-WP7); closes MK-12 (Listing view, 🟡 → ✅).
-
-```text
-PROMPT SC3: A seller opens a cohort on a group-session listing, and the waitlist hears about it
-
-ROLE: Full-stack engineer (sessions). Queue C: 00001155. No SCH work package runs beside you;
-SCH-WP7 runs right after you, in the same slot.
-
-CONTEXT (verified at b7280787):
-  - No door opens a group cohort. The only INSERT INTO projects.cohorts is fn_book_session_slot's
-    one-seat cohort for a 1-on-1 (00001155 ~:786). projects.schedule_sitting (:963) needs a
-    cohort that is already enrolling or active (:1002-1015), and get_cohort_offer (:187) finds
-    only an `enrolling` one. So a new group listing is waitlist-only. USER_FLOWS MK-40 says
-    SCH-WP7 fixes it, but WP7 step 5 only schedules sittings of a cohort that exists.
-  - Rules: PRODUCT_SPEC.md: a group seat is one transaction for the whole cohort, timed from its
-    first sitting (:188); a cohort is never a dead end (:739); the waitlist is invited in order
-    when a cohort opens (#455, the cohort-waitlist-invites job); the delivery commitment shows
-    the cohort's start and cadence (:768).
-  - The seller works in the listing's Availability section (features/catalogue/components/edit/…)
-    and the session workspace.
-
-🧑 DECISION (before step 2): what a seller sets, and what happens if the cohort under-fills. Put
-this to me:
-  A (recommended): the seller sets the capacity, the first sitting, the cadence (or fixed
-     sittings) and an enrolment close, and may set a minimum. If the minimum is not met by the
-     close, the seller may cancel the cohort: every seat is refunded in full through the seat
-     escrow's refund path, and the seat-holders and the waitlist are told.
-  B: no minimum; an opened cohort always runs.
-
-STEPS:
-  1. Red first: a probe that a group listing has no way to open a cohort, then the door's cases.
-  2. projects.open_cohort (and cancel_cohort, as ruled) as definers: the listing's owner, or a
-     team member with the capability; a group-session listing; one enrolling cohort at a time
-     unless the spec says otherwise; the first sitting scheduled through the path
-     schedule_sitting uses.
-  3. Opening wakes the waitlist (the #455 job's trigger condition): prove the first invite and its
-     48-hour hold.
-  4. Seller UI: "Open a cohort" on the listing (URL-addressed, in ROUTING.md). The buyer's /view
-     lane then offers Reserve a seat (MK-12) with the start and the cadence.
-  5. Seed one enrolling cohort on a seeded group listing (#453 (e)).
-
-ACCEPTANCE: the probe: opening makes an enrolling cohort with its first sitting; the waitlist's
-first person is invited with a 48-hour hold; a second open refuses; a cancel (if ruled) refunds
-every seat and conserves money. Live: the seller opens a cohort, and a buyer reserves a seat and
-checks out. Screenshots.
-
-SAME CHANGE: PRODUCT_SPEC.md (the opening rules); PRODUCT_MANAGEMENT.md (the cohort lifecycle);
-documentation/database/projects/*; Zod (packages/types/projects/sessions.ts); ROUTING.md; Seed.md;
-a note on SCH-WP7 (SCHEDULING_BUILD_PROMPTS.md) that SC3 opens cohorts; the decision row closing
-#453 (e).
-```
-
-§1.2 rows: **MK-40** ❌ → 🟡 (its text corrected; ✅ after SCH-WP7); **MK-12** 🟡 → ✅ if the live
-seat checkout passes.
-
 ### SC4 — Only the publish door publishes, and publishing tells people
 
-Narrows MK-41 (✅ once T&S SN3 lands).
+> **Status 2026-11-23:** open, and runnable: CK1 has landed (#494 (D)). Step 1's probe ran on
+> 2026-11-18 and was rolled back (#494); it is committed when SC4 runs. Two 🧑 stops are open, #494
+> (a) and (d).
+
+Narrows MK-41 (✅ once T&S SN3 lands); closes MK-60 and, if (a), MK-57.
 
 ```text
 PROMPT SC4: Only the publish door can publish a listing, and publishing tells the people it
 should
 
-ROLE: Postgres security engineer. Queue C: 00001170, 00001895, 00002520, 00005010.
+ROLE: Postgres security engineer. Queue C: 00001170, 00001895, 00002018, 00002020, 00002520,
+00005010.
 
-CONTEXT (verified at b7280787):
+CONTEXT (verified at b7280787 and by #494's probe; line refs at f2e25929):
   - The publish path: routes/api/catalogue/status.ts → CatalogueBackendService.setStatus (:214) →
-    live-catalogue-writes.ts:362 → catalogue.set_listing_status (00001170:889-963), whose gate
+    live-catalogue-writes.ts:362 → catalogue.set_listing_status (00001170:1120), whose gate
     checks a title, a price, a slot-1 cover and, for a Pipeline, a stage; set_listings_status
-    (:1063) for batches; trg_listings_publish_age_gate (00001810:37-39).
-  - A suspected bypass, inferred from the grants and not probed: GRANT UPDATE on
-    catalogue.listings (00002520 ~:869) plus the owner UPDATE policy (00002020:57-65) may let a
-    seller PATCH status = 'published' through PostgREST, skipping the gate. Only the age trigger
-    guards status.
-  - catalogue.listing_published is seeded (00005010:87: in-app, discovery, low; Zod
-    packages/types/comms/catalog.ts:107) and never emitted.
+    (:1304) for batches; both SECURITY INVOKER; trg_listings_publish_age_gate (00001810:37-39).
+  - The bypass is live (#494 (A), probed under a seller's JWT): a bare UPDATE or INSERT
+    publishes a listing with no cover or price; clearing published_at reopens #217's currency
+    lock; a published listing's currency, questions, delivery model and showcase files change
+    directly. The cause: 00002520 ~:871 / ~:873 and the owner-only policies (00002020, 00002018)
+    on PostgREST. catalogue.products and catalogue.articles take the same grant, unprobed
+    (#494 (e)). catalogue.listings.promoted is client-writable past marketplace.promote_listing's
+    plan check (#494 (f)).
+  - CK1's version freeze runs in set_listing_status's publish arm, so a bare UPDATE publishes past
+    it too (#488 (c)); a product whose draft names no library file publishes and sells nothing
+    to deliver (#488 (a), MK-60).
+  - catalogue.listing_published is seeded (00005010:95: in-app, discovery, low; Zod
+    packages/types/comms/catalog.ts:112) and never emitted.
   - Screening (PRD-D10) is T&S SN2 → SN3, through cutShowcaseRendition in
     live-catalogue-writes.ts. It is not this prompt's.
 
+🧑 DECISIONS (before step 2), from #494's flags:
+  (a) Does MK-57 ride in this change (the same grants and the same fix)? Recommended: yes.
+  (d) A published listing can lose its cover (apply_listing_media) or every stage (save_listing).
+      Recommended: refuse removing the last cover or stage from a published listing with PG422,
+      as the gate does.
+
 STEPS:
-  1. Red first: a probe (extend catalogue_publish_locks.sql) that, under a seller's JWT, UPDATEs
-     status to 'published' on a listing with no cover. Prove whether it succeeds. If it does
-     not, record why, and skip step 2.
+  1. Red first: extend catalogue_publish_locks.sql: under a seller's JWT, a bare UPDATE or
+     INSERT publishes a listing with no cover (#494 (A)). Commit it.
   2. Close it: status, and every column the publish gate owns (published_at, …), changes only
-     inside the doors. Extend the derived-column guard (security.fn_guard_derived_columns,
-     00001895) or narrow the UPDATE grant to the editable columns. Prove save_listing and the
-     live editor still work.
-  3. Emit listing_published from the door on a real draft → published transition (not on a
-     resume from paused, unless the row's spec says so), to the audience its catalogue row and
-     its doc name. A batch emits one per listing, grouped by the row's window.
+     inside the doors. set_listing_status and set_listings_status become SECURITY DEFINER
+     (ruled: Decision #494 (B)), and promoted joins the guarded columns (#494 (f)). Extend the
+     derived-column guard (security.fn_guard_derived_columns, 00001895) or narrow the UPDATE
+     grant to the editable columns, and sweep catalogue.products and articles (#494 (e)). Prove
+     save_listing and the live editor still work.
+  3. Emit listing_published from the door on a listing's first publish only, keyed on
+     published_at (ruled: Decision #494 (b)), to the owning party's followers in a daily digest
+     (group_window 1 day, a link to /view/<slug>; ruled: Decision #494 (C)). A batch emits one
+     per listing, grouped by the window.
   4. Name the bypass, as found, in MK-41's row either way.
+  5. MK-60 (#488 (a)): the publish gate refuses a product listing whose manifest names no
+     library file.
 
-ACCEPTANCE: the probe: a direct UPDATE of status → 42501 (or the documented reason it never
-worked); the door still publishes; one notice per publish and none on pause or resume.
+ACCEPTANCE: the probe: a direct UPDATE or INSERT that publishes → 42501; the door still
+publishes; one notice per first publish and none on pause or resume; a product with no file
+refuses to publish.
 
-SAME CHANGE: documentation/database/catalogue/{Policies,Functions}.md; the comms docs for the
-emitter; the decision row.
+SAME CHANGE: PRODUCT_SPEC.md (who hears of a publish, #494 (C)); documentation/database/
+catalogue/{Policies,Functions}.md; the comms docs for the emitter; the decision row.
 ```
 
 §1.2 rows: **MK-41** stays 🟡 with a narrower note (screening is SN3's), and becomes ✅ when SN3
-lands.
-
-**Step 1 ran on 2026-11-18, and the rulings are in (#494).** The bypass is live and wider than the
-CONTEXT says: a bare UPDATE or INSERT publishes past the gate, clearing `published_at` reopens
-#217's lock, and a published listing's currency, questions, delivery model and showcase files change
-directly (#494 (A)). The doors are INVOKER, so step 2 makes `set_listing_status` and
-`set_listings_status` definers (#494 (B)) and also writes `00002018` and `00002020`. Step 3's
-audience is **the owning party's followers, in a daily digest** (`group_window` `1 day`, a link to
-`/view/<slug>`, a listing's first publish only; #494 (C)), and the rule enters PRODUCT_SPEC.md in
-SC4's change. SC4 waits for CK1 (#494 (D)). When it runs, its step 1 commits the red probe, it asks
-whether MK-57 rides along (#494 (a)), and its CONTEXT's `00005010:87` and `catalog.ts:107` read
-`:88` and `:108`.
-
-### SC5 — A listing's views are counted
-
-Closes MK-43 (🟡 → ✅).
-
-```text
-PROMPT SC5: A listing's views are counted, so the seller's analytics are real
-
-ROLE: Full-stack engineer. Queue C: 00001600 (rollups), the search interest files, the seeds.
-
-CONTEXT (verified at b7280787):
-  - Events go to search.interest_events (00000018:130-145; its CHECK already allows 'view'). The
-    only writer is InterestBackendService (:66), through POST /api/explore/events, whose
-    InterestRow.event_type allows impression, click and rail_depth only (interest-rows.ts:7),
-    gated by isExploreBackendLive() (:47).
-  - analytics.fn_rollup_listings (00001600:106) already reads 'view' (:143, :212) into
-    analytics.daily_rollups; catalogue.get_listing_rollups (00001170:1015) →
-    live-catalogue-analytics.ts:97 reads that. listings.view_count and order_count are derived
-    and guarded (00001895:67-71), and nothing writes them. #218 (b) (no view writer) and (c) (no
-    90-day seed).
-
-STEPS:
-  1. Red first: opening a published listing's /view writes no 'view' event.
-  2. The writer: a beacon from the /view page after hydration, through the existing events route
-     ('view' added to InterestRow and its Zod): at most one per viewer per listing per 30
-     minutes, never the owner's own view, never a bot (the route's existing filters), with the
-     same consent the explore events already honour.
-  3. The rollup writes view_count and order_count through the derived-column guard's allowed
-     path.
-  4. Seed 90 days of rollups for the seeded sellers (#218 (c)).
-
-ACCEPTANCE: a view by a second persona adds one to the next rollup; repeat views inside 30
-minutes do not, and nor does the owner's own; on a fresh reset the analytics view shows 90 days;
-listing_analytics.sql is green.
-
-SAME CHANGE: documentation/database/{search,analytics,catalogue}/*; Zod; Seed.md; the decision row
-closing #218 (b) and (c).
-```
-
-§1.2 rows: **MK-43** 🟡 → ✅ (the EXPLORE flag is environment).
+lands. **MK-60** 🟡 → ✅. **MK-57** 🟡 → ✅ if (a).
 
 ### SC6 — The Clients view links by slug and names every buyer; a team edits its listings
 
-Closes MK-44 (🟡 → ✅); settles MK-45's hidden flag.
+> **Status 2026-11-23:** step 4 landed in `e900af75` (#500 rewrote MK-44's and MK-45's notes); steps
+> 1–3 below are open. Waits for SC4 (`00001170`); CK1 has landed.
+
+Closes MK-44 (🟡 → ✅); builds MK-45's ruled scope.
 
 ```text
 PROMPT SC6: The seller's Clients view links by slug and names team and business buyers; a team's
@@ -1200,46 +741,41 @@ listings are editable by the team
 
 ROLE: Full-stack engineer. Queue C: 00001170.
 
-CONTEXT (verified at b7280787):
-  - #218 (a): the Clients readers' hrefs carry uuids: /messages/<uuid> (00001170 ~:1566) and
-    /calendar?event=<uuid> (~:1623, ~:1668); PRD-J1. ROUTING.md owns the thread's address
-    (Decision #444 flag (a) records a PRODUCT_SPEC-vs-ROUTING contradiction about it: follow
-    ROUTING, and if the flag is still open, do not resolve it here); #388 owns ?event=.
+CONTEXT (verified at b7280787; 00001170 refs at f2e25929):
+  - #218 (a): the Clients readers' hrefs carry uuids: /messages/<uuid> (00001170 ~:1808) and
+    /calendar?event=<uuid>; PRD-J1. ROUTING.md owns the thread's address (Decision #444 flag (a)
+    records a PRODUCT_SPEC-vs-ROUTING contradiction about it: follow ROUTING, and if the flag is
+    still open, do not resolve it here); #388 owns ?event=.
   - #218 (d): fn_seller_order_lines resolves a buyer only for owner_type user or freelancer
-    (:1491, :1502), so a team's or a business's order shows no buyer.
-  - MK-44's "quotes cannot be acted on" is stale: QuotePanel only="host" is mounted in
-    components/clients/ClientDrawerBody.tsx:213 (#458).
-  - #312 flag (a): every catalogue write door is creator-only (save_listing :317,
-    apply_listing_media :810, set_listing_status :914, duplicate :1149, delete :1336), so a
-    teammate cannot edit a colleague's team listing. Flag (e): presets are not team-scoped.
+    (:1733, :1744), so a team's or a business's order shows no buyer.
+  - #312 flag (a): every catalogue write door is creator-only (save_listing, apply_listing_media,
+    set_listing_status, duplicate, delete), so a teammate cannot edit a colleague's team listing;
+    CK1's freeze hook checks the creator too (#500 (a)). Flag (e): presets are not team-scoped.
 
-🧑 DECISION (before step 3), #312 (a) and (e): who may edit a team's listing. Recommended A: any
-member holding the team's catalogue capability (read the team role matrix) may edit, publish,
-pause and duplicate any team listing; deleting stays with the creator and the team's admins;
-presets follow the same scope. B: creator-only stays, and the UI says so.
-RULED #500 (2026-11-18): A, tightened. Any active publish_listings holder edits, publishes,
-pauses and duplicates any team listing, and create_listing for a team needs it too; deleting is
-the creator while still a holder, or a member at the admin or owner rank; a team listing's
-presets live on the team's own schedule. ?event= stays (ROUTING, #388; PRD-J1), so ACCEPTANCE
-reads "no uuid in any Clients href but ?event=". SC6 waits for CK1 (#488) and SC4 (#494).
+Who may edit a team's listing (ruled: Decision #500, 2026-11-18, A tightened): any active
+publish_listings holder edits, publishes, pauses and duplicates any team listing, and
+create_listing for a team needs it too; deleting is the creator while still a holder, or a
+member at the admin or owner rank; a team listing's presets live on the team's own schedule. The
+inquiry link becomes /messages/dm-<handle>; ?event= stays (ROUTING, #388; PRD-J1).
 
 STEPS:
   1. Red first: a probe for the uuid hrefs and the missing team buyer.
   2. Slugs in every href, per ROUTING.md; a team or business buyer named as the entity (its name
      and handle, as MetaLine text), never a blank.
   3. The ruling across the five doors and the presets; extend catalogue_publish_locks.sql.
-  4. Fix MK-44's stale text and MK-45's hidden flag in USER_FLOWS.
 
-ACCEPTANCE: no uuid in any Clients href; a team's order names the team; under the ruling, a
+ACCEPTANCE: no uuid in any Clients href but ?event=; a team's order names the team; under the ruling, a
 teammate edits a colleague's listing (or is refused with copy that says why). Screenshots.
 
 SAME CHANGE: ROUTING.md if a shape changes; documentation/database/catalogue/*; the decision row
 closing #218 (a), (d) and #312 (a), (e).
 ```
 
-§1.2 rows: **MK-44** 🟡 → ✅; **MK-45**'s note per the ruling.
+§1.2 rows: **MK-44** 🟡 → ✅; **MK-45**'s note cleared once the ruled scope is built.
 
 ### SC7 — Request to Sell, the client's grant, and the royalty
+
+> **Status 2026-11-23:** open; waits for FBP DB21 (CK1 and DB19 have landed).
 
 Closes MK-46 (❌ → ✅).
 
@@ -1247,8 +783,8 @@ Closes MK-46 (❌ → ✅).
 PROMPT SC7: A freelancer asks to sell an asset made on a project; the client grants it; every
 sale routes the client's royalty
 
-ROLE: Full-stack + payments engineer. Queue M (it changes place_wallet_order's money), after CK1,
-DB19 and DB21 (#493 (D)).
+ROLE: Full-stack + payments engineer. Queue M (it changes place_wallet_order's money), after DB21
+(#493 (D); CK1 and DB19 have landed).
 
 CONTEXT (verified at b7280787):
   - PRODUCT_SPEC.md §Digital Marketplace 3 (:3148-3158 at 693819fd): a "strict approval gate".
@@ -1262,26 +798,20 @@ CONTEXT (verified at b7280787):
     apps/web/features/legal/core/content/ip-transfer-deed.ts.
   - CK1's product_versions is what a minted product sells.
 
-🧑 + ⚖️ DECISIONS (before step 2):
-  1. The royalty: who sets the percentage (recommended: the client and the freelancer agree it in
-     the request, within bounds you set) and its order against the commission (recommended: the
-     platform's commission first, the royalty from the seller's net, the dust to the seller).
-  2. Who may request: only for a stage whose IP mode allows it, after its release; a client
-     business decides through a member with the right capability; never a 13-17 account.
-  3. ⚖️ The licence wording a grant creates (counsel), and what happens to a royalty when the
-     client's account is erased (recommended: it stops, and the seller keeps it).
-  RULED #493 (2026-11-18), all as recommended, with stop 2's premise corrected, and two points
-  re-ruled the same day (#493 (G)): (1) the freelancer proposes a rate and the client approves or
-  declines it as proposed, never counters; 0-50% of the seller's net, fixed at the grant; the
-  commission first, then the royalty floored from what is left, the dust to the seller; the client
-  credited through fn_wallet_credit_pending beside the seller, so a refund recovers both. (2) Only
-  a released exclusive_transfer or licensed_use stage takes a request; shared_ownership already
-  lets the maker sell, so it lists with provenance, no grant and no royalty, and the client is
-  told; projective_partner is refused; a business grants through a member holding
-  manage_projects; no 13-17 account on either side. (3) The grant survives erasure, its royalty
-  stops and the seller keeps it; the grant sits behind a platform param that stays off until
-  counsel. Wait for CK1, DB19 and DB21. Skip this block when you run: re-verify all three at HEAD
-  and stop if one has not landed, and read #493's flags (a)-(c) before step 2 ((d) is ruled).
+The royalty, who may request, and erasure (ruled: Decision #493, 2026-11-18, two points
+re-ruled the same day, #493 (G); ⚖️ the licence wording a grant creates is counsel's):
+  (1) The freelancer proposes a rate and the client approves or declines it as proposed, never
+      counters; 0-50% of the seller's net, fixed at the grant; the commission first, then the
+      royalty floored from what is left, the dust to the seller; the client credited through
+      fn_wallet_credit_pending beside the seller, so a refund recovers both.
+  (2) Only a released exclusive_transfer or licensed_use stage takes a request; shared_ownership
+      already lets the maker sell, so it lists with provenance, no grant and no royalty, and the
+      client is told; projective_partner is refused; a business grants through a member holding
+      manage_projects; no 13-17 account on either side.
+  (3) The grant survives erasure, its royalty stops and the seller keeps it; the grant sits behind
+      a platform param that stays off until counsel.
+Re-verify DB21 at HEAD and stop if it has not landed, and read #493's flags (a)-(c) before step 2
+((d) is ruled).
 
 STEPS:
   1. Red first: a probe that no request door exists and a sale routes nothing to the client.
@@ -1291,8 +821,8 @@ STEPS:
      hashes: the "cryptographic link"), which the freelancer edits and publishes through the
      normal gate.
   4. The royalty leg in place_wallet_order, through the wallet doors (integer minor units,
-     floored, the dust named), with its terms in finance.v_conservation_identity once DB16
-     exists. The client sees the earnings in their wallet. Notices both ways.
+     floored, the dust named), with its terms in finance.v_conservation_identity (DB16, #483).
+     The client sees the earnings in their wallet. Notices both ways.
 
 ACCEPTANCE: the probe: a request on a stage that cannot share refuses; an approved one mints a
 draft with provenance; a sale pays the seller, the platform and the client exactly, and conserves
@@ -1307,6 +837,9 @@ SAME CHANGE: PRODUCT_SPEC.md §Digital Marketplace 3 and 5 (the markers removed)
 
 ### SC8 — A rights-holder reports a listing; an operator takes it down; the seller answers
 
+> **Status 2026-11-23:** open; waits for T&S R1 and R2, neither landed at `f2e25929`. R1's text
+> already carries the 'notice' source (#496 (A)).
+
 Part of MK-47 (with T&S R1 → R2 and SC9).
 
 ```text
@@ -1317,21 +850,21 @@ ROLE: Full-stack engineer. Queue C, after T&S R1 and R2 have landed (ops.reports
 route).
 
 CONTEXT (verified at b7280787): there is no inbound copyright path (#393 flag (n), ruling B8: "a
-separate track, finished before the marketplace opens"). T&S R1 (:722) builds ops.reports, with a
-reason vocabulary that recommends intellectual_property; R2 (:926) builds /api/reports and a
-listing entry point. PRD-D9 is ❌.
+separate track, finished before the marketplace opens"). T&S R1 (TRUST_SAFETY_BUILD_PROMPTS.md
+§R1) builds ops.reports, with a reason vocabulary that recommends intellectual_property; R2
+builds /api/reports and a listing entry point. PRD-D9 is ❌.
 
-⚖️ DECISION (before step 2): which notice regime the intake follows (counsel): the fields a valid
-notice needs, the counter-notice, and the repeat-infringer rule. Build the mechanism; the words
-are counsel's, behind a param that keeps the public form off until they are in.
-RULED #496 (2026-11-18): record and wait; SC8 ran step 0 only, as R1 and R2 had not landed.
+The intake and the takedown (ruled: Decision #496, 2026-11-18; ⚖️ the notice regime — the fields
+a valid notice needs, the counter-notice, the repeat-infringer rule — stays counsel's): build the
+mechanism behind a param that keeps the public form off until counsel's words are in.
 (A) A rights-holder needs no account: ops.reports.source takes 'notice' (reporter NULL), with
 an immutable, Zod-typed notice block that SC8 fills and files through its own rate-limited
 door, never ops.file_report. (B) The takedown is a hold on catalogue.listings that an operator
 door sets and lifts; setting it pauses the listing through set_listing_status's code path, and
-set_listing_status refuses 'published' while it stands. No new status. Skip this block when
-you run: re-verify R1 and R2 at HEAD and stop if either is missing (#496 (D)); add the
-'notice' source yourself if R1 shipped without it. Ask #496 flag (b) before step 4.
+set_listing_status refuses 'published' while it stands. No new status. Re-verify R1 and R2 at
+HEAD and stop if either is missing (#496 (D)); add the 'notice' source yourself if R1 shipped
+without it. 🧑 Ask #496 flag (b) (a strike against the person or the owning workspace) before
+step 4.
 
 STEPS:
   1. Red first: a probe that a notice has nowhere to go.
@@ -1353,6 +886,9 @@ ROUTING.md; documentation/database/ops/*; the decision row closing #393 (n).
 
 ### SC9 — One #393 phase (run once per phase)
 
+> **Status 2026-11-23:** open, once per phase. Phase 0 was CK1 (#488); phase 1 runs now (A2 ruled
+> #499; `/api/files/object` still serves at `f2e25929`).
+
 The rest of MK-47.
 
 ```text
@@ -1360,8 +896,10 @@ PROMPT SC9: ASSET_DELIVERY_ARCHITECTURE.md §14 phase <N> (or ANTI_PIRACY_ENGINE
 
 ROLE: as the phase needs. Queue C, unless the phase edits place_wallet_order (then Queue M).
 
-CONTEXT: CK1 built phase 0. Read the phase's row in §14, every section it names, and its rulings
-in §13 (A1-A11) or ANTI_PIRACY_ENGINE.md §13 (B1-B10). Decision #393 logs them all as open.
+CONTEXT: CK1 built phase 0 (#488). Read the phase's row in §14, every section it names, and its
+rulings in §13 (A1-A11) or ANTI_PIRACY_ENGINE.md §13 (B1-B10). A2 is ruled (#499) and A6 and A8
+(#488); Decision #393 logs the rest as open. USER_FLOWS MK-47 still says "21 rulings open":
+correct its count when your phase lands.
 
 🧑 DECISION (before any code): put each of the phase's rulings to me with the spec's
 recommendation; build nothing that depends on one I have not answered. A ⚖️ ruling: build behind
@@ -1376,12 +914,12 @@ routes; SYSTEM_ARCHITECTURE.md §Environment Variable Contract and .env.example 
 
 | Phase | Delivers                                                | Waits for                                   |
 | :---- | :------------------------------------------------------ | :------------------------------------------ |
-| 1     | Signed reads closed; `/api/files/object` retired        | CK1; A2 ruled #499                          |
+| 1     | Signed reads closed; `/api/files/object` retired        | — (A2 ruled #499)                           |
 | 2     | The upload whitelist, mandatory ClamAV, large files     | T&S SN2 (the safety node); A7               |
 | 3     | The edge host, `SUPABASE_PUBLIC_URL`, the link resolver | Your edge choice; A5                        |
 | 4     | The sandbox origin, the CDN, previews, private buckets  | Phase 3; A1, A4                             |
 | 5     | Fingerprinting, by format                               | ANTI_PIRACY B-rulings                       |
-| 6     | The registry and licence gateway                        | CK1                                         |
+| 6     | The registry and licence gateway                        | —                                           |
 | 7     | Leak monitoring and takedown packs                      | ANTI_PIRACY B-rulings; plan gates (PRD-F14) |
 
 §1.2 rows: **MK-47** → ✅ once every ASSET and ANTI_PIRACY phase has landed, with SC8.
@@ -1389,12 +927,14 @@ routes; SYSTEM_ARCHITECTURE.md §Environment Variable Contract and .env.example 
 ### Added by Decision #525 — the editor items the owner deferred
 
 Decision #525 (2026-11-20) rebuilt the listing editor and gave the session plan and the buyer
-questions their own pages (`/catalogue/:slug/plan`, `/catalogue/:slug/questions`). The owner deferred
-four of its brief's items, each to a work order below (rulings R1–R3). None closes an existing
-row: each adds its PRODUCT_SPEC text and its own USER_FLOWS row in the change that lands it. Read
-the #525 row (`reference/decisions/decisions-122-126.md`) first.
+questions their own pages (`/catalogue/:slug/plan`, `/catalogue/:slug/questions`). The owner
+deferred four of its brief's items, each to a work order below (rulings R1–R3). None closes an
+existing row: each adds its PRODUCT_SPEC text and its own USER_FLOWS row in the change that lands
+it. Read the #525 row (`reference/decisions/decisions-122-126.md`) first.
 
 ### SC10 — A session sold by the hour, with sittings of their own length
+
+> **Status 2026-11-23:** open; written by #525 (`f2e25929`). Its 🧑 stop comes before any code.
 
 ```text
 PROMPT SC10: A Session or Group Session priced per hour, with sittings of their own length
@@ -1451,6 +991,8 @@ USER_FLOWS (a new MK row); the decision row closing #525 flag (a) for this item.
 
 ### SC11 — Rolling weekly templates for a group session
 
+> **Status 2026-11-23:** open; written by #525 (`f2e25929`). Its 🧑 stop comes before any code.
+
 ```text
 PROMPT SC11: A group session runs on rolling weekly templates, each buyer starting on the next
 open chain
@@ -1500,6 +1042,8 @@ the mode; USER_FLOWS (a new MK row, and MK-59 re-read).
 
 ### SC12 — Files on a session plan, revealed by policy
 
+> **Status 2026-11-23:** open; written by #525 (`f2e25929`). Its 🧑 stop comes before any code.
+
 ```text
 PROMPT SC12: A session plan's files reach the buyer when their reveal policy allows
 
@@ -1540,6 +1084,8 @@ PRODUCT_SPEC (sessions); the notification catalogue if (2); USER_FLOWS (a new MK
 §1.2 rows: a new **MK** row (a buyer receives a session's files on its schedule) ❌ → ✅.
 
 ### SC13 — File-upload questions and numeric follow-ups
+
+> **Status 2026-11-23:** open; written by #525 (`f2e25929`). Its 🧑 stop comes before any code.
 
 ```text
 PROMPT SC13: A buyer question may take a file, and a follow-up may follow a number
@@ -1587,6 +1133,9 @@ DESIGN_SYSTEM §C.1 for a control; USER_FLOWS (MK-36's note).
 
 ### MKZ — The rows, the work orders and the specs agree with the code
 
+> **Status 2026-11-23:** open; runs last. Step 3 is void: the stale-text list it fixed was folded
+> into the prompts on 2026-11-23.
+
 ```text
 PROMPT MKZ: The marketplace readiness rows, the work-order files and the specs agree with the code
 
@@ -1594,13 +1143,13 @@ ROLE: Documentation engineer. App lane, last.
 
 STEPS:
   1. Re-check every row of USER_FLOWS §Basket, checkout & orders, §Reviews and §Seller catalogue
-     (and MK-12, MK-16) against main: the status, the "What's missing" text and every file:line.
+     (and MK-12, MK-16) against main: the status, the "What's missing" text and every file:line,
+     and whether each live run in MARKETPLACE_BUILD_PROMPTS.md §0.4 is recorded.
   2. MK-42: x-frame-options is SA's "second sanctioned loosening" (SYSTEM_ARCHITECTURE.md
      :2831-2839, #217 ruling (j)). 🧑 Ask me to close #219 (d) as sanctioned; then the row cites
      SA instead of the flag.
-  3. Fix every stale line in MARKETPLACE_BUILD_PROMPTS.md §0.4 that its prompt left.
-  4. MARKETPLACE_BUILD_PROMPTS.md §0.1: mark each work order ✅ with its commit, or name what it
-     still waits for.
+  4. MARKETPLACE_BUILD_PROMPTS.md §0: every landed prompt sits in §0.0's ledger with its commit,
+     and every §0.1 row names an open work order or what it still waits for.
 
 SAME CHANGE: docs only. `deno fmt` on the files you touched.
 ```

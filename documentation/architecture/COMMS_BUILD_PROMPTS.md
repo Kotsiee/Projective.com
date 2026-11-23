@@ -1,32 +1,28 @@
-# Comms Build Prompts — Claude Code Work Orders for Messaging, Notifications & Discovery Search
+# Comms Build Prompts — Claude Code Work Orders for Messaging, Notifications, Delivery & Discovery Search
 
-> **Status: WORK ORDERS, not binding (Wave 1.2, 2026-10-30).** A sequenced series of self-contained
-> Claude Code prompts for Wave 2 **track M** ([`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md)
-> Part B §B.3): messaging, notifications and discovery search. Together they close the open findings
-> of [`COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md`](COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md) (CAS `M*`,
-> `N*`, `S*`, `D*`) under the owner's rulings on **Decision #339** (N1–N4 and the P3 rows). They
-> also write RED WP12 and WP14 of
-> [`PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md`](PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md)
-> (`D-04`, `D-05`, `D-06`, `D-13`, `D-22`, `D-28`, `D-29`). Every prompt cites its evidence by
-> finding ID and its ruling as `(Decision #NNN, ruling X)`. Paste each prompt into its **own fresh
-> session**, after the standard header (§1).
+> **Status: WORK ORDERS, not binding.** Self-contained Claude Code prompts for Wave 2 **track M**
+> ([`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part B §B.3): messaging, notifications,
+> outbound delivery and discovery search. They close the open findings of
+> [`COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md`](COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md) (CAS `M*`, `N*`,
+> `S*`, `D*`) and the open rows of [`PRODUCTION_READINESS.md`](../readiness/PRODUCTION_READINESS.md)
+> §E (§0.1), under the owner's rulings on **Decision #339** (N1–N4 and the P3 rows).
 >
-> **Prompt IDs** are `MS*` (messaging), `NT*` (notifications) and `SR*` (search), so that they never
-> read as the audit's `M*` / `N*` / `S*` findings or as the questionnaire's rulings N1–N4.
+> **Verified against code 2026-11-23 at `f2e25929`.** 7 open, 1 partly done, 9 done (§0 ledger).
+> Runnable now: MS3, MS4, NT5, and SR3 up to its 🧑 stop (MS4 and NT5 share `00005010`: one at a
+> time).
 >
-> **Wave 0, checked against git, not against the brief.** `48c1d1a5` (merged as `a158bc4a`) closed
-> SEC L2, E6/G12, L4 (a)(c), L5, L6 and G9, and CAS M5 (`comms.fn_lock_dm_pair` plus
-> `UNIQUE (thread_id, user_id)`), M10 (`comms.mark_dm_read`) and M24 (no fixtures behind the live
-> gate). `supabase/probes/trust_p1_comms_search.sql` replays them. SEC E1–E5 and E7 were closed
-> earlier (`supabase/probes/trust_p0.sql`), so CAS §2.5 step 1 ("close SEC E3/G1/G2 first") holds.
-> RED WP3 is `92c7941f` (D-09, QW-8, QW-9); its cross-isolate invalidation came later, as WP3b
-> (`0c1e474f`) on O·WP10a's KV version keys (`7f6b43d5`). **Re-verified in code 2026-11-12 at
-> `8a3fd595`:** NT1 is done (`2f9a9bb6`); MS3 step 2, NT3 step 1, SR1 step 4 and SR2 step 4 landed
-> through other work (§0); MS1 landed after it (`bbcf3506`); every other step below is still open.
+> **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
+> (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
+>
+> Paste each prompt into its **own fresh session**, after the standard header (§1). Every prompt
+> cites its evidence by finding ID and its ruling as `(Decision #NNN, ruling X)`. **Prompt IDs** are
+> `MS*` (messaging), `NT*` (notifications), `SR*` (search) and `CD*` (delivery; merged in from the
+> retired `COMMS_DELIVERY_BUILD_PROMPTS.md`), so that they never read as the audit's `M*` / `N*` /
+> `S*` findings or as the questionnaire's rulings N1–N4.
 >
 > **A prompt marked 🧑 DECISION stops** and puts the named question to a human before it changes
-> behaviour, with the options and a recommendation; §0 lists every stop. Migrations are **edited in
-> place** (root `CLAUDE.md` §1), and every prompt names the category file it edits.
+> behaviour, with the options and a recommendation; §0.3 lists every open stop. Migrations are
+> **edited in place** (root `CLAUDE.md` §1), and every prompt names the category file it edits.
 >
 > **Roadmap note: end-to-end encrypted chat is Planned after MVP** (Decision #339, the P3 row on
 > flag (j)). Nothing here builds it. The server reads messages by design, because the Tier 2 mask,
@@ -37,169 +33,178 @@
 
 ## 0. Run order & dependencies
 
-**Re-verified in code 2026-11-12 at `8a3fd595`:** NT1 is done (`2f9a9bb6`), and MS1 landed after it
-(`bbcf3506`: the `cht-` ref, the thread summary, `comms.inbox_tails` and project-stamped DMs). Four
-steps landed through other work: MS3 step 2 (O·WP10a's `bumpCacheVersion`, `cacheVersion` and
-`cacheVersionTag` in `packages/backend/core/kv.ts`, `7f6b43d5`), NT3 step 1 (the Resend
-`MailTransport` in `services/mail/transport.ts`, `527b4cd6`), SR1 step 4 (T·E8 deleted the two
-definers, `dd4206d3`) and SR2 step 4 (T·W1's Voyage pin, `bc805dff`). 🧑 2 is settled: the owner's
-ruling (4) on Decision #391 chose Resend. Nothing else has started: there is no single send door,
-`cht-` route, `/api/messaging/since`, `message.*` emitter, dispatcher claim, VAPID, Twilio transport
-or `hnsw.ef_search`. Waits now met: NT2's jobs merge (`e18489d4`), O·RED WP3's invalidation half
-(WP3b, `0c1e474f`), and MS1 for MS2, MS4 and the trust track's P2 hardening. Runnable today: MS2
-(app lane), NT2 (stops at 🧑 1) and SR1's remainder, serial on `00002510`.
+### 0.0 Done
 
-| Phase                        | Prompts                                               | Why this order                                                                                                                                                                                                                                  |
-| :--------------------------- | :---------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 — The N1 schema window** | ✅ MS1                                                | One window lands the `cht-` thread ref, the inbox read model (RED WP12) and project-stamped DMs, as ruled (Decision #339, ruling N1). MS2–MS5 build on it, and so do the trust track's Tier 1 and P2 hardening.                                 |
-| **2 — One door, then live**  | MS2 → MS3 (partly: step 2)                            | MS2 makes the single send door and the `cht-` addresses. MS3's long-poll addresses a chat by those refs, and the door bumps its version keys (ruling N2).                                                                                       |
-| **3 — Notifications**        | ✅ NT1 → NT2 → NT3 (partly: step 1) → NT4 → NT5       | CAS §2.5's order: fix the engine, then the dispatcher, then email, web push and SMS (ruling N3). NT2 and NT3 each stop for a 🧑 ruling first.                                                                                                   |
-| **3b — Chat on the engine**  | MS4 → MS5                                             | MS4 emits `message.*` into the fixed engine, with `cht-` links (both waits, MS1 and NT1, are met). MS5 makes every chat control persist, mute first (ruling N3 (d)).                                                                            |
-| **4 — Search**               | SR1 (partly: step 4) → SR2 (partly: step 4); SR3; SR4 | SR1 restores recall (ruling N4) before anything adds signal (CAS §6.5). SR3 needs MS3's version keys and stops for its weight. SR4 waits for the projects track's efficiency measure and stops for its coefficients (Decision #338, ruling P4). |
-| **Last**                     | Z1                                                    | Docs sweep, the end-to-end encryption roadmap marker and the CAS status column.                                                                                                                                                                 |
+Read a removed prompt with `git show <text at>:<path>`. The path is this file, except CD1, whose
+text is in `documentation/readiness/COMMS_DELIVERY_BUILD_PROMPTS.md`.
 
-**The SQL lane.** Every prompt except MS2 and NT4 edits `supabase/migrations`. Each of them
-therefore counts against Part B §B.0's cap of two SQL sessions on the one local DB, a cap shared
-with every other track.
+| ID  | What landed                                                                                      | Commit                                                    | Text at    |
+| :-- | :----------------------------------------------------------------------------------------------- | :-------------------------------------------------------- | :--------- |
+| MS1 | `cht-` thread `ref`, the thread summary, `comms.inbox_tails`, project-stamped DMs                | `44382c08` (branch commit `bbcf3506` is not in this repo) | `f2e25929` |
+| MS2 | One send door `sendMessage(actor, ref)`; `cht-` the only routed form; the project's DM group     | `4958c708` (#508; readiness `c33aef1f`)                   | `f2e25929` |
+| NT1 | The engine obeys quiet hours, escalation, digests and collapse; `notify_engine.sql`              | `2f9a9bb6`                                                | `f2e25929` |
+| NT2 | Fresh dispatch route on a Vault bearer, claimed deliveries, retry sweep (#344 (a))               | `ee275e93` (digest mail left as PRD-E15)                  | `f2e25929` |
+| NT3 | Resend email transport, signed bounce webhook; a hard bounce blocks the address                  | `153f20d9` (transport `527b4cd6`)                         | `f2e25929` |
+| NT4 | Web Push: VAPID transport, the device control, `sw.js` handlers, the manifest                    | `322c4dc9`, `a7ceeb92` (reaping is PRD-E18)               | `f2e25929` |
+| SR1 | HNSW `ef_search` 200 + iterative scan, `search_path = ''`, unit-length guard; dead definers gone | `481aa59a`, `6f09b3ce` (+ T·E8 `dd4206d3`)                | `f2e25929` |
+| SR2 | Bounded discovery query, per-caller embedding budget, hourly backfill job, Voyage key shape      | `1174c896` (+ T·W1 `bc805dff`)                            | `f2e25929` |
+| CD1 | Newsletter double opt-in, one-click unsubscribe, Turnstile, Resend contacts sync (#480, #502)    | `2f0feffd`, `cc591846`                                    | `f2e25929` |
 
-| Prompt | Migration files it edits (in place)                                                              |
-| :----- | :----------------------------------------------------------------------------------------------- |
-| MS1    | `00000016`, `00001001`, `00001300`, `00001840`, `00001890`, `00002510`, `00002520`, `00004006`   |
-| MS3    | `00002600`                                                                                       |
-| MS4    | `00001300`, `00001840`, `00005010`                                                               |
-| MS5    | `00000016`, `00001300`, `00002510`                                                               |
-| NT1    | `00001310`                                                                                       |
-| NT2    | `00001310`, `00002510`, `00005001`, `00005060`, and `00004006` only if the claim's plan needs it |
-| NT3    | `00001310`, `00002510`, `00005010`                                                               |
-| NT5    | `00005010`                                                                                       |
-| SR1    | `00001400`, `00002510`                                                                           |
-| SR2    | `00005060`                                                                                       |
-| SR3    | `00001400`, `00002510`, `00005050`                                                               |
-| SR4    | `00005050`                                                                                       |
+Left open by these, with no prompt here: #502 flag (d) (whether an opt-in made on Resend's
+preference page counts; the owner's question), and the §E rows in §0.1's last line.
 
-Recommended serial order inside the track: ✅ MS1 → ✅ NT1 → SR1 (partly: step 4) → MS3 (partly:
-step 2) → NT2 → MS4 → NT3 (partly: step 1) → MS5 → NT5 → SR2 (partly: step 4) → SR3 → SR4. MS2 and
-NT4 run in the app lane as soon as their predecessor has merged. These pairs have disjoint files and
-may share the two slots: MS1 ∥ NT1, SR1 ∥ MS3, NT2 ∥ MS4, NT5 ∥ SR2 and SR3 ∥ NT5.
+### 0.1 PRODUCTION_READINESS §E — row → work order
+
+| Row     | Gate | Crit     | Work order | The row flips when                                                               |
+| :------ | :--- | :------- | :--------- | :------------------------------------------------------------------------------- |
+| PRD-E3  | MVP  | Critical | MS3        | ✅ when a message reaches a second browser in ≤ 2 s with no reload               |
+| PRD-E4  | UAT  | Critical | CD2        | ✅ on CD2 (built locally: NT2)                                                   |
+| PRD-E5  | UAT  | Critical | CD2        | ✅ on CD2 (built locally: NT3)                                                   |
+| PRD-E6  | UAT  | Critical | CD2        | ✅ on CD2 (AU5 built it, #448; EPI §8.5 setup 4's hosted runbook, step 5)        |
+| PRD-E7  | PROD | High     | CD2        | ✅ on CD2 (built locally: NT4)                                                   |
+| PRD-E8  | PROD | Normal   | NT5 → CD2  | 🟡 on placeholders + callback tests · ✅ on CD2, once you hold the Twilio tokens |
+| PRD-E9  | UAT  | High     | MS4 → MS5  | 🟡 on MS4 (`message.*` emitted) · ✅ on MS5 (mute, delete, reactions persist)    |
+| PRD-E10 | PROD | High     | CD2        | ✅ on CD2 (built locally: NT3)                                                   |
+| PRD-E11 | PROD | Normal   | CD2        | ✅ on CD2 (built locally: CD1)                                                   |
+| PRD-E14 | PROD | Normal   | CD2        | ✅ on CD2, once `news.<domain>` is verified and `newsletter_mail_from` is set    |
+
+**The flip rule.** A row that needs only the app and the database (E3, E9) is ✅ when its prompt's
+acceptance passes locally. A row that needs a provider account or hosted configuration (E4–E8, E10,
+E11, E14) is 🟡 when it is built and proved locally, and ✅ only when CD2 proves it on a hosted
+project. PRD-E6, PRD-C15 and PRD-M3 set that precedent.
+
+**What each tier needs from §E.** MVP needs MS3 (PRD-E3). UAT also needs MS4, MS5 and CD2's E4–E6
+cases. Rows with no work order here: PRD-E13 and E17 (PROJECTS CH3), E15 (PROJECTS NO2), E18
+(PROJECTS NO3) and E16 (none yet).
+
+### 0.2 Run order
+
+| Phase                       | Prompts              | Why this order                                                                                                                                                                      |
+| :-------------------------- | :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **2 — Live**                | MS3 (partly: step 2) | The long-poll addresses a chat by MS2's `cht-` refs, and step 3 bumps the version keys from MS2's one door (ruling N2).                                                             |
+| **3 — Notifications**       | NT5 → CD2            | CAS §2.5's order ends with SMS (ruling N3). CD2 then proves every outbound channel on a hosted project.                                                                             |
+| **3b — Chat on the engine** | MS4 → MS5            | MS4 emits `message.*` into the fixed engine, with `cht-` links. MS5 makes every chat control persist, mute first (ruling N3 (d)).                                                   |
+| **4 — Search**              | SR3; SR4             | SR3 stops for its weight; its version-key wait is met (RED WP10a). SR4 waits for the projects track's efficiency measure and stops for its coefficients (Decision #338, ruling P4). |
+| **Last**                    | Z1                   | Docs sweep, the end-to-end encryption roadmap marker and the CAS status column.                                                                                                     |
+
+**The SQL lane.** Every open prompt except CD2 and Z1 edits `supabase/migrations`, so each counts
+against Part B §B.0's cap of two SQL sessions on the one local DB, a cap shared with every other
+track.
+
+| Prompt | Migration files it edits (in place)                              |
+| :----- | :--------------------------------------------------------------- |
+| MS3    | `00002600`                                                       |
+| MS4    | `00001300`, `00001840`, `00005010`                               |
+| MS5    | `00000016`, `00001300`, `00002510` (and `00001840` if a trigger) |
+| NT5    | `00005010`                                                       |
+| SR3    | `00001400`, `00002510`, `00005050`                               |
+| SR4    | `00005050`                                                       |
+
+**Waves.**
+
+| Wave | SQL slot A                                   | SQL slot B                                   | App lane               | Starts when                                                                                   | §E rows that flip       |
+| :--- | :------------------------------------------- | :------------------------------------------- | :--------------------- | :-------------------------------------------------------------------------------------------- | :---------------------- |
+| 1    | **MS4** (`00001300`, `00001840`, `00005010`) | **MS3** (`00002600`)                         | —                      | now                                                                                           | E3 ✅ · E9 🟡           |
+| 2    | **NT5** (`00005010`)                         | **MS5** (`00000016`, `00001300`, `00002510`) | —                      | NT5: MS4 merged · MS5: MS3 and MS4 merged                                                     | E8 🟡 · E9 ✅           |
+| 3    | **SR3** (🧑 3)                               | —                                            | **CD2** (no migration) | SR3: any free slot, never beside MS5 or SR4 · CD2: NT5 merged and §0.3's hosted prerequisites | E4–E8, E10, E11, E14 ✅ |
+| 4    | **SR4** (🧑 4)                               | —                                            | —                      | PM-WP5b merged                                                                                | —                       |
+| Last | —                                            | —                                            | **Z1** (docs)          | every prompt above merged                                                                     | —                       |
+
+NT5 may take MS4's slot in wave 1 instead (never beside it: `00005010`). MS4 goes first because
+PRD-E9 is UAT · High and PRD-E8 is PROD · Normal. Run MS5 right after MS4: until MS5 step 1, nothing
+on `/messages` writes `is_muted`, so MS4's quiet muted threads hold only for mutes made elsewhere.
 
 These cannot run in parallel because they edit the same files:
 
-- MS1 / MS4 / MS5 (`00001300`, `00001840`; MS1 and MS5 also `00000016`)
-- NT1 / NT2 / NT3 (`00001310`)
-- MS4 / NT3 / NT5 (`00005010`)
-- SR1 / SR3 (`00001400`) · SR3 / SR4 (`00005050`) · NT2 / SR2 (`00005060`) · MS1 / NT2 (`00004006`)
-- any two of MS1, MS5, NT2, NT3, SR1 and SR3 (`00002510`)
-- MS2 / MS3 / MS5 (`MessagingBackendService.ts`, `MessagingService.ts`, `ChatFeed.island.tsx`)
-- NT2 / NT3 / NT4 / NT5 (`services/comms/dispatch-transports.ts`, `core/env.ts`, `.env.example`)
-- NT3 / NT4 / NT5 / SR3 (`features/devtools` and `apps/web/utils/dev-seam.ts`)
-- NT4 / NT5 (`NotificationsSection.tsx`)
+- MS4 / MS5 (`00001300`, `00001840`) · MS4 / NT5 (`00005010`) · SR3 / SR4 (`00005050`) · MS5 / SR3
+  (`00002510`)
+- MS3 / MS5 (`MessagingBackendService.ts`, `MessagingService.ts`, `ChatFeed.island.tsx`, the
+  messaging sidebar islands)
+- NT5 / SR3 (`features/devtools` and `apps/web/utils/dev-seam.ts`, only if NT5 touches the
+  `notificationDelivery` axis)
 
 **Cross-track file conflicts** (the §B.0 hot files first):
 
 - **`00001300` (comms).** The trust track's P2 hardening (SEC L7 masking, L8 categories) never runs
-  beside MS1, MS4 or MS5. MS5 closes L7's reaction half by construction, so the trust track's L7
-  prompt skips `comms.message_reactions`.
-- **`00005060` (jobs).** The Wave 1.3 jobs session merges first. NT2 and SR2 each own the file only
-  while they run, and never beside another track's job-adding step (F·DB3, DB4, SV4; P·WP1, WP5; a C
-  or T step that adds a job).
-- **`00002510` (grants).** One writer at a time across all tracks. Here: MS1, MS5, NT2, NT3, SR1 and
-  SR3.
-- **`features/devtools` + `dev-seam.ts`.** NT3, NT4, NT5 and SR3 here; F·SV4, F·UI3, S·S4, S·S6 and
-  I·F6 elsewhere.
-- **`00005010` (the notification catalog).** It is not in §B.0, but several tracks add rows to it
-  (C·WP3 notices, F·DB4's schedule-failure notice, P·WP1's claim-TTL notices). One writer at a time;
-  here MS4, NT3 and NT5.
-- **The shared cache primitives (the optimisation track's RED WP10a).** WP10a builds
-  `apps/web/utils/request-memo.ts` (`once(url, key, run)`), single-flight in `ArcCache.through`
-  (`packages/backend/core/cache.ts`), `cachedGlobal(key, ttlMs, fetch)` in
-  `packages/backend/core/kv.ts`, and the KV version keys (`bumpCacheVersion(scope)` plus a versioned
-  read). MS2, MS3 and SR3 consume them. If one of those prompts runs first, it creates the primitive
-  it needs at that path with that name (the version keys in
-  `packages/backend/core/cache-version.ts`), and WP10a then only migrates the old copies. No prompt
-  here edits `cache.ts`. WP10a never runs beside MS2, MS3 or SR3.
-- **`MessagingBackendService.ts`, `conversations-ssr.ts`, `live-queries.ts`.** MS2, MS3 and MS5
-  here; nothing in the optimisation track (RED WP12, QW-5 and D-22 are this file's).
-- **`00001400`, `00002510` and the `search` schema.** The trust track's E8 deletes
-  `search.fn_search_entities` / `fn_search_global` (Q0.2 (f)) and runs first; SR1 then skips its
-  deletion step. The identity track's erasure (SEC G16, CAS S17) and the trust track's search grants
-  and policies (SEC G13–G15) never run beside SR1 or SR3.
-- **`services/search/voyage-client.ts`.** The trust track's W1 pins the Voyage host (#339 (d),
-  ruling T5); SR2 skips that code step if W1 has merged.
-- **`00000016` (`comms.dm_threads`).** The trust track's P2b adds `marketplace_window_until` after
-  MS1 and MS2, and never runs beside MS5.
+  beside MS4 or MS5. MS5 closes L7's reaction half by construction, so the trust track's L7 prompt
+  skips `comms.message_reactions`.
+- **`00002510` (grants).** One writer at a time across all tracks. Here: MS5 and SR3.
+- **`features/devtools` + `dev-seam.ts`.** SR3 here (and NT5 only if it edits the axis); other
+  tracks' axis-adding steps elsewhere.
+- **`00005010` (the notification catalog).** Several tracks add rows to it (C·WP3 notices, F·DB4's
+  schedule-failure notice, P·WP1's claim-TTL notices, PROJECTS EX1, EX2, NO1, FL4). One writer at a
+  time; here MS4 → NT5.
+- **The shared cache primitives (RED WP10a, landed `7f6b43d5`).** MS3 consumes the KV version keys
+  (`bumpCacheVersion`, `cacheVersion`, `cacheVersionTag` in `packages/backend/core/kv.ts`) and SR3
+  `cachedGlobal(key, ttlMs, fetch)` from the same file. No prompt here edits `core/cache.ts`.
+- **`MessagingBackendService.ts`, `conversations-ssr.ts`, `live-queries.ts`,
+  `ChatFeed.island.tsx`.** MS3 and MS5 here; PROJECTS CH1, CH3, CH4 and T&S R2 elsewhere (one at a
+  time).
+- **`00001400`, `00002510` and the `search` schema.** The identity track's erasure (SEC G16, CAS
+  S17) and the trust track's search grants and policies (SEC G13–G15, T&S P2d step 5) never run
+  beside SR3.
+- **`00000016` (`comms.dm_threads`).** The trust track's P2b adds `marketplace_window_until`, and
+  never runs beside MS5.
 - **`services/explore/live-view.ts`.** The "Similar" rail's cache (RED D-17) is the optimisation
   track's; SR3 does not touch it.
-- **`packages/backend/core/env.ts`, `.env.example` and SYSTEM_ARCHITECTURE's Environment Variable
-  Contract.** NT2–NT5 and SR2 append keys, and so do other tracks: pull first, append only.
-- **`AccountSection.tsx`** (NT3) may meet the identity track's MFA work (I3), and **`_app.tsx`**
-  (NT4's manifest link) may meet shell work. Check `git status` first.
+- **`packages/backend/core/env.ts`, `env-manifest.ts`, `.env.example` and SYSTEM_ARCHITECTURE's
+  Environment Variable Contract.** NT5 appends keys, and so do other tracks: pull first, append
+  only.
 - **No prompt here edits the other §B.0 hot files:** `00001240` (finance money), `00001155`
   (sessions), `00001020` (workspaces), `00001060` (erasure), `stripe-webhook.ts` + `00001230`, and
   `live-wallet.ts` / `wallet-scope.ts`.
 
 **Cross-track waits** (⏳ = waits for):
 
-- The track starts after Wave 0's S-A3, which has merged (`a158bc4a`).
-- NT2 ⏳ the Wave 1.3 jobs session's merge. That session has registered all seven comms jobs (queue
-  worker, escalation, daily and weekly digests, sweep, reaper and compaction), which drive NT1's
-  engine, so no prompt here registers them; NT1's last acceptance line needs the merge too.
-- T·Tier 1 pre-filter ⏳ **MS2**. MS2 gives it one insertion point instead of two (SEC §2.3):
-  `MessagingBackendService.sendMessage(actor, ref, input)`, between the authorisation and the
-  insert.
-- T·P2 hardening (`00001300`): its MS1 wait is met (`bbcf3506`); it never runs beside MS4 or MS5.
-  T·P2b (a new `comms.dm_threads` column) ⏳ MS2; its MS1 wait is met.
-- O·RED WP3's invalidation half (D-14, the catalogue version bump) ⏳ the KV version keys (MS3 or
-  O·WP10a, whichever lands first). O·RED WP13 (D-08, the chrome endpoint, which folds in
-  `/api/notifications/summary`'s 30 s poll) ⏳ **MS3**'s long-poll. This file builds neither.
-- SR3 ⏳ MS3. SR4 ⏳ P·WP5 (the Reliability Index's efficiency measure; Decision #338, ruling P4).
-- I·erasure (EPI §3.5 rule 8: delete `comms.device_tokens`, ask the email provider to delete the
-  contact) ⏳ NT3 (a provider exists) and NT4 (tokens are written).
-- C·WP3 and the session reminders call `comms.fn_enqueue` and use the jobs session's queue worker.
-  Nothing here blocks them.
+- O·RED WP13 (D-08, the chrome endpoint, which folds in `/api/notifications/summary`'s 30 s poll) ⏳
+  **MS3**'s long-poll. This file does not build it.
+- SR4 ⏳ PM-WP5b (`PM_BUILD_PROMPTS.md`, the Reliability Index's efficiency measure; Decision #338,
+  ruling P4).
+- CD2 ⏳ NT5, and a hosted staging project (the staging slice of PRD-G8, ❌ today).
 
-### Open decisions
+### 0.3 Open decisions and human stops
 
-| #    | Question                                                                                                                                                                                                                                                                                                                                                  | Stops                         | Recommendation                                                          |
-| :--- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------- | :---------------------------------------------------------------------- |
-| 🧑 1 | Where the notification dispatcher runs. SYSTEM_ARCHITECTURE.md:2531 names `dispatch-push` / `send-email` Edge Functions and EPI §8.1 one `comms-dispatch` Edge Function, while the owner chose "Fresh routes plus pg_cron `http` jobs" over Edge Functions for integration work (Decision #343, ruling C4 (a)). **A new contradiction, not logged here.** | NT2, at the entry point only  | A Fresh route, `POST /api/comms/dispatch`                               |
-| 🧑 2 | The email provider (Decision #335 (f); not ruled)                                                                                                                                                                                                                                                                                                         | NT3, before any transport     | Resend                                                                  |
-| 🧑 3 | The context-aware ranking weight. A ranking rule changes who earns, so it is a business rule                                                                                                                                                                                                                                                              | SR3, before any order changes | 0.25 on signed-in recommended orders, from 5 interest events in 90 days |
-| 🧑 4 | The $W_i$ and Reliability Index coefficients (Decision #338, ruling P4)                                                                                                                                                                                                                                                                                   | SR4                           | Workload 1.50 (unchanged), efficiency 1.75, a newcomer at the median    |
-| 🧑 5 | Owner gate, not a build stop: Voyage's written no-training terms before `EMBEDDINGS_ENABLED` (Decision #339 (d); #340, ruling T5)                                                                                                                                                                                                                         | Nothing in code               | Never switch it on in a committed file                                  |
+| #    | Question                                                                                                                          | Stops                         | Recommendation                                                          |
+| :--- | :-------------------------------------------------------------------------------------------------------------------------------- | :---------------------------- | :---------------------------------------------------------------------- |
+| 🧑 3 | The context-aware ranking weight. A ranking rule changes who earns, so it is a business rule                                      | SR3, before any order changes | 0.25 on signed-in recommended orders, from 5 interest events in 90 days |
+| 🧑 4 | The $W_i$ and Reliability Index coefficients (Decision #338, ruling P4)                                                           | SR4                           | Workload 1.50 (unchanged), efficiency 1.75, a newcomer at the median    |
+| 🧑 5 | Owner gate, not a build stop: Voyage's written no-training terms before `EMBEDDINGS_ENABLED` (Decision #339 (d); #340, ruling T5) | Nothing in code               | Never switch it on in a committed file                                  |
 
-No prompt here depends on Wave 1's other open items: whether `project_stages.create_category` is
-stored as a label (#338 P4; ranking never reads it), Agency and Enterprise storage (#252 S2), the FX
-margin (#337 M5), the Agency contract-rate fee (#252 against #187), or any ⚖️ item.
+**Hosted (CD2's 🧑 PREREQUISITES).** A hosted staging Supabase project and a deployed app at a
+public HTTPS origin (the staging slice of PRD-G8). You set every secret and every dashboard setting
+yourself:
 
-**Stale docs the prompts correct.** The rulings already decide these, so no new decision is needed:
+- Vault: `CRON_APP_URL` and `COMMS_DISPATCH_SECRET`, written by
+  `deno task cron:vault --env-file <file>` (OPS1, #514 (g)), and the `comms.dispatch_webhook` flag
+  on.
+- Resend: `notify.<domain>` and `news.<domain>` verified, with SPF, DKIM, Return-Path and DMARC (EPI
+  §8.5 setup 1–3). Also `RESEND_API_KEY`, `MAIL_FROM`, and the webhook endpoint
+  `https://<origin>/api/comms/webhooks/resend` with its secret as `RESEND_WEBHOOK_SECRET`.
+- GoTrue: EPI §8.5 setup 4's hosted runbook (SMTP, Site URL, templates, rate limit).
+- Push: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
+- Text (when you have them): the three Twilio keys, a Messaging Service, geo-permissions limited to
+  launch markets, and the status callback `https://<origin>/api/comms/webhooks/twilio`.
+- The newsletter (CD1 Option A, #502; EPI §8.5 setup 8's runbook): in Resend, create the segment and
+  the topics `General` and `Changelog` (default subscription opt_out), and add the four `contact.*`
+  events to the webhook. In `security.platform_params`, set `newsletter_provider_segment_id`,
+  `newsletter_provider_topic_ids` and `newsletter_mail_from`. Then turn the
+  `newsletter.provider_sync` flag on.
 
-- EPI §8.5 rule 7 (a bounce suppresses Marketing only) against ruling N3 (b) → NT3.
-- SYSTEM_ARCHITECTURE.md:2499-2502 and `database/comms/Tables.md:19`, `:107` (comms stays in, or
-  streams through, the Realtime publication) against ruling N2 → MS3.
-- SYSTEM_ARCHITECTURE.md:685-686 and :2705-2706 (end-to-end encryption described as current) against
-  the P3 row on flag (j), Planned after MVP → Z1.
-- The `comms.fn_dispatch_notification` comment, "the cron worker re-drives pending deliveries".
-  Nothing re-drives a delivery today: `fn_process_queue` drains `comms.notification_queue` only →
-  NT2.
-- The three `message.*` catalog templates (`/messages/{entity_id}`) build uuid links, which stop
-  routing at MS2 (CAS N7) → MS4.
+No agent types, pastes or echoes a secret, and no agent changes a hosted setting. **Twilio tokens**
+(#339 flag (n)): you obtain them; PRD-E8 stays 🟡 until then.
 
-**Notes for the coordinator.**
+### 0.4 Notes for the coordinator
 
-- Q0.2 (f) (delete `search.fn_search_entities` / `fn_search_global`, RED D-29) has two claimants:
-  the trust track's E8, which runs first, and SR1 here (RED WP14). SR1 skips the deletion once E8
-  has merged. The trust track's W1 and SR2 likewise both carry the Voyage pin (#339 (d)); SR2 skips
-  it once W1 has merged.
+- No prompt here depends on Wave 1's other open items: whether `project_stages.create_category` is
+  stored as a label (#338 P4; ranking never reads it), Agency and Enterprise storage (#252 S2), the
+  FX margin (#337 M5), the Agency contract-rate fee (#252 against #187), or any ⚖️ item.
 - RED D-27 (encode `(created_at, id)` in the message cursor) is listed under this track by the
   optimisation file, but MS3 declines it: the code keeps a message-id cursor on purpose, because a
-  JavaScript timestamp loses the microsecond precision the keyset needs (`live-queries.ts:216-230`).
-  Record it as declined, not as owned.
-- `comms.dm_threads.slug` already holds the entity-channel name (Decision #306), and
-  `security.fn_slug_guard` writes `NEW.slug`. Ruling N1's `cht-` slug therefore lives in a new
-  column, `ref` (MS1).
-- Readings applied, not stops: a spam complaint suppresses Marketing only (NT3), and a one-to-one
-  conversation deleted for oneself returns with the next incoming message, while a group or an
-  entity channel never does (MS5, which writes the rule into PRODUCT_SPEC).
+  JavaScript timestamp loses the microsecond precision the keyset needs (`live-queries.ts`
+  §Cursors). Record it as declined, not as owned.
+- A reading applied, not a stop: a one-to-one conversation deleted for oneself returns with the next
+  incoming message, while a group or an entity channel never does (MS5, which writes the rule into
+  PRODUCT_SPEC).
 - Not written here, because they are outside §B.3's track M row: CAS M11 (edit or delete one's own
   message, with a re-mask), M18 (voice-memo drift), M21 (Zod on the messaging GET routes), N4/N5
   (payload hygiene and legacy keys: #336 (e), #57 (a)), N7 beyond `message.*`, S21 (lexical
@@ -207,7 +212,7 @@ margin (#337 M5), the Agency contract-rate fee (#252 against #187), or any ⚖�
   track writes `search.fn_prune_query_logs`; SEC G13 is the trust track's P2d), CAS §3 (F1–F33:
   files, streaming and the inspector) and D4 (the asset picker's `--fw-bold` title,
   `features/files/styles/asset-picker.css:115`, still open). Z1 lists each one as Open with no
-  owner, unless another track's file claims it.
+  owner, unless another track's file claims it (PROJECTS CH1 now claims M11).
 
 ---
 
@@ -237,6 +242,10 @@ Before writing code:
      #179, #180, #203, #204, #306 and #308.
   4. Read documentation/database/{comms,search}/{Tables,Functions,Policies}.md for the objects you
      change, and documentation/architecture/FOUNDER_QUESTIONNAIRE.md Part B §B.0 (hot files).
+  5. Read documentation/architecture/COMMS_BUILD_PROMPTS.md §0 (run order, locks, stops, and the
+     PRODUCTION_READINESS §E rows §0.1 maps to your prompt). File:line refs were last checked on
+     2026-11-23 at f2e25929: re-check each against the current tree before relying on it; another
+     track may have landed since.
 
 Hard rules (merge gates; reject your own diff if any of these fails):
   Messaging and notifications
@@ -301,241 +310,57 @@ Hard rules (merge gates; reject your own diff if any of these fails):
 
 SQL session rules (for every prompt that edits supabase/migrations):
   - There is ONE local Supabase DB. At most 2 SQL sessions run at once, on disjoint migration
-    files. Announce every `deno task db:reset` to the other sessions before you run it.
+    files. `deno task db:reset` is standing-approved; announce every run to the other sessions
+    before you start it.
   - Reproduce first: a probe under supabase/probes/ wrapped in BEGIN … ROLLBACK (or a Deno unit
     test). Run probes with `deno task test:probes`.
   - Finish with your own clean `deno task test:probes:fresh` (it resets, then runs every probe),
     with no other session resetting during that run.
 
-Verification: `deno task check`, `deno task lint`, `deno task test:unit` (four theme-engine.test.ts
-failures are pre-existing, Decision #96(a)), and `deno fmt` on the files you touched only, never a
-directory. Docs are CRLF in the working tree: edit them with the editor tools, never sed, and judge
-`deno fmt --check` on an LF copy. A packages/* edit needs a dev-server restart (no HMR). For a UI
-prompt also run `deno task dev`, sign in as the seeded personas (documentation/database/Seed.md)
-and capture 1440, 900 and 390 px screenshots in light, dark, data-contrast="high" and
-data-motion="reduced".
-Commit on the branch you were given with a clear message; do not push, and do not open a PR unless
-I ask.
+Verification: `deno task check`, `deno task lint`, `deno task test:unit` (the theme-engine
+failures are pre-existing, Decisions #96 (a) and #157 (m): compare any red test with main before
+calling it yours), and `deno fmt` on the files you touched only, never a directory. Docs are CRLF in
+the working tree: edit them with the editor tools, never sed, and judge `deno fmt --check` on an LF
+copy. A packages/* edit needs a dev-server restart (no HMR). For a UI prompt also run
+`deno task dev`, sign in as the seeded personas (documentation/database/Seed.md) and capture 1440,
+900 and 390 px screenshots in light, dark, data-contrast="high" and data-motion="reduced".
+This checkout may be shared with other sessions: never switch branch, never stash, and stage only
+your own hunks. Commit on the branch you were given with a clear message; do not push, and do not
+open a PR unless I ask.
+
+Readiness (Decision #444): in the same change, update documentation/readiness/
+PRODUCTION_READINESS.md: the §E row(s) that §0.1 maps to your prompt (status, and evidence naming
+your commit and decision); recompute the §E line and the three tier rows of the Scoreboard (score =
+Σ weight × credit / Σ weight; ✅ 1 · 🟡 0.5 · ❌ 0; Critical 3 · High 2 · Normal 1; ⏸ rows
+excluded); add one line to §Score history. The flip rule (§0.1): a row needing a provider account
+or hosted config is 🟡 when built and proved locally, ✅ only on CD2. Update USER_FLOWS.md if a
+flow's status changes. A gap you find and do not fix gets a new row at the end of §E, never silence.
+
+When you finish, do the closing duty (documentation/reference/build-prompts.md §2) in the same
+commit as the work:
+  - In documentation/architecture/COMMS_BUILD_PROMPTS.md: a done prompt leaves the file. Delete its
+    section and add its row to §0's Done ledger (ID · what landed · commit · text at <commit>^). A
+    partly done prompt keeps only its open steps, with their numbers unchanged, under one rewritten
+    Status line. A ruled 🧑 stop becomes the ruled step, with its decision number.
+  - Treat any step you built for another prompt the same way, in the file that holds it.
+  - Run git grep -n "<ID>" documentation/ and update every place that still calls it open: the
+    PRODUCTION_READINESS / USER_FLOWS Track cells, the audit's Status column, other prompts' waits,
+    and this file's row in documentation/reference/build-prompts.md §3.
+  - If the file has no prompts left, delete it, log it in build-prompts.md §4 and repoint its links.
 ```
 
 ---
 
 ## 2. Messaging
 
-### MS1 — The N1 schema window: `cht-` thread refs, the inbox read model, project-stamped DMs
-
-```text
-PROMPT MS1: The N1 schema window — cht- thread refs, the inbox read model, project-stamped DMs
-
-ROLE: Postgres engineer (the comms schema). First in the track: MS2–MS5 and the trust track's
-Tier 1 and P2 hardening build on it.
-
-CONTEXT:
-  - Ruling: one schema window for a cht- slug on comms.dm_threads, dm_messages.project_id written,
-    the two message stores NOT merged, and the inbox read model: an inbox_tails RPC plus additive
-    summary columns and a trigger (Decision #339, ruling N1; #341 (h) = ADC Q8; #218 (a)). CAS §6.1
-    is the design.
-  - Findings: CAS M1 (a project does not draw its DMs: services/projects/live-detail.ts:857, :992
-    `dms: []`), CAS M4 (two addresses for one conversation, and a raw uuid route), RED D-04 (one
-    dm_messages tail request per thread: services/messaging/live-queries.ts:545 → fetchThreadTail
-    :873), RED D-05 (reading one thread runs the whole inbox fan-out: fetchConversation :901).
-  - comms.dm_threads.slug ALREADY holds the entity-channel name (#306: `general`, `delivery-sync`),
-    and security.fn_slug_guard (00001001:304) writes NEW.slug. The new address therefore lives in
-    a new column, `ref`, named after CAS §6.1's ChatRef.ref.
-
-FILES:
-  - supabase/migrations/00000016_tables_comms.sql (comms.dm_threads: ref, last_message_at,
-    last_message_id and their CHECKs)
-  - supabase/migrations/00001001_functions_security_context.sql (a `ref` twin of fn_slug_guard,
-    beside it) and supabase/migrations/00001890_triggers_slugs.sql (its trigger)
-  - supabase/migrations/00001300_functions_comms_channels.sql (comms.inbox_tails; the summary
-    trigger function; the project-stamp trigger function; get_or_create_dm_thread and
-    send_request_message also return the ref)
-  - supabase/migrations/00001840_triggers_comms.sql (the two new triggers)
-  - supabase/migrations/00002510_permissions_function_grants.sql (inbox_tails),
-    00002520_permissions_table_grants.sql (column grants for the new columns),
-    00004006_indexes_comms.sql
-  - packages/types/slugs/slug.ts + slug.contract.test.ts; packages/types/messaging/
-    {conversations.ts, send.ts, mod.ts} (ref, lastMessageAt, lastMessageId, ChatRef)
-  - supabase/probes/comms_thread_refs.sql (new)
-  - documentation/database/comms/{Tables,Functions,Policies}.md
-
-STEPS:
-  1. The ref: comms.dm_threads.ref text NOT NULL, UNIQUE, with a CHECK on the slug shape of
-     @projective/types/slugs and a new prefix (SLUG_PREFIXES gains `thread: "cht"`). A BEFORE
-     INSERT OR UPDATE trigger always mints it on insert with security.mint_slug('cht') (a client can
-     never choose its own address) and refuses any change on update: fn_slug_guard's contract on a
-     column named ref, as one small security.fn_ref_guard() beside fn_slug_guard rather than a
-     dynamic-column rewrite of the shared guard. The trigger goes in 00001890 with the other slug
-     guards. slug.contract.test.ts assumes a `slug` column: give its table list a column field and
-     add comms.dm_threads. Seeds need no change, because the trigger fills the column.
-  2. The summary columns: last_message_at timestamptz and last_message_id uuid. There is no FK: the
-     pointer is derived, and the reverse FK would be circular. An AFTER INSERT trigger on
-     comms.dm_messages advances both only when (NEW.created_at, NEW.id) is newer than the stored
-     pair, so seeds and out-of-order inserts never move them back. Guard both against client writes
-     with security.fn_guard_derived_columns, as trg_dm_messages_derived does. The guard refuses
-     only anon and authenticated, so the summary trigger function must be SECURITY DEFINER
-     (search_path = '') or the guard would refuse the trigger's own update. Add no message_count:
-     nothing reads it, and an empty thread is last_message_id IS NULL.
-  3. comms.inbox_tails(p_thread_ids uuid[], p_k integer DEFAULT 1) RETURNS SETOF the preview row
-     (thread_id, id, sender_user_id, body, has_attachments, is_audio, created_at). It is SECURITY
-     INVOKER, so RLS on dm_messages is the guard and a non-participant gets nothing back. k = 1
-     reads through last_message_id; k > 1 uses LATERAL (… ORDER BY created_at DESC, id DESC LIMIT
-     p_k) over idx_dm_messages_thread_recent. Clamp p_k to 1..20 and the array to 200 ids. EXECUTE
-     to authenticated only.
-  4. project_id: a BEFORE INSERT trigger on comms.dm_messages, named so that it fires before
-     trg_dm_messages_mask_pii (triggers fire in name order), sets NEW.project_id. It keeps a
-     supplied id only when the sender and every other undeleted participant are parties to that
-     project (the predicate comms.fn_dm_protected_project uses). Otherwise it derives the id with
-     comms.fn_dm_protected_project(thread, sender, NULL), else leaves NULL. So a client can never
-     stamp a DM onto a project it is not on. Do NOT edit the mask functions: the trust track owns
-     SEC L7/L8 in this file.
-  5. get_or_create_dm_thread and send_request_message also return the thread's ref (keep their
-     current outputs and add the field), so MS2 never needs a second read to build an address.
-  6. Indexes: the unique index on ref, and idx_dm_messages_project (project_id, thread_id) WHERE
-     project_id IS NOT NULL for the project's DM group. Add nothing the EXPLAIN of the inbox read
-     does not use.
-  7. Zod: the thread and conversation schemas gain ref, lastMessageAt and lastMessageId. Add a
-     ChatRef discriminated union to @projective/types/messaging: { kind: "thread", ref: cht-… } |
-     { kind: "room", ref: stg-… | prj-…, channel: <the room key /api/projects/messages/send takes
-     today> } (CAS §6.1). No service or route changes here; they are MS2's.
-
-SAME CHANGE: migrations edited in place (root §1); the Zod schemas and
-documentation/database/comms/* with the schema change. ROUTING.md moves with MS2.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each announcing its resets; finish with your own clean
-`deno task test:probes:fresh`. Never beside MS4, MS5 or the trust track's 00001300 work.
-
-ACCEPTANCE (comms_thread_refs.sql, BEGIN … ROLLBACK):
-  - Every seeded dm_threads row has a ref matching the cht- shape; a client-supplied ref on insert
-    is replaced; an UPDATE of ref → 23514.
-  - After 3 messages are inserted out of order, last_message_id is the newest; a client UPDATE of
-    last_message_at is refused.
-  - inbox_tails as participant A returns A's threads only; as a non-participant it returns zero
-    rows; with k = 3 it returns at most 3 rows per thread, newest first.
-  - A DM between two parties of a protected project is stamped with it; a forged project_id from a
-    non-party is replaced; a DM with no shared project stays NULL.
-  - slug.contract.test.ts is green with the thread entity.
-```
-
-> **Status 2026-11-12:** Done — `bbcf3506` (branch `feat/comms-ms1-thread-refs`, on `dd3986e5`).
-> `comms.dm_threads` gains `ref` (`cht-`, always minted by `security.fn_ref_guard`, `23514` on any
-> change) and the derived `last_message_at` / `last_message_id` (`comms.tg_dm_thread_summary`,
-> never backwards, guarded by `trg_dm_threads_derived`); `authenticated` loses `INSERT` / `UPDATE`
-> on the table. `comms.inbox_tails` is the invoker preview read; `comms.tg_bind_dm_project` settles
-> `dm_messages.project_id` before the mask, and `idx_dm_messages_project` serves the project's DM
-> group. Three readings MS2 inherits: `get_or_create_dm_thread` answers jsonb
-> `{ thread_id, thread_ref }` (the two TS callers parse `OpenedDmThreadSchema`) and
-> `send_request_message` adds `thread_ref`; an entity-channel message carries no project; `ref`,
-> `lastMessageAt` and `lastMessageId` are optional on `ConversationSummary` / `ConversationDetail`
-> until MS2's live read fills them. `ChatRef` is in `@projective/types/messaging` (`send.ts`).
-> Proof: `supabase/probes/comms_thread_refs.sql`; `test:probes:fresh` 133/133 on the shared DB and
-> 129/129 on main + MS1 alone.
-
-### MS2 — One send door, `cht-` addresses, and the project's DM group
-
-```text
-PROMPT MS2: One send door, cht- addresses, and the project's DM group
-
-ROLE: Backend and routing engineer. Depends on MS1.
-
-CONTEXT:
-  - Ruling: one sendMessage(actor, ChatRef); /messages/dm-<handle> answers 303 to the pair's cht-
-    thread; dm_messages.project_id is written so that the project draws the inbox's thread; the
-    stores stay separate (Decision #339, ruling N1). Root CLAUDE.md §4 and #88: uuids do not route.
-  - Findings: CAS M1; M3 (two doors: /api/messaging/messages/send → MessagingBackendService, and
-    /api/projects/messages/send → ProjectBackendService.sendMessage :3163); M4; M23 (no send rate
-    limit); M25 / D9 (a soft 404); RED D-04, D-05, D-06 (the page and its header, footer and panel
-    slots each run resolveConversation, and nothing coalesces them:
-    features/messaging/core/conversation-{header,footer,panel}-slot.tsx) and D-13 (the
-    conversations cache key includes the params, so every page refetches the whole inbox:
-    MessagingBackendService.ts:304). RED QW-5 is D-06 + D-13.
-  - The trust track's Tier 1 pre-filter plugs into the door this prompt makes (one insertion
-    point, SEC §2.3). Keep the door's shape plain: parse → authorise → [Tier 1 goes here] → insert
-    → bump and notify.
-
-FILES:
-  - packages/backend/services/messaging/{MessagingBackendService.ts, live-writes.ts,
-    live-queries.ts, live-threads.ts, live-attachment-source.ts, live-workspace.ts} +
-    MessagingBackendService.test.ts
-  - packages/backend/services/projects/{ProjectBackendService.ts (sendMessage :3163 and the call at
-    :1949), live-detail.ts (:857-862, :992)}
-  - packages/types/messaging/{send.ts, conversations.ts} (the send input keyed by ChatRef)
-  - apps/web/routes/api/messaging/messages/send.ts, apps/web/routes/api/projects/messages/send.ts
-  - apps/web/routes/(dashboard)/messages/[conversationId]/{_layout,index,files,members}.tsx,
-    apps/web/features/messaging/core/{conversations-ssr.ts, MessagingService.ts}
-  - apps/web/utils/request-memo.ts (consume `once(url, key, run)` from the optimisation track's
-    RED WP10a; if it has not landed, create it at this path with this signature)
-  - apps/web/features/projects/core/chat-context.ts (channelHref :34, conversationMessageHref) and
-    the project route segment that resolves a channel ref
-  - every builder of a /messages/ address (grep -rn "/messages/" apps packages --include=*.ts*)
-  - documentation/architecture/ROUTING.md (the messages rows :151-152; "Conversations are
-    addressed by their entry surface"; the messaging API table; the dm- note :941-943) and
-    documentation/business/PRODUCT_SPEC.md (the markers at :1192-1193 and :3714)
-
-STEPS:
-  1. MessagingBackendService.sendMessage(actor, ref: ChatRef, input) is the ONE door. A thread ref
-     writes comms.dm_messages; a room ref writes comms.project_messages through the code that
-     ProjectBackendService.sendMessage runs today (move it, and keep its error handling and
-     validation). ProjectBackendService.sendMessage becomes a one-line delegate, or is deleted with
-     its callers re-pointed. Both send routes stay, because the composer and the project chat call
-     them, and become thin wrappers over the one door.
-  2. The send rate limit lives in the door (CAS M23): a per-sender SlidingWindowLimiter
-     (packages/backend/core/rate-limit.ts) at 30 messages a minute, answering 429 with
-     details.retryAt. A database throttle against direct PostgREST writes is SEC G6 and stays with
-     the trust track.
-  3. Addresses: /messages/cht-… is the only routed form. /messages/dm-<handle> answers 303 to the
-     pair's cht- ref when the thread exists, and keeps today's virtual conversation when it does
-     not (ROUTING:941-943); the first send creates the thread, and the island replaceStates to the
-     cht- address. A uuid answers 404 with the existing calm not-found page and a real 404 status
-     (CAS M25 / D9). Fixture mode keeps its own ids (dm-{handle}, ch-…).
-  4. Every address builder emits cht- refs: conversationMessageHref, dmMessageHref
-     (live-attachment-source.ts), the inbox rows, the saved list, links built in TS for
-     notifications, ChatPopoutHost. No /messages/${uuid} is left. Entity channels (#306) are
-     dm_threads too: the workspace channel chat (live-workspace.ts and its console island) sends
-     with the channel's cht- ref, while its console URL keeps the channel's name slug.
-  5. The project's Private Messages group (live-detail.ts `dms`) lists the viewer's dm_threads that
-     hold a message stamped with this project (MS1's idx_dm_messages_project). Each row links to
-     /projects/:projectSlug/cht-… through channelHref. The project route segment that resolves
-     channel refs accepts a cht- ref when the viewer is a participant and the thread's other
-     participants are parties to the project, and answers 404 otherwise. It renders the same
-     thread as /messages does.
-  6. The inbox read model: fetchConversations reads its previews through comms.inbox_tails in one
-     round trip (D-04); fetchConversation reads one participant row, its roster and
-     inbox_tails([thread]) (D-05). The read cache key drops the params: rows are cached once per
-     tenant and the params are applied after (D-13), as ProjectBackendService.ts:1061 does.
-     conversations-ssr.ts wraps resolveConversation in once(url, key, run), so the page and its
-     three slots share one read per request (D-06).
-  7. ROUTING: the two messages rows; the entry-surface table (a project DM is
-     /projects/:projectSlug/cht-…); the send API rows (one door behind both routes); the dm- note
-     (303, or the virtual conversation). PRODUCT_SPEC: remove the **Not built yet** at :1192-1193
-     and "**Not built yet** for the `cht-` slug" at :3714.
-
-SAME CHANGE: ROUTING.md with the URL change; the PRODUCT_SPEC markers; the Zod send input. There is
-no schema change (MS1 made it).
-
-ACCEPTANCE:
-  - MessagingBackendService.test.ts: a thread send and a room send both go through
-    sendMessage(ref); the 31st message in a minute is a 429; a non-participant's thread send is a
-    404; a uuid conversation id is a 404; dm-<handle> with a thread answers 303 with Location
-    /messages/cht-…, and with none, the virtual conversation.
-  - A unit test asserts that the inbox read makes one inbox_tails call for N threads (no
-    per-thread read), that two inbox pages reuse one cached row set, and that one
-    /messages/cht-… request resolves the conversation once across the page and its three slots.
-  - grep -rn 'messages/${' apps packages finds no uuid-built address.
-  - In the browser (deno task dev, two seeded personas on one project): a DM sent from the
-    project's Private Messages group appears under /messages, and back. Screenshots at 1440 and
-    390.
-```
-
 ### MS3 — Live updates: an ETag long-poll, KV version keys, comms out of Realtime
 
-> **Status 2026-11-12:** Partly done — step 2 landed as O·WP10a's version keys in
-> `packages/backend/core/kv.ts` (`bumpCacheVersion`, `cacheVersion`, `cacheVersionTag`, with the
-> `["messaging", userId]` scope already under test; `7f6b43d5`), so `cache-version.ts` is not
-> created; steps 1 and 3–6 remain (`00002600` still publishes the five comms tables, and there is no
-> `since` route). ⏳ MS2.
+> **Status 2026-11-23:** step 2 landed in `7f6b43d5` (O·WP10a's version keys in
+> `packages/backend/core/kv.ts:156-184`, with the `["messaging", userId]` scope under test); steps 1
+> and 3–6 below are open (`00002600:10-18` still publishes the five comms tables; there is no
+> `since` route). Its waits are met (MS2 `4958c708`, SAC3 `f52a8502`). Unverified: a 2026-11-19 run
+> on `claude/ms3-live-chat` (PROJECTS §0.2) left no branch in this repo; check `git branch -a`
+> first.
 
 ```text
 PROMPT MS3: Live updates — an ETag long-poll, KV version keys, and comms out of Realtime
@@ -551,19 +376,19 @@ CONTEXT:
     MESSAGE_SENT_EVENT); M7 (five comms tables sit in supabase_realtime with no subscriber:
     00002600); RED D-22 (invalidatePrefix reaches only the writer's tenant in one isolate); CAS D1
     (the "Chat sound" switch does nothing).
-  - This also unblocks RED WP3's invalidation half (D-14: the catalogue's version bump across
-    isolates) and RED WP13 (D-08: the chrome endpoint, invalidated on profile and preference
-    writes, which will fold in /api/notifications/summary's 30 s poll, #173). Build neither of them
+  - This also unblocks RED WP13 (D-08: the chrome endpoint, invalidated on profile and preference
+    writes, which will fold in /api/notifications/summary's 30 s poll, #173). Do not build it
     (optimisation track), and leave the notification summary poll as it is.
-  - The KV version keys are a shared primitive of the optimisation track's RED WP10a
-    (bumpCacheVersion(scope) plus a versioned read). If WP10a has landed, use its functions; if
-    not, create them as step 2 says, and WP10a adopts them.
+  - The KV version keys are RED WP10a's, landed in packages/backend/core/kv.ts: bumpCacheVersion,
+    cacheVersion and cacheVersionTag over openSharedKv(). With no KV they are no-ops and callers
+    fall back to their TTL. The version rides in the ArcCache key, so core/cache.ts is NOT edited.
+    The scopes this prompt uses: ["messaging", userId] and ["thread", ref] (a room's scope is its
+    channel id).
 
 FILES:
   - supabase/migrations/00002600_permissions_realtime_publication.sql (remove the five comms
     tables; the projects.* tables stay)
-  - packages/backend/core/cache-version.ts (new, unless RED WP10a has landed it) +
-    cache-version.test.ts; packages/backend/core/kv.ts (read only; openSharedKv)
+  - packages/backend/core/kv.ts (read only: the version keys and openSharedKv)
   - packages/backend/services/messaging/{MessagingBackendService.ts, live-queries.ts}
   - packages/types/messaging/* (the since response)
   - apps/web/routes/api/messaging/since.ts (new, thin)
@@ -571,22 +396,14 @@ FILES:
     ChatFeed.island.tsx; apps/web/features/messaging/islands/MessagesSidebar.island.tsx; a chat
     sound under apps/web/static/ (≤ 10 KB) if none exists
   - supabase/probes/comms_realtime_publication.sql (new)
-  - documentation: SYSTEM_ARCHITECTURE.md (§The Notification Engine :2499-2502; one paragraph on
+  - documentation: SYSTEM_ARCHITECTURE.md (§The Notification Engine, the Realtime sentence near :2778; one paragraph on
     version keys in §Caching Strategy, which the optimisation track's SA rewrite keeps),
-    database/comms/Tables.md (:19 and :107), ROUTING.md (the since route), PRODUCT_SPEC.md
-    (:3881-3882, "no message reaches an open page live yet")
+    database/comms/Tables.md (:19 and :128), ROUTING.md (the since route), PRODUCT_SPEC.md
+    (:4668-4669, "no message reaches an open page live yet")
 
 STEPS:
   1. Publication: delete the five `ALTER PUBLICATION supabase_realtime ADD TABLE comms.*` lines in
      place. The probe asserts that pg_publication_tables lists no comms table.
-  2. packages/backend/core/cache-version.ts (unless RED WP10a already provides it):
-     bumpCacheVersion(scope) and cacheVersion(scope) over openSharedKv(), with keys
-     ["cache","v",…scope]. cacheVersion is memoised per isolate for at most 1 s. With no KV, both
-     are no-ops (cacheVersion answers null) and callers fall back to their TTL. The version rides
-     in the ArcCache key (cacheKey(tenant, ns, { …params, v })), so core/cache.ts is NOT edited (the
-     optimisation track owns it). The scopes now: ["messaging", userId] and ["thread", ref] (a
-     room's scope is its channel id). Export the scope type, so the catalogue and chrome scopes can
-     join it later.
   3. The door bumps after the insert commits: the thread or room scope, and the messaging scope of
      every participant (the writer knows them). The inbox and conversation reads key their cache
      with the viewer's messaging version, so a recipient's next read misses (D-22). Writes made
@@ -600,7 +417,7 @@ STEPS:
      scope, re-reads once on wake or timeout, then answers 200 or 304. With no KV, it answers at
      once with Retry-After: 5. Cache-Control: no-store; 401 for a guest; 404 for a conversation the
      viewer cannot read. The message-id cursor stays, because the code's own comment
-     (live-queries.ts:216-230) explains the microsecond precision it protects; RED D-27 is not
+     (live-queries.ts, #region Cursors) explains the microsecond precision it protects; RED D-27 is not
      adopted.
   5. ChatFeed island: while the tab is visible, loop MessagingService.since(ref, etag), with one
      request in flight, an AbortController on hide, exponential back-off to 60 s on errors and
@@ -611,7 +428,7 @@ STEPS:
      once when the open conversation's poll returns a message.
   6. Docs: SA's Realtime sentence becomes "comms is not in the Realtime publication (Decision #339,
      ruling N2); live chat is an ETag long-poll; an SSE stream is Planned". The version-key
-     paragraph joins SA §Caching Strategy. PRODUCT_SPEC:3881-3882 says that messages reach an open
+     paragraph joins SA §Caching Strategy. PRODUCT_SPEC:4668-4669 says that messages reach an open
      page through the poll.
 
 SAME CHANGE: ROUTING.md (the new endpoint); database/comms docs; SYSTEM_ARCHITECTURE; PRODUCT_SPEC.
@@ -623,8 +440,6 @@ local DB, on disjoint migration files, each announcing its resets; finish with y
 ACCEPTANCE:
   - comms_realtime_publication.sql: no comms table in supabase_realtime; the projects tables are
     unchanged.
-  - cache-version.test.ts: after a bump, cacheVersion changes within 1 s; with no KV it answers
-    null and never throws.
   - A route test (with a short hold): a matching If-None-Match and no write → 304 after the hold; a
     bump during the hold → 200 with the new message; a non-participant → 404.
   - Two browsers (two seeded personas; deno task dev with --unstable-kv): a message sent in one
@@ -634,6 +449,9 @@ ACCEPTANCE:
 
 ### MS4 — Message notifications: `message.new` and `message.mention`; muted threads stay quiet
 
+> **Status 2026-11-23:** open and runnable now: MS1, NT1 and MS2 have landed, so the
+> `'/messages/' || ref` links resolve. No `tg_notify_message` or `fn_channel_reader_ids` exists yet.
+
 ```text
 PROMPT MS4: Message notifications — message.new and message.mention, and muted threads stay quiet
 
@@ -641,7 +459,7 @@ ROLE: Postgres and backend engineer. Depends on MS1 (the cht- refs) and NT1 (the
 
 CONTEXT:
   - Findings: CAS §2.1 (the message.* types have 0 callers); CAS N7 (the catalog templates build
-    uuid links: the message.* rows use /messages/{entity_id}, 00005010:65-67); CAS D1 (the New
+    uuid links: the message.* rows use /messages/{entity_id}, 00005010:68-70); CAS D1 (the New
     messages, Mentions and Group activity switches do nothing); Decision #308 flag (b) (nothing
     reads is_muted).
   - Rulings: a muted chat stays muted on every device (Decision #339, ruling N3 (d)), so a muted
@@ -698,22 +516,32 @@ ACCEPTANCE (message_notifications.sql, BEGIN … ROLLBACK):
   - "@b hello" → one message.mention for B and no message.new for B for that message.
   - B's per-type mute on message.new (the Messaging switch) → the row is recorded with
     channels = {}.
+  - Say plainly in the commit and the readiness evidence that mutes made on /messages are honoured
+    only from MS5 step 1 on: until then its islands keep them in local storage
+    (ConversationHeader.island.tsx, InboxView.island.tsx, MessagesSidebar.island.tsx), and nothing
+    there writes is_muted.
 ```
 
 ### MS5 — Chat actions persist: mute everywhere, delete for me, reactions; dead switches go
 
+> **Status 2026-11-23:** open; ⏳ MS3 (the same islands and service) and MS4. Step 1's star half
+> landed outside this prompt (star is server state through the saved system, Decision #180), so step
+> 1 is mute only. Nothing writes `dm_participants.deleted_at`, `set_dm_deleted` does not exist, and
+> reactions are read (`projects/live-messages.ts`) but written nowhere (`ChatFeed.island.tsx`).
+
 ```text
 PROMPT MS5: Chat actions persist — mute everywhere, delete for me, reactions; dead switches go
 
-ROLE: Full-stack engineer (comms doors and islands). Depends on MS2 (ref-addressed doors) and MS4
-(the reaction notice reuses its emitter).
+ROLE: Full-stack engineer (comms doors and islands). Depends on MS3 (the same islands and service)
+and MS4 (the reaction notice reuses its emitter). MS2's ref-addressed doors have landed.
 
 CONTEXT:
   - Ruling: chat mute persists server-side (Decision #339, ruling N3 (d)); Decision #308 flag (a)
     (/messages still mutes in localStorage).
   - Findings: CAS M12 (Delete is localStorage only, and dm_participants.deleted_at has no writer);
-    M13 (mute and star are localStorage only on /messages: ConversationHeader.island.tsx:39,
-    InboxView.island.tsx:74, MessagesSidebar.island.tsx); M16 (reactions are optimistic and local,
+    M13 (mute and delete are local-storage prefs on /messages, LocalKeys.CONVERSATION_PREFS through
+    readStored/writeStored: ConversationHeader.island.tsx:66-77 and :128-143, InboxView.island.tsx
+    :186 and :304-329, MessagesSidebar.island.tsx:104-106, :261, :323-329 and :395-415); M16 (reactions are optimistic and local,
     and comms.message_reactions is never written); D1 and D2 (§3.11: controls that do nothing); D3
     (a literal backdrop-filter: blur(12px) on the desktop pop-out composer,
     features/messaging/styles/chat-popout.css:156-157).
@@ -722,7 +550,7 @@ CONTEXT:
     skip comms.message_reactions.
 
 FILES:
-  - supabase/migrations/00000016_tables_comms.sql (comms.message_reactions.emoji CHECK, :404-420)
+  - supabase/migrations/00000016_tables_comms.sql (comms.message_reactions.emoji CHECK, :432-455)
   - supabase/migrations/00001300_functions_comms_channels.sql (comms.set_dm_deleted, the twin of
     set_dm_muted; the reaction notice, in the MS4 emitter or a sibling trigger function)
   - supabase/migrations/00001840_triggers_comms.sql (only if the reaction notice is a trigger)
@@ -735,16 +563,15 @@ FILES:
   - apps/web/features/messaging/islands/{ConversationHeader,InboxView,MessagesSidebar}.island.tsx,
     apps/web/features/projects/islands/ChatFeed.island.tsx, apps/web/features/messaging/core/
     MessagingService.ts, apps/web/features/messaging/styles/chat-popout.css
-  - apps/web/features/settings/components/sections/MessagingSection.tsx (:104-121)
+  - apps/web/features/settings/components/sections/MessagingSection.tsx (the Read receipts and Typing indicator switches, :106-121)
   - supabase/probes/chat_actions.sql (new)
   - documentation/database/comms/*; ROUTING.md (the new routes); PRODUCT_SPEC.md §Messaging E (the
     delete rule)
 
 STEPS:
-  1. Mute and star: the /messages header and the inbox rows call MessagingService.setMuted and
-     setStarred (the existing doors: comms.set_dm_muted, comms.set_dm_starred). Delete the
-     localStorage keys and overlays; the rows read muted and starred from the server projection
-     (live-queries.ts:431).
+  1. Mute: the /messages header, the inbox rows and the sidebar call MessagingService.setMuted (the
+     existing door: comms.set_dm_muted). Delete the CONVERSATION_PREFS mute and delete overlays in
+     all three islands; the rows read muted from the server projection (live-queries.ts).
   2. Delete for me: comms.set_dm_deleted(p_thread uuid, p_deleted boolean) writes exactly the
      caller's own participant deleted_at (now() or NULL), like set_dm_muted, and refuses an entity
      channel (22023: leaving a channel means leaving the entity, #306). deleted_at also ends access
@@ -779,7 +606,8 @@ ACCEPTANCE:
     cannot read the message → refused by RLS; a new message from the other side of a DM clears the
     deleted_at, while a message in a channel never restores a departed member.
   - Mute in one browser, then sign in as the same persona in a second browser: still muted.
-  - grep -rn localStorage apps/web/features/messaging finds no star, mute or delete state.
+  - grep -rn "localStorage\|CONVERSATION_PREFS" apps/web/features/messaging finds no mute or
+    delete state.
   - Screenshots: the Messaging settings section without the two hidden switches, and the pop-out
     composer, at 1440 and 390.
 ```
@@ -788,517 +616,16 @@ ACCEPTANCE:
 
 ## 3. Notifications
 
-### NT1 — The engine obeys its rules: quiet hours, escalation, digests, collapse
-
-> **Status 2026-11-12:** Done — `2f9a9bb6`: every handler of `fn_notify`, `fn_notify_many` and
-> `fn_enqueue` warns with the type key and SQLSTATE; `fn_resolve_channels` drops push and SMS for a
-> mandatory type inside quiet hours unless `overrides_quiet_hours`; the collapse takes the advisory
-> lock; escalation honours the per-type mute and the category; category digests are built;
-> `supabase/probes/notify_engine.sql`. The `cron:run` acceptance line was not re-run here.
-
-```text
-PROMPT NT1: The notification engine obeys its rules — quiet hours, escalation, digests, collapse
-
-ROLE: Postgres engineer (comms notifications). First of the notification chain.
-
-CONTEXT:
-  - Ruling: mandatory notices ignore preferences and snooze, and only types flagged
-    overrides_quiet_hours break quiet hours for push and SMS (Decision #339, ruling N3 (a)). Q0.3:
-    the Wave 1.3 jobs session has registered the queue worker, escalation, digests, sweep, reaper
-    and compaction in 00005060 (comms-process-queue, comms-escalate-unread, comms-digest-daily,
-    comms-digest-weekly, comms-sweep-expired, comms-reap-devices, comms-compact-events), so this
-    engine runs for real once that branch merges. Register nothing here.
-  - Findings (CAS §2.2, §2.4), all in 00001310_functions_comms_notifications.sql: N1 (a catch-all
-    returns NULL with no WARNING, and the audit insert is swallowed the same way: fn_notify :381,
-    handlers :431, :538, :545); N2 (fn_resolve_channels :226 returns early for a mandatory type,
-    skipping quiet hours as well as snooze); N3 (the group_key collapse takes no lock, so two
-    concurrent events write two rows); N9 (fn_escalate_unread :914 adds an email from the global
-    toggle with no category, type or mute check); N10 (fn_build_digests :979 selects only
-    global-digest users, so per-category digests are lost); N11 (fn_enqueue :598 has no caller —
-    the door is sound, and its callers belong to the scheduling, finance and projects tracks).
-  - Suppression (CAS N8) is checked where the destination is known: in NT2's claim.
-
-FILES:
-  - supabase/migrations/00001310_functions_comms_notifications.sql (fn_notify, fn_notify_many,
-    fn_enqueue, fn_resolve_channels, fn_escalate_unread, fn_build_digests)
-  - supabase/probes/notify_engine.sql (new; the collapse race uses dblink, and the runner runs
-    committing probes last)
-  - documentation/database/comms/{Functions,Tables}.md (the router precedence list; rule 5 of the
-    routing contract; the §Scheduled jobs table and its "none is registered" banner, which the
-    Wave 1.3 jobs session left stale when it registered the seven jobs: link the rows in 00005060
-    rather than restating minutes, which it moved) and SYSTEM_ARCHITECTURE.md :2440-2442 and :2484
-    ("not registered yet")
-
-STEPS:
-  1. Warnings: every handler in fn_notify, fn_notify_many and fn_enqueue still returns NULL, but
-     first does RAISE WARNING with the type key and the SQLSTATE (never the payload). The money
-     transaction still commits.
-  2. The router: for a mandatory type, return default_channels minus push and sms while the
-     recipient is inside quiet hours, unless the type sets overrides_quiet_hours. Snooze and every
-     preference stay ignored for a mandatory type. Non-mandatory precedence is unchanged (critical
-     still pierces a snooze).
-  3. Collapse: take pg_advisory_xact_lock(hashtextextended(user_id::text || group_key, 0)) before
-     the same-group lookup, so two concurrent events become one row with group_count 2.
-  4. Escalation: add an email fallback only when the recipient's resolved email channel for that
-     type is on (per-type mute, then the category, then the global toggle), never for a type the
-     person muted. Keep the NOT EXISTS idempotency guard.
-  5. Digests: fn_build_digests also selects users whose category row sets a digest cadence, and
-     rolls up only those categories' digestible rows.
-  6. fn_enqueue and fn_cancel_queued: no change beyond the warnings. Record in Functions.md which
-     track owns which caller (session reminders: scheduling; the abandoned-basket nudge:
-     MARKETPLACE_BUILD_PROMPTS CK5, built (Decision #492); ghosting timers: finance and projects,
-     ruling P3).
-
-SAME CHANGE: migrations edited in place; database/comms docs. PRODUCT_SPEC §Notifications rule 2
-already states step 2, so its text does not change.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each announcing its resets; finish with your own clean
-`deno task test:probes:fresh`. Never beside NT2 or NT3 (00001310).
-
-ACCEPTANCE (notify_engine.sql):
-  - A mandatory type without the override, at 23:00 inside 22:00–07:00 quiet hours → channels
-    without push and sms; an overrides_quiet_hours type keeps push; a mandatory type during a
-    snooze is delivered.
-  - Two dblink sessions emit the same group_key at once → one row with group_count 2.
-  - A user who muted a high-urgency type gets no escalation email; a category-digest user gets a
-    digest row for that category only.
-  - Once Wave 1.3 has merged: deno task cron:run comms-escalate-unread and comms-digest-daily run
-    clean on the seeded DB.
-```
-
-### NT2 — 🧑 DECISION · The dispatcher: a signed webhook, claimed deliveries, retries
-
-> **Status 2026-11-18: ✅ built (PRD-E4 🟡; ✅ on COMMS_DELIVERY CD2).** The 🧑 DECISION was ruled
-> before the run: **Option A**, a Fresh route (Decision #344 flag (a), owner ruling 2026-11-18),
-> so there was no stop and no new decision row. What landed:
->
-> - `POST /api/comms/dispatch` and `POST /api/comms/cron/dispatch`, through
->   `features/notifications/core/dispatch-ssr.ts`.
-> - `NotificationDispatchService`, with `dispatch-transports.ts` shipping an empty registry, and
->   `dispatch-payload.ts`.
-> - `comms.fn_dispatch_enabled`, `fn_claim_deliveries` and `fn_record_delivery_result`.
-> - The `comms-dispatch-sweep` job, with `comms_dispatch_url` retired.
-> - `COMMS_DISPATCH_SECRET` in env, Vault and `cron:vault`.
-> - Probes `comms_dispatch.sql` and `comms_dispatch_race.sql`; SA, EPI §8.1 and ROUTING amended.
->
-> Found while building it:
-> 1. The service role had no `USAGE` on `comms`; it is granted in `00002500`.
-> 2. The `/api` origin guard refused pg_net's POST, which carries no `Origin`. `/api/comms/dispatch`
->    is now a named server-to-server door in `utils/csrf.ts`.
-> 3. A queued row has a 15-minute lease, and a pending row past 24 hours is closed `skipped`
->    (`expired`).
-> 4. Channel liveness reads the transport registry as well as the running dispatcher (the flag plus
->    a well-formed bearer), which already does NT3's delta (1): NT3 only registers email.
->
-> The digest email of step 5 waits for NT3's mail transport.
-
-```text
-PROMPT NT2: The dispatcher — a Vault-signed webhook, claimed deliveries and retries
-
-ROLE: Backend and Postgres engineer. Depends on NT1 and the Wave 1.3 jobs session. Owns 00005060
-while it runs (one job row).
-
-CONTEXT:
-  - Ruling: the outbound dispatch webhook is signed with a Vault-held bearer (Decision #339, ruling
-    N3 (c) = #335 (e)). Today fn_dispatch_notification (00001310:1108-1150) posts with only a
-    Content-Type header to platform_params.comms_dispatch_url, a placeholder (00005001:113-120).
-    Its comment says "the cron worker re-drives pending deliveries", which is false:
-    fn_process_queue drains comms.notification_queue only, so nothing retries a delivery.
-  - Findings: CAS §2.3 (no dispatcher and no transport; every non-in-app delivery row is stuck
-    pending); CAS N8 (fn_is_suppressed has no caller); EPI §8.1 (the pipeline: one entry point that
-    fans out to transport modules); EPI §3.5 rules 2 and 4 (no private content to any provider).
-  - The runtime is the 🧑 DECISION below. Every other step is the same either way.
-
-🧑 DECISION — STOP before creating the entry point. SYSTEM_ARCHITECTURE.md:2531 names
-`dispatch-push` / `send-email` Edge Functions, and EPI §8.1 proposes one `comms-dispatch` Edge
-Function. The owner, however, chose "Fresh routes plus pg_cron http jobs" over Edge Functions for
-the integration runtime (Decision #343, ruling C4 (a)). Put this to me (it is a new contradiction;
-log it with the answer):
-  Option A (recommended): POST /api/comms/dispatch in the Fresh app, a thin route over the
-  @server/services/comms dispatch service. The trigger posts to Vault's CRON_APP_URL (the origin
-  every http job already uses) with Bearer COMMS_DISPATCH_SECRET, and the retry sweep is an
-  ordinary http job. One MailTransport serves the dispatcher and the verification mailer (EPI §8.5
-  wants one provider and one sending subdomain), the code runs under deno task test:unit, and
-  supabase/functions stays empty. SA:2531 and EPI §8.1 are amended in the same change.
-  Option B: the comms-dispatch Edge Function of EPI §8.1, with its secrets set through
-  `supabase secrets set`, its transports in supabase/functions/_shared, deployed with
-  --no-verify-jwt and a constant-time bearer check.
-  Steps 1–3 and 5 do not depend on the answer; do them first.
-
-FILES (Option A):
-  - supabase/migrations/00001310_functions_comms_notifications.sql (fn_dispatch_notification; new
-    comms.fn_claim_deliveries and comms.fn_record_delivery_result)
-  - supabase/migrations/00005001_seed_platform_params.sql (retire the comms_dispatch_url row; keep
-    the comms.dispatch_webhook flag, still false)
-  - supabase/migrations/00005060_seed_scheduled_jobs.sql (comms-dispatch-sweep, http, every minute)
-  - supabase/migrations/00002510_permissions_function_grants.sql (both functions → service_role
-    only); 00004006_indexes_comms.sql only if the claim's EXPLAIN needs a partial index
-  - packages/backend/services/comms/{NotificationDispatchService.ts, dispatch-transports.ts,
-    dispatch-payload.ts} (new) + tests
-  - apps/web/routes/api/comms/dispatch.ts and apps/web/routes/api/comms/cron/dispatch.ts (new,
-    thin; constant-time bearer, 404 otherwise)
-  - packages/backend/core/env.ts (commsDispatchSecret); .env.example
-    (COMMS_DISPATCH_SECRET=XXXX-XXXX)
-  - supabase/probes/comms_dispatch.sql (new)
-  - documentation: database/comms/Functions.md (§The dispatch webhook); SYSTEM_ARCHITECTURE.md
-    (§The Notification Engine :2477-2534 and the Environment Variable Contract); EPI §3.1, §8.1,
-    §10; ROUTING.md (the two routes); PRODUCT_MANAGEMENT.md (the Notification delivery row: who
-    writes queued, sent, failed, suppressed and skipped); PRODUCT_SPEC.md:95-97 (reword the
-    dispatcher half; the marker stays until a transport ships)
-
-STEPS:
-  1. The trigger: fn_dispatch_notification reads CRON_APP_URL and COMMS_DISPATCH_SECRET from
-     vault.decrypted_secrets exactly as ops.fn_dispatch_http_job does (00001650:192-262), and posts
-     {notification_id} to <origin>/api/comms/dispatch with Authorization: Bearer. A missing secret,
-     origin or pg_net logs a warning in the scheduler's style and posts nothing; the deliveries wait
-     for the sweep. The flag check stays first. Correct the comment.
-  2. comms.fn_claim_deliveries(p_channels comms.notification_channel[], p_notification uuid DEFAULT
-     NULL, p_limit integer DEFAULT 200), with FOR UPDATE SKIP LOCKED. It claims only rows of the
-     channels the caller can send (rows of any other channel stay pending, untouched, so no attempt
-     is burned on a transport that is not configured yet), created in the last 24 hours, that are
-     pending, or failed with attempts < 5 and an updated_at older than 2^attempts minutes; it sets
-     status = 'queued', attempts + 1 and queued_at. A row older than 24 hours is never sent (a
-     notification is not news a day later; the in-app row is the record). It returns each row with
-     its resolved destination: for email, the person's primary verified org.user_emails address;
-     for sms, the confirmed auth phone (auth.users.phone with phone_confirmed_at); for push, the
-     unrevoked comms.device_tokens row. In the same statement it marks rows with no destination
-     'skipped', and rows that fn_is_suppressed refuses 'suppressed' with a suppressed_reason (CAS
-     N8). A destination never leaves the service and is never logged.
-  3. comms.fn_record_delivery_result(p_delivery uuid, p_status comms.delivery_status, p_provider
-     text, p_provider_ref text, p_error text) writes the sent, delivered or failed timestamp; a push
-     answered 'gone' revokes the device (comms.revoke_device's semantics). Service role only.
-  4. NotificationDispatchService.dispatch(notificationId | null) claims for the channels its
-     registry can serve, builds the payload (the title, the absolute deep link from APP_URL +
-     action_url, and the notification id — never the body or payload, EPI §3.5 rule 4), hands each
-     row to its channel's transport, and records the result. Deliveries of an unconfigured channel
-     wait (deferred, EPI §3.2), so a provider turned on later sends what is still inside the
-     24-hour window. The registry starts EMPTY; NT3, NT4 and NT5 each add one transport.
-  5. The retry sweep: the comms-dispatch-sweep http job (every minute, secret
-     COMMS_DISPATCH_SECRET, path /api/comms/cron/dispatch?limit=200) calls dispatch(null). It
-     honours the same comms.dispatch_webhook flag as the trigger, so one switch turns outbound
-     delivery on and off. The same pass sends each due comms.notification_digests row as one
-     email, once a mail transport exists (NT3).
-  6. The comms.dispatch_webhook flag stays false in the seed. The runbook (EPI §8.1) says when to
-     turn it on: once Vault holds both secrets and at least one transport is configured.
-
-SAME CHANGE: migrations edited in place + database/comms docs; PRODUCT_MANAGEMENT (the delivery
-lifecycle's writers); ROUTING (two routes); SYSTEM_ARCHITECTURE and EPI (the runtime and the env
-contract); .env.example; the decision row for the runtime answer.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each announcing its resets; finish with your own clean
-`deno task test:probes:fresh`. Owns 00005060 only while it runs; never beside another job-adding
-prompt, and only after the Wave 1.3 jobs session has merged.
-
-ACCEPTANCE:
-  - comms_dispatch.sql: with the flag on and both Vault secrets set, a notification queues a
-    net.http_request_queue row whose headers carry Authorization: Bearer; with the secret missing,
-    there is no request and there is a warning log; two dblink sessions claiming at once never get
-    the same delivery; a hard-suppressed email row comes back 'suppressed'; a user with no phone
-    comes back 'skipped'.
-  - Route tests: a wrong bearer → 404; the right one → 200 with a count.
-  - A unit test proves that the payload has no body or payload field, and that its link is a
-    same-origin path.
-```
-
-### NT3 — 🧑 DECISION · Transactional email: one provider; a hard bounce blocks the address
-
-> **Status 2026-11-12:** Partly done — step 1's transport landed in `527b4cd6`: `MailTransport`,
-> `resendTransport` and `configuredTransport()` (a `re_…` key and `MAIL_FROM`; the placeholder
-> counts as absent) live in `services/mail/transport.ts`, not a separate `transport-resend.ts`, and
-> `deliverMail` serves the verification and guest mailers. The 🧑 stop is settled: Decision #391,
-> ruling (4), chose Resend. **2026-11-18:** the FILES item `supabase/config.toml` `[auth.email.smtp]`
-> landed through the identity track's AU5 (Decision #448): Resend SMTP with
-> `env(SUPABASE_AUTH_SMTP_PASS)` and `env(SUPABASE_AUTH_SMTP_ADMIN_EMAIL)` (the bare address inside
-> `MAIL_FROM`; GoTrue takes the address and the sender name apart), declared `enabled = false` so
-> local mail stays in Mailpit, with the hosted runbook in EPI §8.5; step 4's local half is done,
-> and its hosted half is that runbook. The Idempotency-Key, List-Unsubscribe, the email registration
-> in `dispatch-transports.ts` and steps 2–5 remain. ⏳ NT2.
->
-> **Status 2026-11-18, after NT2:** NT2 has merged. `channel-liveness.ts` already reads
-> `transports` from `configuredChannels()` in `dispatch-transports.ts`, so FILES' liveness item is
-> done: register an email `DispatchTransport` (a `TransportFactory` returning `null` without a
-> well-formed key) and liveness follows. The dispatcher hands each transport a `ClaimedDelivery`
-> (destination `{ address }`) and a `DispatchPayload` (title, absolute link, notification id); use
-> the delivery id as the Idempotency-Key. Step 5 of NT2 (the sweep sends due
-> `comms.notification_digests` as one email) is NT3's once the transport exists.
->
-> **Status 2026-11-18, later: ✅ built (PRD-E5 and PRD-E10 🟡; ✅ on COMMS_DELIVERY CD2).** The owner
-> ran NT3 ahead of MS4: the `00005010` wait was a one-writer lock, and the rows are disjoint. The
-> provider stop was already ruled (#391 (4), Resend).
->
-> What landed:
-> - `email-transport.ts`, registered in `dispatch-transports.ts`. It sends the title, one sentence and
->   the link, with the delivery id as Idempotency-Key and Resend's id as `provider_ref`. Marketing
->   carries RFC 8058 one-click (signed `unsubscribe-token.ts`, the person and never an address).
-> - `POST /api/comms/webhooks/resend` (`DeliveryEventService`: Svix, 300 s, a 256 KiB cap) and
->   `comms.fn_record_delivery_event`.
-> - `/api/comms/unsubscribe` with `comms.fn_unsubscribe_marketing` (delta (3)'s name). Its CSRF entry
->   sits in CD1's `ONE_CLICK_ROUTES`.
-> - In the catalog, `account.email_undeliverable` (`/settings/account#emails`; the block's real anchor
->   is `emails`) and `waitlist.invited` with email (delta (2)).
-> - `org.get_my_emails` gains `undeliverable`. `security.issue_email_verification` re-issues for a
->   hard-bounced verified address, and `org.confirm_user_email` lifts the bounce (`reverified`).
-> - Settings → Account shows an InlineNotice, an "Undeliverable" mark and **Confirm again**.
-> - The `emailDeliverability` dev axis, `RESEND_WEBHOOK_SECRET`, and probe `email_bounce.sql`.
->
-> No `00002510` edit was needed: deny-by-default gives the service role every comms function.
-> `config.toml` was already done (#448). Not built, logged as new rows:
-> - **PRD-E15:** digest email (NT2 step 5) needs a digest claim with a lease.
-> - **PRD-E16:** re-enabling Marketing in Settings does not lift a one-click unsubscribe.
-
-```text
-PROMPT NT3: Transactional email — one provider, signed bounces; a hard bounce blocks the address
-
-ROLE: Backend engineer (mail). Depends on NT2.
-
-CONTEXT:
-  - Rulings: a hard bounce blocks every category for that address, and the user is prompted in the
-    app to fix the email (Decision #339, ruling N3 (b)); mandatory types ignore preferences (ruling
-    N3 (a)). The provider is not ruled (#335 (f) recommends Resend).
-  - Findings: CAS §2.3 (no email sender; configuredTransport() in
-    services/mail/verification-mailer.ts:43 returns null); CAS §2.5 step 3 (transactional first,
-    suppression consulted, bounces written to comms.channel_suppressions); EPI §8.5 (domains, DNS,
-    GoTrue SMTP, webhooks). EPI §8.5 rule 7 still says a bounce suppresses Marketing only, which is
-    stale against ruling N3 (b): fix it here.
-  - Reading (not a stop): a spam complaint is not a bounce — the address works and the person
-    objects — so it suppresses Marketing only, like an unsubscribe (PRODUCT_SPEC §Notifications
-    rule 3, and the half of EPI rule 7 that the ruling did not change).
-  - marketing.newsletter and marketing.product_update route to email (00005010:127-128), so
-    marketing mail needs a working unsubscribe the moment email sends.
-
-🧑 DECISION — STOP before writing a transport. Put this to me:
-  Option A (recommended): Resend. It is already in the comms vocabulary (the
-  NotificationDelivery.provider JSDoc); it has an HTTP API plus SMTP for GoTrue, Svix-signed and
-  replayable webhooks that match EPI §3.3, and separate keys per subdomain. SES can come later,
-  behind the same MailTransport, when cost demands it.
-  Option B: Postmark (the best transactional deliverability and native message streams, but its
-  webhooks authenticate with basic auth or an IP allow-list, which is weaker than a signature).
-  Option C: Amazon SES (the cheapest at scale; a sandbox exit, SNS plumbing, and you own the
-  sending reputation).
-  Production cannot launch without one (EPI §8.5: "a go-live blocker").
-
-FILES (Option A; swap the names for B or C):
-  - packages/backend/services/mail/transport.ts (new: MailTransport and configuredTransport moved
-    out of verification-mailer.ts, which then imports them) and transport-resend.ts (new) + tests
-  - packages/backend/services/comms/{dispatch-transports.ts (register email),
-    DeliveryEventService.ts (new)} + tests
-  - packages/backend/services/comms/channel-liveness.ts (ST2's liveness map must flip here:
-    deliverySources() reads `transports.email` from the email registration in dispatch-transports.ts,
-    and `dispatcher` from NT2's running dispatcher if NT2 left it false, so Settings → Notifications
-    says "Sent to your primary email address." only once email sends) + its test
-  - apps/web/routes/api/comms/webhooks/resend.ts (new, thin; the Svix check lives in the service)
-  - an unsubscribe route (reuse packages/backend/services/newsletter's token if it has one;
-    otherwise a signed one-click route)
-  - supabase/migrations/00001310_functions_comms_notifications.sql (comms.fn_record_delivery_event:
-    claims delivery_events (provider, provider_event_id), updates the delivery, writes
-    comms.channel_suppressions and emits account.email_undeliverable)
-  - supabase/migrations/00005010_seed_notification_catalog.sql (account.email_undeliverable:
-    account · high · in_app only · mandatory · action URL /settings/account#email)
-  - supabase/migrations/00002510_permissions_function_grants.sql (service_role)
-  - supabase/config.toml ([auth.email.smtp] through the provider with
-    env(SUPABASE_AUTH_SMTP_PASS), replacing the SendGrid sketch at :257-263)
-  - packages/backend/core/env.ts; .env.example (RESEND_API_KEY=XXXX-XXXX, MAIL_FROM,
-    RESEND_WEBHOOK_SECRET=XXXX-XXXX, SUPABASE_AUTH_SMTP_PASS=XXXX-XXXX)
-  - the account read (an emailUndeliverable flag) and
-    apps/web/features/settings/components/sections/AccountSection.tsx (an InlineNotice on the email
-    block)
-  - apps/web/features/devtools/core/dev-context.ts + apps/web/utils/dev-seam.ts (the axis below)
-  - supabase/probes/email_bounce.sql (new)
-  - documentation: EPI §8.5 (rule 7 rewritten to ruling N3 (b); the runbook), §3.4, §10;
-    SYSTEM_ARCHITECTURE's env contract; database/comms/*; PRODUCT_SPEC.md:1333-1336 (remove the
-    **Not built yet** once mail sends and the prompt exists) and :95-97 (the email half);
-    ROUTING.md (the webhook and unsubscribe routes)
-
-STEPS:
-  1. The transport: configuredTransport() returns the provider transport when RESEND_API_KEY is
-     well formed (re_…; the placeholder counts as absent), and null otherwise (development logs the
-     mail, production reports it unavailable, as today). Send with an Idempotency-Key equal to the
-     delivery id. An email carries the title, one sentence and an "Open in Projective" link to the
-     absolute action URL, never the body or payload (EPI §3.5 rule 4). Marketing-category mail also
-     carries a one-click List-Unsubscribe header (RFC 8058) whose route writes a marketing_only
-     suppression.
-  2. The webhook: POST /api/comms/webhooks/resend follows EPI §3.3 to the letter: a 256 KiB cap,
-     the Svix HMAC over `${svix-id}.${svix-timestamp}.${body}`, a 300 s tolerance, then
-     fn_record_delivery_event in one transaction keyed (provider 'resend', provider_event_id =
-     svix-id). delivered → the delivery is delivered. A hard bounce → the delivery fails, the
-     ADDRESS is suppressed for email with marketing_only = false (every category, ruling N3 (b)),
-     and its owner receives account.email_undeliverable. A soft bounce or delivery_delayed is only
-     recorded. complained → marketing_only = true. A replay is a no-op.
-  3. The in-app prompt: the mandatory account.email_undeliverable notice links to
-     /settings/account#email, and the account email block shows an InlineNotice while the primary
-     address is suppressed ("We can't deliver email to … — change it or confirm it again").
-     Re-verifying that same address through the existing verify flow proves that it receives mail
-     and lifts the suppression (lifted_at, lifted_reason 'reverified'); the verification mail is the
-     person's own request and goes through verification-mailer, not the dispatcher, so the
-     suppression does not block it. Changing the primary address leaves the old address's
-     suppression in place.
-  4. GoTrue's auth mail goes through the same provider and sending subdomain (config.toml locally,
-     the dashboard when hosted). Local development keeps Mailpit.
-  5. Dev Context Switcher: emailDeliverability (auto · deliverable · bounced). `bounced` makes the
-     account read report the primary address as undeliverable, so the notice and the in-app prompt
-     can be seen without a real bounce. DevOverrides + DEV_DEFAULTS, the DevOption list, the
-     DevContextPanel control, and reflect() set AND delete.
-
-SAME CHANGE: migrations edited in place + Zod (packages/types/comms) + database/comms docs; the
-PRODUCT_SPEC markers; EPI §8.5 rule 7; ROUTING; the Dev switcher axis; the env contract.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each announcing its resets; finish with your own clean
-`deno task test:probes:fresh`. Never beside NT1 or NT2 (00001310), or MS4 or NT5 (00005010).
-
-ACCEPTANCE:
-  - email_bounce.sql: a hard bounce suppresses the address for every category; a later mandatory
-    money email to it comes back 'suppressed' from NT2's claim; exactly one
-    account.email_undeliverable exists; the same event replayed changes nothing; a complaint
-    suppresses Marketing only; re-verifying lifts the suppression.
-  - Webhook tests: a tampered body or a 301-second-old timestamp → 400; a valid event → 200.
-  - A unit test: with RESEND_API_KEY=XXXX-XXXX, configuredTransport() is null.
-  - Screenshots of the account email block with the notice (emailDeliverability = bounced), at
-    1440 and 390.
-```
-
-### NT4 — Web Push: VAPID, device registration from an explicit control, a push handler
-
-> **Status 2026-11-19: ✅ built (PRD-E7 🟡; ✅ on COMMS_DELIVERY CD2).** The code reached main in
-> the owner's working-tree commit `322c4dc9`; the status and readiness update is its own commit.
->
-> What landed:
-> - `transport-webpush.ts`, registered as `push` in `dispatch-transports.ts` while all three VAPID
->   keys are well formed. It signs a VAPID ES256 JWT (the endpoint's origin, 12 hours) and encrypts
->   `{ title, url, id, tag }` with RFC 8291 `aes128gcm` in Web Crypto. It sends `TTL` (one day),
->   `Urgency` and `Topic` (the SHA-256 of `group_key`, else the id). `fn_claim_deliveries` now
->   returns `urgency` and `group_key`.
-> - Answers: 201 sent; 404 or 410 `gone` (NT2 revokes the device); 413 logged; 429 and 5xx retried.
->   The test reproduces the RFC 8291 §5 vector byte for byte.
-> - An endpoint allowlist (FCM, Mozilla, Windows and Apple push hosts; `https`, no credentials or
->   port), checked when a device registers and again at send.
-> - `GET /api/notifications/push/config` and `POST`/`DELETE /api/notifications/devices`
->   (`PushDeviceBackendService`, the caller's JWT on `register_device` / `revoke_device`).
-> - Settings → Notifications → **This device** (`PushDeviceBlock`, `push-device.ts`,
->   `push-device-model.ts`). It asks for permission only on **Turn on alerts**, and offers **Stop
->   on this device**. A blocked browser gets the reason; iOS outside a Home-Screen app gets the
->   how-to.
-> - `sw.js` push and `notificationclick` handlers. The click opens only a same-origin path, `/`
->   otherwise. In development the device control registers `/sw.js?mode=push`, a push-only worker
->   with no `fetch` handler and no cache, which `ServiceWorkerBridge` keeps.
-> - `manifest.webmanifest`, linked from `_app.tsx`. Its colours are the default theme's light
->   `--primary` and `--bg`, pinned to the engine by `manifest.test.ts`.
-> - The `pushPermission` dev axis, the three VAPID env keys, probe `push_devices.sql`, and the route
->   test `push-device-routes.test.ts`.
-> - Found in review and fixed by owner choice: **a shared browser** belongs to whoever turned alerts
->   on in it last. `register_device` (now a narrow `SECURITY DEFINER`) releases another account's
->   live row for the same endpoint (`reassigned`). Settings shows "on" only for the caller's own
->   live row (`POST /api/notifications/devices/status`). Signing out revokes and unsubscribes the
->   browser first (`AuthService.logout`). Probe section 4 fails on the old function.
-> - Also from review: the size guard bounds the whole body (the 86-octet header included) at 4096
->   octets, so a plaintext tops out at 3993; the transport cuts a title to 200 characters.
->
-> Both §2 deltas are done. `channel-liveness.ts` needed no edit (it reads the registry since NT2),
-> and its test gained the push case; `pushPermission` is its own axis, and the block re-reads it
-> on every Dev Context Switcher change.
->
-> Proved live in Chromium 157 against FCM, signed in as a seed persona:
-> - A browser subscribed under nobody's row showed **Off**. **Turn on alerts** answered 201 and wrote
->   one live `web_push` row.
-> - A mandatory notice (`fn_notify`, then `POST /api/comms/dispatch` with the flag on for that
->   call) went `push: sent`. It showed with the generic body, the in-app path and a 32-character
->   Topic tag.
-> - A hand-built push with `https://evil.example` showed with `/`.
-> - Signing out revoked the device (`user_revoked`, keys dropped) before the session ended, and the
->   browser was unsubscribed.
-> - Screenshots of every `pushPermission` state were taken at 1440 and 390.
->
-> Not built, logged as a new row:
-> - **PRD-E18:** nothing increments `device_tokens.failure_count`, so `fn_reap_dead_devices` reaps
->   nothing, and `Retry-After` is not read. A 404 or 410 still revokes at once. How many failures
->   reap a device is the owner's call: counting every attempt would let one push-service outage
->   reap a working device.
-
-```text
-PROMPT NT4: Web Push — VAPID, device registration from an explicit control, and a push handler
-
-ROLE: Full-stack engineer (service worker and push). Depends on NT2. Runs before NT5: both edit the
-Notifications settings section.
-
-CONTEXT:
-  - Findings: CAS §2.3 (comms.device_tokens and comms.register_device exist, but there is no
-    caller, no push handler in sw.js and no sender); CAS §2.1 (50 catalog types route to push); CAS
-    §2.5 step 4; EPI §8.2 (the whole contract: VAPID keys, the browser flow, aes128gcm payloads,
-    the 201/404/410/413/429 table, iOS). APNs and FCM (EPI §8.3, §8.4) serve native apps, a Growth
-    item: not built here.
-  - There is no web app manifest (apps/web/static holds icons only), and iOS delivers Web Push only
-    to a web app added to the Home Screen with a manifest.
-
-FILES:
-  - packages/backend/services/comms/{transport-webpush.ts (new: the VAPID ES256 JWT, RFC 8291
-    aes128gcm, the TTL, Urgency and Topic headers), dispatch-transports.ts} + tests
-  - packages/backend/services/comms/channel-liveness.ts (ST2's liveness map must flip here:
-    deliverySources() reads `transports.push` from the push registration in dispatch-transports.ts,
-    so the Push channel's copy claims delivery only once push sends) + its test
-  - apps/web/routes/api/notifications/push/config.ts (GET: the public key, or 404 when VAPID is
-    not configured) and apps/web/routes/api/notifications/devices.ts (POST register and DELETE
-    revoke → comms.register_device / comms.revoke_device under the caller's JWT) (new, thin)
-  - packages/backend/services/comms/NotificationInboxBackendService.ts (registerDevice,
-    revokeDevice), or a small DeviceBackendService
-  - apps/web/static/sw.js (push and notificationclick handlers); apps/web/static/
-    manifest.webmanifest (new); apps/web/routes/_app.tsx (<link rel="manifest">)
-  - apps/web/features/settings/components/sections/NotificationsSection.tsx and a core helper for
-    the browser permission flow
-  - apps/web/features/devtools/core/dev-context.ts + apps/web/utils/dev-seam.ts (pushPermission)
-  - packages/backend/core/env.ts; .env.example (VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and
-    VAPID_SUBJECT = XXXX-XXXX)
-  - documentation: EPI §3.1, §8.2, §10; SYSTEM_ARCHITECTURE's env contract; ROUTING.md (the two
-    routes); database/comms/Functions.md (register_device's caller); PRODUCT_SPEC.md:95-97 (the
-    push half)
-
-STEPS:
-  1. The transport signs the VAPID JWT (aud = the endpoint's origin, exp ≤ 24 h, sub =
-     VAPID_SUBJECT), encrypts the payload {title, url, id} (≤ 4 KB) with RFC 8291 aes128gcm through
-     Web Crypto, and sets TTL, Urgency (from comms.notification_urgency) and Topic (the
-     notification's group_key, or its id). 201 → sent; 404 or 410 → gone (NT2 revokes the device);
-     413 → failed and logged; 429 or 5xx → failed, for the sweep's back-off. Unit-test the
-     encryption against the test vector published in RFC 8291.
-  2. Push is configured when all three VAPID keys are well formed; a placeholder counts as absent.
-     Unconfigured, no transport registers and push deliveries wait (NT2 step 4).
-  3. Settings → Notifications gets an "Alerts on this device" control. It asks for permission only
-     when pressed (never on load), subscribes with userVisibleOnly and the served public key, and
-     POSTs the subscription; "Stop on this device" revokes it. The control renders only when push
-     is configured and the browser supports it. On iOS Safari outside a Home-Screen app it shows
-     the reason and how to add the app instead (§3.11). The existing account-wide Push switch keeps
-     its meaning (the transport's master switch).
-  4. sw.js: push → showNotification(title, { tag: the Topic, data: { url, id } }); notificationclick
-     opens or focuses ONLY a same-origin path that starts with a single "/", and opens "/" for
-     anything else.
-  5. manifest.webmanifest: name, short_name, start_url "/", display "standalone", and the 192 and
-     512 icons. Its two colours are hex values copied from the light-mode tokens (a manifest is
-     JSON and cannot read CSS variables); EPI §8.2 says where they come from.
-  6. Dev Context Switcher: pushPermission (auto · prompt · granted · denied · unsupported ·
-     ios-not-installed), mirroring DevMicPermission, applied client-side under the dev seam.
-     DevOverrides + DEV_DEFAULTS, the DevOption list, the DevContextPanel control, and reflect() set
-     AND delete.
-
-SAME CHANGE: ROUTING (two routes); the Dev switcher axis; the env contract; the PRODUCT_SPEC marker
-(the push half); DESIGN_SYSTEM §C.1 only if a ui component changes.
-
-ACCEPTANCE:
-  - transport-webpush.test.ts passes the RFC 8291 vector; a 410 maps to gone.
-  - With VAPID unconfigured, the device control does not render and
-    /api/notifications/push/config answers 404.
-  - In Chrome (deno task dev, with test VAPID keys in .env.local): enabling alerts on this device
-    writes a device_tokens row; a mandatory test notification (fn_notify called by the service
-    role on the local DB) shows a system notification whose click opens the in-app path; a crafted
-    payload with url "https://evil.example" opens "/".
-  - Screenshots of each pushPermission state at 1440 and 390.
-```
-
 ### NT5 — SMS through Twilio: built now on placeholder keys; the switch shows only when configured
+
+> **Status 2026-11-23:** open and runnable now (NT2 and NT4 have landed; never beside MS4,
+> `00005010`). No Twilio transport exists; `dispatch-transports.ts:57` still says "SMS (NT5) is
+> still to come".
 
 ```text
 PROMPT NT5: SMS through Twilio — built on placeholder keys; the switch shows once it is configured
 
-ROLE: Backend engineer. Depends on NT2, and on NT4 (both edit the Notifications settings section).
+ROLE: Backend engineer. Its waits, NT2 and NT4, have landed.
 
 CONTEXT:
   - Ruling: build everything Twilio needs now, with XXXX-XXXX placeholders, while the owner obtains
@@ -1306,9 +633,11 @@ CONTEXT:
     flag (n); root CLAUDE.md §3.11).
   - Findings: CAS §2.1 (SMS is in 0 of 112 catalog rows); §2.3; §2.5 step 5 (SMS last, and only
     for security alerts and session-starting-now reminders, because of per-message cost and
-    SIM-swap exposure); D5 (SMS rendered as a selectable transport that can never send:
-    NotificationsSection.tsx:43, :50, :76). EPI §8.6: the Messaging Service, status callbacks
-    verified with X-Twilio-Signature, geo-permissions. supabase/config.toml:335-340 scaffolds
+    SIM-swap exposure); D5 (SMS rendered as a selectable transport that can never send). ST2 rewrote
+    NotificationsSection.tsx: the SMS column renders today with "nothing is sent yet" copy drawn
+    from the liveness map (data.delivery, services/comms/channel-liveness.ts, which reads the
+    transport registry). EPI §8.6: the Messaging Service, status callbacks verified with
+    X-Twilio-Signature, geo-permissions. supabase/config.toml's [auth.sms.twilio] (:394) scaffolds
     GoTrue's own Twilio block for Level 1 phone OTP.
   - PRODUCT_SPEC §Notifications rule 2 names the time-critical types that break quiet hours for
     push and SMS: a session starting in minutes, a security alert, a failed payout.
@@ -1321,12 +650,15 @@ FILES:
   - apps/web/routes/api/comms/webhooks/twilio.ts (new, thin: X-Twilio-Signature over the full URL
     and the sorted form parameters, timing-safe, then fn_record_delivery_event with provider
     'twilio' and provider_event_id = the MessageSid and MessageStatus)
-  - packages/backend/services/user/NotificationCenterBackendService.ts (smsAvailable in the
-    settings read) and apps/web/features/settings/components/sections/NotificationsSection.tsx
+  - apps/web/features/settings/{components/sections/NotificationsSection.tsx,
+    core/notifications-model.ts + its test} (no new settings
+    field: the liveness map's data.delivery.sms is the smsAvailable this prompt asks for)
   - packages/backend/core/env.ts; .env.example (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and
-    TWILIO_MESSAGING_SERVICE_SID = XXXX-XXXX); supabase/config.toml (the GoTrue block reads the
-    same names; `enabled` stays false, because switching phone OTP on is the identity track's call)
-  - apps/web/features/devtools/core/dev-context.ts + apps/web/utils/dev-seam.ts (smsProvider)
+    TWILIO_MESSAGING_SERVICE_SID = XXXX-XXXX; SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN at :123 leaves);
+    packages/backend/core/env-manifest.ts (TWILIO_AUTH_TOKEN is planned("COMMS NT5") today: make
+    the three keys live app entries, and drop the cli SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN entry);
+    supabase/config.toml (the GoTrue block reads the same names; `enabled` stays false, because
+    switching phone OTP on is the identity track's call)
   - packages/types/comms/catalog.ts + catalog.contract.test.ts; supabase/probes/sms_routing.sql
     (new)
   - documentation: EPI §8.6 (the runbook: the Messaging Service, geo-permissions limited to launch
@@ -1344,20 +676,21 @@ STEPS:
      = the webhook URL. 2xx → sent (provider_ref = the SID); a 4xx for an invalid number → failed,
      and the number joins comms.channel_suppressions for sms; 429 or 5xx → failed, for the sweep's
      back-off.
-  3. The settings read carries smsAvailable = configured. The SMS ("Text") column and its master
-     switch render only when it is true; delete the "Nothing is sent by text message yet" copy. A
+  3. smsAvailable is data.delivery.sms, which flips once the Twilio transport registers (no second
+     flag). The whole SMS ("Text") column and its master switch render only while it is true
+     (#339 flag (n)); delete the "Nothing is sent by text message yet" copy
+     (features/settings/core/notifications-model.ts:52) and its test line. A
      person with no confirmed phone sees the switch disabled, with the reason and a link to verify
      a phone (§3.11), but only once the identity track has shipped phone verification; until then
      the column does not render for them.
   4. Catalog: the four types above (and any other security-alert row) gain 'sms'. Record the rule
      in PRODUCT_SPEC §Notifications: a text message carries only a security alert, a session
      starting in minutes or a failed payout.
-  5. Dev Context Switcher: smsProvider (auto · configured · unconfigured), applied to the settings
-     read under the dev seam. DevOverrides + DEV_DEFAULTS, the DevOption list, the DevContextPanel
-     control, and reflect() set AND delete.
+  5. Dev Context Switcher: no new axis. ST2's notificationDelivery axis already draws every channel
+     live or off; check that it covers the SMS column.
 
 SAME CHANGE: migrations edited in place (the seed) + the catalog contract test + database/comms
-docs; PRODUCT_SPEC (the SMS rule and the marker); ROUTING; the env contract; the Dev switcher axis.
+docs; PRODUCT_SPEC (the SMS rule and the marker); ROUTING; the env contract and env-manifest.ts.
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each announcing its resets; finish with your own clean
@@ -1368,181 +701,115 @@ ACCEPTANCE:
     delivery row, which stays inside quiet hours (overrides_quiet_hours); message.new never routes
     to sms.
   - With the placeholders, no SMS transport registers and the settings page shows no SMS column
-    (smsProvider = auto); smsProvider = configured shows it.
+    (notificationDelivery = auto); notificationDelivery = live shows it.
   - Callback tests: a bad signature → 400; a valid "delivered" → the delivery is delivered; a
     replay is a no-op.
+```
+
+### CD2 — The hosted delivery proof: every outbound channel sends for real on staging
+
+> **Status 2026-11-23:** open; ⏳ NT5 and the hosted prerequisites (§0.3; PRD-G8 is ❌). NT2, NT3,
+> NT4 and CD1 have landed. The owner deferred it twice (#484), and neither run built any of it. The
+> `--check` gap is ruled (Decision #484, flags (a) and (c)) and written into FILES and step 1 below.
+
+```text
+PROMPT CD2: The hosted delivery proof — every outbound channel sends for real on staging
+
+ROLE: Release / platform engineer. Runs after NT5 has merged (NT2–NT4 and CD1 have), against the
+hosted STAGING project only. No migration. It writes one script and one bearer-guarded read, and
+records one runbook pass. YOU (the owner) run the sends from your own terminal; this session reads
+the output you paste.
+
+CONTEXT:
+  - The flip rule (COMMS_BUILD_PROMPTS.md §0.1): PRD-E4, E5, E7, E8, E10, E11 and E14 are 🟡 when
+    built and proved locally, and this prompt proves each on a hosted project. PRD-E6's remainder
+    is EPI §8.5 setup 4's hosted runbook, step 5 ("Prove it").
+  - The hosted wiring is the owner's (§0.3, "Hosted"). Never type, paste, echo or log a secret, and
+    never change a hosted setting. The script reports names, presence and shape only (the
+    cron:vault rule: print names, never a value), and it prints ids, never addresses or tokens.
+  - The script cannot see the hosted app's environment (RESEND_API_KEY, MAIL_FROM, the VAPID pair,
+    the Twilio keys), so the app reports its own liveness (ruled: Decision #484). GET
+    /api/comms/dispatch, behind the same constant-time COMMS_DISPATCH_SECRET bearer as the POST,
+    answers deliverySources() (services/comms/channel-liveness.ts) as the dispatcher and each
+    channel by name with ✓ / ✗ only. It also reports RESEND_WEBHOOK_SECRET and the Twilio callback
+    token as present ✓ / ✗ (#484 flag (c)). Any other bearer gets the same 404.
+  - Resend publishes test recipients for delivered, bounced and complained outcomes
+    (…@resend.dev). Check its current docs for the exact addresses.
+
+🧑 PREREQUISITES — STOP first and list, by name, everything in §0.3's "Hosted" list that the
+--check mode cannot see yet. Run nothing else until I say they are set.
+
+FILES:
+  - scripts/delivery-smoke.ts (new) + `deno task smoke:delivery` with a $comment in deno.json
+    (the smoke:stripe pattern; not part of `deno task test`). It reads its target only from
+    variables I export in my own shell (DELIVERY_SMOKE_ORIGIN, DELIVERY_SMOKE_SUPABASE_URL,
+    DELIVERY_SMOKE_SERVICE_ROLE_KEY, DELIVERY_SMOKE_INBOX, DELIVERY_SMOKE_PHONE, and
+    DELIVERY_SMOKE_DISPATCH_SECRET, the bearer for the liveness read: #484 flag (a)), never from a
+    file, and never prints one.
+  - apps/web/routes/api/comms/dispatch.ts (the GET), features/notifications/core/dispatch-ssr.ts,
+    a route test; documentation/architecture/ROUTING.md (the GET row)
+  - documentation/api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md (§8.1, §8.2, §8.5,
+    §8.6: each runbook step marked done on staging with the date; §10)
+  - documentation/architecture/SYSTEM_ARCHITECTURE.md §Scheduled jobs (the comms Vault secrets)
+  - documentation/readiness/PRODUCTION_READINESS.md and USER_FLOWS.md (the PJ rows of case g)
+
+STEPS:
+  1. `--check`: presence and shape only. The dispatch route answers 404 to a wrong bearer, and its
+     GET answers the liveness map to the right one (every channel ✓ except sms until Twilio is
+     set); /api/notifications/push/config answers 200; vault.secrets holds CRON_APP_URL and
+     COMMS_DISPATCH_SECRET (names only, never decrypted_secrets); comms.dispatch_webhook is on;
+     security.platform_params holds newsletter_provider_segment_id and
+     newsletter_provider_topic_ids, and the newsletter.provider_sync flag is on (CD1 Option A). It
+     prints a table of names with ✓ / ✗.
+  2. `--send <case>`, each case printing ids only, and each waiting for my "seen" where a human
+     must look:
+     a. auth (PRD-E6): a recovery from /forgot-password for the test inbox and a password change →
+        both branded emails arrive, DKIM passes, the reset link is /forgot-password?step=reset
+        with no address in it, and the logo loads.
+     b. dispatch (PRD-E4, E5): the service role calls comms.fn_notify for the test account with a
+        mandatory type → its email delivery goes queued → sent within 60 s, then delivered through
+        the Resend webhook. A forced transport failure is retried by comms-dispatch-sweep.
+     c. suppression (PRD-E10): a throwaway account on the bounced test address → the address is
+        suppressed for every category, exactly one account.email_undeliverable exists, and a second
+        mandatory notice comes back 'suppressed'. The complained address → Marketing only.
+     d. push (PRD-E7): I enable "Alerts on this device" in Chrome on the staging origin; a mandatory
+        notice shows a system notification whose click opens the in-app path.
+     e. sms (PRD-E8, only when Twilio is configured): a new-device login for the test account with
+        a confirmed phone → one text carrying the title and the link, then a delivered callback.
+     f. newsletter (PRD-E11, E14): subscribe the test inbox → one confirmation mail from
+        news.<domain>; Confirm → confirmed, and the contact appears in the provider list; the
+        mail's one-click unsubscribe → unsubscribed_at set.
+     g. projects mail (USER_FLOWS PJ-17, 60, 61, 71, 72), each case once its prompt has merged: a
+        stage.invite email (after PROJECTS NO1), a schedule.event_invite email and push, an
+        event.reminder_email, a digest (after PROJECTS NO2), and a guest invitation through the
+        transport PROJECTS NO4 gives it.
+  3. Flip each proved row to ✅ with the date, "staging" and the smoke run's ids. A case that
+     could not run keeps its 🟡 and says what is missing. Production repeats EPI §8.5 setup 4 and
+     `smoke:delivery --check` as part of PRD-G8's go-live: write that line into EPI §8.5.
+
+ACCEPTANCE:
+  - `smoke:delivery --check` prints no ✗ on staging (sms excepted until Twilio is live).
+  - A route test: GET /api/comms/dispatch with a wrong bearer → 404; with the right one → names and
+    ✓ / ✗ only, no value.
+  - Every case that ran has its ids in the readiness evidence.
+  - None of CD2's §0.1 rows is ❌ (PRD-E8 may stay 🟡 until Twilio is live).
 ```
 
 ---
 
 ## 4. Discovery search
 
-### SR1 — Nearest-neighbour recall at scale, and the dead search definers deleted
-
-> **Status 2026-11-12:** Partly done — step 4's deletion of `search.fn_search_entities` and
-> `fn_search_global` landed with T·E8 (`dd4206d3`). `search.fn_norm` (no caller left, still granted
-> in `00002510`) and steps 1–3 remain: both nearest functions still pin
-> `search_path = search, public` with no `hnsw.*` setting, and `fn_set_embedding` checks
-> dimensions only.
-
-```text
-PROMPT SR1: Nearest-neighbour recall at scale, and the dead search definers deleted
-
-ROLE: Postgres engineer (search). First of the search chain; this is RED WP14.
-
-CONTEXT:
-  - Rulings: HNSW runs ef_search = 200 with iterative_scan, not RED's 100 (Decision #339, ruling
-    N4). search.fn_search_entities and fn_search_global are deleted (Q0.2 (f); #340 (E), SEC G11:
-    the revoke is done, the deletion is not).
-  - Findings: CAS S7 and S11 (the filters apply after the default ef_search = 40 candidate scan, so
-    a filtered search starves — a Teams search returns nearly empty and SEMANTIC_POOL = 100 is
-    unreachable — hidden at seed scale, where the planner seq-scans); RED D-28 and D-29; CAS S3
-    (unit length is not asserted in the database); SEC G18 (fn_nearest and fn_nearest_to_entity
-    pin search_path = search, public).
-  - 00001400 today: fn_norm :395, fn_search_entities :407-676, fn_search_global :677,
-    fn_set_embedding :972, fn_nearest :1025, fn_nearest_to_entity :1083. Grants:
-    00002510:246-273 and :317-325. The HNSW indexes: 00004004:4-10.
-
-FILES:
-  - supabase/migrations/00001400_functions_search.sql
-  - supabase/migrations/00002510_permissions_function_grants.sql (remove the deleted functions'
-    lines)
-  - supabase/probes/search_recall.sql (new)
-  - documentation/database/search/{Functions,Policies}.md; SYSTEM_ARCHITECTURE.md §Discovery (the
-    tuning sentence); EPI §5.3 "HNSW tuning"
-
-STEPS:
-  1. Check the image's pgvector first: SELECT extversion FROM pg_extension WHERE extname =
-     'vector'. From 0.8.0, declare SET hnsw.ef_search = 200 and SET hnsw.iterative_scan =
-     relaxed_order on both nearest functions. Below 0.8.0, set ef_search = 200 only, and record in
-     Functions.md that iterative_scan waits for the image upgrade (do not stop; say so in your
-     report).
-  2. Pin search_path = '' on both functions and schema-qualify them (SEC G18, for these two
-     functions only; the sync triggers' half stays with its owner).
-  3. fn_set_embedding refuses a vector whose norm is not 1 ± 1e-3 (CAS S3), with a distinct
-     SQLSTATE that the embedding sync logs and skips.
-  4. Delete fn_search_entities and fn_search_global and their grant lines, unless the trust
-     track's E8 has already done so (it claims the same Q0.2 (f) deletion and runs first; then
-     only check). Delete search.fn_norm as well if no caller remains (today only
-     fn_search_entities reads it). The search_weights rows that only they read stay, because they
-     are data; list them in the commit message.
-
-SAME CHANGE: migrations edited in place + database/search docs; the SYSTEM_ARCHITECTURE and EPI
-tuning notes.
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each announcing its resets; finish with your own clean
-`deno task test:probes:fresh`. Never beside SR3 (00001400) or another 00002510 writer.
-
-ACCEPTANCE (search_recall.sql, BEGIN … ROLLBACK, with SET LOCAL enable_seqscan = off so that the
-HNSW index is used at probe scale):
-  - Insert 1,000 synthetic unit vectors into search.profiles_index (700 user rows and 300 team
-    rows, each with a display_name and passing fn_nearest's visibility filter; the table has no FK
-    on entity_id) and ask fn_nearest for 20 teams. Run it once on the unfixed function first and
-    record the shortfall; after the fix it returns 20.
-  - Where iterative_scan is on: 2,000 rows with 40 teams still return 20.
-  - pg_proc.proconfig of both functions carries hnsw.ef_search=200 (and
-    hnsw.iterative_scan=relaxed_order where supported).
-  - fn_set_embedding with a vector of norm 2.0 is refused.
-  - to_regproc('search.fn_search_entities') and to_regproc('search.fn_search_global') are NULL.
-```
-
-### SR2 — Bounded search input, a per-client embedding budget, a scheduled backfill, Voyage pinned
-
-> **Status 2026-11-12:** Partly done — step 4 landed with T·W1 (`bc805dff`): every call goes to
-> `api.voyageai.com`, `privacy.ts` and EPI §1.1 name Voyage, and EPI §11 carries the no-training
-> line. W1 pins the host whatever the key looks like, so the `pa-` key check was not built. Steps
-> 1–3 and 5 remain (`ExploreParamsSchema` is unbounded, no client limiter, no cron route or job
-> row, no `semantic.contract.test.ts`).
-
-```text
-PROMPT SR2: Bounded search input, a per-client embedding budget, a backfill job, Voyage pinned
-
-ROLE: Backend engineer (the explore and search services). Depends on SR1. Owns 00005060 while it
-runs (one job row).
-
-CONTEXT:
-  - Rulings: embeddings are pinned to Voyage, with written no-training terms before
-    EMBEDDINGS_ENABLED is switched on (Decision #339 (d); #340, ruling T5). The semantic blend's
-    dials live in finance-model.md §16.7 (Decision #339, ruling N4); Wave 1.1 already wrote them
-    there (:880) and in PRODUCT_SPEC §Reputation & Discovery.
-  - Findings: CAS S37 (the route hand-parses its input; ExploreParamsSchema is unused and
-    unbounded; q, sort and any filter key reach query_logs.filters_applied:
-    apps/web/routes/api/explore/search.ts, packages/types/explore/discovery.ts:24-33,
-    packages/backend/services/search/query-log.ts:26-31); S30 (no per-client limit on
-    /api/explore/search or the SSR /explore?q=, so one client can drain the isolate's Voyage
-    bucket); S14 (re-embeds run in process and are lost on restart; nothing scheduled catches up);
-    S32 and EPI §3.4 (the client defaults to the MongoDB Atlas host:
-    services/search/voyage-client.ts:27-36).
-
-FILES:
-  - packages/types/explore/discovery.ts (ExploreParamsSchema, bounded);
-    apps/web/features/explore/core/explore-state.ts (parseExploreParams uses it);
-    apps/web/routes/api/explore/search.ts; apps/web/routes/(public)/explore.tsx
-  - packages/backend/services/explore/ExploreBackendService.ts and
-    packages/backend/services/search/{EmbeddingBackendService.ts, voyage-client.ts,
-    embedding-sync.ts, query-log.ts} + tests
-  - apps/web/utils/client-key.ts and packages/backend/core/rate-limit.ts (read only)
-  - apps/web/routes/api/search/cron/embeddings.ts (new, thin; constant-time bearer, 404 otherwise)
-  - supabase/migrations/00005060_seed_scheduled_jobs.sql (search-embeddings-backfill, http, hourly,
-    secret SEARCH_CRON_SECRET)
-  - packages/backend/core/env.ts; .env.example (SEARCH_CRON_SECRET=XXXX-XXXX; the VOYAGE_API_BASE
-    comment)
-  - packages/backend/services/explore/semantic.contract.test.ts (new)
-  - apps/web/features/legal/core/content/privacy.ts (:172, if the wording changes)
-  - documentation: EPI §3.4, §5.1–5.3, §10, §11 (the go-live line); SYSTEM_ARCHITECTURE §Discovery
-    (S14 and the host); ROUTING.md (the /explore query contract and the cron route);
-    database/search docs
-
-STEPS:
-  1. Zod at both doors (S37): q ≤ 512 characters, sort an enum of the backend's sorts, facet keys
-     from a whitelist that the facet code in explore-state.ts exports, and offset and limit as
-     bounded integers. Over-long or unknown input is corrected to the canonical query: the page
-     redirects to it, and the API answers 422. Only whitelisted keys reach
-     query_logs.filters_applied.
-  2. A per-client embedding budget (S30): a SlidingWindowLimiter keyed by client-key.ts (the user
-     id when signed in), at 30 query embeddings a minute. Past it, the request ranks heuristically
-     (x-discovery-ranking: heuristic, reason client_budget). A page view is never a 429.
-  3. A scheduled backfill (S14): the cron route does the work of `deno task embeddings:backfill`
-     for at most N stale items (a hash or model mismatch) per run, and is a no-op when
-     isEmbeddingsLive() is false. One job row goes in 00005060, at an hourly minute no other row
-     uses (the Wave 1.3 jobs session spread the existing ones; read the file first).
-  4. Voyage pinned (#339 (d), T5): voyage-client.ts always calls https://api.voyageai.com, and a key
-     that does not start `pa-` counts as absent. VOYAGE_API_BASE remains only to point tests at a
-     mock. EPI §3.4's row becomes "Voyage AI", privacy.ts names Voyage only, and EPI §11 gains the
-     go-live line "Voyage's written no-training and retention terms on file". The trust track's W1
-     carries the same pin under ruling T5: if W1 has merged, only check that all of this holds.
-  5. Dials parity (N4): semantic.contract.test.ts reads the "Semantic blend" row of
-     finance-model.md §16.7 and asserts that SEMANTIC_BLEND_WEIGHT, the 0.30 floor,
-     SEMANTIC_EXTRA_RELATIVE and the 12-extra cap equal it (the file-reading pattern of
-     slug.contract.test.ts).
-
-🧑 OWNER GATE (not a build stop): do NOT set EMBEDDINGS_ENABLED=true in any committed file or
-hosted environment. The owner switches it on once Voyage's written no-training terms exist.
-
-SAME CHANGE: ROUTING (the /explore contract and the cron route); the env contract; EPI;
-SYSTEM_ARCHITECTURE; database/search docs.
-
-SQL SESSION (the one job row): run probes with `deno task test:probes`; at most 2 SQL sessions at
-once on the one local DB, on disjoint migration files, each announcing its resets; finish with
-your own clean `deno task test:probes:fresh`. Owns 00005060 only while it runs.
-
-ACCEPTANCE:
-  - Route tests: a q of 513 characters → 422 from the API and a canonical redirect from the page;
-    an unknown facet key never reaches query_logs; the 31st embedded search in a minute ranks
-    heuristically.
-  - voyage-client.test.ts: an Atlas-shaped key is absent; the URL is api.voyageai.com.
-  - The contract test fails when a dial in §16.7 is edited alone.
-  - deno task cron:run search-embeddings-backfill succeeds with the gate off, and makes no Voyage
-    call.
-```
-
 ### SR3 — 🧑 DECISION · Context-aware ranking for signed-in viewers, and the pgvector result cache
+
+> **Status 2026-11-23:** open and runnable now, to its 🧑 stop. It no longer waits for MS3: the KV
+> version keys and `cachedGlobal` landed with RED WP10a (`7f6b43d5`, `core/kv.ts`), and the
+> catalogue scope is bumped since WP3b (`live-catalog.ts:577`). SR1 has landed. The hook region is
+> still empty (`ExploreBackendService.ts:420-421`).
 
 ```text
 PROMPT SR3: Context-aware ranking for signed-in viewers, and the pgvector result cache
 
-ROLE: Search engineer (Postgres and backend). Depends on SR1 and MS3 (the version keys).
+ROLE: Search engineer (Postgres and backend). Its waits (SR1; the KV version keys) are met.
 
 CONTEXT:
   - Ruling: context-aware ranking and the pgvector KV cache are built now, not Planned (Decision
@@ -1550,7 +817,7 @@ CONTEXT:
     user vectors "the separate ranking-v1 task", and SA:3028 says pgvector results "can be cached
     in Deno KV". PRODUCT_SPEC:2791-2792 marks it **Not built yet**.
   - Findings: CAS S25 (an empty personalisation hook region:
-    services/explore/ExploreBackendService.ts:403-404, "user vectors re-rank the personal rails");
+    services/explore/ExploreBackendService.ts:420-421, "user vectors re-rank the personal rails");
     S24 (offset paging over a list recomputed per request); ADC Q11 (viewer-scoped data stays in
     the tenant memory tier, KV holds only small global values, and raw text is never a key: EPI
     §3.5 rule 7). The /view "Similar" rail's cache (RED D-17, services/explore/live-view.ts) is the
@@ -1575,9 +842,8 @@ FILES:
   - supabase/migrations/00002510_permissions_function_grants.sql (EXECUTE to authenticated only)
   - supabase/migrations/00005050_seed_reference_data.sql (search.search_weights: context_affinity)
   - packages/backend/services/explore/{ExploreBackendService.ts, semantic.ts, similarity-cache.ts,
-    ranking.ts, personalise.ts} + tests; packages/backend/core/kv.ts (cachedGlobal, from the
-    optimisation track's RED WP10a; if it has not landed, create it there with that signature) and
-    the version keys (the catalogue scope)
+    ranking.ts, personalise.ts} + tests; packages/backend/core/kv.ts (read only: RED WP10a's
+    cachedGlobal and the version keys, the catalogue scope)
   - apps/web/features/devtools/core/dev-context.ts + apps/web/utils/dev-seam.ts (contextRanking)
   - supabase/probes/context_ranking.sql (new)
   - documentation: PRODUCT_SPEC.md:2791-2792 (remove the marker and state the rule);
@@ -1594,7 +860,7 @@ STEPS:
      of events it returns no rows. The vector is never returned or stored. EXECUTE to authenticated
      only: anon has no context.
   2. After the ruling: the Home feed's personal rails rank by fn_nearest_for_viewer (fill the
-     ExploreBackendService.ts:403 hook region), and, under Option A, ExploreBackendService blends
+     ExploreBackendService.ts:420 hook region), and, under Option A, ExploreBackendService blends
      the similarity into signed-in recommended orders with search.search_weights 'context_affinity'
      (seeded at the ruled value). The result is cached per tenant, in memory only (ArcCache, 5
      minutes).
@@ -1602,8 +868,8 @@ STEPS:
      vectors) are stored through cachedGlobal(key, ttlMs, fetch) under ["cache","nearest",model,
      dims,catalogueVersion,category,sha256(normalised query)] for 15 minutes, behind the existing
      per-isolate LRU (similarity-cache.ts), so every isolate shares one fn_nearest call per query.
-     The catalogue version comes from the KV version keys; it is null until RED WP3's invalidation
-     half bumps it, so the TTL governs until then. Every hit is still re-resolved against the anon
+     The catalogue version comes from the KV version keys (live-catalog.ts bumps CATALOG_VERSION
+     since WP3b); with no KV the TTL governs. Every hit is still re-resolved against the anon
      catalogue, so a stale entry can cost relevance, never visibility. Values stay under 64 KiB.
      Context results never go to KV.
   4. Paging stability (S24): page 2 and later of a search read the cached ordered id list for
@@ -1618,8 +884,8 @@ SAME CHANGE: migrations edited in place + database/search docs; PRODUCT_SPEC and
 
 SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
 local DB, on disjoint migration files, each announcing its resets; finish with your own clean
-`deno task test:probes:fresh`. Never beside SR1 (00001400), SR4 (00005050) or another 00002510
-writer.
+`deno task test:probes:fresh`. Never beside SR4 (00005050), MS5 or another 00002510 writer, or
+another track's 00001400 writer.
 
 ACCEPTANCE:
   - context_ranking.sql: as viewer A (claims set, then SET LOCAL ROLE authenticated) with 6 clicks
@@ -1632,11 +898,14 @@ ACCEPTANCE:
 
 ### SR4 — 🧑 DECISION · Load and reliability weigh heavily in ranking
 
+> **Status 2026-11-23:** open; ⏳ PM-WP5b (`PM_BUILD_PROMPTS.md`), which has not landed, so no
+> efficiency measure exists to read. Stops at 🧑 4 before seeding values.
+
 ```text
 PROMPT SR4: Load and reliability weigh heavily in ranking
 
-ROLE: Search engineer. Depends on SR1 and on the projects track's PM-WP5 (the Reliability Index's
-delivery-efficiency measure).
+ROLE: Search engineer. Depends on the projects track's PM-WP5b (the Reliability Index's
+delivery-efficiency measure). SR1 has landed.
 
 CONTEXT:
   - Ruling: a freelancer's current Workload Intensity load and the Reliability Index's data-based
@@ -1658,7 +927,7 @@ CONTEXT:
   having no history.
   Option B: workload 2.00 and efficiency 2.00 (both above reviews).
   Option C: name your numbers.
-  Read the efficiency measure from wherever PM-WP5 has merged it (org.entity_standing.components
+  Read the efficiency measure from wherever PM-WP5b has merged it (org.entity_standing.components
   or a column of its own); do not invent a shape.
 
 FILES (after the ruling):
@@ -1667,7 +936,7 @@ FILES (after the ruling):
   - packages/backend/services/explore/{ranking.ts, live-catalog.ts (the read of the measure)} +
     ranking.test.ts
   - documentation: finance-model.md §16.7 (the coefficients; remove "the coefficients are not set
-    yet") and §16.3 if PM-WP5 left a marker; PRODUCT_SPEC.md:2793-2795 (remove the marker)
+    yet") and §16.3 if PM-WP5b left a marker; PRODUCT_SPEC.md:2793-2795 (remove the marker)
 
 STEPS:
   1. ranking.ts reads reliability_efficiency from search.search_weights (the key list at :35) and
@@ -1694,6 +963,8 @@ changing the coefficient in the weights fixture moves the order without a code c
 
 ### Z1 — Comms, notifications and search docs sweep, and the audit status
 
+> **Status 2026-11-23:** open; runs last, after every other prompt in this file has merged.
+
 ```text
 PROMPT Z1: Comms, notifications and search docs sweep
 
@@ -1705,11 +976,11 @@ CONTEXT:
     prompt above already updated the docs its own change touched (the same-change rule); this
     sweep closes what is left and records status.
   - Each built rule's **Not built yet** marker was removed by the prompt that built it; a marker
-    that remains must name its prompt or its open 🧑 (§0 "Open decisions").
+    that remains must name its prompt or its open 🧑 (§0.3).
 
 FILES: documentation/database/{comms,search}/*; business/PRODUCT_SPEC.md (§Messaging E,
 §Notifications, §Reputation & Discovery, the in-app-only bullet :95-97, the sitemap row :3714,
-:3881-3882); business/finance-model.md §16.7; PRODUCT_MANAGEMENT.md (the Notification delivery,
+:4668-4669); business/finance-model.md §16.7; PRODUCT_MANAGEMENT.md (the Notification delivery,
 Scheduled notification and Inbox folder rows); architecture/SYSTEM_ARCHITECTURE.md (§The
 Notification Engine, §Caching Strategy, §Discovery, the end-to-end encryption passages :685-686 and
 :2705-2706, the env contract); architecture/ROUTING.md; api/EXTERNAL_PROVIDERS_AND_
@@ -1728,10 +999,36 @@ STEPS:
   3. Check that every **Not built yet** marker a prompt above built is gone, and that every
      remaining one names its prompt or its open 🧑.
   4. Add the CAS §8 status column and resolve each #339 flag (with its ruling and prompt) or leave
-     it Open with an owner. List this file's §0 "Not written here" items as Open with no owner,
+     it Open with an owner. List this file's §0.4 "Not written here" items as Open with no owner,
      unless another track's file claims them.
 
 ACCEPTANCE: grep -n "Not built yet" PRODUCT_SPEC.md finance-model.md shows no #339 or #338 P4
 marker for built work; the CAS §8 status column has no blank cells; every function and trigger
 named in MS1–SR4 appears in documentation/database/{comms,search}/*.
 ```
+
+---
+
+## Map of merged files
+
+`documentation/readiness/COMMS_DELIVERY_BUILD_PROMPTS.md` (PRODUCTION_READINESS §E's rollup) merged
+here on 2026-11-23. Read it with
+`git show f2e25929:documentation/readiness/COMMS_DELIVERY_BUILD_PROMPTS.md`.
+
+| Old section                                 | Went                                                                                                       |
+| :------------------------------------------ | :--------------------------------------------------------------------------------------------------------- |
+| Header                                      | This file's header (the §E scope)                                                                          |
+| §0.1 Row → work order, the flip rule        | §0.1                                                                                                       |
+| §0.2 Run order: waves and cross-track locks | §0.2 (Waves; Cross-track file conflicts). The score projection was dropped: the Scoreboard holds the score |
+| §0.3 Human stops, items 1–4                 | Ruled and built (NT2, MS2, CD1, the `newsletter` reservation): done, §0.0                                  |
+| §0.3 Human stops, items 5–6                 | §0.3 ("Hosted", Twilio tokens)                                                                             |
+| §1.1 Standard header additions              | §1 (before-you-write step 5; the verification paragraph)                                                   |
+| §1.2 Readiness addendum                     | §1 (the Readiness paragraph)                                                                               |
+| §1.3 Launcher                               | Dropped: paste §1, then the prompt; nothing else is assembled                                              |
+| §2 deltas on MS2, NT2, NT3, NT4             | Done, §0.0                                                                                                 |
+| §2 deltas on MS3, MS4, MS5, NT5             | Folded into each prompt's status line, CONTEXT, FILES, steps and acceptance                                |
+| §3 CD1                                      | Done, §0.0                                                                                                 |
+| §3 CD2                                      | §3, CD2 (with #484's rulings folded in)                                                                    |
+
+The COMMS deltas in `PROJECTS_BUILD_PROMPTS.md` §2 (MS4, MS5, NT5 and CD2, verified 2026-11-19; that
+section is gone, read it at `f2e25929`) are folded into the same prompts here.

@@ -2,8 +2,8 @@
 
 > **Catalogue rebuild — landed (Decision #217, 2026-10-14).** `/catalogue` is the seller console and
 > `/catalogue/[id]` the per-listing workspace (Edit · Preview · Analytics · Clients), built from
-> [`CATALOGUE_REBUILD.md`](CATALOGUE_REBUILD.md) by the work orders in
-> [`CATALOGUE_REBUILD_BUILD_PROMPTS.md`](CATALOGUE_REBUILD_BUILD_PROMPTS.md). The editor notes below
+> [`CATALOGUE_REBUILD.md`](CATALOGUE_REBUILD.md) by its work orders C0–C17, all landed and
+> now retired ([`build-prompts.md`](../reference/build-prompts.md) §4). The editor notes below
 > describe that workspace: §1.1 is built, §1.4 records the per-listing provider and availability
 > bindings, and §1.2 / §1.3 (the seller-level settings) remain open.
 

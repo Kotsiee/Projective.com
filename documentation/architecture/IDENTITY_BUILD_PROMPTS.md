@@ -1,102 +1,80 @@
-# Identity Build Prompts — Claude Code Work Orders for Identity, Privacy & Workspaces
+# Identity Build Prompts — Claude Code Work Orders for Identity, Privacy, Workspaces & Access Control
 
-> **Status: WORK ORDERS, not binding.** A sequenced series of self-contained Claude Code prompts for
-> track I of `FOUNDER_QUESTIONNAIRE.md` Part B §B.3: the identity, privacy and workspace rulings of
-> Decision #336 (I1–I4, S7, Q0.2 (b) and (c)) and the findings they settle in
-> [`IDENTITY_AND_WORKSPACES_AUDIT.md`](IDENTITY_AND_WORKSPACES_AUDIT.md) (`IW-*`) and
-> [`IDENTITY_AND_WORKSPACES_AUDIT.md`](IDENTITY_AND_WORKSPACES_AUDIT.md) (`K*`, `F*`), plus SEC G16
-> from [`SECURITY_MODERATION_AND_AI_GAPS.md`](SECURITY_MODERATION_AND_AI_GAPS.md). Every prompt
-> cites its evidence by finding ID and its ruling as `(Decision #336, ruling X)`. Paste each prompt
-> into its **own fresh session**, after the standard header (§1). Written 2026-10-30 against `main`
-> @ `94d22e84`; statuses re-verified in code on 2026-11-12 at `8a3fd595` (below and §0).
+> **Status: WORK ORDERS, not binding.** Self-contained Claude Code prompts for track I of
+> `FOUNDER_QUESTIONNAIRE.md` Part B §B.3: the identity, privacy and workspace rulings of Decision
+> #336 (I1–I4, S7, Q0.2 (b) and (c)), the findings they settle in
+> [`IDENTITY_AND_WORKSPACES_AUDIT.md`](IDENTITY_AND_WORKSPACES_AUDIT.md) (`IW-*`, `K*`, `F*`) and
+> SEC G16 from [`SECURITY_MODERATION_AND_AI_GAPS.md`](SECURITY_MODERATION_AND_AI_GAPS.md). It also
+> owns the open rows of [`PRODUCTION_READINESS.md`](../readiness/PRODUCTION_READINESS.md) §C
+> (Security & access control); §0.6 maps each row to its prompt.
 >
-> **How to run them:** in the §0 order. A prompt marked **🧑 DECISION** stops and puts the named
-> question to a human before it changes behaviour, with options and a recommendation. ⚖️ marks a
-> ruling that stands pending counsel: build it behind a dial or a flag that stays off, and never
-> switch it on. **Migrations are edited in place** (root `CLAUDE.md` §1); every prompt names the
-> category file it edits.
+> **Verified against code 2026-11-23 at `f2e25929`.** 16 open, 1 partly done, 8 done (§0 ledger).
+> Runnable now: HK1, SSO1, MFA1, MIN1, LOW1; X1 and X2 stop at their 🧑 at once.
 >
-> **Verified against git (2026-10-30), not taken from the brief; re-verified in code (2026-11-12,
-> `8a3fd595`):**
->
-> - **Done.** IW-C1's column half and IW-H1 (`660c9658`). IW-H3, IW-M1/K10, IW-M2, IW-M3 and IW-H8
->   (`12a80862`). IW-H7, IW-M6 (RLS on, nothing dropped), IW-M8, IW-H4/IW-M4/K6, IW-L1, IW-L2, the
->   `teams.visibility` CHECK, and `org.fn_is_minor` failing closed (`81a108f0`). IW-M9 (`4c9482a2`).
->   IW-D1–D5 (`e30b4111`). The probe runner, `deno task test:probes` (`f9c4fc31`). OWN1
->   (`96599cea`) and OWN2 (`aaaeab07`): IW-H2, IW-M7, K3 and F4.
-> - **Half done.** IW-M10: `ck_enterprise_member_status` landed, but `enterprise_members.user_id` is
->   still `ON DELETE CASCADE` (`00000011:980`); HK1 finishes it.
-> - **Consequence of Wave 0, closed.** `public.create_enterprise` seated a profile-less owner, so
->   `trg_workspace_member_adult` refused the seat `PM403` and enterprise sign-up was refused until
->   OWN1 and OWN2 landed. `create_enterprise` now provisions the owner's profile first.
-> - **Still open, verified open on 2026-10-30 and again on 2026-11-12.**
->   - `fn_erase_account` is unchanged (`00001060:555-582`), and both erasure windows are hard-coded
->     (`:434`, `:490`). It reaches `catalogue.listings`, `marketplace.service_blueprints`,
->     `org.freelancer_profiles`, `org.users_public`, `org.user_emails`, `auth.users`,
->     `auth.identities` and `auth.sessions`, and nothing else.
->   - The two dead `security` tables and all seven finance cascades are still there.
->   - TOTP is off (`supabase/config.toml:343-361`), and `SsoPanel` still renders
->     (`LoginForm.island.tsx:58`, `SignInPrompt.island.tsx:98`). No `AUTH_SSO_ENABLED`, no `aal`
->     claim, no step-up helper and no `PT401` exist.
->   - `fn_team_archive_blockers` checks `escrow_held` and `live_assignments` only.
->   - The `users_public` row policy is unchanged (`00002010:10-13`).
->   - No flag exists for the minors proxy.
->   - `search.fn_prune_query_logs` was named only by its dormant job row (`00005060`). It exists
->     since OPS4 (2026-11-19, `00001060` §7), and the row registers on reset.
+> **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
+> (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
+
+**How to run them:** in the §0 order, each in its **own fresh session**, after the standard header
+(§1). Every prompt cites its evidence by finding ID and its ruling as `(Decision #336, ruling X)`. A
+prompt marked **🧑 DECISION** stops and puts the named question to a human before it changes
+behaviour, with options and a recommendation. ⚖️ marks a ruling that stands pending counsel: build
+it behind a dial or a flag that stays off, and never switch it on. **Migrations are edited in
+place** (root `CLAUDE.md` §1); every prompt names the category file it edits. File:line anchors were
+re-checked at `f2e25929`.
+
+Fixed outside these prompts, for Z1's status columns: IW-C1's column half and IW-H1 (`660c9658`);
+IW-H3, IW-M1/K10, IW-M2, IW-M3 and IW-H8 (`12a80862`); IW-H7, IW-M6 (RLS on, nothing dropped),
+IW-M8, IW-H4/IW-M4/K6, IW-L1, IW-L2, the `teams.visibility` CHECK and `org.fn_is_minor` failing
+closed (`81a108f0`); IW-M9 (`4c9482a2`); IW-D1–D5 (`e30b4111`). IW-M10 is half done; HK1 finishes
+it.
 
 ---
 
 ## 0. Run order & dependencies
 
-Re-verified in code 2026-11-12 at `8a3fd595`: OWN1 (`96599cea`) and OWN2 (`aaaeab07`) are done.
-No deliverable of HK1, ERA1–ERA4, SSO1, ARC1, MFA1–MFA3, MIN1, MIN2, RLS1 or LOW1 exists in code,
-so each is not started, and X1, X2 and Z1 are unstarted. Runnable now: HK1, SSO1, MFA1, MIN1 and
-LOW1; X1 and X2 stop at their 🧑 at once.
+### 0.0 Done
 
-2026-11-18, AU1 (Decision #446): `org.legal_acceptances` adds a new FK onto `org.users_public`
-(`RESTRICT`) and one onto `org.enterprises`. ERA1 classifies the table HOLD (consent and
-terms-acceptance records, finance-model §17), and `account_erasure_scope.sql` must list it. No
-other item here changes.
-
-2026-11-18, AU5 (Decision #448): MFA1 inherits two wired GoTrue notices, `mfa_factor_enrolled` and
-`mfa_factor_unenrolled`. They fire once `[auth.mfa.totp]` enrolment is on, so MFA1 has no email
-work left. `email_change.html` is a credential-free notice. ST1 (Decision #451) moves the sign-in
-address through GoTrue's admin API and the app's own mail, so it stays that way and `email_change`
-keeps its place in `features/auth/core/gotrue-mail.test.ts`. The
-recovery link no longer carries the address; LOW1 item 4 (the same flaw on `/join`) is unchanged.
+| ID   | What landed                                                                                        | Commit                                                 | Text at                                                   |
+| :--- | :------------------------------------------------------------------------------------------------- | :----------------------------------------------------- | :-------------------------------------------------------- |
+| OWN1 | `create_enterprise` provisions the owner's profile in the same transaction (IW-H2, IW-M7, K3, F4)  | `96599cea`                                             | `f2e25929`                                                |
+| OWN2 | Step 1.6 asks for the owner; a profile-less owner completes it at the next sign-in                 | `aaaeab07`                                             | `f2e25929`                                                |
+| SAC1 | Deny-by-default `EXECUTE` in every schema; `function_grants.sql` covers them all (C6, C7, C9, C10) | `36b25912` (+ `6c44320a` C26/C28/C29, `b9477d96` #477) | `f2e25929` (`readiness/SECURITY_ACCESS_BUILD_PROMPTS.md`) |
+| SAC2 | `search.fn_log_query` takes no user id and is `query_logs`' only writer (C8, #462)                 | `67d9c9d2`                                             | `f2e25929` (`readiness/SECURITY_ACCESS_BUILD_PROMPTS.md`) |
+| SAC3 | A person's POST marks a conversation read; no GET writes, pinned by a test (C11, #478)             | `f52a8502` (+ `919bb0ef` #478 (a))                     | `f2e25929` (`readiness/SECURITY_ACCESS_BUILD_PROMPTS.md`) |
+| SAC4 | The root middleware origin-checks every page form post by construction (C12, #475)                 | `68396ea9`                                             | `f2e25929` (`readiness/SECURITY_ACCESS_BUILD_PROMPTS.md`) |
+| SAC5 | 68 planned segments reserved in TS and SQL, pinned by an equality test (C22, #444 (c))             | `c062b5ab` (+ `4e5bfc33` C25)                          | `f2e25929` (`readiness/SECURITY_ACCESS_BUILD_PROMPTS.md`) |
+| SAC6 | `deno task auth:parity` and the hosted auth runbook, the tooling for C13–C16 (#465)                | `6cc5611f`                                             | `f2e25929` (`readiness/SECURITY_ACCESS_BUILD_PROMPTS.md`) |
 
 ### 0.1 Run order
 
-| Phase                         | Prompts                   | Lane                   | Why this order                                                                                                                                                      |
-| :---------------------------- | :------------------------ | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **1 — The owner is a person** | ✅ OWN1 → ✅ OWN2         | SQL, then app          | Part C and #336: F4 first. It restores enterprise sign-up, and every later rule here (erasure, MFA, minors) assumes every natural person has a profile.             |
-| **2 — Approved hygiene**      | HK1                       | SQL                    | Q0.2 (b) and (c): small, owner-approved, on files the erasure chain does not touch.                                                                                 |
-| **3 — The erasure chain**     | ERA1 → ERA2 → ERA3 → ERA4 | SQL                    | Serial on `00001060`: scope, then windows, then seats, then the vault, which captures the identity set before ERA1's erasure blanks it. ERA3 and ERA4 stop at a 🧑. |
-| **4 — SSO hidden**            | SSO1                      | app                    | No SQL, so it may overlap phase 3.                                                                                                                                  |
-| **5 — Archive**               | ARC1                      | SQL                    | After ERA3 (`00001020`).                                                                                                                                            |
-| **6 — MFA and the guard**     | MFA1 → MFA2 → MFA3        | app · SQL+app · SQL    | MFA1 may start any time (🧑 recovery). MFA2 follows ARC1 and ERA4 (`00001020`, `00001060`). MFA3 runs inside the F·DB phase.                                        |
-| **7 — Minors**                | MIN1; MIN2                | app (+1 SQL step); SQL | MIN1 any time, its dispatch half ⏳ M. MIN2 after MFA2 (`00001020`), ⚖️ off, 🧑 for teams.                                                                          |
-| **8 — Last**                  | RLS1                      | SQL                    | It breaks every invoker reader of other people's names, so every other track's readers move first.                                                                  |
-| **Any time**                  | LOW1                      | app                    | The remaining Low findings.                                                                                                                                         |
-| **Roadmap**                   | X1, X2                    | docs                   | Not buildable yet; each stops at a 🧑.                                                                                                                              |
-| **Last**                      | Z1                        | docs                   | Docs sweep and the audit status columns.                                                                                                                            |
+| Phase                     | Prompts                   | Lane                   | Why this order                                                                                                                                                      |
+| :------------------------ | :------------------------ | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **2 — Approved hygiene**  | HK1                       | SQL                    | Q0.2 (b) and (c): small, owner-approved, on files the erasure chain does not touch.                                                                                 |
+| **3 — The erasure chain** | ERA1 → ERA2 → ERA3 → ERA4 | SQL                    | Serial on `00001060`: scope, then windows, then seats, then the vault, which captures the identity set before ERA1's erasure blanks it. ERA3 and ERA4 stop at a 🧑. |
+| **4 — SSO hidden**        | SSO1                      | app                    | No SQL, so it may overlap phase 3.                                                                                                                                  |
+| **5 — Archive**           | ARC1                      | SQL                    | After ERA3 (`00001020`).                                                                                                                                            |
+| **6 — MFA and the guard** | MFA1 → MFA2 → MFA3        | app · SQL+app · SQL    | MFA1 may start any time (🧑 recovery). MFA2 follows ARC1 and ERA4 (`00001020`, `00001060`). MFA3 runs inside the F·DB phase.                                        |
+| **7 — Minors**            | MIN1; MIN2                | app (+1 SQL step); SQL | MIN1 any time. MIN2 after MFA2 (`00001020`), ⚖️ off, 🧑 for teams.                                                                                                  |
+| **8 — Last**              | RLS1                      | SQL                    | It breaks every invoker reader of other people's names, so every other track's readers move first.                                                                  |
+| **Any time**              | LOW1                      | app                    | The remaining Low findings.                                                                                                                                         |
+| **Any time (you)**        | The hosted auth runbook   | —                      | Not a prompt. SAC6 built `deno task auth:parity` and the runbook; you apply it once per hosted environment (PRD-G8). No agent changes a hosted setting. C13–C16.    |
+| **Roadmap**               | X1, X2                    | docs                   | Not buildable yet; each stops at a 🧑.                                                                                                                              |
+| **Last**                  | Z1                        | docs                   | Docs sweep and the audit status columns.                                                                                                                            |
 
 - **Part B names.** §B.3's steps map onto this file as:
-  - F4 = OWN1 + OWN2;
   - the erasure chain = ERA1 → ERA4;
   - the F6 SSO-panel flag = SSO1;
   - IW-M5 = ARC1;
   - MFA + session guard = MFA1 → MFA3;
   - IW-M13 = RLS1.
   - Not in §B.3: HK1, MIN1, MIN2, LOW1, X1 and X2.
-- **One identity SQL session at a time.** The SQL chain (OWN1 → HK1 → ERA1 → ERA2 → ERA3 → ERA4 →
-  ARC1 → MFA2 → MIN2 → RLS1) is serial, so the track holds at most one of the two shared-DB slots
-  (§B.0 rule 1). App-lane prompts (OWN2, SSO1, MFA1, MIN1's app half, LOW1) run beside it.
+- **One identity SQL session at a time.** The SQL chain (HK1 → ERA1 → ERA2 → ERA3 → ERA4 → ARC1 →
+  MFA2 → MIN2 → RLS1) is serial, so the track holds at most one of the two shared-DB slots (§B.0
+  rule 1). App-lane prompts (SSO1, MFA1, MIN1's app half, LOW1) run beside it.
 
 ### 0.2 May not run in parallel (same files)
 
-- OWN1 / OWN2 / SSO1: `AuthBackendService.ts`, `features/auth/`.
-- OWN1 / MIN2: `00001010`.
+- SSO1 / LOW1: `AuthBackendService.ts`, `features/auth/`.
 - HK1 / ERA4: `00000012`, `00002001`, `00004002`.
 - ERA1 → ERA2 → ERA3 → ERA4 → MFA2: `00001060`, serial.
 - ERA3 / ARC1 / MFA2 / MIN2: `00001020`.
@@ -105,74 +83,67 @@ recovery link no longer carries the address; LOW1 item 4 (the same flaw on `/joi
   (`features/settings/components/sections/account/`).
 - SSO1 / MFA1 / MIN1: `features/devtools/` + `apps/web/utils/dev-seam.ts`.
 - MFA1 / MIN1: `features/settings/core/settings-registry.ts`.
-- Every prompt that edits `00002510` (OWN1 if a signature changes, ERA1, ERA2, ERA4, MFA2, MFA3,
-  MIN2): one at a time, across **all** tracks.
+- Every prompt that edits `00002510` (ERA1, ERA2, ERA4, MFA2, MFA3, MIN2): one at a time, across
+  **all** tracks.
 
 ### 0.3 Cross-track conflicts (§B.0 hot files)
 
-| Hot file                             | Identity prompts                                                | Other writers (§B.0)                              | Rule                                                                                                                                        |
-| :----------------------------------- | :-------------------------------------------------------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------ |
-| `00001240` (finance money)           | MFA3 (`finance.begin_payout`)                                   | FBP DB1–DB8, PM-WP4                               | MFA3 runs only in a slot of F's serial chain that the coordinator hands it.                                                                 |
-| `00005060` (jobs)                    | ERA2 (one row), ERA4 (one or two rows)                          | finance, comms, PM, scheduling, security          | One writer at a time. Use the `to_regproc` dormant-row guard jobs-sql uses. `search-query-log-retention` is already seeded: no edit.        |
-| `00001155` (sessions)                | —                                                               | every SCH work package                            | No identity prompt touches it.                                                                                                              |
-| `00001020` (workspaces)              | ERA3, ARC1, MFA2, MIN2                                          | SA G4 = F's payout gate (M4); also F·splits (M10) | Never at the same time as F's payout-gate or splits prompt.                                                                                 |
-| `00001060` (erasure)                 | ERA1–ERA4, MFA2                                                 | SEC G16                                           | G16 is folded into ERA1, so the T track never writes this file.                                                                             |
-| `00001300` (comms)                   | none directly                                                   | SEC L2/L4–L8, CAS messaging                       | ERA1's message clause lives in `00001060` but reads comms tables: its probe is the contract (§0.4). MIN1 edits `00001310`, M's notify file. |
-| `00002510` (grants)                  | ERA1, ERA2, ERA4, MFA2, MFA3, MIN2; OWN1 if a signature changes | many                                              | One writer at a time; rebase on the latest main before editing.                                                                             |
-| `stripe-webhook.ts` + `00001230`     | MFA3 (`finance.record_payout_account`)                          | FBP DB2, DB6; SBP S4                              | MFA3 after DB2 and DB6, and never at the same time as S4.                                                                                   |
-| `live-wallet.ts` / `wallet-scope.ts` | RLS1 (its `users_public` reads)                                 | FBP SV2, SV3, SV5; RED WP2                        | RLS1 after all of them.                                                                                                                     |
-| `features/devtools` + `dev-seam.ts`  | SSO1 (IDG F6), MFA1, MIN1                                       | FBP SV4, UI3; SBP S4, S6                          | One writer at a time.                                                                                                                       |
+| Hot file                             | Identity prompts                       | Other writers (§B.0)                              | Rule                                                                                                                                        |
+| :----------------------------------- | :------------------------------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| `00001240` (finance money)           | MFA3 (`finance.begin_payout`)          | FBP DB1–DB8, PM-WP4                               | MFA3 runs only in a slot of F's serial chain that the coordinator hands it.                                                                 |
+| `00005060` (jobs)                    | ERA2 (one row), ERA4 (one or two rows) | finance, comms, PM, scheduling, security          | One writer at a time. Use the `to_regproc` dormant-row guard jobs-sql uses. `search-query-log-retention` is already seeded: no edit.        |
+| `00001155` (sessions)                | —                                      | every SCH work package                            | No identity prompt touches it.                                                                                                              |
+| `00001020` (workspaces)              | ERA3, ARC1, MFA2, MIN2                 | SA G4 = F's payout gate (M4); also F·splits (M10) | Never at the same time as F's payout-gate or splits prompt.                                                                                 |
+| `00001060` (erasure)                 | ERA1–ERA4, MFA2                        | SEC G16                                           | G16 is folded into ERA1, so the T track never writes this file.                                                                             |
+| `00001300` (comms)                   | none directly                          | SEC L2/L4–L8, CAS messaging                       | ERA1's message clause lives in `00001060` but reads comms tables: its probe is the contract (§0.4). MIN1 edits `00001310`, M's notify file. |
+| `00002510` (grants)                  | ERA1, ERA2, ERA4, MFA2, MFA3, MIN2     | many                                              | One writer at a time; rebase on the latest main before editing.                                                                             |
+| `stripe-webhook.ts` + `00001230`     | MFA3 (`finance.record_payout_account`) | FBP DB6; SBP S4                                   | MFA3 after DB6, and never at the same time as S4.                                                                                           |
+| `live-wallet.ts` / `wallet-scope.ts` | RLS1 (its `users_public` reads)        | FBP SV5; RED WP2                                  | RLS1 after both.                                                                                                                            |
+| `features/devtools` + `dev-seam.ts`  | SSO1 (IDG F6), MFA1, MIN1              | FBP UI3; SBP S4, S6                               | One writer at a time.                                                                                                                       |
 
 Shared files outside §B.0 that still collide:
 
 - `00000017_tables_finance.sql` + `database/finance/Tables.md`: HK1's RESTRICT edits against any
   F·DB prompt that edits finance tables.
-- `00001210`: ARC1's possible hand-off and RLS1's `finance.list_ledger` move, against F·DB3/DB7.
-- `00001400`: avoided on purpose. ERA2's `search.fn_prune_query_logs` lives in `00001060`, because
-  M·search (CAS S11/S14, RED WP14) edits `00001400`.
+- `00001210`: ARC1's possible hand-off and RLS1's `finance.list_ledger` move, against any open F·DB
+  prompt on that file.
+- `00001400`: avoided on purpose. ERA2's prune functions live in `00001060` (OPS4 put
+  `search.fn_prune_query_logs` there), because M·search (CAS S11/S14, RED WP14) edits `00001400`.
 - `00005001`: each prompt adds its own `#region` with its own statement (Decision #274), so these
   writes are parallel-safe.
 - `features/wallet/` dialogs: MFA2's withdrawal hook against F·UI2/UI3.
 
 ### 0.4 Cross-track waits
 
-- **OWN1 waits for nothing.** It is the track's first step, because enterprise sign-up has been
-  refused since Wave 0's fail-closed `fn_is_minor`.
-- **ERA1 ↔ M·N1** (the unified-messaging schema window). ERA1 does not wait. Its probe,
-  `account_erasure_scope.sql`, fails on any FK onto a person that erasure does not classify, so N1
-  must keep it green and carry the message clause onto its new tables.
+- **ERA1 ↔ COMMS MS1** (the N1 messaging window, landed). ERA1's probe, `account_erasure_scope.sql`,
+  fails on any FK onto a person that erasure does not classify, so it must classify MS1's tables,
+  and every later schema window must keep it green.
 - **ERA3 ↔ F·splits (M10).** ERA3 reaches the split rule through `org.fn_rebalance_departed_stake`.
   Whichever lands second keeps `erasure_seats.sql` and `workspace_member_stakes.sql` green.
 - **ARC1 → F.** A finance door that still admits an archived team is fixed in F's window (`00001210`
   / `00001240`): ARC1 writes the helper, F writes the call site.
 - **MFA2 ⏳ F·UI2/UI3** for the withdrawal dialog's submit hook (`WalletDialogs.tsx`,
   `WalletHome.island.tsx`), or MFA2 hands them the helper.
-- **MFA3 ⏳ the F·DB phase**: the `00001240` serial chain, and `00001230` after DB2/DB6, never with
-  SBP S4.
+- **MFA3 ⏳ the F·DB phase**: the `00001240` serial chain, and `00001230` after DB6, never with SBP
+  S4.
 - **F·E1 ⏳ MFA2/MFA3.** The money-lifecycle E2E must step up before it withdraws (TOTP codes
   generated from the secret enrolled in the test).
-- **MIN1 ⏳ M·notify engine (N8–N12)** for the dispatch half when that engine is in flight.
-  Otherwise MIN1 builds it in `00001310`, and the probe binds the engine to keep it.
-- **RLS1 ⏳** the F, P and C SQL steps; F·SV2/SV3/SV5 and RED WP2 (`live-wallet.ts`); and M·N1 (the
-  messaging services).
-- **Already done by jobs-sql (Wave 1.3):** `search-query-log-retention` is seeded dormant and
-  registers itself once `search.fn_prune_query_logs` exists. **Done by OPS4 (2026-11-19):** the
-  function exists (`00001060` §7), so the job registers; ERA2 keeps only its fold-in (ERA2 status).
+- **MIN1 and the notify engine.** The engine landed (COMMS NT1, `2f9a9bb6`, `00001310`), so MIN1
+  builds its rule at the engine's channel resolution. Never beside a COMMS NT prompt that has
+  `00001310` open.
+- **RLS1 ⏳** the F, P and C SQL steps, and F·SV5 and RED WP2 (`live-wallet.ts`).
 
-### 0.5 Open decisions and new contradictions
+### 0.5 Open decisions and contradictions
 
-**Still open with the owner after Wave 1.1:** five items, of which only the fifth bears on this
-track: every ⚖️ ruling is pending counsel. Here that means I1's retention values, the AML "No" and
-the PITR statement (ERA2, ERA4, X2), and I4's proxy (MIN2). The other four (whether
-`create_category` is stored, Agency and Enterprise storage, the FX margin, and which fee an Agency's
-contract rate applies to) touch no identity prompt.
+**⚖️ pending counsel on this track:** I1's retention values, the AML "No" and the PITR statement
+(ERA2, ERA4, X2), and I4's proxy (MIN2).
 
 **🧑 stops in this file:**
 
-1. **HK1 (conditional).** Keep `security.turnstile_verifications` if #335 (h) has since adopted it.
-   Recommended: drop it, as Q0.2 (b) rules. Unchanged by Decision #447 (AU3, 2026-11-18): it built
+1. **HK1 (conditional).** Keep `security.turnstile_verifications` only if #335 (h) has since adopted
+   it (unruled at `f2e25929`). Recommended: drop it, as Q0.2 (b) rules. Decision #447 (AU3) built
    Turnstile's layer 1 (GoTrue, plus `/join`'s own siteverify) with no table write; the row write
-   stays Proposed with layer 2 (newsletter, feedback), so (a) below is still open.
+   stays Proposed with layer 2 (newsletter, feedback).
 2. **ERA3.** Which seats the freelancer-profile scope leaves. Recommended: team seats only.
 3. **ERA4.** Where the PII-free erasure tombstone lives outside the database. Recommended: export it
    before any restore, plus a nightly copy to an external write-only bucket.
@@ -185,33 +156,22 @@ contract rate applies to) touch no identity prompt.
 7. **X2.** Who builds the dormant AML programme. Recommended: F builds the signals; this track
    builds the flags.
 
-**New contradictions** (listed here, not logged — each needs a decision row from the coordinator):
+**Contradictions logged in Decision #344, unruled:**
 
-- (a) **Q0.2 (b) vs the providers spec.** The owner approved dropping
+- (a) **Q0.2 (b) vs the providers spec** (#344 (h)). The owner approved dropping
   `security.turnstile_verifications`. `EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md`
   §Turnstile steps 4 and 6 (Proposed, Decision #335 flag (h), unruled) write app-side Turnstile
   verifications into it and propose a 30-day purge.
-- (b) **PRODUCT_MANAGEMENT vs PRODUCT_SPEC on seats.** `PRODUCT_MANAGEMENT.md` §3.5 says "scheduling
-  **either** scope leaves every workspace seat". `PRODUCT_SPEC.md` says "scheduling an erasure
-  leaves every team and business seat". Read literally, PRODUCT_MANAGEMENT makes a freelancer who
-  switches to client lose their **business** seats too, which are the client side.
-- (c) **The proxy model vs the persona rules.** PRODUCT_SPEC lets a proxied 13–17-year-old
-  "contribute within a Team or Business". Decision #228 (A) makes Teams the freelancer side
-  (`org.fn_assert_team_persona`), and #190/#192 give nobody under 18 a freelancer persona.
-- (d) **Factual.** Ruling I4 builds the proxy "behind its existing off flag", but no flag exists.
-  The off state is `trg_workspace_member_adult`'s hard refusal (`00001010:784`); MIN2 creates the
-  flag.
-- (e) **Ordering.** `FOUNDER_QUESTIONNAIRE.md` §B.3's track-I row lists the erasure chain before F4.
-  Part C and #336's ruling text say F4 first. This file follows Part C.
-- (f) **A reading.** I2's "back-fill" cannot write a date of birth that was never collected, and a
-  placeholder would make the owner adult and fail open. It is read as a forced completion step at
-  the next sign-in (OWN2), with a probe that counts profile-less owners.
+- (b) **Team seats on a freelancer-profile give-up** (#344 (n)). Ruling I1 (c), PRODUCT_SPEC and
+  `PRODUCT_MANAGEMENT.md` §3.5 cover the account erasure: it leaves every team and business seat.
+  What switching to client does to a person's team seats is not ruled (ERA3's 🧑).
+- (c) **The proxy model vs the persona rules** (#344 (i)). PRODUCT_SPEC lets a proxied
+  13–17-year-old "contribute within a Team or Business". Decision #228 (A) makes Teams the
+  freelancer side (`org.fn_assert_team_persona`), and #190/#192 give nobody under 18 a freelancer
+  persona (MIN2's 🧑).
 
 **Architect defaults** (confirm or override before the prompt runs; none blocks):
 
-- **OWN1.** The owner's personal `@handle` is derived from their name, because PRODUCT_SPEC's step
-  1.6 asks for no username and `username` is `NOT NULL`. The owner's profile starts `private`, and
-  their first acting context is the enterprise.
 - **ERA1.**
   - Erased messages and posts are blanked to an erased marker rather than deleted, so other people's
     threads keep their shape.
@@ -226,6 +186,38 @@ contract rate applies to) touch no identity prompt.
   `EMBEDDINGS_ENABLED` precedent).
 - **MFA2.** The SQL step-up helper also checks that the session is live.
 - **ARC1.** A `pending_funds` team-archive blocker sits beside `wallet_balance`.
+
+### 0.6 PRODUCTION_READINESS §C — row → work order
+
+The rows of [`PRODUCTION_READINESS.md`](../readiness/PRODUCTION_READINESS.md) §C that are still
+open. A prompt's session updates the rows named against it here (§1, READINESS).
+
+| Row     | Gate | Crit     | Work order                                | The row flips to ✅ when                                                          |
+| :------ | :--- | :------- | :---------------------------------------- | :-------------------------------------------------------------------------------- |
+| PRD-C13 | UAT  | High     | You: the hosted auth runbook (SAC6, #465) | `deno task auth:parity` is green against the hosted project                       |
+| PRD-C14 | UAT  | High     | You: the hosted auth runbook              | Parity green, and one dated live Google sign-in recorded                          |
+| PRD-C15 | PROD | High     | You: the hosted auth runbook              | Parity green; the hosted widget, keys and secret set; a dated refused token, live |
+| PRD-C16 | PROD | Normal   | You: the hosted auth runbook              | Parity green                                                                      |
+| PRD-C17 | PROD | Critical | MFA1 → MFA2 → MFA3 (§7)                   | MFA3 lands (⏳ the finance F·DB phase); MFA1 → 🟡                                 |
+| PRD-C18 | UAT  | Normal   | SSO1 (§5)                                 | `SsoPanel` renders only behind `AUTH_SSO_ENABLED`                                 |
+| PRD-C19 | PROD | Critical | ERA1 → ERA2 → ERA3 → ERA4 (§4)            | ERA4 lands; ERA1 → 🟡                                                             |
+| PRD-C20 | PROD | High     | MIN1 + MIN2 (§8) + LOW1 item 3            | All three land (MIN2's flag built and **off**); MIN1 with LOW1 item 3 → 🟡        |
+| PRD-C21 | PROD | Normal   | RLS1 (§9), last of all                    | RLS1 lands                                                                        |
+| PRD-C23 | PROD | Normal   | HK1 (§3; 🧑 conditional)                  | HK1 lands                                                                         |
+| PRD-C24 | PROD | Normal   | LOW1 items 4, 5, 7 (§10)                  | LOW1 lands                                                                        |
+
+- **Done:** C6, C7, C9, C10, C26, C28, C29 (SAC1; C6's other claimant,
+  [`TRUST_SAFETY_BUILD_PROMPTS.md`](TRUST_SAFETY_BUILD_PROMPTS.md) P2d step 4, is done with it), C8
+  (SAC2), C11 (SAC3), C12 (SAC4), C22 and C25 (SAC5), C27 (`18e51318`, #482).
+- **No work order yet** (no prompt in their Track cells at `f2e25929`): C31 and C32 (#478 (d), (e)),
+  C33 (#482 (b)), C35 and C36. C34 is
+  [`MARKETPLACE_BUILD_PROMPTS.md`](../readiness/MARKETPLACE_BUILD_PROMPTS.md) SC6. C30 is ⏸ (#478
+  (a)).
+- **What UAT needs from §C:** SSO1 (C18) and the hosted runbook for C13 and C14; outside this file,
+  C34 and C35.
+- **Hosted rows (C13–C16)** need a hosted Supabase project (PRD-G8). Each goes to ✅ with that
+  environment's parity output; C14's evidence also needs a dated live Google sign-in, and C15's a
+  dated refused-token check.
 
 ---
 
@@ -243,8 +235,9 @@ Before writing code:
      documentation/CLAUDE.md; documentation/database/CLAUDE.md when SQL changes;
      packages/ui/CLAUDE.md for UI), then documentation/reference/guardrails.md and
      documentation/reference/pr-checklist.md.
-  2. Read documentation/architecture/IDENTITY_AND_WORKSPACES_AUDIT.md (finding IDs IW-*) and
-     IDENTITY_AND_WORKSPACES_AUDIT.md (conflicts K1-K12, questions F1-F9). Then read Decision #336 in
+  2. Read documentation/architecture/IDENTITY_AND_WORKSPACES_AUDIT.md (finding IDs IW-*, conflicts
+     K1-K12, questions F1-F9), and the documentation/readiness/PRODUCTION_READINESS.md rows that
+     IDENTITY_BUILD_PROMPTS.md §0.6 maps to your prompt. Then read Decision #336 in
      documentation/reference/decisions/decisions-122-126.md (grep -n '^| 336 |'): its OWNER
      RULINGS are the law here. The ruling table is FOUNDER_QUESTIONNAIRE.md Part C, and this
      file's §0 lists the open stops.
@@ -256,8 +249,8 @@ Before writing code:
      change. Read PRODUCT_SPEC.md §Authentication, onboarding and the age guardrails, and
      §Identity, Taxes & Compliance. Read finance-model.md §17 (retention) and
      PRODUCT_MANAGEMENT.md §3.5.
-  5. The verified state in IDENTITY_BUILD_PROMPTS.md is as of main @ 94d22e84. Re-check it against
-     git before you start: another track may have landed a change since.
+  5. The verified state in IDENTITY_BUILD_PROMPTS.md is as of main @ f2e25929. Re-check every
+     file:line against the current tree before you rely on it: another track may have landed since.
 
 Hard rules (merge gates; reject your own diff if any fails):
   Identity & privacy
@@ -268,6 +261,10 @@ Hard rules (merge gates; reject your own diff if any fails):
     write RPC re-checks fn_member_can or a current seat. Claims drive chrome and scoping only.
   - Identity writes go through SECURITY DEFINER doors with search_path = '' and an explicit grant
     in 00002510. No client INSERT/UPDATE/DELETE policy on an org or security identity table.
+  - EXECUTE is deny-by-default in every schema (Decision #477): a new function runs only for the
+    roles you grant it to by name in 00002510. An anon grant joins supabase/probes/
+    function_grants.sql's allowlist with a reason line, and a definer that takes a user or actor
+    uuid joins its reviewed list.
   - The service role is used only before a session exists, or inside a definer or cron door (the
     AuthBackendService precedent). A signed-in request runs under the user's JWT.
   - Nothing is hard-deleted (archive, status or tombstone) EXCEPT what erasure must destroy by law,
@@ -317,6 +314,12 @@ Hard rules (merge gates; reject your own diff if any fails):
   - A NEW contradiction between source docs: do not pick a side. Add a decision row (the newest
     decisions-*.md plus a README index line; re-check the next free number right before writing)
     and ask me.
+  - READINESS (Decision #444): in the same change, update documentation/readiness/
+    PRODUCTION_READINESS.md: the rows §0.6 names for your prompt — status, and evidence naming your
+    commit and decision; recompute your area's line and the three tier rows of the Scoreboard
+    (score = Σ weight × credit / Σ weight; ✅ 1 · 🟡 0.5 · ❌ 0; Critical 3 · High 2 · Normal 1; ⏸
+    rows excluded); add one line to §Score history. Update USER_FLOWS.md if a flow's status
+    changes. A gap you find and do not fix gets a new row at the end of its area, never silence.
 
 Verification: reproduce the defect first, then fix. Use a rollback-safe probe under
 supabase/probes/ (BEGIN … ROLLBACK) or a Deno unit test.
@@ -324,202 +327,26 @@ supabase/probes/ (BEGIN … ROLLBACK) or a Deno unit test.
   one local DB, on disjoint migration files; announce each reset before you run it. Finish with
   your own clean `deno task test:probes:fresh` (db:reset plus every probe).
   Every prompt: then run `deno task check`, `deno task lint`, `deno task test:unit`, and `deno fmt`
-  on the files you touched only, never a directory. The working tree is CRLF: edit docs with an
-  editor tool, never sed. Four theme-engine.test.ts failures are pre-existing (Decision #96(a)).
+  on the files you touched only, never a directory. Edit docs with an editor tool, never sed.
+  Compare any red unit test with main before calling it yours (theme-engine failures are
+  pre-existing, Decisions #96 (a) and #157 (m)).
   UI prompts: also run `deno task dev`, sign in as the seeded personas
   (documentation/database/Seed.md), and capture 1440, 900 and 390 px in light, dark,
   data-contrast="high" and data-motion="reduced".
-Commit on the branch you were given. Do not push or open a PR unless I ask.
-```
+This checkout may be shared with other sessions: never switch branch, never stash, stage only your
+own hunks. Commit on the branch you were given. Do not push or open a PR unless I ask.
 
----
-
-## 2. Phase 1 — The enterprise owner is a person (ruling I2)
-
-### OWN1 — The owner's profile in the same transaction as the enterprise
-
-> **Status 2026-11-12:** Done in `96599cea`. `public.create_enterprise` provisions the owner
-> (`00001010:338`) and points `security.session_context` at the enterprise (`:392-394`);
-> `seed_owner_preferences` is gone; probe `enterprise_owner_profile.sql`.
-
-```text
-PROMPT OWN1: Every natural person has a profile, the enterprise owner included
-
-ROLE: Postgres identity engineer and auth-service engineer. SQL lane; the track's first step.
-
-CONTEXT:
-  Findings:
-  - IW-H2 / K3: the enterprise path collected no DoB and wrote no org.users_public row.
-  - IW-M7: the second FK, session_context_user_id_fkey1 → users_public (00000012:77), so an
-    enterprise-only owner could not hold the enterprise context.
-  - Decision #87 (b): the profile-less owner, never ruled. #87 (c): null isClient/isFreelancer
-    claims on a profile-less token.
-  Ruled: every natural person, an enterprise owner included, gets a users_public row with a DoB
-  (Decision #336, ruling I2).
-  Verified state:
-  - Since Wave 0 (81a108f0), org.fn_is_minor fails closed for a profile-less identity. So
-    trg_workspace_member_adult refuses public.create_enterprise's owner seat PM403, and
-    enterprise sign-up is refused today.
-  - IW-H8's cleanup (12a80862) deletes the GoTrue user when create_enterprise fails.
-  This prompt restores the server half; OWN2 sends the fields.
-
-FILES:
-  - supabase/migrations/00001010_functions_org_onboarding.sql:
-    public.create_enterprise :287; public.provision_user_profile :26; org.seed_owner_preferences
-    :498 and the comment at :391.
-  - supabase/migrations/00001810_triggers_auth_onboarding.sql: only if the owner-preferences
-    trigger binding goes.
-  - supabase/migrations/00002510_permissions_function_grants.sql: only if a signature changes.
-  - packages/types/org/enterprises.ts: CreateEnterprise gains the owner block.
-  - packages/types/auth/join.ts: EnterpriseJoinSchema gains the owner's first and last name, dob
-    and timeZone, plus the age superRefine; update join-hints.test.ts.
-  - packages/backend/services/auth/AuthBackendService.ts: provisionAccount's enterprise branch
-    (:369-407) and discardOrphanedOwner's JSDoc (:464).
-  - apps/web/routes/api/auth/join.ts: the under-13 age lock, individual-only today (:51-57).
-  - supabase/probes/enterprise_owner_profile.sql (new). Update identity_schema_guards.sql where it
-    asserts the profile-less refusal.
-  - documentation/database/org/Functions.md (create_enterprise, provision_user_profile) and
-    documentation/business/PRODUCT_SPEC.md §Enterprise onboarding (one sentence on the derived
-    handle and the private profile).
-
-STEPS:
-  1. Reproduce with a probe:
-     a. create_enterprise for a fresh auth.users id, called as the service role, raises PM403
-        today (the fail-closed owner seat);
-     b. a profile-less owner cannot hold the enterprise context. IW-M7 was never probed, so record
-        exactly what happens.
-  2. Provision the owner INSIDE create_enterprise, before the enterprise row:
-     - call PERFORM public.provision_user_profile(p_owner, the corporate email, NULL, meta);
-     - build meta from p_payload.owner: first_name, last_name, username, dob, timezone,
-       objective = 'client', locale, display_currency, visibility;
-     - provision_user_profile reads visibility from meta and keeps 'unlisted' as the default for
-       individuals.
-     How a refusal unwinds:
-     - under 13: fn_check_dob raises PM422 and the whole call rolls back;
-     - 13 to 17: the owner seat raises PM403 and the call rolls back.
-     Either way nothing is left behind, so discardOrphanedOwner can still delete the GoTrue user:
-     no users_public row blocks it. GoTrue's createUser keeps only objective, locale and
-     display_currency in user_metadata, so public.handle_new_user never provisions a second
-     profile.
-  3. The owner's personal @handle. PRODUCT_SPEC's step 1.6 asks only for a name, a DoB and a
-     password, and users_public.username is NOT NULL UNIQUE. So:
-     - derive a base handle from the owner's name in the service, in the USERNAME_RE shape;
-     - fall back through handleAlternatives (packages/types/workspace/workspace.ts:533, the
-       live-handle.ts suggestion precedent);
-     - the SQL door re-checks org.fn_handle_refusal;
-     - on 23505 the service retries the next alternative once, then refuses with the generic
-       ENTERPRISE_REFUSED.
-     The owner's profile starts 'private'. Both are architect defaults: IDENTITY_BUILD_PROMPTS
-     §0.5.
-  4. After the owner seat, point the owner's security.session_context row at the new enterprise.
-     Write it directly, as provision_user_profile writes it: security.fn_set_session_context
-     resolves the user from auth.uid(), which the service-role call does not have. The first token
-     after confirmation then carries the enterprise context, which closes IW-M7.
-  5. Retire the profile-less special case. org.seed_owner_preferences and its trigger exist only
-     because owners had no users_public row (the comment at :391). The users_public seeders now
-     cover them. Remove the function and its binding if the probe shows user_preferences and
-     comms.notification_prefs seeded for a new owner. Otherwise keep it idempotent and say why.
-  6. Zod:
-     - EnterpriseJoinSchema gains ownerFirstName, ownerLastName, dob and timeZone, with the
-       IndividualJoinSchema validators;
-     - its superRefine: under 13 → UNDER_MINIMUM_REFUSAL; 13 to 17 → "An enterprise's owner must
-       be 18 or over" (the database refuses anyway);
-     - CreateEnterprise gains owner { firstName, lastName, username, dob, timeZone }.
-  7. join.ts: the under-13 lock (pj_join_age_lock) covers the enterprise path too.
-
-SQL SESSION RULES: run probes with `deno task test:probes`. At most 2 SQL sessions on the one
-local DB at once, on disjoint migration files; announce each reset first. Finish with your own
-clean `deno task test:probes:fresh`.
-
-SAME CHANGE: migrations in place (§1). The Zod schema and database/org/Functions.md with the RPC
-contract. PRODUCT_SPEC §Enterprise onboarding (the handle and visibility sentence). Step 1.6's
-"Not built yet" marker stays until OWN2 ships the fields. No new Dev Context Switcher axis: the
-enterprise context exists already.
-
-ACCEPTANCE:
-  - enterprise_owner_profile.sql:
-    - an adult owner → a users_public row (dob set, visibility private); user_emails primary =
-      the corporate email; the owner seat; session_context naming the enterprise; and the hook's
-      claims carry onboarded = true and boolean isClient and isFreelancer (#87 (c));
-    - under 13 → PM422 and no row anywhere;
-    - aged 15 → PM403 and no row anywhere;
-    - a taken derived handle → the next alternative is used.
-  - In the same probe, switch_enterprise_context and clear_session_context work for the owner
-    (IW-M7).
-  - AuthBackendService tests: the enterprise branch passes the owner block, and an RPC failure
-    still deletes the orphaned GoTrue user.
-  - `deno task test:probes` green, then your own clean `deno task test:probes:fresh`.
-```
-
-### OWN2 — Step 1.6 asks for the owner, and profile-less owners complete it
-
-> **Status 2026-11-12:** Done in `aaaeab07`. `resolveOnboardingBounce` sends a profile-less owner
-> to `/join?complete=owner` (`auth-routing.ts`), and `AuthBackendService.completeOwnerProfile`
-> completes it or leaves an `ops.log_entries` row.
-
-```text
-PROMPT OWN2: The owner's details on step 1.6, and a completion step for owners without a profile
-
-ROLE: Frontend engineer (Fresh islands, signals, the auth design gates). App lane. ⏳ OWN1.
-
-CONTEXT:
-  Ruled: wizard step 1.6 plus a back-fill (Decision #336, ruling I2).
-  The spec, PRODUCT_SPEC:
-  - §Onboarding step sequence: Enterprise 1.6 = corporate email, phone, the owning admin's DoB,
-    and the admin password.
-  - §Enterprise onboarding: "Admin login: the owning admin's name, date of birth and password".
-  Audit §4.1: the tall Enterprise 1.6 step already scrolls inside the frame.
-  The back-fill: a migration cannot write a date of birth that was never collected, and a
-  placeholder would make the owner adult and fail open. So existing profile-less owners complete
-  the step at their next sign-in, through the #87 bounce pattern. resolveOnboardingBounce skips
-  them on purpose today (auth-routing.ts:136-143).
-
-FILES:
-  - apps/web/features/auth/core/wizardStore.ts and wizardValidation.ts (the enterprise
-    "credentials" case and buildPayload); age-lock.ts.
-  - apps/web/features/auth/components/StepForm.tsx: the Enterprise 1.6 fields.
-  - apps/web/features/auth/styles/auth.css; keep styles.gate.test.ts green.
-  - apps/web/features/auth/core/auth-routing.ts and its test: resolveOnboardingBounce.
-  - apps/web/routes/(dashboard)/_middleware.ts: only to pass what the bounce needs.
-  - apps/web/routes/(public)/(auth)/join.tsx: the completion state.
-  - packages/types/auth/join.ts: an OwnerCompletion input.
-  - packages/backend/services/auth/AuthBackendService.ts: completeOwnerProfile. It derives the
-    handle as OWN1 does, then calls public.complete_onboarding under the user's JWT.
-  - apps/web/routes/api/auth/join.ts: route the completion input.
-  - documentation/architecture/ROUTING.md: /join's completion query state.
-  - documentation/business/PRODUCT_SPEC.md: remove step 1.6's "Not built yet" sentence.
-  - DESIGN_SYSTEM.md §C.1: only if a @projective/ui component changes.
-
-STEPS:
-  1. Step 1.6 (Enterprise) adds the owner's first name, last name and date of birth beside the
-     corporate email, phone and password.
-     - The DoB field reuses the individual dobError and the live age note.
-     - The under-13 lock is the individual one.
-     - Lay the step out in paired rows so it stays inside the fixed, non-scrolling frame at 390 px.
-       Token-only CSS.
-  2. buildPayload sends ownerFirstName, ownerLastName, dob, and timeZone (browserTimeZone()).
-  3. A legacy profile-less owner completes the step.
-     - resolveOnboardingBounce sends an account to /join?complete=owner&redirectTo=… when its
-       token says onboarded = false AND its user_metadata objective is "enterprise". No OAuth
-       prefill is needed: GoTrue already holds the email.
-     - /join renders one step (first name, last name, DoB) and posts { type: "owner", … }.
-     - completeOwnerProfile derives the handle and calls public.complete_onboarding (objective
-       client, visibility private) under the user's JWT.
-     - renewSession then re-stamps the claims (the #87 self-healing gate), so the bounce ends.
-  4. Refusals on that step: a DoB under 18 gets the sign-up refusals. The account stays
-     profile-less, which fails closed, and the service writes one ops.log_entries row so a human
-     follows up. Never delete an account that owns an enterprise.
-
-SAME CHANGE: ROUTING.md (the new query state); the PRODUCT_SPEC step 1.6 marker removed; the
-auth style gate kept green.
-
-ACCEPTANCE:
-  - Live auth on `deno task dev`: a full enterprise sign-up lands in the enterprise context with a
-    private owner profile.
-  - Screenshots of step 1.6 at 1440, 900 and 390 px in the four modes, with no internal scroll.
-  - auth-routing tests: a profile-less owner token bounces to ?complete=owner. An onboarded token,
-    an absent claim and an OAuth prefill keep today's behaviour.
-  - deno task check, lint and test:unit green.
+When you finish, do the closing duty (documentation/reference/build-prompts.md §2) in the same
+commit as the work:
+  - In documentation/architecture/IDENTITY_BUILD_PROMPTS.md: a done prompt leaves the file. Delete
+    its section and add its row to §0's Done ledger (ID · what landed · commit · text at
+    <commit>^). A partly done prompt keeps only its open steps, with their numbers unchanged, under
+    one rewritten Status line. A ruled 🧑 stop becomes the ruled step, with its decision number.
+  - Treat any step you built for another prompt the same way, in the file that holds it.
+  - Run git grep -n "<ID>" documentation/ and update every place that still calls it open: the
+    PRODUCTION_READINESS / USER_FLOWS Track cells, the audit's Status column, other prompts' waits,
+    §0.6's row map, and this file's row in documentation/reference/build-prompts.md §3.
+  - If the file has no prompts left, delete it, log it in build-prompts.md §4 and repoint its links.
 ```
 
 ---
@@ -541,7 +368,7 @@ CONTEXT:
     from users_public, teams, escrows and wallets. A service-role delete would silently erase split
     history.
   - IW-M10's remainder: Wave 0 added ck_enterprise_member_status, but enterprise_members.user_id
-    is still ON DELETE CASCADE from auth.users (00000011:980).
+    is still ON DELETE CASCADE from auth.users (00000011:1021).
   Ruled: drop both tables (Decision #336, ruling Q0.2 (b)); RESTRICT instead of CASCADE on the four
   finance tables (ruling Q0.2 (c)). Both are owner-approved exceptions to the Additive Rule. The
   enterprise_members FK needs no ruling: IDG says K11 needs none, and it is not an escrow, wallet
@@ -549,17 +376,18 @@ CONTEXT:
 
 CONFLICT WITH THE FINANCE FILES:
   - The four FKs live in supabase/migrations/00000017_tables_finance.sql (contribution_agreements
-    :345, payout_splits :358, vault_permissions :476, split_rules :487). The F track edits that
+    :463, payout_splits :476, vault_permissions :647, split_rules :658). The F track edits that
     file in its DB phase.
   - Their documentation is documentation/database/finance/*.
   - Do not run while an F·DB prompt has 00000017 or database/finance/Tables.md open; ask the
     coordinator.
   - Keep supabase/probes/finance_invariants.sql green.
 
-CONFLICT WITH THE PROVIDERS SPEC (new; IDENTITY_BUILD_PROMPTS §0.5 (a)):
+CONFLICT WITH THE PROVIDERS SPEC (IDENTITY_BUILD_PROMPTS §0.5 (a)):
   EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md §Turnstile steps 4 and 6 (Proposed,
   Decision #335 flag (h)) write app-side Turnstile verifications into
-  security.turnstile_verifications.
+  security.turnstile_verifications. Logged as Decision #344 (h), unruled. Decision #447 (AU3) built
+  Turnstile with no write to the table, so the recommendation (drop) holds.
 
 🧑 DECISION — STOP only if Decision #335 (h) has been ruled since 2026-10-30 to adopt app-side
 Turnstile verification with this table. Check: grep #335's row for "OWNER RULINGS". If so, put this
@@ -571,7 +399,8 @@ Otherwise proceed with A, and mark the spec's two mentions as dropped, linking Q
 
 FILES:
   - supabase/migrations/00000012_tables_security.sql: remove both CREATE TABLE blocks (:32-56).
-  - supabase/migrations/00002001_policies_enable_rls.sql: their ENABLE RLS lines (:256-265).
+  - supabase/migrations/00002001_policies_enable_rls.sql: their ENABLE RLS lines and comment
+    (:270-279).
   - supabase/migrations/00004002_indexes_security.sql and 00002520_permissions_table_grants.sql:
     any statement that names them.
   - supabase/migrations/00000017_tables_finance.sql: the seven ON DELETE CASCADE clauses → ON
@@ -649,11 +478,11 @@ CONTEXT:
 
 FILES:
   - supabase/migrations/00001060_functions_org_account_lifecycle.sql: fn_erase_freelancer_profile
-    :532, fn_erase_account :555, fn_purge_due_deletions :587. Add a claim of the storage objects
+    :534, fn_erase_account :557, fn_purge_due_deletions :596. Add a claim of the storage objects
     to remove, after the ops.fn_claim_stale_contact_attachments precedent (00001655:490).
   - supabase/migrations/00002510_permissions_function_grants.sql: the claim door, service_role
     only.
-  - packages/backend/services/user/AccountLifecycleBackendService.ts: sweepDue (:187) deletes the
+  - packages/backend/services/user/AccountLifecycleBackendService.ts: sweepDue (:191) deletes the
     claimed objects through the Storage API, because SQL cannot delete them.
   - apps/web/routes/api/user/cron/erasures.ts: only if the response shape changes.
   - supabase/probes/account_erasure_scope.sql (new).
@@ -680,7 +509,8 @@ STEPS:
        rollback;
      - asserts each ERASE class is empty or blanked, and each HOLD class is intact;
      - FAILS when an FK onto users_public or auth.users exists that its classification list does
-       not name, so no new table can dodge erasure. M·N1's schema window must keep it green.
+       not name, so no new table can dodge erasure. Classify the tables COMMS MS1 (the N1 window)
+       added; every later schema window must keep the probe green.
   3. Extend fn_erase_account, and fn_erase_freelancer_profile for the seller-only half.
      - org: delete the person's portfolios, education_entries, experience_entries,
        certifications, user_languages, user_skills, profile_links, profile_showcase_items,
@@ -705,7 +535,8 @@ STEPS:
        - search.profiles_index rows for the person (the user and freelancer entity types):
          is_active and is_public false, embedding* NULL;
        - delete the person's search.query_logs rows. finance-model §17 says erased with the
-         account, and nulling user_id alone would leave the raw query text;
+         account, and nulling user_id alone would leave the raw query text. Since SAC2 (Decision
+         #462) every row carries only its writer's auth.uid(), so deleting by user_id is safe;
        - delete their search.user_affinity rows (derived data; the §5.4 exception, named in
          Functions.md);
        - null user_id and session_id on their search.interest_events (others' engagement
@@ -736,14 +567,12 @@ ACCEPTANCE:
 
 ### ERA2 — Erasure windows and retention periods become dials
 
-> **Status 2026-11-19:** step 3 and `retention_search_query_log_days` landed in OPS4 (`4a73588e`,
-> #515; [OPERATIONS_BUILD_PROMPTS.md](../readiness/OPERATIONS_BUILD_PROMPTS.md) §OPS4).
-> `search.fn_prune_query_logs(p_batch integer DEFAULT 5000, p_now timestamptz DEFAULT NULL)` is in
-> `00001060` §7, and `search-query-log-retention` registers on reset. Fold the dial into your
-> `[erasure_retention]` region and drop OPS4's `[search_retention]` region in `00005001`. Then switch
-> the prune's read of `"default"` to `security.fn_retention_period`. Keep the fallback: an invalid
-> period keeps 90 days and writes a `search.retention` warning. Extend `query_log_retention.sql`
-> rather than duplicating it in `erasure_windows.sql`.
+> **Status 2026-11-23:** step 3 landed in `4a73588e` (OPS4, #515):
+> `search.fn_prune_query_logs(p_batch
+> integer DEFAULT 5000, p_now timestamptz DEFAULT NULL)` is in
+> `00001060` §7, the `search-query-log-retention` job registers on reset, and
+> `retention_search_query_log_days` is seeded in `00005001`'s `[search_retention]` region. Steps 1,
+> 2 and 4–6 below are open.
 
 ```text
 PROMPT ERA2: Erasure windows and retention periods become dials, and the retention sweeps run
@@ -755,24 +584,27 @@ CONTEXT:
   Findings:
   - K2 / F2: one 90-day code path serves both "switch to client" and a wish to have the seller
     data gone. GDPR Art. 12(3) asks for an answer within one month.
-  - Audit §6.5: both windows are hard-coded (00001060:434, :490).
+  - Audit §6.5: both windows are hard-coded (00001060:436, :492).
   Ruled:
   - 90 days for "switch to client", ≤ 30 days for an explicit erasure, both as
     security.platform_params (Decision #336, ruling I1 (b)).
   - Every retention period is a platform_params dial with a per-jurisdiction override (I1, ⚖️;
     the table in finance-model.md §17). Build the dials; counsel confirms the values.
-  Already seeded: jobs-sql (Wave 1.3) registered a DORMANT job, search-query-log-retention. It
-  registers itself once search.fn_prune_query_logs exists (a to_regproc guard), so name the
-  function exactly that; 00005060 needs no edit for it.
+  Already built (OPS4, 4a73588e): search.fn_prune_query_logs in 00001060 §7, which reads only the
+  "default" of retention_search_query_log_days; an invalid period keeps 90 days and writes a
+  search.retention warning. Its job, search-query-log-retention, is registered: 00005060 needs no
+  edit for it.
 
 FILES:
   - supabase/migrations/00005001_seed_platform_params.sql: one new #region [erasure_retention]
-    with its own INSERT … ON CONFLICT DO NOTHING (Decision #274).
+    with its own INSERT … ON CONFLICT DO NOTHING (Decision #274). Move
+    retention_search_query_log_days into it and drop OPS4's [search_retention] region.
   - supabase/migrations/00001060_functions_org_account_lifecycle.sql:
     - schedule_freelancer_removal and schedule_account_deletion read the windows;
     - security.fn_retention_period(p_class text, p_country text) RETURNS interval;
-    - search.fn_prune_query_logs() and security.fn_prune_security_logs(). They live here, not in
-      00001400: §0.3.
+    - search.fn_prune_query_logs reads its period through security.fn_retention_period instead of
+      "default", keeping its fallback;
+    - security.fn_prune_security_logs(). The prunes live here, not in 00001400: §0.3.
   - supabase/migrations/00002510_permissions_function_grants.sql: the changed signature; the prune
     functions are service_role only.
   - supabase/migrations/00005060_seed_scheduled_jobs.sql: ONE row, security-log-retention, with
@@ -784,7 +616,8 @@ FILES:
     DeleteAccountBlock}.tsx: the two wordings.
   - apps/web/features/legal/core/content/privacy.ts: a new DRAFT version stating the explicit
     ≤ 30-day path (⚖️ pending legal review; Decision #270 versioning).
-  - supabase/probes/erasure_windows.sql (new).
+  - supabase/probes/erasure_windows.sql (new); extend supabase/probes/query_log_retention.sql for
+    the search prune rather than duplicating it.
   - Docs:
     - finance-model.md §17: remove the dials' "Not built yet" and name each key;
     - PRODUCT_SPEC.md: the "Two windows" bullet;
@@ -802,9 +635,10 @@ STEPS:
      - retention_dispute_years: default 6;
      - retention_consent_years: default 6, counted after the account ends;
      - retention_security_log_months: default 12;
-     - retention_search_query_log_days: default 90.
+     - retention_search_query_log_days: default 90 (already seeded by OPS4; move it, keep its
+       value and description).
      fn_retention_period reads the default plus the country's override, and refuses an unknown
-     class.
+     class. Switch search.fn_prune_query_logs to it.
   2. The windows.
      - schedule_account_deletion uses erasure_account_days.
      - schedule_freelancer_removal gains p_explicit boolean DEFAULT false. False is "switch to
@@ -812,9 +646,6 @@ STEPS:
        of the seller data: it uses erasure_account_days and records metadata.explicit.
      - A missing or invalid dial falls back to 30 days, the legal ceiling, never longer.
      - deletion_requests_window_check (scheduled_for > requested_at) still holds.
-  3. search.fn_prune_query_logs() deletes query_logs older than retention_search_query_log_days,
-     in batches. The job (daily 04:36) calls it with no arguments, so it reads the dial itself, and
-     any parameter (a batch size, say) must have a default.
   4. security.fn_prune_security_logs().
      - Null ip and user_agent on security.audit_logs older than retention_security_log_months.
        The rows stay, because some are consent and lifecycle records kept for the consent class.
@@ -829,7 +660,8 @@ STEPS:
   6. Probe erasure_windows.sql:
      - both windows follow their dials (change a dial inside the rollback and reschedule);
      - an explicit freelancer erasure lands at ≤ 30 days;
-     - each prune function deletes or blanks only the rows past its dial.
+     - each prune function deletes or blanks only the rows past its dial (the search prune in
+       query_log_retention.sql).
 
 SQL SESSION RULES: run probes with `deno task test:probes`. At most 2 SQL sessions on the one
 local DB at once, on disjoint migration files; announce each reset first. Finish with your own
@@ -840,8 +672,8 @@ finance-model §17 and PRODUCT_SPEC lose their "Not built yet" for the windows a
 ⚖️ mark stays). PRODUCT_MANAGEMENT §3.5. The privacy notice's draft version.
 
 ACCEPTANCE:
-  - erasure_windows.sql green. After a fresh reset, the dormant search-query-log-retention job is
-    registered (check ops.scheduled_jobs).
+  - erasure_windows.sql and query_log_retention.sql green. After a fresh reset, both retention
+    jobs are registered (check ops.scheduled_jobs).
   - Settings screenshots of both wordings at 1440 and 390 px; lifecycle route tests cover the flag.
   - `deno task test:probes` green; your own clean `deno task test:probes:fresh`.
 ```
@@ -861,19 +693,18 @@ CONTEXT:
   the team's split rule (Decision #336, ruling I1 (c); Decision #337, ruling M10 (b)).
   Already true:
   - Owner seats never reach this path: owns_workspaces already blocks scheduling
-    (fn_account_blockers, 00001060:220-241).
+    (fn_account_blockers, 00001060:184-268).
   - A cancelled deletion does not restore seats (IDG F3).
 
-🧑 DECISION — STOP before you write the freelancer scope.
-  The conflict:
-  - PRODUCT_MANAGEMENT §3.5 says "scheduling EITHER scope leaves every workspace seat at once".
-  - PRODUCT_SPEC says "scheduling an erasure leaves every team and business seat".
-  For the freelancer_profile scope ("switch to client"), the literal reading would also drop the
-  person's BUSINESS seats, which are the client side. Put this to me:
+🧑 DECISION — STOP before you write the freelancer scope (Decision #344 (n), unruled).
+  PRODUCT_SPEC and PRODUCT_MANAGEMENT §3.5 both say scheduling an account erasure leaves every
+  team and business seat. What the freelancer_profile scope ("switch to client") does to seats is
+  not ruled, and leaving every seat would also drop the person's BUSINESS seats, which are the
+  client side. Put this to me:
   Option A (recommended): the account scope leaves every team, business and enterprise seat. The
   freelancer_profile scope, and ERA2's explicit freelancer erasure, leave team seats only, because
   a team seat needs the freelancer persona (Decision #228 (A)).
-  Option B: both scopes leave every seat, as PRODUCT_MANAGEMENT reads literally.
+  Option B: both scopes leave every seat.
   Option C: only the account scope leaves seats; switching to client keeps team seats until the
   90-day erasure runs.
 The account scope needs no ruling: build it first.
@@ -881,7 +712,7 @@ The account scope needs no ruling: build it first.
 FILES:
   - supabase/migrations/00001020_functions_org_entities.sql §13: a new
     org.fn_leave_all_seats(p_user uuid, p_kinds text[]) beside fn_rebalance_departed_stake
-    (:2667). It reuses the removal block's effects (:2795-2815).
+    (:2699). It reuses the removal block's effects (:2822-2850).
   - supabase/migrations/00001060_functions_org_account_lifecycle.sql: schedule_account_deletion;
     schedule_freelancer_removal per the ruling; get_account_lifecycle lists the seats that would be
     left.
@@ -1056,7 +887,7 @@ features/devtools.
 CONTEXT:
   Findings: IW-M11 / K8.
   - SsoPanel renders on /login and in the SignInPrompt dialog.
-  - signInWithSSO is SAML-only, and [auth.sso.saml] is commented out (supabase/config.toml:286),
+  - signInWithSSO is SAML-only, and [auth.sso.saml] is commented out (supabase/config.toml:356),
     so every domain is refused.
   - That makes it a dead control, against root CLAUDE.md §3.11.
   Ruled: hide the SSO panel now. The roadmap is verified domains → SAML through GoTrue → JIT seats,
@@ -1064,20 +895,22 @@ CONTEXT:
 
 FILES:
   - packages/backend/core/env.ts and env.test.ts: AUTH_SSO_ENABLED, a boolean, default false. The
-    EMBEDDINGS_ENABLED precedent is SYSTEM_ARCHITECTURE.md:808 and :3726.
-  - apps/web/features/auth/islands/LoginForm.island.tsx (:58) and SignInPrompt.island.tsx (:98):
+    EMBEDDINGS_ENABLED precedent is SYSTEM_ARCHITECTURE.md:833 and :4527.
+    packages/backend/core/env-manifest.ts:277 already lists it as planned("AUTH_SSO_ENABLED", …,
+    "SSO1"): make it a live entry.
+  - apps/web/features/auth/islands/LoginForm.island.tsx (:62) and SignInPrompt.island.tsx (:98):
     render <SsoPanel> only when a server-resolved ssoEnabled prop is true.
   - Whatever mounts them (apps/web/routes/(public)/(auth)/login.tsx and the SignInPrompt host):
     resolve the flag server-side and pass it down. Islands stay dumb.
-  - apps/web/routes/api/auth/sso.ts and AuthBackendService.resolveSso (:924+): refuse 404 while the
+  - apps/web/routes/api/auth/sso.ts and AuthBackendService.resolveSso (:1221+): refuse 404 while the
     flag is off.
   - An `sso` axis in apps/web/features/devtools/core/dev-context.ts,
     components/DevContextPanel.tsx and apps/web/utils/dev-seam.ts: auto (follow
     AUTH_SSO_ENABLED), on or off. Cookie pj.dev.sso, honoured only under DENO_ENV=development. The
     embeddings axis is the template.
   - Docs: .env.example; SYSTEM_ARCHITECTURE.md §Environment Variable Contract and §Authentication
-    (:2748-2751); PRODUCT_SPEC.md §Authentication (:3250-3255); ROUTING.md (/api/auth/sso answers
-    404 while off).
+    (:2430-2435, :3250-3253); PRODUCT_SPEC.md §Authentication (:3926-3930); ROUTING.md
+    (/api/auth/sso answers 404 while off).
 
 STEPS:
   1. Reproduce: /login shows "Enterprise SSO", and every domain answers with a refusal.
@@ -1122,9 +955,9 @@ CONTEXT:
 FILES:
   - supabase/migrations/00001020_functions_org_entities.sql:
     - fn_vault_capabilities_for (:691): an archived entity projects to 'view' only;
-    - set_workspace_status (:1463): call fn_sync_vault_permissions(kind, id) after archive AND
+    - set_workspace_status (:1495): call fn_sync_vault_permissions(kind, id) after archive AND
       after restore;
-    - fn_team_archive_blockers (:1302): add wallet_balance and pending_funds.
+    - fn_team_archive_blockers (:1334): add wallet_balance and pending_funds.
   - supabase/probes/team_archive_money.sql (new). Keep business_lifecycle.sql and
     vault_sync_backstop.sql green.
   - packages/types/workspace (the archive blocker codes, if they are typed) and the console's
@@ -1179,9 +1012,13 @@ UI. Any time.
 
 CONTEXT:
   Findings: IW-M12. There is no MFA and no step-up; [auth.mfa.totp] is off
-  (supabase/config.toml:343-361).
+  (supabase/config.toml:402-409).
   Ruled: opt-in TOTP for everyone (Decision #336, ruling I3 (a)). The mandatory AAL2 step-up is
   MFA2.
+  No email work is left: AU5 (Decision #448) wired GoTrue's mfa_factor_enrolled and
+  mfa_factor_unenrolled notices, which fire once enrolment is on.
+  scripts/auth-parity.ts (SAC6, #465) pins auth.mfa.totp.enroll_enabled and verify_enabled as
+  "off until MFA1".
 
 🧑 DECISION — STOP before step 5. Ruling I3 makes AAL2 mandatory for withdrawals and erasure, so a
 person who loses their authenticator is locked out of both. GoTrue has no recovery codes. Put this
@@ -1195,7 +1032,8 @@ to me:
 
 FILES:
   - supabase/config.toml: [auth.mfa] max_enrolled_factors; [auth.mfa.totp] enroll_enabled = true
-    and verify_enabled = true. Note the matching hosted settings in SYSTEM_ARCHITECTURE.
+    and verify_enabled = true. Note the matching hosted settings in SYSTEM_ARCHITECTURE's hosted
+    auth runbook, and flip the two MFA rows in scripts/auth-parity.ts (and its fixture/test).
   - packages/backend/core/access-token.ts and its tests: surface aal, amr and session_id from the
     verified claims. packages/types/auth/user-context.ts: UserContext gains aal.
   - packages/backend/services/auth/MfaBackendService.ts (new): factors, enroll, challenge + verify,
@@ -1206,7 +1044,7 @@ FILES:
   - apps/web/features/settings/core/settings-registry.ts: an account.two-step entry.
   - apps/web/features/settings/components/sections/account/TwoStepBlock.tsx (new). Enrol with the
     QR image GoTrue returns plus the secret, and a CodeField to confirm. List and remove factors.
-    The CSP already allows data: images (apps/web/utils/csp.ts:80).
+    The CSP already allows data: images (apps/web/utils/csp.ts:88).
   - apps/web/features/auth/components/StepUpDialog.tsx (new; MFA2 uses it too): the TOTP
     challenge.
   - An `aal` axis in apps/web/features/devtools/* and apps/web/utils/dev-seam.ts, for stub auth:
@@ -1262,13 +1100,13 @@ CONTEXT:
 
 THE SIX ACTIONS (routes → SQL doors):
   - Withdrawal: POST /api/wallet/payouts, and /api/wallet/action with withdraw →
-    finance.begin_payout (00001240:248; MFA3).
+    finance.begin_payout (00001240:312; MFA3).
   - Payout-account change: /api/finance/connect/onboarding and /refresh →
-    finance.record_payout_account (00001230:1464; MFA3).
+    finance.record_payout_account (00001230:1550; MFA3).
   - Ownership transfer: /api/workspace/transfer-ownership → org.transfer_workspace_ownership
-    (00001020:3037).
+    (00001020:3069).
   - Co-owner grant, a reserved right given to a named admin (Decision #238): /api/workspace/member →
-    org.fn_assert_reserved_change (00001020:877). Only when the change ADDS a reserved right; giving
+    org.fn_assert_reserved_change (00001020:897). Only when the change ADDS a reserved right; giving
     one up needs no step-up.
   - Erasure: POST /api/user/lifecycle, account scope and ERA2's explicit freelancer erasure →
     org.schedule_account_deletion and schedule_freelancer_removal(p_explicit) (00001060).
@@ -1349,7 +1187,7 @@ PROMPT MFA3: AAL2 inside the payout doors
 
 ROLE: Postgres payments engineer. SQL lane, inside the F track's DB window on 00001240 and
 00001230: run only when the coordinator hands this prompt the slot (§0.3).
-⏳ MFA2 (the helper), F·DB2 and DB6 (00001230), and the F track's serial chain on 00001240.
+⏳ MFA2 (the helper), F·DB6 (00001230), and the F track's serial chain on 00001240.
 
 CONTEXT:
   Findings: IW-M12.
@@ -1359,8 +1197,8 @@ CONTEXT:
   aal1 token can call them directly, so the SQL door is the real gate.
 
 FILES:
-  - supabase/migrations/00001240_functions_finance_money_movement.sql: begin_payout (:248).
-  - supabase/migrations/00001230_functions_finance_stripe.sql: record_payout_account (:1464).
+  - supabase/migrations/00001240_functions_finance_money_movement.sql: begin_payout (:312).
+  - supabase/migrations/00001230_functions_finance_stripe.sql: record_payout_account (:1550).
   - supabase/probes/step_up_guard.sql: extend it. Keep payout_lifecycle.sql and
     identity_payout_doors.sql green, setting aal2 claims wherever they withdraw.
   - packages/backend/services/finance/*: touch a call site only if a refusal needs mapping;
@@ -1395,8 +1233,8 @@ ACCEPTANCE:
 ```text
 PROMPT MIN1: Under 16, no marketing email and no non-essential cookies, under one global rule
 
-ROLE: Comms and privacy engineer. App lane, plus one SQL step in the notify path (⏳ M·notify
-engine, §0.4).
+ROLE: Comms and privacy engineer. App lane, plus one SQL step in the notify engine's
+00001310 (never beside a COMMS NT prompt on that file, §0.4).
 
 CONTEXT:
   Findings: K9 / F8 (ii).
@@ -1404,14 +1242,14 @@ CONTEXT:
   marketing email and no non-essential cookies under 16 (Decision #336, ruling I4). Wave 1.1
   already corrected PRODUCT_SPEC's Art. 9 rationale to Art. 5(1)(c).
   Today:
-  - the comms 'marketing' category is opt-in (00005010:126-128), and the newsletter is double
+  - the comms 'marketing' category is opt-in (00005010:145-151), and the newsletter is double
     opt-in (community.newsletter_subscriptions);
   - the cookie inventory (features/legal/core/content/cookies.ts) lists only essential and
     preference cookies: none is non-essential.
 
 FILES:
-  - The notify path's channel resolution: supabase/migrations/00001310_functions_comms_
-    notifications.sql today, or the M track's notify engine if it has landed. A recipient under 16
+  - The notify engine's channel resolution (COMMS NT1, 2f9a9bb6): supabase/migrations/
+    00001310_functions_comms_notifications.sql, pinned by notify_engine.sql. A recipient under 16
     (org.fn_age_years(dob, timezone) < 16) gets no 'marketing' category on any channel.
   - The newsletter subscribe door (community: 00001320, or its service): refuse a signed-in
     account under 16, with the same sentence the UI shows.
@@ -1421,7 +1259,7 @@ FILES:
     class (essential or preference). Document beside the inventory that a new non-essential cookie
     must check the age band first.
   - The age axis in apps/web/features/devtools/* and apps/web/utils/dev-seam.ts gains a 13 to 15
-    position (DEV_AGE_RESTRICTIONS, dev-context.ts:964), so the band can be simulated.
+    position (DEV_AGE_RESTRICTIONS, dev-context.ts:1262), so the band can be simulated.
   - supabase/probes/under16_marketing.sql (new).
   - Docs: PRODUCT_SPEC.md, the age-bands paragraph (remove "Not built yet for the under-16 rule");
     documentation/database/comms/Functions.md.
@@ -1464,8 +1302,9 @@ CONTEXT:
     assumes full legal, contractual and IP-indemnification liability;
   - the minor never holds money;
   - no raw guardian ids are stored.
-  Today the "off" state is trg_workspace_member_adult's hard refusal (00001010:784). Despite the
-  ruling's "existing off flag", NO flag exists (§0.5 (d)): this prompt creates it.
+  Today the "off" state is trg_workspace_member_adult's hard refusal (00001010:1011). Despite the
+  ruling's "existing off flag", NO flag exists (#336 corrected at the #344 merge): this prompt
+  creates it.
 
 🧑 DECISION — STOP before you admit a minor to a TEAM. Teams are the freelancer side of the market
 (Decision #228 (A), org.fn_assert_team_persona), and nobody under 18 holds a freelancer persona
@@ -1528,8 +1367,7 @@ ACCEPTANCE:
 PROMPT RLS1: org.users_public rows follow profile visibility
 
 ROLE: Postgres RLS engineer and backend-services engineer. SQL lane, LAST in the track.
-⏳ the F, P and C SQL steps; F·SV2, SV3 and SV5 (live-wallet.ts); and M·N1 (the messaging
-services): §0.4.
+⏳ the F, P and C SQL steps; F·SV5 and RED WP2 (live-wallet.ts): §0.4.
 
 CONTEXT:
   Findings: IW-M13. The users_public SELECT policy admits every signed-in account to every row
@@ -1541,11 +1379,14 @@ CONTEXT:
 FILES:
   - supabase/migrations/00002010_policies_org.sql: the policy at :10-13 becomes own row OR
     org.fn_profile_visible('user', user_id).
-  - The invoker readers, each moved to a definer or onto org.get_party_cards (00001040:914):
+  - The invoker readers, each moved to a definer or onto org.get_party_cards (00001040:1067).
+    Since #481 that card answers only people org.fn_party_visible admits (visible, or a shared
+    conversation, notification, workspace or project), so a reader moved onto it inherits that
+    rule: check that each surface's people share one of those contexts with the viewer.
     - org.view_business_staff (00003001:7);
     - projects.get_dashboard_projects (00001100:550);
-    - catalogue.get_client_pipeline (00001170:1411);
-    - finance.list_ledger (00001210:3199);
+    - catalogue.get_client_pipeline (00001170:1760);
+    - finance.list_ledger (00001210:4024);
     - the service reads of other people's rows in packages/backend/services/**. Grep
       users_public: finance/live-wallet.ts and wallet-ledger.ts, messaging/live-*.ts,
       projects/live-*.ts, files/live-library.ts, explore/*, editorial,
@@ -1586,7 +1427,7 @@ ACCEPTANCE:
 PROMPT LOW1: The remaining Low identity findings
 
 ROLE: Full-stack engineer. App lane, any time; file-disjoint from the SQL chain, but never at the
-same time as OWN2 or SSO1 (features/auth).
+same time as SSO1 (features/auth).
 
 CONTEXT: IDENTITY_AND_WORKSPACES_AUDIT §7, the Low list. No ruling is needed. Check each item
 against the code before you touch it: Wave 0 closed IW-L1, IW-L2, the teams.visibility CHECK and
@@ -1600,15 +1441,17 @@ ITEMS (one small commit each):
   3. IW-L5: GET /api/settings/[section] serves the billing, verification and scheduling payloads to
      a minor. Gate the adult-only sections server-side (settings-ssr.ts, the registry's adultOnly)
      with refuseIfRestricted.
-  4. PII in the URL. joinCompletionTarget (auth-routing.ts:95-101) puts the email and names in
-     /join's query string. /join is reached already authenticated, so read the prefill from the
+  4. PII in the URL. joinCompletionTarget (auth-routing.ts:141-155) puts the email and names in
+     /join's query string (#448 already took the email out of the recovery link; only /join is
+     left). /join is reached already authenticated, so read the prefill from the
      session's own claims on the server (oauthPrefillFromClaims), and keep only the oauth marker and
      redirectTo in the URL.
   5. /join ignores the server's lock cookie: age-lock.ts uses per-tab sessionStorage. The page
      should read pj_join_age_lock on the server and render the locked state.
   6. /register and /reset sit in AUTH_PATHS (redirect.ts:27-36) with no route. Either 301 /register
      → /join and /reset → /forgot-password, or drop them from the list.
-  7. safeRedirect accepts /api/* as a return target: refuse it.
+  7. safeRedirect (features/auth/core/redirect.ts:64) accepts /api/* as a return target: refuse
+     it.
   8. IW-L6: fn_profile_visible('enterprise', id) answers true for any active enterprise, which makes
      it an existence oracle. If no private enterprise page exists, record that as intended in
      database/org/Functions.md. A SQL change needs a ruling.
@@ -1689,6 +1532,9 @@ built yet):
   aml.* = false, an operator role row, and a review-queue table with no writer. Counsel's sign-off
   switches nothing on.
   Option B: one compliance track owns all of it after Wave 2.
+  LEGAL_COMPLIANCE LG7 carries this stop as its (a). On A, X2 builds only the dormant programme
+  (the aml.* flags, the operator role, a review queue with no writer), and LG7 builds the signals,
+  their reader and the Safety Hold. On B, LG7 builds both, and LG7 marks X2 done.
 
 ACCEPTANCE: the ruling is recorded, and PRODUCT_SPEC's marker names the prompts that will build it.
 ```
@@ -1715,7 +1561,7 @@ FILES:
   - architecture/IDENTITY_AND_WORKSPACES_AUDIT.md: add a Status
     column, reading "Fixed by <prompt or Wave 0 commit>" or "Open, owner <track>".
   - The #336 row (each flag resolved, with its ruling and prompt), and #87 (b), (c), which OWN1
-    closes.
+    closed (96599cea).
 
 SPEC: rollup, not restatement (documentation/CLAUDE.md rule 2).
   - Every IW-*, K* and F* item ends Fixed, or Open with an owner.
@@ -1727,3 +1573,22 @@ ACCEPTANCE:
     shows no "Not built yet" without an owner.
   - The status columns have no blank cell.
 ```
+
+---
+
+## 13. Map of merged files
+
+`readiness/SECURITY_ACCESS_BUILD_PROMPTS.md` (the PRODUCTION_READINESS §C rollup) merged here on
+2026-11-23 and was deleted. Read it with
+`git show f2e25929:documentation/readiness/SECURITY_ACCESS_BUILD_PROMPTS.md`.
+
+| Old §                            | Went                                                                                                                                                              |
+| :------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Header (scope, rollup note)      | The header block's scope sentence                                                                                                                                 |
+| §0.1 Row → work order            | §0.6 (open rows in the table; done rows in its first bullet)                                                                                                      |
+| §0.2 Run order, score projection | §0.1's "Any time (you)" row for the hosted runbook; every SAC slot is done; the score projection is dropped (PRODUCTION_READINESS's Scoreboard is the live score) |
+| §0.3 Human stops                 | §0.5 (HK1, ERA3, ERA4, MFA1, MIN2, ⚖️); SAC5's stop ruled (#444 (c)), done; "no agent changes a hosted setting" in §0.1                                           |
+| §1.1 Standard header             | §1: the deny-by-default EXECUTE rule, the shared-checkout line and the red-unit-test line                                                                         |
+| §1.2 Readiness addendum          | §1, the READINESS rule                                                                                                                                            |
+| §2 Deltas                        | Folded into HK1, ERA1, SSO1, MFA1, MIN1, RLS1 and LOW1; ERA2–ERA4, MFA2, MFA3 and MIN2 had none; P2d's went to `TRUST_SAFETY_BUILD_PROMPTS.md`                    |
+| §3 SAC1–SAC6                     | Done, §0.0                                                                                                                                                        |

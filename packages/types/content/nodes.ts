@@ -2,9 +2,10 @@
  * content.nodes — the typed body AST every editorial surface renders (legal, help, changelog,
  * articles).
  *
- * Product copy is not markdown and never raw HTML (PUBLIC_ROUTES_BUILD_PROMPTS §0.2 "Content
- * storage"): a body is a small, closed set of block nodes whose text is a list of inline runs. The
- * renderer (`@projective/ui/display/editorial` → `ContentRenderer`) maps each node to one semantic
+ * Product copy is not markdown and never raw HTML (Decision #274; the retired
+ * PUBLIC_ROUTES_BUILD_PROMPTS §0.2 "Content storage", text at f2e25929): a body is a small, closed
+ * set of block nodes whose text is a list of inline runs. The renderer
+ * (`@projective/ui/display/editorial` → `ContentRenderer`) maps each node to one semantic
  * element, so there is no parser dependency, no `dangerouslySetInnerHTML`, and nothing an author can
  * write that turns into markup the platform did not choose.
  *

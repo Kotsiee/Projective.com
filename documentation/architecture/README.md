@@ -32,29 +32,13 @@ named in the last column (`reference/decisions/`).
 | Security, moderation & the AI pipeline, and the safety node (its runbook and node prompts are the prompts file's §8)                                                                              | [`SECURITY_MODERATION_AND_AI_GAPS.md`](SECURITY_MODERATION_AND_AI_GAPS.md)                           | [`TRUST_SAFETY_BUILD_PROMPTS.md`](TRUST_SAFETY_BUILD_PROMPTS.md)   | #340, #345 |
 | Redundancy, `@projective/ui` adoption, caching and doctrine (sign-off questions Q1–Q17), and modals and overlays (§9)                                                                             | [`PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md`](PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md) | [`OPTIMIZATION_BUILD_PROMPTS.md`](OPTIMIZATION_BUILD_PROMPTS.md)   | #341, #404 |
 
-### Progress at `8a3fd595` (re-verified in code 2026-11-12, Decision #412)
+### Progress
 
-Each prompts file's §0 holds the per-prompt status line and its evidence. The execution batches,
-with what may run in parallel, are [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) §B.5.
-
-| Prompts file                 | Prompts | Done | Partly | Not started | Runnable now (every wait met; §B.5 orders them)              |
-| :--------------------------- | :------ | :--- | :----- | :---------- | :----------------------------------------------------------- |
-| FBP · finance                | 39      | 9    | 4      | 26          | DB2 (running 2026-11-12) → DB3 → DB6 · DB16 · DB12 · UI1     |
-| SBP · subscriptions          | 12      | 1    | 2      | 9           | S1 · X1 → X2                                                 |
-| PMBP · projects              | 14      | 0    | 2      | 12          | WP1 · D7a and WP8 once the open stage-intensity change lands |
-| SCHBP · scheduling           | 11      | 6    | 1      | 4           | WP7 (stops at step 6) → WP9 · WP10                           |
-| IBP · identity               | 20      | 2    | 0      | 18          | HK1 (after #410 (c)) · SSO1 → LOW1 · MFA1 → MIN1             |
-| COMMS · messaging, search    | 15      | 2    | 4      | 9           | MS2 · NT2 (stops at #410 (g)) · SR1                          |
-| TRUST · trust & safety       | 20      | 2    | 0      | 18          | R1 (after #148 (g)) → R4 → R5 ∥ P1d → R3 → P2d               |
-| OPT · optimisation           | 19      | 2    | 0      | 17          | WP17 · Q9 · WP10b · Q12 (stops at step 3)                    |
-| **Architecture total**       | 150     | 24   | 13     | 113         |                                                              |
-| Catalogue rebuild (`flows/`) | 18      | 18   | 0      | 0           | —                                                            |
-| Public routes (`flows/`)     | 16      | 16   | 0      | 0           | — (L1–L4 partly superseded by #349)                          |
-
-Built without being marked until this check: SCH-WP3, WP4a, WP4b, WP5 and WP8 (`ac19de8f`), COMMS
-NT3's mail transport (`527b4cd6`), and parts of PM-WP4b, PM-WP8, SCH-WP10 and F·UI6. The trust
-track's safety-node repo (`Projective-Safety`, §8) is not on this machine, so its N0–N6 are
-unverified.
+Each prompts file holds open work only. Its §0 opens with a Done ledger, and every open prompt has
+one status line. The per-file counts, and what can run now, are in the registry:
+[`../reference/build-prompts.md`](../reference/build-prompts.md) §3 (verified in code 2026-11-23 at
+`f2e25929`, Decision #526). A session that runs a prompt prunes it in the same change, under that
+page's §2. The 2026-11-12 counts were Decision #412's.
 
 ### Short names and IDs
 
@@ -131,7 +115,8 @@ and not resolved:
 ### Retired and merged files
 
 Recover any of these with `git show <commit>:documentation/architecture/<file>`. Decision rows still
-cite their old names, as history.
+cite their old names, as history. Build-prompts files retired from 2026-11-23 on, in any folder, are
+listed in [`../reference/build-prompts.md`](../reference/build-prompts.md) §4.
 
 | File                                                                                                                                                                                                                          | Went                                                                    | Commit to read it at |
 | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- | :------------------- |
@@ -150,6 +135,10 @@ cite their old names, as history.
   place (its Status column and evidence) rather than adding a second file that restates the first.
 - **Merge, then delete.** A file folded into another is deleted; the survivor ends with a map of the
   old sections, and its IDs keep their names. No redirect stubs.
+- **A prompts file holds open work only.** A prompt that lands leaves its file in the same change;
+  its §0 Done ledger keeps one line and the commit to read it at. A readiness section's rollup goes
+  in its domain's prompts file, not in a second file that patches it (Decision #526,
+  [`../reference/build-prompts.md`](../reference/build-prompts.md)).
 - **Rulings go to the decision log.** An audit keeps its option analysis (the only home of the
   rationale), each with a `Ruled:` or `Open:` line; it never copies a decision row.
 - **Work goes to the build prompts.** An audit's backlog is a remediation map

@@ -3,10 +3,10 @@ import { assert, assertEquals } from "@std/assert";
 import { type Browser, type BrowserContext, chromium, type Page } from "npm:playwright-core@1.56.1";
 
 /**
- * landing.spec — the front page's and `/features`' launch smoke (work order L6 of
- * `flows/PUBLIC_ROUTES_BUILD_PROMPTS.md`; `flows/LANDING.md` §4.0, §4.4, §4.10, §4.11, §4.12), after
- * Decision #349 made `/` a guest's Explore Home and moved the landing's demo stage, Payment
- * protection, Pricing and questions to `/features`:
+ * landing.spec — the front page's and `/features`' launch smoke (work order L6 of the retired
+ * `flows/PUBLIC_ROUTES_BUILD_PROMPTS.md`, text at f2e25929; `flows/LANDING.md` §4.0, §4.4, §4.10,
+ * §4.11, §4.12), after Decision #349 made `/` a guest's Explore Home and moved the landing's demo
+ * stage, Payment protection, Pricing and questions to `/features`:
  *
  * - **SEO** on `/` and `/features`: the `<title>` and meta description ("escrow" in the front
  *   page's), one canonical (the page's path, no query), `index, follow`, the Open Graph block and

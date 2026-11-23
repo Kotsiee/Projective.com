@@ -1,52 +1,65 @@
 # Projects Build Prompts — closing USER_FLOWS PJ: Projects, collaboration, files & calendar
 
-> **Status: WORK ORDERS, not binding.** Claude Code prompts that take every section of the
-> [USER_FLOWS.md](USER_FLOWS.md) **PJ** cluster to 100%. That is 77 flows in eleven sections; the
-> cluster scores **62%** on 2026-11-19. Written 2026-11-19 against `main` @ `e1ff027b`. Every open
-> row and every noted ✅ row was re-checked in code that day by five read-only audits. `main` was
-> `6bba264d` when this file was written. Its commits since `e1ff027b` are CK1's seed and docs, SR2's
-> search, RV1's readiness note, and OPS2 (`dd1ee9a2`), which flipped PJ-73 to ✅. None of them
-> touches another file cited here. Seventeen PJ row texts are stale (§0.4).
+> **Status: WORK ORDERS, not binding.** Claude Code prompts that take the
+> [USER_FLOWS.md](USER_FLOWS.md) **PJ** cluster (77 flows in eleven sections; 64 % at `f2e25929`) to
+> 100 % under the readiness rule (Decision #444). Most PJ rows already have work orders in their
+> domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
+> (§0.2), and holds the prompts no domain owns.
 >
-> **Rollup, not restatement.** Most PJ rows already have work orders:
+> **Verified against code 2026-11-23 at `f2e25929`.** 26 open, 0 partly done, 0 done (§0 ledger).
+> Runnable now: ST1–ST6, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
-> - [`PM_BUILD_PROMPTS.md`](../architecture/PM_BUILD_PROMPTS.md) (PM): the board, the money exits,
->   workload and the dependency engine.
-> - [`COMMS_BUILD_PROMPTS.md`](../architecture/COMMS_BUILD_PROMPTS.md) (COMMS) and
->   [`COMMS_DELIVERY_BUILD_PROMPTS.md`](COMMS_DELIVERY_BUILD_PROMPTS.md) (CD): chat and
->   notifications.
-> - [`TRUST_SAFETY_BUILD_PROMPTS.md`](../architecture/TRUST_SAFETY_BUILD_PROMPTS.md) (T&S) and
->   [`SAFETY_MODERATION_BUILD_PROMPTS.md`](SAFETY_MODERATION_BUILD_PROMPTS.md) (SAFE): scanning,
->   masking and reports.
-> - [`OPERATIONS_BUILD_PROMPTS.md`](OPERATIONS_BUILD_PROMPTS.md) (OPS): jobs.
-> - [`SECRETS_CONFIG_BUILD_PROMPTS.md`](SECRETS_CONFIG_BUILD_PROMPTS.md) (CFG): keys.
-> - [`MONEY_BUILD_PROMPTS.md`](MONEY_BUILD_PROMPTS.md) (MONEY) owns the serial SQL lane for money
->   files. [`FINANCE_BUILD_PROMPTS.md`](../architecture/FINANCE_BUILD_PROMPTS.md) (FBP) holds the
->   finance prompts that lane runs.
->
-> None of PM's prompts has landed since it was last verified (2026-11-12, `8a3fd595`), and many of
-> their premises have moved. This file links to all of these, adds only what changed (§2), and
-> writes new prompts for the gaps no work order covers:
->
-> | Group   | Covers                                |
-> | :------ | :------------------------------------ |
-> | ST1–ST6 | Stages and staffing                   |
-> | TK1–TK2 | Ticket funding                        |
-> | EX1–EX4 | Completion, exit and disputes         |
-> | CH1–CH4 | Chat                                  |
-> | NO1–NO4 | Notices                               |
-> | FL1–FL4 | Files                                 |
-> | LP1     | The live-provider proof, run with you |
-> | PJZ     | The closing sweep                     |
+> **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
+> (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
+
+**Rollup, not restatement.** The other work orders these rows use:
+
+- [`PM_BUILD_PROMPTS.md`](../architecture/PM_BUILD_PROMPTS.md) (PM): the stage guards, the money
+  exits, workload, the dependency engine and the board's addresses. Its prompts are pasted under its
+  own header.
+- [`COMMS_BUILD_PROMPTS.md`](../architecture/COMMS_BUILD_PROMPTS.md) (COMMS, which holds the CD
+  prompts too): chat, notifications and the hosted send, CD2.
+- [`TRUST_SAFETY_BUILD_PROMPTS.md`](../architecture/TRUST_SAFETY_BUILD_PROMPTS.md) (T&S, which holds
+  LK1 and the rest of the safety prompts): scanning, masking and reports.
+- [`OPERATIONS_BUILD_PROMPTS.md`](OPERATIONS_BUILD_PROMPTS.md) (OPS, which holds the CFG prompts):
+  jobs and keys.
+- [`FINANCE_BUILD_PROMPTS.md`](../architecture/FINANCE_BUILD_PROMPTS.md) (FBP, which holds the MR
+  prompts too): the finance prompts, the serial SQL lane for money files (§0.1) and the
+  PRODUCTION_READINESS §F row map (§0.7).
+- [`IDENTITY_BUILD_PROMPTS.md`](../architecture/IDENTITY_BUILD_PROMPTS.md), which holds the SAC
+  prompts.
+
+| Group   | Covers                                |
+| :------ | :------------------------------------ |
+| ST1–ST6 | Stages and staffing                   |
+| TK1–TK2 | Ticket funding                        |
+| EX1–EX4 | Completion, exit and disputes         |
+| CH1–CH4 | Chat                                  |
+| NO1–NO4 | Notices                               |
+| FL1–FL4 | Files                                 |
+| LP1     | The live-provider proof, run with you |
+| PJZ     | The closing sweep                     |
+
+Paste §1.1, then the prompt, then §1.2 with the prompt's rows. A prompt marked 🧑 DECISION stops at
+the named step; ⚖️ builds behind a switch that stays off. Migrations are edited in place. Each
+prompt's CONTEXT was verified at `e1ff027b` on 2026-11-19: re-check every cite.
 
 ---
 
 ## 0. Map, run order and stops
 
+### 0.0 Done
+
+No prompt in this file has landed yet. A prompt that lands gets a row here.
+
+| ID | What landed | Commit | Text at |
+| :- | :---------- | :----- | :------ |
+
 ### 0.1 Row → work order
 
-Rows not listed are ✅ with no note: PJ-01, 03, 05, 06, 08, 12, 16, 18, 19, 24, 28, 41, 42, 45, 51,
-53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513). PJ-14 and PJ-74 are ⏸ (§0.5).
+Rows not listed are ✅ with no note: PJ-01, 03, 05, 06, 08, 12, 16, 18, 19, 24, 25 (PM-WP1,
+`07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513). PJ-14 and
+PJ-74 are ⏸ (§0.4).
 
 **Project setup** (90%)
 
@@ -74,31 +87,30 @@ Rows not listed are ✅ with no note: PJ-01, 03, 05, 06, 08, 12, 16, 18, 19, 24,
 | PJ-20 | ✅ · High · UAT   | **ST5**                           | Seats and participants are written only through doors (note clears)           |
 | PJ-21 | 🟡 · Crit · UAT   | PM-WP4b step 3 (⏳ DB6, WP4a)     | A removal refunds or splits the held escrow by the state of the work          |
 
-**Tickets & delivery** (51%)
+**Tickets & delivery** (59%)
 
-| Row   | Now · Crit · Gate | Work order                              | The row flips (or its note clears) when                                                                      |
-| :---- | :---------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------- |
-| PJ-22 | ✅ · Crit · MVP   | PM-P6 (shrunk, §2)                      | One price rule: a ticket's own price applies only to a single-stage ticket (note clears)                     |
-| PJ-23 | 🟡 · Crit · MVP   | **TK1** → **TK2**                       | A payee sees which stages are prepaid; the funding line, basket and Buy now are driven by wallet and by card |
-| PJ-25 | ❌ · Crit · UAT   | PM-WP1 + OPS §2.1 D0–D8 (🧑 D3)         | The sweep runs enabled: locked, re-checked, logged, notified                                                 |
-| PJ-26 | 🟡 · Crit · MVP   | PM-WP6 (🧑 PM #8)                       | Only the move matrix's roles move a ticket; `canMove` is a server flag                                       |
-| PJ-27 | 🟡 · Crit · MVP   | PM-WP9                                  | Drafts are private, in RLS and in realtime; inserts go through doors; draft + files are atomic               |
-| PJ-29 | 🟡 · Crit · MVP   | PM-D7a (+ the §2 capacity step) → PM-P6 | The next stage is validated, and the assignee's capacity and seat are checked there                          |
-| PJ-30 | 🟡 · Crit · MVP   | PM-S3 (⏳ D7a)                          | A stage's status shows submitted, approved and revisions                                                     |
-| PJ-31 | ❌ · Crit · UAT   | PM-GH1 (MONEY Wave 2)                   | A silent client's delivery auto-approves on its timer                                                        |
-| PJ-32 | ❌ · Normal · UAT | PM-WP6 step 6 (rewritten in §2)         | A stage's date moves only by an accepted proposal                                                            |
-| PJ-33 | ❌ · High · UAT   | PM-WP5a (🧑 PM #5)                      | A freelancer files a report and the resolver job runs                                                        |
-| PJ-34 | 🟡 · High · UAT   | PM-WP4b                                 | A touched ticket archives and settles; the SQL door enforces what the product's gate says                    |
-| PJ-35 | 🟡 · Normal · UAT | PM-WP8 step 3                           | `TicketMenu` copies `?tkv=tkt-…`                                                                             |
-| PJ-36 | 🟡 · High · MVP   | PM-WP8 steps 1–2                        | View state lives in the URL; `/board` and stage `tasks` turn away a type without one                         |
-| PJ-37 | ✅ · Normal · UAT | PM-WP8 step 1                           | The timeline API 404s for a Task (note clears)                                                               |
-| PJ-38 | 🟡 · High · UAT   | PM-WP9                                  | Slug segments, Zod, and an honest 404 instead of a shorter chain                                             |
+| Row   | Now · Crit · Gate | Work order                | The row flips (or its note clears) when                                                                      |
+| :---- | :---------------- | :------------------------ | :----------------------------------------------------------------------------------------------------------- |
+| PJ-22 | ✅ · Crit · MVP   | PM-P6                     | One price rule: a ticket's own price applies only to a single-stage ticket (note clears)                     |
+| PJ-23 | 🟡 · Crit · MVP   | **TK1** → **TK2**         | A payee sees which stages are prepaid; the funding line, basket and Buy now are driven by wallet and by card |
+| PJ-26 | 🟡 · Crit · MVP   | PM-WP6 (🧑 PM #8)         | Only the move matrix's roles move a ticket; `canMove` is a server flag                                       |
+| PJ-27 | 🟡 · Crit · MVP   | PM-WP9                    | Drafts are private, in RLS and in realtime; inserts go through doors; draft + files are atomic               |
+| PJ-29 | 🟡 · Crit · MVP   | PM-D7a (🧑 PM #9) → PM-P6 | The next stage is validated, and the assignee's capacity and seat are checked there                          |
+| PJ-30 | 🟡 · Crit · MVP   | PM-S3 (⏳ D7a)            | A stage's status shows submitted, approved and revisions                                                     |
+| PJ-31 | ❌ · Crit · UAT   | PM-GH1 (the money lane)   | A silent client's delivery auto-approves on its timer                                                        |
+| PJ-32 | ❌ · Normal · UAT | PM-WP6 step 6 (🧑 PM #10) | A stage's date moves only by an accepted proposal                                                            |
+| PJ-33 | ❌ · High · UAT   | PM-WP5a (🧑 PM #5)        | A freelancer files a report and the resolver job acts on it                                                  |
+| PJ-34 | 🟡 · High · UAT   | PM-WP4b                   | A touched ticket archives and settles; the SQL door enforces what the product's gate says                    |
+| PJ-35 | 🟡 · Normal · UAT | PM-WP8 step 3             | `TicketMenu` copies `?tkv=tkt-…`                                                                             |
+| PJ-36 | 🟡 · High · MVP   | PM-WP8 steps 1–2          | View state lives in the URL; `/board` and stage `tasks` turn away a type without one                         |
+| PJ-37 | ✅ · Normal · UAT | PM-WP8 step 1             | The timeline API 404s for a Task (note clears)                                                               |
+| PJ-38 | 🟡 · High · UAT   | PM-WP9                    | Slug segments, Zod, and an honest 404 instead of a shorter chain                                             |
 
 **Completion & exit** (65%)
 
 | Row   | Now · Crit · Gate | Work order                                    | The row flips when                                                                 |
 | :---- | :---------------- | :-------------------------------------------- | :--------------------------------------------------------------------------------- |
-| PJ-39 | 🟡 · Crit · UAT   | PM-WP4a (🧑 PM #3; §2 adds MR2's cancel path) | Fair Exit pays at least its floor: on a stage, on a ticket and in a project cancel |
+| PJ-39 | 🟡 · Crit · UAT   | PM-WP4a (🧑 PM #3; with MR2's project cancel) | Fair Exit pays at least its floor: on a stage, on a ticket and in a project cancel |
 | PJ-40 | ❌ · High · UAT   | **EX1** (🧑)                                  | A project completes at its last settlement or by the client, and its reviews open  |
 
 **Disputes** (38%)
@@ -113,17 +125,17 @@ The operator's ruling is MW-59; it is not this file's row.
 
 **Messaging** (57%)
 
-| Row   | Now · Crit · Gate | Work order                                                    | The row flips when                                                                            |
-| :---- | :---------------- | :------------------------------------------------------------ | :-------------------------------------------------------------------------------------------- |
-| PJ-47 | 🟡 · Crit · MVP   | COMMS MS3 (in flight) → MS5 step 3; **CH1**; T&S P2d (G5, G6) | Live delivery; edit and delete; persisted reactions; an archived room refuses at the database |
-| PJ-48 | 🟡 · Normal · UAT | **CH2** (🧑)                                                  | Team and business rooms exist, and only their people read them                                |
-| PJ-49 | 🟡 · Crit · MVP   | COMMS MS3; T&S SN3                                            | Live delivery; the group photo is screened                                                    |
-| PJ-50 | 🟡 · Normal · UAT | **CH3**                                                       | Every project DM is reachable and readable in place, and reading marks it read                |
-| PJ-52 | 🟡 · Normal · UAT | COMMS MS5                                                     | Mute and delete persist on the server                                                         |
-| PJ-54 | 🟡 · High · UAT   | SAFE LK1                                                      | A link nobody could check goes through `/exit`                                                |
-| PJ-56 | 🟡 · High · MVP   | **CH4**; T&S SN1                                              | Attachment inserts are checked; a voice note survives a reload; files are scanned             |
-| PJ-57 | 🟡 · Crit · MVP   | T&S P1d → P2a → P2b → P2c; SN6                                | Tiers 1–3, the marketplace window and the cooling-off run                                     |
-| PJ-58 | ❌ · High · PROD  | T&S R1 → R4 → R5 → R3 → R2                                    | A message or a file can be reported and triaged                                               |
+| Row   | Now · Crit · Gate | Work order                                        | The row flips when                                                                            |
+| :---- | :---------------- | :------------------------------------------------ | :-------------------------------------------------------------------------------------------- |
+| PJ-47 | 🟡 · Crit · MVP   | COMMS MS3 → MS5 step 3; **CH1**; T&S P2d (G5, G6) | Live delivery; edit and delete; persisted reactions; an archived room refuses at the database |
+| PJ-48 | 🟡 · Normal · UAT | **CH2** (🧑)                                      | Team and business rooms exist, and only their people read them                                |
+| PJ-49 | 🟡 · Crit · MVP   | COMMS MS3; T&S SN3                                | Live delivery; the group photo is screened                                                    |
+| PJ-50 | 🟡 · Normal · UAT | **CH3**                                           | Every project DM is reachable and readable in place, and reading marks it read                |
+| PJ-52 | 🟡 · Normal · UAT | COMMS MS5                                         | Mute and delete persist on the server                                                         |
+| PJ-54 | 🟡 · High · UAT   | T&S LK1                                           | A link nobody could check goes through `/exit`                                                |
+| PJ-56 | 🟡 · High · MVP   | **CH4**; T&S SN1                                  | Attachment inserts are checked; a voice note survives a reload; files are scanned             |
+| PJ-57 | 🟡 · Crit · MVP   | T&S P1d → P2a → P2b → P2c; SN6                    | Tiers 1–3, the marketplace window and the cooling-off run                                     |
+| PJ-58 | ❌ · High · PROD  | T&S R1 → R4 → R5 → R3 → R2                        | A message or a file can be reported and triaged                                               |
 
 **Notifications** (50%)
 
@@ -132,38 +144,39 @@ The operator's ruling is MW-59; it is not this file's row.
 | PJ-59 | ✅ · High · MVP    | PJZ                       | The note says what is true: email and push dispatch locally; the drawer polls until MS3 |
 | PJ-60 | 🟡 · Crit · UAT    | **NO2** + CD2             | Digests are mailed, and a hosted send is recorded                                       |
 | PJ-61 | 🟡 · Normal · PROD | COMMS NT5 + **NO3** + CD2 | SMS runs behind its configuration; dead devices are dropped; hosted VAPID keys          |
-| PJ-62 | ❌ · High · UAT    | COMMS MS4 (runnable now)  | `message.new` and `message.mention` notify, and a muted thread stays quiet              |
+| PJ-62 | ❌ · High · UAT    | COMMS MS4                 | `message.new` and `message.mention` notify, and a muted thread stays quiet              |
 
 **Files & assets** (60%)
 
 | Row   | Now · Crit · Gate | Work order                     | The row flips when                                                                                         |
 | :---- | :---------------- | :----------------------------- | :--------------------------------------------------------------------------------------------------------- |
 | PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2; **FL1**         | Uploads are scanned; the quota meters every byte; stale and deleted objects leave the bucket               |
-| PJ-64 | 🟡 · Normal · UAT | SAFE LK1                       | Offline or with no key, a link reads "unchecked" and goes through `/exit`                                  |
+| PJ-64 | 🟡 · Normal · UAT | T&S LK1                        | Offline or with no key, a link reads "unchecked" and goes through `/exit`                                  |
 | PJ-65 | 🟡 · Normal · UAT | **FL2** (+ you: provider apps) | A Drive file imports; the tree pages; the S3 form exists; every other connector is proved or ruled Planned |
 | PJ-66 | 🟡 · High · UAT   | **FL3** (🧑)                   | A `fil-` slug routes; a raw PDF is sandboxed; the inspector has its own CSP                                |
 | PJ-68 | 🟡 · High · UAT   | **FL4** (🧑)                   | A grant tells its grantee, and a share link cannot outlive its tier                                        |
 
 **Calendar, integrations & rooms** (68%)
 
-| Row   | Now · Crit · Gate | Work order                        | The row flips (or its note clears) when                                     |
-| :---- | :---------------- | :-------------------------------- | :-------------------------------------------------------------------------- |
-| PJ-69 | ✅ · High · UAT   | PJZ                               | The note says email and push are built locally and the hosted send is CD2's |
-| PJ-71 | 🟡 · High · UAT   | CD2 (with an invitation case, §2) | A hosted send of an invitation is recorded                                  |
-| PJ-72 | 🟡 · Normal · UAT | **NO4** + CD2                     | Guest mail honours bounces and suppression; a hosted send is recorded       |
-| PJ-75 | 🟡 · High · UAT   | CFG CFG2                          | Vault keys rotate with a rewrap                                             |
-| PJ-76 | 🟡 · High · UAT   | **LP1** (you)                     | Microsoft consent, busy read and mirror run on a live tenant                |
-| PJ-77 | 🟡 · High · UAT   | **LP1** (you)                     | A room on each provider is created, joined and read for presence            |
+| Row   | Now · Crit · Gate | Work order                     | The row flips (or its note clears) when                                     |
+| :---- | :---------------- | :----------------------------- | :-------------------------------------------------------------------------- |
+| PJ-69 | ✅ · High · UAT   | PJZ                            | The note says email and push are built locally and the hosted send is CD2's |
+| PJ-71 | 🟡 · High · UAT   | COMMS CD2 (an invitation case) | A hosted send of an invitation is recorded                                  |
+| PJ-72 | 🟡 · Normal · UAT | **NO4** + CD2                  | Guest mail honours bounces and suppression; a hosted send is recorded       |
+| PJ-75 | 🟡 · High · UAT   | OPS CFG2                       | Vault keys rotate with a rewrap                                             |
+| PJ-76 | 🟡 · High · UAT   | **LP1** (you)                  | Microsoft consent, busy read and mirror run on a live tenant                |
+| PJ-77 | 🟡 · High · UAT   | **LP1** (you)                  | A room on each provider is created, joined and read for presence            |
 
 **Score projection** (section score = Σ weight × credit / Σ weight; Critical 3 · High 2 · Normal 1;
-✅ 1 · 🟡 0.5 · ❌ 0; ⏸ excluded). The paths follow §0.2's order:
+✅ 1 · 🟡 0.5 · ❌ 0; ⏸ excluded). Today is 2026-11-19's score, with Tickets & delivery re-scored
+after PM-WP1. The paths follow §0.2's order:
 
 | Section                        | Today | Path                                                                                                              |
 | :----------------------------- | ----: | :---------------------------------------------------------------------------------------------------------------- |
 | Project setup                  |   90% | ST6 100%                                                                                                          |
 | Stages                         |   69% | D7a 75% → ST3 81% → ST4 88% → WP4b 94% → D7b 100%                                                                 |
 | Hiring & members               |   83% | WP4b 92% → NO1 + CD2 + counsel 100%                                                                               |
-| Tickets & delivery             |   51% | WP8 55% → WP1 62% → TK1 + TK2 66% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100%          |
+| Tickets & delivery             |   59% | WP8 62% → TK1 + TK2 66% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100%                    |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   38% | EX2 56% → WP4a 63% → EX3 81% → EX4 88% → LP1 100%                                                                 |
 | Messaging                      |   57% | MS5 59% → CH1 + P2d 65% → CH2 67% → CH3 70% → LK1 74% → CH4 + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
@@ -175,9 +188,9 @@ The operator's ruling is MW-59; it is not this file's row.
 26, 27, 29, 30, 47, 49 and 57. Their work orders, in order: TK1 + TK2, D7a + P6, S3, WP9, WP6, NO1
 (+ CD2), and the chat chain (MS3, MS5, CH1, P2d, SN3, the T&S P-chain).
 
-**What UAT adds:** PJ-21 (WP4b), PJ-25 (WP1), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX2 → EX3) and PJ-60
-(NO2 + CD2). Those are the Critical · UAT rows. Below them come the High · UAT rows: ST2, ST3, ST4,
-WP5a, EX1, CH2, FL3, FL4, CFG2 and LP1.
+**What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX2 → EX3) and PJ-60 (NO2 + CD2).
+Those are the Critical · UAT rows. Below them come the High · UAT rows: ST2, ST3, ST4, WP5a, EX1,
+CH2, FL3, FL4, CFG2 and LP1.
 
 ### 0.2 Run order
 
@@ -186,51 +199,40 @@ The global rules hold:
 - At most **two SQL sessions** run on the one local DB, on disjoint migration files.
 - Only one writer at a time, across **all** tracks, for each of `00002500`, `00002510`, `00002520`
   and `00005060`.
-- MONEY's order wins on any money file: `00001200`, `00001240`, `00000017` and `00001210`.
+- The money lane in [`FINANCE_BUILD_PROMPTS.md`](../architecture/FINANCE_BUILD_PROMPTS.md) §0.1 wins
+  on any money file: `00001200`, `00001240`, `00000017` and `00001210`.
 
 The order below is priority and dependency (⏳). The file locks decide what may overlap. Before
-every SQL prompt, compare its files with what is running: check `git status`, this file's §0, MONEY
-§1, and PM §0.4.
+every SQL prompt, compare its files with what is running: check `git status`, this file's §0, FBP
+§0.1's lane, and PM §0.4. Nothing was in flight on these files at `f2e25929`. COMMS MS3 has not
+landed, and its branch `claude/ms3-live-chat` no longer exists. An uncommitted PM-WP8 attempt sits
+in the worktree `.claude/worktrees/wave2-p-wp8-c305ac` (PM-WP8's status line).
 
-**In flight right now (2026-11-19):**
+**Queue M — the money lane** (FBP §0.1, serial). This file adds four turns to that lane; ask the
+lane's coordinator before taking one.
 
-- FBP DB19 (#511), uncommitted. It holds `00000017`, `00001200`, `00002510`, `00005001` and
-  `00005060`.
-- COMMS MS3, in its own worktree on branch `claude/ms3-live-chat`. It holds `ChatFeed.island.tsx`,
-  `MessagingBackendService.ts`, `00002600` and the messaging sidebar islands.
-- The NT4 follow-up, uncommitted. It holds `transport-webpush.ts`, `.env.example`, `core/env.ts`,
-  `dev-seam.ts`, and the PJ-61 / PRD-E7 / PRD-E18 text.
-
-None of the prompts below may start on those files until each lands.
-
-**Queue M — the money lane** (MONEY §1, serial). This file adds four turns to MONEY's lane. Ask the
-MONEY coordinator before taking one.
-
-1. **PM-WP1**, with OPS §2.1 D0–D8. MONEY Wave 2's next turn, ⏳ DB19 (they share `00002510` and
-   `00005060`). Moves PJ-25.
-2. **PM-GH1** (PJ-31). MONEY's order runs it before DB6; PM §0.3's DB6 wait is superseded (§2).
-3. FBP **DB6**, MONEY's own turn. WP4a, WP4b and EX2 all wait for it.
-4. **EX2** (PJ-43). It designs the dispute subject that FBP DB21 and PM-WP4a step 6 reuse, so it
+1. **PM-GH1** (PJ-31). The lane runs it before DB6.
+2. FBP **DB6**, the lane's own turn. WP4a, WP4b and EX2 all wait for it.
+3. **EX2** (PJ-43). It designs the dispute subject that FBP DB21 and PM-WP4a step 6 reuse, so it
    runs before both.
-5. **PM-WP4a** (PJ-39, PJ-46's half), then **PM-WP4b** (PJ-09, PJ-21, PJ-34). MONEY's wave table
-   does not schedule them. This file puts them right after EX2, never beside DB19, DB21 or MR3,
-   which all touch `00001200`.
-6. **EX3** (PJ-43 → ✅). It edits `00000017`, so it belongs to this lane. It may run after any MONEY
-   Wave 3 turn that leaves `00000017` alone.
+4. **PM-WP4a** (PJ-39, PJ-46's half), then **PM-WP4b** (PJ-09, PJ-21, PJ-34). They run right after
+   EX2, never beside DB21 or MR3, which touch `00001200`.
+5. **EX3** (PJ-43 → ✅). It edits `00000017`, so it belongs to this lane. It may run after any
+   money-lane turn that leaves `00000017` alone.
 
 **Queue S — the second SQL slot.** It holds projects, comms and files SQL in priority order, one at
 a time. It shares the slot with other tracks' second-session prompts (SBP, SAC, T&S). A prompt
 marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: GH1, WP4a or WP4b.
 
 1. **TK1** (★00001150): PJ-23, Critical · MVP.
-2. **PM-D7a**, with the §2 capacity step: PJ-29, PJ-10.
+2. **PM-D7a**, with its Chain Reaction capacity step: PJ-29, PJ-10.
 3. **ST5**: PJ-20. A live consent hole, and small.
-4. **COMMS MS4**: PJ-62. Runnable now; run MS5 right after it (§2).
-5. **PM-P6**: no longer a money-lane prompt (§2). Then **PM-S3** (⏳ D7a).
-6. **PM-WP9** (★00001150): PJ-27, PJ-38.
+4. **COMMS MS4**: PJ-62. Run MS5 right after it.
+5. **PM-P6** (no longer a money-lane prompt). Then **PM-S3** (⏳ D7a).
+6. **PM-WP9** (★00001150, ⏳ PM-WP8 step 4): PJ-27, PJ-38.
 7. **COMMS MS5** (⏳ MS3), then **CH1** (⏳ MS3): PJ-52, PJ-47.
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
-9. **CH2**, then **ST3**, then **ST4** (⏳ WP1, which also edits `00001140`).
+9. **CH2**, then **ST3**, then **ST4**.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
 11. **CH3**, then **CH4**'s audio column, **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
     slug.
@@ -242,7 +244,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 - **ST1** now. It moves to Queue S if `apply_write_batch` needs a version op.
 - **ST6** now.
 - **TK2** (⏳ TK1).
-- **NO3** (⏳ the NT4 follow-up).
+- **NO3** now.
 - **FL2**.
 - **FL3**'s CSP half.
 - **PJZ** last.
@@ -250,78 +252,72 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 **Human lane:**
 
 - **LP1**, which needs a public HTTPS origin: OPS6 (#512) or a tunnel.
-- **CD2**, deferred twice (#484).
+- **COMMS CD2**, deferred twice (#484).
 - The provider apps for FL2.
 - Counsel's answers for NO1, EX3 and CH1 (§0.3).
 
 **Other tracks' prompts these rows wait on** run in their own files' order:
 
 - COMMS MS3 and NT5.
-- SAFE LK1.
-- T&S SN1 → SN2 → SN3, which are blocked until the `Projective-Safety` repo sits beside this one.
+- T&S LK1.
+- T&S SN1 → SN2 → SN3. The node repo `Projective-Safety` sits beside this one with N0–N4 built, so
+  SN1 is runnable now.
 - T&S P1d → P2a → P2b → P2c, P2d, SN6, and R1 → R4 → R5 → R3 → R2.
-- CFG2.
+- OPS CFG2.
 
 **Hot files across this file:**
 
 | File                                                     | Writers here                                                 | Writers elsewhere (never at the same time)                        |
 | :------------------------------------------------------- | :----------------------------------------------------------- | :---------------------------------------------------------------- |
-| `00001150` (stage funding, submissions, cancel, approve) | TK1, EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | MR2 landed; FBP DB13, DB14                                        |
+| `00001150` (stage funding, submissions, cancel, approve) | TK1, EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | FBP DB13, DB14                                                    |
 | `00001130` (stages, members, `apply_write_batch`)        | ST1?, ST2?, CH2; PM D7a, WP4a, WP4b, S3, D7b                 | —                                                                 |
 | `00001110` / `00001120` (ticket guards and doors)        | TK1; PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
-| `00001140` (claims, capacity, workload)                  | ST3, ST4; PM WP1, WP5a, D7b                                  | MR1 landed                                                        |
+| `00001140` (claims, capacity, workload)                  | ST3, ST4; PM WP5a, D7b                                       | —                                                                 |
 | `00002011` (projects policies)                           | ST5; PM WP4b, WP5a, WP9                                      | —                                                                 |
-| `00000017` + `00001260` (disputes)                       | EX2, EX3; PM-WP4a step 6                                     | FBP DB6, DB19 (in flight), DB21; MONEY MR3                        |
-| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3, CH4                                           | COMMS MS3 (in flight), MS4, MS5; T&S P1d, P2a–c, P2d              |
-| `00001310` (notification engine)                         | NO2                                                          | COMMS NT1 landed; T&S                                             |
-| `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; SAFE LK1 (services only)                                 |
-| `00005010` (notification catalogue)                      | EX1, EX2, NO1, FL4; PM WP1, WP4a, WP5a, WP6, D7b, GH1        | COMMS MS4                                                         |
-| `00005060` (jobs)                                        | FL1, NO2; PM WP1, WP5a, D7b, GH1                             | FBP DB19 (in flight), DB17; MONEY MR4 landed, MR5; T&S SN2        |
+| `00000017` + `00001260` (disputes)                       | EX2, EX3; PM-WP4a step 6                                     | FBP DB6, DB21; MR3                                                |
+| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3, CH4                                           | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
+| `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
+| `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
+| `00005010` (notification catalogue)                      | EX1, EX2, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1             | COMMS MS4                                                         |
+| `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | FBP DB17; MR5; T&S SN2                                            |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
-| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | ST4, TK1, EX1, EX2; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1 | the NT4 follow-up (dirty now); COMMS NT5; T&S R3                  |
-| `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3, CH4                                                | COMMS MS3 (in flight), MS5; T&S R2                                |
+| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | ST4, TK1, EX1, EX2; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1 | COMMS NT5; T&S R3                                                 |
+| `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3, CH4                                                | COMMS MS3, MS5; T&S R2                                            |
 | `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | ST3; PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                    | O·WP6                                                             |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`               | every prompt                                                 | every readiness track: edit your rows and the computed lines only |
 
 ### 0.3 Human stops on this path
 
 Answer them in one sitting and each prompt runs straight through. Each prompt keeps its own 🧑
-block, so a question you defer still stops the build at the right step.
+block, so a question you defer still stops the build at the right step. The PM prompts' stops
+(PM-D7a, P6, WP4a, WP5a, WP5b, WP6 and D7b) are in PM §0.5. The numbers below are kept from
+2026-11-19, so the missing ones moved to PM §0.5 or were ruled.
 
-| #  | Question                                                                                                                               | Prompt        | Recommendation                                                                                                                                                                                                           |
-| :- | :------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1  | OPS D3: a lapsed claim on a **prepaid** escrow                                                                                         | PM-WP1        | A, as OPS D3 recommends: re-arm it (payee unbound, back in the pool, still funded)                                                                                                                                       |
-| 2  | PM §0.5 #2 (#344 (d)): what `startsWithId = null` ("the stage above") means                                                            | PM-D7a        | Resolve it to an id at write                                                                                                                                                                                             |
-| 3  | **New.** The Chain Reaction lands on a stage where the assignee is over capacity or holds no live seat                                 | PM-D7a (§2)   | The ticket enters that stage unassigned and claimable; the assignee and the client are told                                                                                                                              |
-| 4  | PM §0.5 #4 (#344 (e)): a ticket's own price vs its stages'                                                                             | PM-P6         | A ticket price applies only to a single-stage ticket                                                                                                                                                                     |
-| 5  | #430 (b): what a payee may see of prepaid stages                                                                                       | TK1           | Which stages are prepaid, never the amounts, for anyone with project access                                                                                                                                              |
-| 6  | #430 (c): a reservation whose stage is repriced                                                                                        | TK1           | It keeps the price it was bought at; the new price applies to unfunded stages only                                                                                                                                       |
-| 7  | #430 (d) a refund of one prepaid stage; (f) a card prepaying later stages                                                              | TK1           | (d) a payer door while the stage is unclaimed; (f) a card funds the funding stage only, and Buy now says so                                                                                                              |
-| 8  | PM §0.5 #3: how a Fair Exit contest holds money                                                                                        | PM-WP4a       | Hold each escrow for a 48-hour contest window                                                                                                                                                                            |
-| 9  | PM §0.5 #5: the workload-report penalty sizes                                                                                          | PM-WP5a       | 2 / 1 / 3 on the 0–10 scale                                                                                                                                                                                              |
-| 10 | PM §0.5 #8: who on the client side moves a claimed ticket                                                                              | PM-WP6        | The owner and `manage_projects` holders                                                                                                                                                                                  |
-| 11 | **New.** Does a due-date proposal move one stage's date or the whole ticket's?                                                         | PM-WP6 (§2)   | One stage; the ticket's date stays derived (#414)                                                                                                                                                                        |
-| 12 | PM §0.5 #7: a negative delay; a predecessor that never completes                                                                       | PM-D7b        | Open before the predecessor's deadline; a manual open door                                                                                                                                                               |
-| 13 | #427 (a): the client creates every ticket on a service engagement                                                                      | ST6           | Confirm it: PRODUCT_SPEC.md:629-631 already says so                                                                                                                                                                      |
-| 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                            | ST3           | Review authority pins among live-seat holders, capacity-checked; the assignee may hand it back before submitting                                                                                                         |
-| 15 | Where the workload gauge sits                                                                                                          | ST4           | Beside Claim (the ticket view, stage Tasks) and in the freelancer's Projects header; on `/home` once PRD-A1 lands                                                                                                        |
-| 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`    | EX1           | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
-| 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                           | EX2           | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
-| 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state | EX2           | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
-| 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                       | EX3           | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
-| 20 | Which workload verdict can be appealed                                                                                                 | EX4           | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
-| 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                   | CH1           | Edit for 15 minutes; delete for everyone at any time while the room is live; originals kept for evidence; nothing in an archived or disputed room changes                                                                |
-| 22 | Who gets team and business rooms, and when                                                                                             | CH2           | Eagerly: at the team's seat going live, and at the business's first project access                                                                                                                                       |
-| 23 | Who may bring a pair DM into a project                                                                                                 | CH3           | Either participant, when both are on the project; the other is told                                                                                                                                                      |
-| 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                             | NO1           | Yes, as a transactional invite behind a switch until counsel answers; `application.received` joins the hourly digest                                                                                                     |
-| 25 | When a push device is dropped                                                                                                          | NO3           | At once on 404 / 410; otherwise after 5 failures over at least 24 h; Settings says so                                                                                                                                    |
-| 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                               | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
-| 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                             | FL1           | Purge the bytes after 30 days and keep the row; flip the quota in UAT after the metering fix                                                                                                                             |
-| 28 | #394 (a) one Google connection or two; which connectors ship for UAT                                                                   | FL2           | (a) as #394 recommends; Drive and S3 ship, and Dropbox, OneDrive and Frame.io stay Planned                                                                                                                               |
-| 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                       | FL3           | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
-| 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                          | FL4           | Person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm; a blocked pair refuses                                                                                                 |
-| 31 | An owner-present run on your Zoom, Microsoft and Google accounts                                                                       | LP1           | Yes, in one sitting, once a public HTTPS origin exists                                                                                                                                                                   |
-| —  | T&S R1 (#148 (g)), P2a (#147 (a)), P2b's cooling-off; SAFE §0.4 item 6; SCH-WP7 (#344 (f)); CD2's hosted prerequisites                 | their prompts | Their own                                                                                                                                                                                                                |
+| #  | Question                                                                                                                                     | Prompt        | Recommendation                                                                                                                                                                                                           |
+| :- | :------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5  | #430 (b): what a payee may see of prepaid stages                                                                                             | TK1           | Which stages are prepaid, never the amounts, for anyone with project access                                                                                                                                              |
+| 6  | #430 (c): a reservation whose stage is repriced                                                                                              | TK1           | It keeps the price it was bought at; the new price applies to unfunded stages only                                                                                                                                       |
+| 7  | #430 (d) a refund of one prepaid stage; (f) a card prepaying later stages                                                                    | TK1           | (d) a payer door while the stage is unclaimed; (f) a card funds the funding stage only, and Buy now says so                                                                                                              |
+| 13 | #427 (a): the client creates every ticket on a service engagement                                                                            | ST6           | Confirm it: PRODUCT_SPEC.md:629-631 already says so                                                                                                                                                                      |
+| 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3           | Review authority pins among live-seat holders, capacity-checked; the assignee may hand it back before submitting                                                                                                         |
+| 15 | Where the workload gauge sits                                                                                                                | ST4           | Beside Claim (the ticket view, stage Tasks) and in the freelancer's Projects header; on `/home` once PRD-A1 lands                                                                                                        |
+| 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1           | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
+| 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2           | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
+| 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2           | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
+| 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3           | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
+| 20 | Which workload verdict can be appealed                                                                                                       | EX4           | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
+| 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1           | Edit for 15 minutes; delete for everyone at any time while the room is live; originals kept for evidence; nothing in an archived or disputed room changes                                                                |
+| 22 | Who gets team and business rooms, and when                                                                                                   | CH2           | Eagerly: at the team's seat going live, and at the business's first project access                                                                                                                                       |
+| 23 | Who may bring a pair DM into a project                                                                                                       | CH3           | Either participant, when both are on the project; the other is told                                                                                                                                                      |
+| 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1           | Yes, as a transactional invite behind a switch until counsel answers; `application.received` joins the hourly digest                                                                                                     |
+| 25 | When a push device is dropped                                                                                                                | NO3           | At once on 404 / 410; otherwise after 5 failures over at least 24 h; Settings says so                                                                                                                                    |
+| 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                                     | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
+| 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1           | Purge the bytes after 30 days and keep the row; flip the quota in UAT after the metering fix                                                                                                                             |
+| 28 | #394 (a) one Google connection or two; which connectors ship for UAT                                                                         | FL2           | (a) as #394 recommends; Drive and S3 ship, and Dropbox, OneDrive and Frame.io stay Planned                                                                                                                               |
+| 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3           | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
+| 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4           | Person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm; a blocked pair refuses                                                                                                 |
+| 31 | An owner-present run on your Zoom, Microsoft and Google accounts                                                                             | LP1           | Yes, in one sitting, once a public HTTPS origin exists                                                                                                                                                                   |
+| —  | T&S R1 (#148 (g)), P2a (#147 (a)), P2b's cooling-off and T&S §0.4 (SN1's production default); SCH-WP7 (#344 (f)); CD2's hosted prerequisites | their prompts | Their own                                                                                                                                                                                                                |
 
 **For counsel** (build behind a switch that stays off; never switch it on):
 
@@ -330,55 +326,17 @@ block, so a question you defer still stops the build at the right step.
   retention against erasure.
 - EX3: the Evidence Vault's retention period, and the weight of the dispute summary PDF.
 
-### 0.4 Stale text found on 2026-11-19
-
-Fix each in the prompt named, or in PJZ if that prompt has already landed.
-
-| Where                                                                            | Says                                                                                 | Truth                                                                                                                                                                                                                                 | Fix in             |
-| :------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :----------------- |
-| USER_FLOWS PJ-04                                                                 | "no lane archive (b)"                                                                | #456 closed (b): a service withholds Archive (`feed.ts:112-114`) and the client has Cancel (#479)                                                                                                                                     | ST6                |
-| USER_FLOWS PJ-09                                                                 | "An untouched stage is hard-deleted"                                                 | No product path deletes a stage: the form sends PATCH, and a PATCH re-appends the stage it omitted (`live-writes.ts:1436`)                                                                                                            | ST2                |
-| USER_FLOWS PJ-10                                                                 | `live-board.ts:291`                                                                  | `:284` (the select) and `:706` (the planned start)                                                                                                                                                                                    | PM-D7a             |
-| USER_FLOWS PJ-15, PJ-69, PJ-71                                                   | "in-app only" / "Push and email not sent (#390)"                                     | Email and push are dispatched locally through NT2–NT4 (`ee275e93`, `153f20d9`, `322c4dc9`); the hosted send is CD2's; #390 (g) closed by #391                                                                                         | PJZ                |
-| USER_FLOWS PJ-17                                                                 | "never delivered (PRD-E4)"                                                           | Built locally; the hosted send is left; an address with no account gets nothing (`00001135:232-236`, `:330-340`)                                                                                                                      | NO1                |
-| USER_FLOWS line 64 (cross-cut)                                                   | "No email, push or SMS reaches anyone"                                               | Email and push are built locally; the hosted send and SMS are left. Edit the PJ cells only, and tell the COMMS_DELIVERY owner                                                                                                         | PJZ                |
-| USER_FLOWS PJ-32                                                                 | "Either side edits alone"                                                            | Since #414 the date derives from `required_stages[].due_at`, frozen at claim (`00001110:9-27`, `:342`); true only of a ticket with no stage dates                                                                                     | PM-WP6             |
-| USER_FLOWS PJ-35                                                                 | `TicketView.tsx:856`                                                                 | `:1041-1043`                                                                                                                                                                                                                          | PM-WP8             |
-| USER_FLOWS PJ-40                                                                 | "Setup allows only draft\|active\|on_hold"                                           | `set_project_status` already has a `completed` branch (`00001100:1263-1283`); what is missing is the trigger point and the door                                                                                                       | EX1                |
-| USER_FLOWS PJ-47                                                                 | "archived rooms accept posts"                                                        | The send door refuses (404, `projects/live-writes.ts:2631-2637`); only a direct PostgREST insert passes (`00002012:60-64` → `00001300:154-177`). The row also omits room read marks (PRD-E13) and the missing body and rate caps (G6) | CH1                |
-| USER_FLOWS PJ-48                                                                 | "how rooms are created is unchecked"                                                 | Nothing creates `team_private` or `business_private` rooms: `comms.get_stage_channels` (`00001300:227-297`) has no caller                                                                                                             | CH2                |
-| USER_FLOWS PJ-57                                                                 | Tier 3 under PRD-D7, D8                                                              | Tier 3 is PRD-D13 (T&S SN6)                                                                                                                                                                                                           | PJZ                |
-| USER_FLOWS PJ-61                                                                 | (omits it)                                                                           | PRD-E18: failing push devices are never dropped                                                                                                                                                                                       | NO3                |
-| USER_FLOWS PJ-65                                                                 | "Google Drive only, first page only"                                                 | A folder's own listing pages (`live-locations.ts:63-68`); the tree's children and search do not. Bigger: `importAsset` always answers 503 (`IntegrationsBackendService.ts:1086-1103`)                                                 | FL2                |
-| USER_FLOWS PJ-72                                                                 | "Guest mail needs the Resend key"                                                    | Also: bounces are unread and suppression is not consulted (#391 (o))                                                                                                                                                                  | NO4                |
-| USER_FLOWS PJ-77                                                                 | `/api/sessions/webhooks/:provider`                                                   | That is the legacy alias; the canonical route is `/api/integrations/webhooks/[provider]`; Meet is unproven too (#386)                                                                                                                 | LP1                |
-| PRODUCTION_READINESS PRD-G2                                                      | `00001140:689-720`                                                                   | `:690-721`                                                                                                                                                                                                                            | PM-WP1             |
-| PRODUCTION_READINESS PRD-H2                                                      | work order "—"                                                                       | CFG2 (and the gates differ: PJ-75 is UAT, PRD-H2 is PROD)                                                                                                                                                                             | PJZ                |
-| PM_BUILD_PROMPTS §0.1, §0.5, §0.6                                                | F·DB3 "Not merged"; the uncommitted `board.ts`; 🧑 #1 open; "manual assignment ship" | DB3 landed (`44382c08`); `board.ts` landed (#414, #416); #1 answered by #416/#417; manual assignment has no caller                                                                                                                    | PJZ                |
-| LIVE_DATA §2 (:78-79)                                                            | DB3 unmerged                                                                         | Landed (`44382c08`)                                                                                                                                                                                                                   | PJZ                |
-| COMMS §0 (:40-58), MS2 and MS3 notes; CD §2 (:181), CD2 note (:344-349)          | nothing started; "⏳ MS2"; NT3 not on main                                           | MS2, NT2, NT3, NT4 have landed; the waits are met                                                                                                                                                                                     | PJZ                |
-| T&S P1d (:33, :430); SAFE §2 (:127)                                              | a new file `00001660_functions_ops_moderation.sql`; "MS2 has not started"            | `00001660_functions_ops_alerts.sql` exists (MR4, #507): pick the next free number; MS2 landed                                                                                                                                         | T&S P1d            |
-| T&S P2d / SEC G5                                                                 | `F1300:121-144`                                                                      | `has_channel_access` is at `00001300:154-177`                                                                                                                                                                                         | T&S P2d            |
-| `00001130:584-587`                                                               | "funds are still released"                                                           | The refusal at `:654-657` rolls the releases back                                                                                                                                                                                     | ST2                |
-| `00001200:945`                                                                   | a hold binds "to the stage's team seat"                                              | Since MR1 nothing binds until a claim                                                                                                                                                                                                 | PM-WP4b            |
-| PRODUCT_SPEC.md:3081-3084                                                        | "today … hard-deleted, releases every escrow"                                        | Such a stage is refused and nothing moves                                                                                                                                                                                             | ST2                |
-| PRODUCT_SPEC.md:2309-2311                                                        | a 100% removal release, with no marker                                               | §Freelancer Removal (:2944-2952) says refund or split, Not built yet                                                                                                                                                                  | PM-WP4b            |
-| PRODUCT_SPEC.md:2683, :2688, :2697-2700                                          | manual assignment ships; a Staffing-tab control                                      | No caller, no control                                                                                                                                                                                                                 | ST3                |
-| `documentation/readiness/COMMS_DELIVERY_BUILD_PROMPTS.md.tmp.36100.abc1feed0925` | —                                                                                    | A stray file from an interrupted write (2026-11-18)                                                                                                                                                                                   | PJZ (ask me first) |
-| USER_FLOWS MW-59 (not this file's row)                                           | `under_review` has no deadline                                                       | #216 added `review_by`                                                                                                                                                                                                                | its owner          |
-
-### 0.5 Not in this file
+### 0.4 Not in this file
 
 - **PJ-14** (Round Robin, Parallel Stream, the Global Workload Kanban) stays ⏸: Planned by #338 P3
   (PM §0.6).
 - **PJ-74** (the project calendar) stays ⏸ by ruling (#343 C7 (a), #413).
-- **CD2, the hosted send.** It is COMMS_DELIVERY's, deferred twice by you (#484). Five rows here
-  stay 🟡 until it runs: PJ-17, 60, 61, 71 and 72. §2 adds its cases.
-- **The safety node** (PRD-D10) lives outside this repo. T&S SN1 and SN3 are blocked until
-  `Projective-Safety` is cloned beside it.
-- **Calls & sessions** (MK-48 to MK-59) shares LP1 and SCH-WP7. No work-order file existed for it
-  when this was written. When one is written, it should cite LP1 for the live run rather than write
-  a second.
+- **COMMS CD2, the hosted send**, deferred twice by you (#484). Five rows here stay 🟡 until it
+  runs: PJ-17, 60, 61, 71 and 72. Its proof list names this file's cases.
+- **The safety node** (PRD-D10) lives outside this repo, in `Projective-Safety`, which sits beside
+  it with N0–N4 built. T&S SN1 and SN3 run against it; SN1 is runnable now.
+- **Calls & sessions** (MK-48 to MK-59) shares LP1 and SCH-WP7. A work-order file for it should cite
+  LP1 for the live run rather than write a second.
 - **PM-WP5b** (the Reliability Index), **PRD-E16** (Marketing re-subscribe) and **#508 (a)** (the
   uuid link in `00001170`) move no PJ row.
 - **The `fixed_date` and `on_hire_confirmed` start triggers** drive nothing (PM §0.6). No PJ row
@@ -404,7 +362,7 @@ Before writing code:
      documentation/reference/pr-checklist.md.
   2. Read documentation/readiness/USER_FLOWS.md (your rows) and
      documentation/readiness/PROJECTS_BUILD_PROMPTS.md §0 (run order, file locks, stops). If you
-     touch 00001200, 00001240, 00000017 or 00001210, also read MONEY_BUILD_PROMPTS.md §1-§2: its
+     touch 00001200, 00001240, 00000017 or 00001210, also read FINANCE_BUILD_PROMPTS.md §0.1: its
      SQL lane decides when you run. If you touch the projects schema, read PM_BUILD_PROMPTS.md
      §0.4 (its file locks) and the OWNER RULINGS on Decision #338.
   3. Grep documentation/reference/decisions/README.md for the surface you touch and read the
@@ -489,6 +447,19 @@ Verification: reproduce the defect first (a failing probe or test), then fix.
 This checkout is shared with other sessions: never switch branch, never stash, stage only your
 own hunks, verify in a clean worktree. Commit on the branch you were given. Do not push or open a
 PR unless I ask.
+
+When you finish, do the closing duty (documentation/reference/build-prompts.md §2) in the same
+commit as the work:
+  - In documentation/readiness/PROJECTS_BUILD_PROMPTS.md: a done prompt leaves the file. Delete
+    its section and add its row to §0's Done ledger (ID · what landed · commit · text at
+    <commit>^). A partly done prompt keeps only its open steps, with their numbers unchanged,
+    under one rewritten Status line. A ruled 🧑 stop becomes the ruled step, with its decision
+    number.
+  - Treat any step you built for another prompt the same way, in the file that holds it.
+  - Run git grep -n "<ID>" documentation/ and update every place that still calls it open: the
+    PRODUCTION_READINESS / USER_FLOWS Track cells, the audit's Status column, other prompts' waits,
+    this file's §0.1 row map, and this file's row in documentation/reference/build-prompts.md §3.
+  - If the file has no prompts left, delete it, log it in build-prompts.md §4 and repoint its links.
 ```
 
 ### 1.2 Readiness addendum — paste after every prompt
@@ -500,416 +471,17 @@ recompute the PJ cluster line and the three tier rows of the Scoreboard (score =
 credit / Σ weight; ✅ 1 · 🟡 0.5 · ❌ 0; Critical 3 · High 2 · Normal 1; ⏸ excluded; a row counts
 in every tier from its own Gate on) and the "Critical flows not yet ✅" list; add one §Score
 history line in the file's format ("ST3 (#NNN): PJ-13 ❌ → ✅ (…)"). If your prompt names a PRD-
-row, update documentation/readiness/PRODUCTION_READINESS.md the same way. Fix any §0.4 stale line
-of PROJECTS_BUILD_PROMPTS.md that names your prompt, and mark your prompt ✅ with its commit in
-§0.1 there. Use 🟡 when a hosted or human step is left, and name it; never flip a row on a test
-you did not run. Other sessions edit these files: re-read right before you edit, change only your
-rows and the computed lines (split table cells on unescaped pipes only). A gap you find and do
-not fix gets a new row at the end of its section (IDs are never reused), never silence. Finish
-with: what you built; the rows you moved (old → new); every probe and test you ran, with its
-result; every 🧑 question still open.
+row, update documentation/readiness/PRODUCTION_READINESS.md the same way. Use 🟡 when a hosted or
+human step is left, and name it; never flip a row on a test you did not run. Other sessions edit
+these files: re-read right before you edit, change only your rows and the computed lines (split
+table cells on unescaped pipes only). A gap you find and do not fix gets a new row at the end of
+its section (IDs are never reused), never silence. Finish with: what you built; the rows you moved
+(old → new); every probe and test you ran, with its result; every 🧑 question still open.
 ```
 
 ---
 
-## 2. Existing work orders — what changed since they were written
-
-Paste the source file's own header, then MONEY's addendum where MONEY names one, then the prompt as
-written, then the delta below, then §1.2 with the rows given. Only the delta is new. Every delta was
-re-verified on 2026-11-19 at `e1ff027b`.
-
-**Facts that change many prompts at once:**
-
-- **F·DB3 has landed** (`44382c08`): `finance.fn_assert_no_open_dispute` (`00001200:1317`) guards
-  `fn_release_ticket_escrow` (`:1367`), `fn_fair_exit_release` (`:1610`), `00001150:1777` and
-  `00001155:1877`.
-- **F·DB6 has not landed.** Nothing writes `fund_state 'on_hold'`.
-- **DB16** (`85e7d4e4`, #483), **MR1** (`47f493c6`, #474) and **MR2** (`18f0ed13`, #479) have
-  landed.
-  - MR1's PF402 gate (`00001110:414-425`) already refuses an unclaimed ticket entering claimed,
-    in_progress or in_review.
-  - MR2 added `fn_settle_project_escrow`, `preview_project_cancel` and `cancel_project` to
-    `00001150`, which moved every line after about `:1540`.
-- **No PM prompt has landed.** None of these exists: `fn_guard_stage_dependency`,
-  `fn_ticket_has_history`, `fn_fair_exit_floor`, `tickets.archived_at`, `ticket.claim_expired`,
-  `answer_workload_report`, `fn_shares_submitter_team`, `typeAbsentViewRedirect`.
-- **`00001130:584-587`, `00001120`, `00001110` and `00002011` lines have moved.** Each delta gives
-  its prompt's new lines; re-check every other one.
-
-| Prompt              | Source                      | `<ROWS>` for §1.2                                        |
-| :------------------ | :-------------------------- | :------------------------------------------------------- |
-| PM-WP1              | PM §2 · OPS §2.1 · MONEY §4 | PJ-25 → ✅; PRD-G2                                       |
-| PM-D7a              | PM §2                       | PJ-10 ❌ → 🟡; PJ-29 (with P6)                           |
-| PM-P6               | PM §3                       | PJ-29 → ✅ (with D7a); PJ-22's note                      |
-| PM-S3               | PM §5                       | PJ-30 → ✅                                               |
-| PM-GH1              | PM §3 · MONEY §4            | PJ-31 → ✅; PRD-F23                                      |
-| PM-WP4a             | PM §3                       | PJ-39 → ✅; PJ-46 ❌ → 🟡                                |
-| PM-WP4b             | PM §3                       | PJ-09 → ✅ (with ST2); PJ-21 → ✅; PJ-34 → ✅; PRD-B6    |
-| PM-WP5a             | PM §4                       | PJ-33 → ✅; PJ-07's note; PRD-G3                         |
-| PM-WP6              | PM §6                       | PJ-26 → ✅; PJ-32 → ✅                                   |
-| PM-WP8              | PM §6                       | PJ-35, PJ-36 → ✅; PJ-37's note; PRD-J5                  |
-| PM-WP9              | PM §6                       | PJ-27, PJ-38 → ✅                                        |
-| PM-D7b              | PM §5                       | PJ-10 → ✅                                               |
-| COMMS MS4           | COMMS §2 · CD §2            | PJ-62 → ✅; PRD-E9 🟡                                    |
-| COMMS MS5           | COMMS §2 · CD §2            | PJ-52 → ✅; PJ-47's reactions; PRD-E9 ✅                 |
-| COMMS NT5           | COMMS §3                    | PJ-61's SMS half; PRD-E8                                 |
-| CD2                 | CD §3                       | PJ-17, 60, 61, 71, 72's hosted half; PRD-E4, E5, E7, E10 |
-| SAFE LK1            | SAFE                        | PJ-54, PJ-64 → ✅; PRD-D4                                |
-| T&S SN1 → SN2 → SN3 | T&S                         | PJ-63, PJ-56 (SN1, SN2); PJ-49 (SN3); PRD-D3             |
-| T&S P1d → P2c, SN6  | T&S                         | PJ-57 → ✅; PRD-D7, D8, D13                              |
-| T&S P2d             | T&S                         | PJ-47 (G5, G6)                                           |
-| T&S R1 → R2         | T&S                         | PJ-58 → ✅; PRD-D9                                       |
-| CFG2                | CFG                         | PJ-75 → ✅; PRD-H2                                       |
-| FBP DB21            | FBP §3 · MONEY §4           | (MK-31's; its delta here is EX2's subject)               |
-
-### PM-WP1 — the claim sweep (PJ-25)
-
-- **Every wait is met:** the jobs merge (`817dbbd1`) and DB16 (`85e7d4e4`). It takes MONEY Wave 2's
-  next SQL turn, after FBP DB19 (#511) lands, because DB19 is uncommitted in `00002510` and
-  `00005060`.
-- **Moved lines:**
-  - the sweep, `fn_release_expired_claims`: `00001140:690-721`
-  - the paused job row: `00005060:197-206` (`enabled false` at `:205`)
-  - the grants: `00002510:1435-1436`
-  - the prepaid sweep template (`FOR UPDATE OF t SKIP LOCKED`, LIMIT, history, notify):
-    `00001200:1684-1735`
-  - `fn_refund_ticket_reservations`: `00001200:1133`
-  - the escrow-sync removal branch: `00001110:433-434`
-  - the spec's Claim Expiry: PRODUCT_SPEC.md:2595-2603
-- **OPS D7's "if MR1 has not landed" branch is dead.** MR1 has landed, so `fn_ticket_payee` binds
-  nobody until a claim, and a bought service's escrow is an ordinary prepaid escrow.
-- **MONEY's "MR1 adjusts the prepaid predicate" did not happen.** The predicate is still
-  `payee_id IS NULL` (`00001200:1702`). Keep it as written.
-- **New:** the sweep's refund path, `fn_refund_ticket_escrow` (`00001200:1649-1674`), flips only
-  `held` rows and never asks `fn_assert_no_open_dispute`. Add a step: an escrow with a live dispute
-  is skipped, logged and left for the dispute. A sweep never refunds money a case is holding. D4
-  still covers reservations.
-- `00005060` has new writers since PM was written: CK5 (`:187-195`) and MR4 (#507). Re-read it under
-  the lock.
-- 🧑 OPS D3 stands (§0.3 #1).
-
-### PM-D7a — the dependency guard (PJ-10, PJ-29)
-
-- **Moved lines:**
-  - the TS self-loop refusal: `live-writes.ts:1732` (was `:1687`)
-  - `stageTermsPatch`: `:1260` (was `:1225`)
-  - `wouldCycle`: `setup.ts:386`; `startsWithId`: `setup.ts:275`
-  - the stage FOR ALL policy: `00002011:287` (was `:282`)
-  - `create_project`'s second pass: still `00001100:433-436`
-  - the spec: PRODUCT_SPEC.md:3037-3041 (was `:2518-2522`)
-  - USER_FLOWS PJ-10's `live-board.ts:291` is `:284` / `:706`
-- **New step, the Chain Reaction's capacity.** Today `force_complete_stage` (`00001130:893`) reads
-  the next stage from `required_stages` (`:927-937`), then moves the same assignee to in_progress
-  there (`:961-968`). It checks neither `check_ticket_capacity` (`00001140:251`) nor
-  `fn_holds_live_seat`. PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md:160 lists this as "Open (no
-  prompt)".
-  - 🧑 (§0.3 #3) recommended: when either check fails, the ticket enters the next stage unassigned
-    and claimable, and the assignee and the client are told.
-  - A probe covers both refusals.
-- 🧑 PM §0.5 #2 (#344 (d)) stands.
-
-### PM-P6 — one price rule (PJ-22, PJ-29)
-
-- **It shrinks.** The function it would create already exists: `projects.fn_ticket_stage_price`
-  (`00001120:31-70`, #414). Every hold, quote, reservation and auto-fund path already calls it:
-  - `00001200:747`, `:1069`
-  - `00001150:722-724`, `:839`, `:853`, `:1170`, `:2151`
-  - `00001210:1739`; `00001230:366`; `00001240:2461`
-  - `00001250:127`, `:174`, `:237`
-  - `00001175:244`
-- **The work is now:**
-  - `:49`, which is `COALESCE(p_ticket_price, p_stage.unit_price_cents)`
-  - the TS mirror `stageCostCents` (`board.ts:179`)
-  - the board's "ticket rate wins" (`live-board.ts:870-872`)
-  - the composer's `resolveTicketStages` (`live-writes.ts:2350-2376`)
-  - a 422 refusal
-- **It no longer edits `00001200`, so it leaves the money lane** (Queue S). Its DB6 wait is moot.
-- **Moved lines:** the spec is PRODUCT_SPEC.md:1863-1866 against `:2747-2749`. The cited hold,
-  `fund_ticket`, `get_stage_finance` and installment lines are `00001200:722`, `00001150:1100`,
-  `00001150:2102` and `00001120:311`.
-- The probe `intensity_pricing.sql` exists. Extend it.
-- **New:** a reservation keeps the price it was bought at (TK1's 🧑, §0.3 #6). P6 must never reprice
-  a live reservation.
-- 🧑 PM §0.5 #4 stands.
-
-### PM-S3 — stage status (PJ-30)
-
-- ⏳ D7a (both edit `00001100` and `00001850`).
-- **Moved lines:**
-  - the FOR ALL policy: `00002011:287`
-  - `stageStatus`: `board.ts:887`; `BoardStageRefSchema`: `:930`
-  - PRODUCT_MANAGEMENT §3.5: `:277`
-  - `approve_stage`: `00001150:2329`, with paid at `:2444`
-- The handover trigger is `tg_project_handover_on_complete` (`00001150:2194`). EX1 builds on it, so
-  S3's status derivation must name `completed` the same way EX1 does.
-
-### PM-GH1 — the ghosting timer (PJ-31)
-
-- **MONEY's order wins.** PM §0.3 lists a DB6 wait; MONEY Wave 2 runs GH1 before DB6, and MONEY owns
-  the money lane. Log that as a resolved contradiction in your decision row.
-- **Moved lines:**
-  - `fn_ticket_review_submission`: `00001120:427`
-  - `submission.auto_approved`: `00005010:51`
-  - `fn_enqueue` and `fn_cancel_queued`: `00001310:639` and `:696`
-  - the spec: PRODUCT_SPEC.md:2068-2071
-  - `comms-process-queue`: `00005060:155`
-- **Its reminders email locally now** (NT2/NT3); the hosted send is CD2's. Say so in PJ-31 as MONEY
-  asks.
-- **New:** EX1 completes a project at its last settlement. If EX1 has landed, GH1's auto-approve
-  calls EX1's internal `fn_complete_project`. If it has not, EX1 wires GH1's path itself (EX1 step
-  2); name it in your report.
-
-### PM-WP4a — Fair Exit (PJ-39, PJ-46)
-
-- **Waits:** DB3 ✅; C·WP8 ✅ (`ac19de8f`); DB6 ❌. MONEY does not schedule WP4a; §0.2 Queue M puts
-  it after DB6 and EX2.
-- **New FILES — MR2's project cancel also lets the client pick 25/50/75.** The floor applies on all
-  of these too:
-  - `fn_settle_project_escrow` (`00001150:1736`; tier check `:1790-1799`; "the client's pick until
-    PM-WP4a" at `:1730`)
-  - `preview_project_cancel` (`:1625`), through `fn_fair_exit_quote_scoped` (`:1272`)
-  - `CancelProjectSchema.tiers` (`types/finance/settlement.ts:233`)
-  - `CancelProjectDialog.tsx`
-  - the probe `brief_cancel.sql`
-- **Moved lines:**
-  - `fn_fair_exit_quote`: `00001150:1256`
-  - `preview_stage_fair_exit`: `:1318`
-  - `cancel_stage_fair_exit`: `:1386`, with its tier check at `:1414-1418`
-  - `FairExitTier`: `settlement.ts:139`
-  - the spec marker: PRODUCT_SPEC.md:3142
-- **Step 6, the contest, runs on EX2's engine.**
-  - `finance.disputes` has no `kind` column (`00000017:303-340`); the kind is derived in
-    `get_dispute` (`00001260:651`, `:749`).
-  - `fn_settle_dispute` refuses anything that is not a session seat (`00001260:332-334`).
-  - `fn_dispute_party` knows only session hosts (`:109`).
-  - EX2 widens all three. Build step 6 on EX2's `subject_kind` and doors, and add none of your own.
-- 🧑 PM §0.5 #3 stands (§0.3 #8).
-
-### PM-WP4b — removal and deletion (PJ-09, PJ-21, PJ-34)
-
-- **Waits:** DB3 ✅; DB6 ❌; WP4a ❌.
-- **Moved lines:**
-
-  | PM cites                                                                                                    | Now                                                                |
-  | :---------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------- |
-  | `00001120:56-110`                                                                                           | `delete_ticket` `:221-247`, `release_ticket_to_backlog` `:255-267` |
-  | `delete_stage` `00001130:511`                                                                               | `:589-662`                                                         |
-  | `fn_stage_has_history` `:603`                                                                               | `:681`                                                             |
-  | `remove_project_member` `:2520`                                                                             | `:2606-2731`                                                       |
-  | `fn_ticket_escrow_sync` `00001110:363`                                                                      | `:384`, removal branch `:432-435`                                  |
-  | `fn_ticket_delete_protocol` `:409`                                                                          | `:492-507`                                                         |
-  | `fn_ticket_settlement_guard` `:432`                                                                         | `:516`                                                             |
-  | `fn_enforce_ticket_checkout_desc` `:42`                                                                     | `:62`                                                              |
-  | `fn_refund_ticket_escrow` `00001200:1022`                                                                   | `:1649` (`'unpaid'` at `:1670`)                                    |
-  | the `delete_ticket` grant `00002510:1363`                                                                   | `:1387-1388`                                                       |
-  | "Manage tickets" `00002011:355`; the projects DELETE `:175`; the stage policy `:282`; events `00002015:215` | `:362`; `:176`; `:287`; `:236`                                     |
-
-- **The setup form never sends PUT, so `delete_stage` is unreachable from the product today.** ST2
-  wires Remove to a door for a pristine stage. WP4b then gives a touched stage its archive through
-  the same control. Run ST2 first.
-- **`delete_ticket` is granted to `authenticated`, so PostgREST bypasses `ticketDeletable`.** Make
-  the SQL door enforce `fn_ticket_has_history` (step 7 already says so) and prove the direct call
-  fails.
-- Delete is offered only from the board context menu (`board-menus.ts:134`). Add it to `TicketMenu`
-  (`TicketView.tsx:1038-1063`).
-- **FBP DB19 (#511) edits `fn_refund_ticket_escrow`.** It calls the new
-  `fn_record_order_line_refund`. Merge your `'refunded'` write with DB19's line states; never run
-  beside it.
-- **MR1's PF402 gate** already narrows stageless in_progress tickets to escrow-less ones (for
-  example, personal projects).
-- **Who removes on a bought service.** PRODUCT_SPEC.md:2333-2335 keeps removals with the owner's
-  (seller's) side. The client's recourse is Cancel (#479) or a dispute (EX2): say so in
-  `RemoveMemberDialog`'s client-facing copy. This is not a 🧑; the spec rules it.
-- **Same change:**
-  - PRODUCT_SPEC.md:2309-2311 states the 100% release with no marker; reconcile it with §Freelancer
-    Removal (`:2944-2952`).
-  - Correct the stale comment at `00001200:945`.
-
-### PM-WP5a — workload reports (PJ-33, PJ-07's note)
-
-- **🧑 PM #1 is answered** by #416/#417: `create_category` is stored as a label that weighs nothing
-  (`00000015:327-329`). WP5b step 6's stop is stale.
-- The multipliers are 0.5 / 1 / 2 and committed (`board.ts:116-120`). PM §0.1's "uncommitted
-  `board.ts`" row is history.
-- **Step 1:** `categoryWeight` / `CATEGORY_WEIGHTS` now sit in 14 files: `board.ts`
-  (`workloadIntensity` `:156-157`, the JSDoc at `:950-951`), `live-board.ts:747`,
-  `board-fixtures.ts:237`, `:246`, `live-writes.ts`, `write-store.ts:1258`, `:1824` (+ test),
-  `ProjectBackendService.ts:802`, `ticket-model.ts:217` (+ test), `ticket-view.ts:652`, `:670`,
-  `board-menus.test.ts`, `board-model.test.ts`, `stage-menu.test.ts` and `timeline.test.ts`.
-- **Moved lines:**
-  - `file_workload_report`: `00001140:730`, ungranted under #477
-  - the penalties: `00005001:38-41`
-  - the spec markers: PRODUCT_SPEC.md:2958-2960 and §Dispute Mechanism 4 at `:2973`
-- 🧑 PM §0.5 #5 stands (§0.3 #9).
-
-### PM-WP6 — board authority and the date agreement (PJ-26, PJ-32)
-
-- **Step 2's second clause is done by MR1.** It refuses with PF402 (`00001110:414-425`), not 42501.
-  Reuse `UNCLAIMED_WORK_MESSAGE` (`board.ts:1398`); add no second refusal. #428 also refuses a stage
-  the ticket does not list (`00001120:625-633`).
-- **Step 6 is rewritten.**
-  - Since #414 the ticket's date derives from `required_stages[].due_at`
-    (`fn_enforce_ticket_due_date`, `00001110:9-27`), and `required_stages` freezes at claim
-    (`:342`). A proposal therefore targets a (ticket, stage) pair.
-  - An accepted proposal writes `required_stages[i].due_at` through a definer, the only path the
-    freeze guard admits. The ticket's date stays derived.
-  - 🧑 §0.3 #11.
-- **Moved lines:**
-  - `fn_assert_ticket_move`: `00001110:117`, with its unassigned early return at `:131-137`
-  - the immutability guard: `:217`, with its unclaimed return at `:315`
-  - `move_ticket`: `00001120:542` (`has_project_access` at `:577`; `p_clear_stage` at `:614-623`)
-  - `canDrag`: `ProjectBoard.island.tsx:328-333`; the menu's `canMove: canDrag`: `:1009`
-  - `viewerIsClientOf`: `live-board.ts:1464`
-  - the stub move: `ProjectBackendService.ts:3181`
-  - the spec: P5 (b) at PRODUCT_SPEC.md:2880, P5 (c) at `:2915`
-- ⏳ WP5a (`00001110`). 🧑 PM §0.5 #8 stands (§0.3 #10).
-
-### PM-WP8 — addressable board state (PJ-35, PJ-36, PJ-37)
-
-- **App lane; start now.**
-- **Moved lines:**
-  - `TicketMenu` builds `/board?ticket=<uuid>` at `TicketView.tsx:1041-1043`
-  - `SubmissionExplorer.island.tsx:992` is `:974`
-  - the restore from storage: `board-state.ts:26-44`
-- **`BoardQuerySchema` does not exist.** `FeedbackBoardQuerySchema`
-  (`types/community/feedback.ts:295`) is unrelated; do not reuse its name.
-- **Step 1 also covers the API.** `api/projects/timeline.ts:20-35` and
-  `ProjectBackendService.timeline` (`:1487-1516`) answer for a Task; they 404 `view_absent`, like
-  the page (`timeline.tsx:20-23`).
-
-### PM-WP9 — private drafts (PJ-27, PJ-38)
-
-- **Moved lines:**
-  - "View submissions": `00002011:829-850`; "Insert own submissions": `:321-328`
-  - `resolveIsolation`: `live-submissions.ts:768-771`; `resolveChain`: `:610-620`;
-    `fetchSubmissionPage`: `:1302`; `fetchSubmissions`: `:830-849`
-  - the draft insert: `live-writes.ts:2902-2925`
-  - `apply_write_batch`: `00001130:3123`
-  - the uuid segments: `live-submissions.ts:1134`, `:1172`, `:1382`
-  - `SubmissionListParamsSchema` exists (`types/projects/submissions.ts:207-231`) but nothing parses
-    with it
-- **New:** `stage_submissions` is in the realtime publication (`00002600:30`). Realtime applies the
-  SELECT policy, so the RLS change covers it. Add a probe assert that a reviewer's SELECT sees no
-  draft. Never edit `00002600`: MS3 holds it.
-- ⏳ WP8's step 4 (partly done).
-
-### PM-D7b — the dependency engine (PJ-10)
-
-- ⏳ D7a, P6, GH1. 🧑 PM §0.5 #7 stands (§0.3 #12).
-- **New, optional:** PM §0.6's `fixed_date` and `on_hire_confirmed` start triggers drive nothing.
-  Take them here only if I say so.
-
-### COMMS MS4 — message notifications (PJ-62)
-
-- **Runnable now:** MS2 has landed (`4958c708`, #508).
-- **Stale text:**
-  - CD §2's "resolve only once MS2 lands" is met
-  - CD §2 cites `00005010:66-68`; the rows are `:67-69`, still templating `/messages/{entity_id}`
-  - no `tg_notify_message` or `fn_channel_reader_ids` exists yet
-- **Ordering problem:** MS4 keeps muted threads quiet, but nothing on `/messages` writes `is_muted`
-  until MS5. Mutes are only localStorage there (`ConversationHeader.island.tsx:128-143`,
-  `InboxView.island.tsx:328-330`).
-  - Run MS5 right after MS4 in the same slot.
-  - MS4's acceptance says plainly that `/messages` mutes are honoured from MS5 on.
-
-### COMMS MS5 — chat actions persist (PJ-52, PJ-47's reactions)
-
-- ⏳ MS3 (in flight in `claude/ms3-live-chat`; same islands).
-- **Step 1's star half is done:** star goes through the saved system (#180).
-- **CD §2's "confirm `MessagesSidebar` holds none" is false.** `MessagesSidebar.island.tsx` holds
-  mute and delete prefs at `:105-106`, `:261`, `:323-329`, `:398` and `:415`. Move them too.
-- **Moved lines:** `message_reactions` is at `00000016:427-449`. Nothing writes
-  `dm_participants.deleted_at`, and `set_dm_deleted` does not exist.
-- Reactions are read (`projects/live-messages.ts:307`) but written nowhere
-  (`ChatFeed.island.tsx:391-411`).
-
-### COMMS NT5 — SMS (PJ-61)
-
-- ⏳ the NT4 follow-up commit (`.env.example`, `core/env.ts` and `dev-seam.ts` are dirty now).
-- Its delta cites `.env.example:112`; the line is now `:123`.
-- `dispatch-transports.ts:57` still says "SMS (NT5) is still to come".
-
-### CD2 — the hosted send (PJ-17, 60, 61, 71, 72)
-
-- **Deferred twice by you (#484).** This file never schedules it.
-- **Its status note is stale** (`:344-349`): NT3 and NT4 are on main.
-- **When it runs, add these cases to its proof list:**
-  - a `stage.invite` email (after NO1)
-  - a `schedule.event_invite` email and push
-  - an `event.reminder_email`
-  - a digest (after NO2)
-  - a guest invitation through the transport NO4 gives it
-
-### SAFE LK1 — links that could not be checked (PJ-54, PJ-64)
-
-- **Not started; its premises hold.** `attachLink` is at `FilesBackendService.ts:278` (it cites
-  `:274`).
-- **The live half is also fail-open.** `checkReputation` returns `unavailable` with no key
-  (`link-reputation.ts:72-84`), and `runScan` still answers `safe` (`link-scan.ts:262`). Include it;
-  it is PRD-D5's code half.
-
-### T&S SN1 → SN2 → SN3 (PJ-63, PJ-56, PJ-49)
-
-- **Blocked:** `Projective-Safety` is not beside the repo. Node steps N1 and N2 come first.
-- **SN2 step 5 sweeps only stale `pending_upload` / `scanning` rows and quarantine objects.** FL1
-  covers soft-deleted items. Share `00005060` one writer at a time.
-- SN3 screens the group photo, which goes `writeRendition` → `comms.set_group_photo`
-  (`live-group-photo.ts:12-20`, `:118`) with no screening.
-
-### T&S P1d → P2a → P2b → P2c; SN6 (PJ-57)
-
-- **P1d's new file name collides.** `00001660_functions_ops_moderation.sql` (T&S `:33`, `:430`)
-  clashes with the existing `00001660_functions_ops_alerts.sql` (MR4, #507). Take the next free
-  number.
-- P1d's ⏳ MS2 is met. SAFE §2:127 ("MS2 has not started") is stale.
-- **Today:**
-  - Tier 2 runs (`trg_mask_message_pii`, `00001840:6-14`).
-  - Tier 1 is only a comment (`MessagingBackendService.ts:769`).
-  - `marketplace_window_until` and the cooling-off do not exist.
-  - Tier 3 is PRD-D13 (SN6).
-
-### T&S P2d — archived rooms and caps (PJ-47)
-
-- **`has_channel_access` is at `00001300:154-177`** (SEC G5 cites `F1300:121-144`). It ignores
-  `archived_at`, so a direct PostgREST insert into an archived room passes "send_messages_if_member"
-  (`00002012:60-64`).
-- **The app's send door already refuses** (`projects/live-writes.ts:2631-2637`).
-- **Gate the room UPDATE policy too** (`00002012:82-90`). CH1 replaces that policy's client path
-  with doors; whichever runs second keeps the archive gate.
-- #508 (h): the send door's rate limit is per process (`MessagingBackendService.ts:306`, `:329`).
-  G6's database throttle is its fix.
-
-### T&S R1 → R4 → R5 → R3 → R2 (PJ-58)
-
-- **R1's 🧑 (the reason vocabulary, #148 (g)) blocks the chain.**
-- R2's FILES name the message menus that MS3 is reworking: ⏳ MS3. Neither `ops.reports` nor
-  `/api/reports` exists.
-- **EX4 builds the workload-verdict appeal on R1, R3 and R4.** Give `ops.reports` a subject that can
-  name a workload report.
-
-### CFG2 — vault key rotation (PJ-75)
-
-- **Not landed.** There is no `ENCRYPTION_KEY_PREVIOUS` and no rewrap; `token-vault.ts:25-26` still
-  says "shortcut: no rewrap".
-- PRODUCTION_READINESS PRD-H2's work-order cell says "—" (§0.4).
-- `INTEGRATIONS_BACKEND_LIVE` defaults off (`env.ts:478`). A row's status is judged with every live
-  gate on, so the gate is not PJ-75's gap.
-
-### OPS2 — vote settlement (PJ-73) ✅
-
-- **Landed** in `dd1ee9a2` (#513), with its commit named on PRD-G4 and SCH-WP7 in `6bba264d`. PJ-73
-  is ✅ on main. Nothing is left here.
-- The rest of SCH-WP7 belongs to Calls & sessions.
-
-### FBP DB21 — the order-line dispute (adjacent)
-
-- **Reuse EX2's subject design;** add no second subject column. DB21's `open_order_line_dispute`
-  (FBP `:1745-1748`) becomes one more `subject_kind`. If DB21 runs first, EX2 adopts its column
-  instead: one design either way.
-
----
-
-## 3. Project setup, stages & members — new prompts
+## 2. Project setup, stages & members
 
 ### ST1 — A setup save carries a version; a stale save is refused, never merged
 
@@ -1065,7 +637,8 @@ a ticket; the freelancer sees it in progress and is told; a non-seat-holder neve
 picker; screenshots of the control and the picker.
 
 SAME CHANGE: PRODUCT_SPEC.md (the manual rule as ruled; :2697-2700 matches the control);
-PRODUCT_MANAGEMENT.md (assignment modes); PM_BUILD_PROMPTS.md §0.6:157-158 (manual now ships);
+PRODUCT_MANAGEMENT.md (assignment modes); PM_BUILD_PROMPTS.md §0.6's first bullet (manual now
+ships);
 documentation/database/projects/*; Zod; ROUTING.md; the decision row.
 ```
 
@@ -1150,8 +723,7 @@ STEPS:
      where a client path survives step 2), and drop owner INSERT. Narrow the table grants in
      00002520 to match.
   4. Every probe that seeds seats stays green (seat_fill_concurrency, business_authority,
-     seat_lock_and_capacity and the invite probes). Check SECURITY_ACCESS_BUILD_PROMPTS.md §0
-     first: if a SAC prompt holds 00002011 or 00002520, run after it.
+     seat_lock_and_capacity and the invite probes).
 
 ACCEPTANCE: seat_insert_consent.sql is green; the whole probe suite is green; applying,
 accepting an invitation and hiring still work live.
@@ -1212,7 +784,7 @@ SAME CHANGE: SYSTEM_ARCHITECTURE.md (the cache contract); the decision row (#427
 
 ---
 
-## 4. Tickets & delivery — new prompts
+## 3. Tickets & delivery
 
 ### TK1 — A payee sees which stages are prepaid; a reservation never strands
 
@@ -1300,8 +872,8 @@ CONTEXT (verified at e1ff027b; re-check every line):
   - The pieces: features/checkout/islands/BuyNowModal.island.tsx, core/buy-now-state.ts,
     components/TicketBasketPicker.tsx; features/projects/components/FundingStatus.tsx;
     routes/api/finance/escrow/{quote,intent}.ts; routes/api/basket/*.
-  - PRD-K3: `deno task test:e2e` names a deleted spec. Fix the task first (FBP E1's delta in
-    MONEY §4 says the same).
+  - PRD-K3: `deno task test:e2e` names a deleted spec (landing-hero.spec.ts). Fix the task first
+    (FBP E1 says the same).
   - Stripe is test mode only (.env.local). Never a live key; use the stripe:test-cards skill for
     card numbers.
 
@@ -1327,7 +899,7 @@ SAME CHANGE: e2e harness notes in SYSTEM_ARCHITECTURE.md if the task changes; th
 
 ---
 
-## 5. Completion, exit & disputes — new prompts
+## 4. Completion, exit & disputes
 
 ### EX1 — A project completes
 
@@ -1453,7 +1025,9 @@ CONTEXT (verified at e1ff027b; re-check every line):
   - The spec: PRODUCT_SPEC.md §Dispute Mechanism (:3577-3604), PRODUCT_MANAGEMENT.md §3.8
     (:708) and §3.1.
   - One subject design must serve this prompt, FBP DB21's order-line dispute
-    (FINANCE_BUILD_PROMPTS.md:1745-1748) and PM-WP4a step 6's Fair Exit contest.
+    (open_order_line_dispute, FINANCE_BUILD_PROMPTS.md) and PM-WP4a step 6's Fair Exit contest.
+    DB21 becomes one more subject_kind. If DB21 has landed first with its own subject column,
+    adopt its column instead: one design either way.
 
 🧑 DECISION (before step 2). Put all of these to me at once:
   1. What is contestable. Recommended: held escrow (§3.8), plus money released into the 7-day
@@ -1564,7 +1138,7 @@ to a different operator, and a successful appeal reverses its penalty
 ROLE: Full-stack engineer. Queue S, after PM-WP5a and T&S R1, R3 and R4.
 
 CONTEXT (verified at e1ff027b; re-check every line):
-  - This is W8 (PM §0.6:170-174; PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md:536, :665), with no
+  - This is W8 (PM §0.6's last bullet; PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md:536, :665), with no
     prompt. projects.fn_flag_bad_faith_report (00001140:7) is ungranted, so no moderator can
     call it. /admin/disputes reads finance.disputes only.
   - A workload report moves no money (#290, PRODUCT_SPEC.md:2963-2965), so its contest is an
@@ -1595,7 +1169,7 @@ the decision row (W8 closed).
 
 ---
 
-## 6. Messaging — new prompts
+## 5. Messaging
 
 ### CH1 — Edit and delete a message; the original survives for evidence
 
@@ -1610,7 +1184,7 @@ ROLE: Full-stack engineer. Queue S, after COMMS MS3 and MS5: 00000016, 00002012,
 
 CONTEXT (verified at e1ff027b; re-check every line):
   - Nothing edits or deletes a message: no editMessage, no route. Message edit and delete is CAS
-    M11, "Open (no prompt)" (CAS:94; COMMS_BUILD_PROMPTS.md:203 leaves it out).
+    M11, "Open (no prompt)" (CAS:94; COMMS §0.4 leaves it out and names this prompt as its owner).
   - Rooms have half the database for it: an UPDATE policy (00002012:82-90), a column grant on
     body, body_delta, edited_at and deleted_at (00002520:393), and the re-mask on UPDATE
     (00001840:6-7). comms.dm_messages has no edited_at and no UPDATE policy (00000016:259-295).
@@ -1649,8 +1223,11 @@ SAME CHANGE: PRODUCT_SPEC.md (the rule as ruled); documentation/database/comms/*
 decision row (CAS M11 closed).
 ```
 
-§1.2 rows: **PJ-47** stays 🟡 until MS3, MS5 step 3 and T&S P2d land (the note narrows; its
-"archived rooms accept posts" corrected).
+§1.2 rows: **PJ-47** stays 🟡 until MS3, MS5 step 3 and T&S P2d land. The note narrows, and its
+"archived rooms accept posts" is corrected: the send door refuses (404,
+`projects/live-writes.ts:2631-2637`), and only a direct PostgREST insert passes (`00002012:60-64` →
+`00001300:154-177`). The note also gains room read marks (PRD-E13) and the missing body and rate
+caps (G6).
 
 ### CH2 — Team and business rooms exist for the people they're for
 
@@ -1775,7 +1352,7 @@ M18 closed); the decision row.
 
 ---
 
-## 7. Notices — new prompts
+## 6. Notices
 
 ### NO1 — An emailed invitation reaches someone who has no account yet
 
@@ -1868,13 +1445,12 @@ Narrows PJ-61 (PRD-E18).
 PROMPT NO3: A browser that has stopped accepting push is turned off for that person, and
 Settings says so
 
-ROLE: Backend engineer. App lane (a column, if needed, goes to Queue S), after the NT4 follow-up
-commit.
+ROLE: Backend engineer. App lane (a column, if needed, goes to Queue S).
 
 CONTEXT (verified at e1ff027b; re-check every line):
-  - Web push is NT4 (322c4dc9): services/comms/transport-webpush.ts. An uncommitted follow-up in
-    the main tree caps the body at 4096 octets; wait for it to land.
-  - PRD-E18 (new, with the NT4 follow-up): failing push devices are never dropped.
+  - Web push is NT4 (322c4dc9, finished in a7ceeb92): services/comms/transport-webpush.ts caps the
+    body at 4096 octets, and a browser gets one account's alerts.
+  - PRD-E18 (new with NT4): failing push devices are never dropped.
   - Settings → Notifications → This device turns push on (NT4).
 
 🧑 DECISION (before step 2): the threshold. Recommended: drop a device at once on 404 or 410;
@@ -1893,7 +1469,8 @@ SAME CHANGE: documentation/database/comms/* if a column is added; PRODUCTION_REA
 (PRD-E18); the decision row.
 ```
 
-§1.2 rows: **PJ-61** stays 🟡 ("SMS, NT5; hosted VAPID, CD2"); PRD-E18 → ✅.
+§1.2 rows: **PJ-61** stays 🟡 ("SMS, NT5; hosted VAPID, CD2"), and its note names PRD-E18, which it
+omits today; PRD-E18 → ✅.
 
 ### NO4 — Guest invitations honour bounces and suppression
 
@@ -1934,7 +1511,7 @@ SAME CHANGE: SYSTEM_ARCHITECTURE.md; the decision row (#391 (o) closed).
 
 ---
 
-## 8. Files & assets — new prompts
+## 7. Files & assets
 
 ### FL1 — Storage meters every byte, and deleted files leave the bucket
 
@@ -2130,7 +1707,7 @@ decision row (#402 (d), (e), (k)).
 
 ---
 
-## 9. The live-provider proof
+## 8. The live-provider proof
 
 ### LP1 — Zoom, Teams, Meet and Microsoft calendar, run on your accounts
 
@@ -2152,12 +1729,13 @@ CONTEXT (verified at e1ff027b; re-check every line):
     (/api/sessions/webhooks/:provider is a legacy alias); the no-show route
     routes/api/sessions/sittings/[eventId]/no-show.ts → finance-dispute-sweep (00005060:30-32);
     integrations-presence-reconcile (:283) feeds presence; fn_dispute_attendance_audit
-    (00001260:146).
+    (00001260:146). USER_FLOWS PJ-77 names the legacy alias as its entry; Meet is unproven too
+    (#386).
   - #386 proved Google on my account (consent, a busy read of 373 spans, one mirrored copy). Not
     proved: Microsoft or Zoom consent, a real Meet room, Teams.
   - Graph subscriptions (channels.ts:88) and Google watch channels (:65) need a public HTTPS
-    notification URL. OPS6 (#512) describes the hosted origin and lists the OAuth redirect URIs
-    (OPERATIONS_BUILD_PROMPTS.md:854), but not the provider webhook endpoints: add them there.
+    notification URL. OPS6 (#512, OPERATIONS_BUILD_PROMPTS.md) describes the hosted origin and
+    lists the OAuth redirect URIs and these provider notification endpoints (its step 5 (d)).
   - EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md §7.4 (:1333+), §7.5 (:1397+), §7.7
     (:162) hold each provider's setup.
 
@@ -2189,8 +1767,7 @@ RUN (record each as evidence: what was done, the result, redacted payloads, scre
 ACCEPTANCE: each step's evidence is in a decision row like #386's; every probe stays green.
 
 SAME CHANGE: EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md (what was proved);
-OPERATIONS_BUILD_PROMPTS.md OPS6 (the webhook endpoints); SCHEDULING_BUILD_PROMPTS.md's live-run
-notes (:31, :712, :845); the decision row (#386 and #392 updated).
+SCHEDULING_BUILD_PROMPTS.md's live-run notes; the decision row (#386 and #392 updated).
 ```
 
 §1.2 rows: **PJ-76** (Microsoft), **PJ-77** (each provider), **PJ-44** (the three outcomes), each →
@@ -2198,7 +1775,7 @@ notes (:31, :712, :845); the decision row (#386 and #392 updated).
 
 ---
 
-## 10. Last — the sweep
+## 9. Last — the sweep
 
 ### PJZ — The rows, the work orders and the specs agree with the code
 
@@ -2210,16 +1787,19 @@ ROLE: Documentation engineer. App lane, last.
 STEPS:
   1. Re-check every row of USER_FLOWS §PJ (PJ-01 to PJ-77) against main: the status, the
      "What's missing" text and every file:line. Rows whose note is stale but whose status is
-     right (PJ-15, PJ-57, PJ-59, PJ-69, PJ-71) get their text fixed here.
-  2. Fix every line of PROJECTS_BUILD_PROMPTS.md §0.4 that its prompt left. That includes:
-     PM_BUILD_PROMPTS.md §0.1, §0.5 #1 and §0.6:157-158; LIVE_DATA §2:78-79; COMMS §0 and its MS2
-     and MS3 notes; CD §2 and its CD2 note; the SCHEDULING header (:38); PRODUCTION_READINESS
-     PRD-H2's and PRD-G4's work-order cells; and USER_FLOWS line 64's PJ cells (tell the
-     COMMS_DELIVERY owner).
-  3. PROJECTS_BUILD_PROMPTS.md §0.1: mark each work order ✅ with its commit, or name what it
-     still waits for. Re-run the score projection over the rows as they stand.
-  4. 🧑 Ask me before deleting documentation/readiness/COMMS_DELIVERY_BUILD_PROMPTS.md.tmp.
-     36100.abc1feed0925 (a stray file from an interrupted write on 2026-11-18).
+     right get their text fixed here. Known on 2026-11-19: PJ-15, PJ-69 and PJ-71 say "in-app
+     only" or "Push and email not sent (#390)", but email and push are dispatched locally through
+     NT2–NT4 (ee275e93, 153f20d9, 322c4dc9), the hosted send is CD2's, and #390 (g) was closed by
+     #391; PJ-57 files Tier 3 under PRD-D7 and D8, but Tier 3 is PRD-D13 (T&S SN6); PJ-59 per
+     §0.1.
+  2. Fix what no prompt fixed: PRODUCTION_READINESS PRD-H2's work-order cell (it says "—"; it is
+     OPS CFG2, and the gates differ: PJ-75 is UAT, PRD-H2 is PROD), and USER_FLOWS line 64's PJ
+     cells ("No email, push or SMS reaches anyone": email and push are built locally, the hosted
+     send and SMS are left; tell the COMMS owner). Check OPERATIONS §0.1's PRD-B6 row too: on
+     2026-11-23 it still listed F·DB3, landed in 44382c08, as a PM-WP4b blocker.
+  3. PROJECTS_BUILD_PROMPTS.md: each prompt that landed has left the file under the closing duty;
+     check §0.0 and §0.1 against git log, and re-run the score projection over the rows as they
+     stand.
   5. If PM-Z1 has not run, do its PJ half here and say so.
 
 SAME CHANGE: docs only. `deno fmt` on the files you touched.

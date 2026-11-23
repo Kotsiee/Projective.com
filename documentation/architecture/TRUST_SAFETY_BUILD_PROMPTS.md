@@ -1,166 +1,170 @@
 # Trust & Safety Build Prompts — Claude Code Work Orders for the Leakage Pipeline, the Moderation Loop and the Safety Node
 
-> **Status: WORK ORDERS, not binding.** This is a sequenced series of self-contained Claude Code
-> prompts. Together they build Part B §B.3 track **T** of
-> [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) and close the open gaps in
-> [`SECURITY_MODERATION_AND_AI_GAPS.md`](SECURITY_MODERATION_AND_AI_GAPS.md) (SEC). Every prompt
-> cites its evidence by finding ID (SEC `E*`, `L*`, `Z*`, `P-*`, `R*`, `V*`, `AV-*`, `T3-*`, `G*`;
-> CAS `F*` from [`COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md`](COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md);
-> EPI flags from
-> [`../api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md`](../api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md))
-> and its ruling as `(Decision #340, ruling X)`. Paste each prompt into its **own fresh session**,
-> after the standard header (§1).
+> **Status: WORK ORDERS, not binding.** This file builds Part B §B.3 track **T** of
+> [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md). It closes the open gaps in
+> [`SECURITY_MODERATION_AND_AI_GAPS.md`](SECURITY_MODERATION_AND_AI_GAPS.md) (SEC) and every open
+> row of [`PRODUCTION_READINESS.md`](../readiness/PRODUCTION_READINESS.md) §D (§0.6 maps them),
+> under Decision #340's rulings (#345 for the safety node, §8).
 >
-> **Rulings.** Decision #340's OWNER RULINGS (2026-10-30) hold T1–T5 and Q0.2 (a) and (f); the
-> questionnaire's Part C is the table. Run the prompts in the §0 order. A prompt marked **🧑
-> DECISION** stops and puts the named question to a human, with options and a recommendation, before
-> it changes behaviour there. **⚖️** means ruled pending counsel: build it behind a flag that stays
-> off, and never switch it on.
+> **Verified against code 2026-11-23 at `f2e25929`.** 19 open, 2 partly done, 6 done (§0 ledger).
+> Runnable now: LK1, P1d, P2d, R1 (🧑 at its first step), SN1 (🧑 to confirm at step 4); in
+> `Projective-Safety`, N3's remux and N5.
 >
-> **Re-verified in code at `8a3fd595` (2026-11-12).** Wave 0 closed SEC E1–E5, E7, E6/G12, G1–G3,
-> G8, G9, G20, L1–L3, L4 (a) and (c), L5, L6, and SEC-P1c (Z2/P-2 by refusing video renditions; V1,
-> V2, V4); `supabase/functions/scan-file` is gone. This track has merged ✅ E8 (`dd4206d3`: E8/G10,
-> the G11 deletion, AV-1 and Z3's write half) and ✅ W1 (`bc805dff`: Web Risk and the Voyage pin).
-> Nothing else here has landed: no table, function, trigger, route, service, env key or dev axis
-> that P1d–H1 name exists in the tree. Decision #396 (`0de5438f`) has since replaced V1's markup
-> refusal: markup is admitted as inert text and SVG is sanitised. Still open, and built here: L4 (b)
-> and (d), L7, L8, L9, the public-copy check (§2.5, P-5), Tier 1, Tier 3, R1–R5 (with G15 and G19),
-> G5, G6, G13, G14, G18 (the sync-trigger half), Z1, Z3's screening, Z4–Z6, V3, V5, V6, AV-2–AV-5
-> and the publication gate. Not in this track: G16 (identity's erasure chain), G17 (#336), CAS F14
-> metering and CAS F20–F29 (proxy and inspector hardening).
->
-> **Migrations are edited in place** (root `CLAUDE.md` §1). Every prompt names the category file to
-> edit. A new category-1 file for a new module (`00001660_functions_ops_moderation.sql`, created by
-> P1d) is a new home, not a patch file.
+> **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
+> (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
+
+**How to run these.** Paste each prompt into its **own fresh session**, after the standard header
+(§1), in the §0 order. Every prompt cites its evidence by finding ID (SEC `E*`, `L*`, `Z*`, `P-*`,
+`R*`, `V*`, `AV-*`, `T3-*`, `G*`; CAS `F*` from
+[`COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md`](COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md); EPI flags from
+[`../api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md`](../api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md))
+and its ruling as `(Decision #340, ruling X)`. Decision #340's OWNER RULINGS (2026-10-30) hold T1–T5
+and Q0.2 (a) and (f); the questionnaire's Part C is the table.
+
+- **🧑 DECISION** stops and puts the named question to a human, with options and a recommendation,
+  before it changes behaviour there. **⚖️** means ruled pending counsel: build it behind a flag that
+  stays off, and never switch it on.
+- **Migrations are edited in place** (root `CLAUDE.md` §1). Every prompt names the category file to
+  edit. The one new category-1 file, `00001665_functions_ops_moderation.sql` (P1d creates it;
+  `00001660` is MR4's `ops_alerts`), is a new home, not a patch file.
+- **IDs.** H1 is the hash-matching prompt (§6); §8.3's H1–H5 are human setup steps. N0–N5 are node
+  prompts, run in `Projective-Safety` (§8.4). Section numbers are kept from earlier versions (§2
+  held the done E8), so old citations still resolve.
+- **Not in this track:** G16 (identity's erasure chain), G17 (#336), CAS F14 metering and CAS
+  F20–F29 (proxy and inspector hardening). Decision #396 (`0de5438f`) replaced V1's markup refusal:
+  markup is admitted as inert text and SVG is sanitised.
 
 ---
 
 ## 0. Run order & dependencies
 
-Re-verified in code 2026-11-12 at `8a3fd595`: E8 and W1 hold. P1d, P2a–P2d, R1–R5, SN1–SN6, H1 and
-Z1 are not started, and none of their objects exists. Of the ⏳ waits below, jobs-sql (`817dbbd1`)
-and M·MS1 (`bbcf3506`, landed after the re-verification) are met. M·MS2, MS3 and C·WP10 have not
-landed, and neither has P·WP4, which the projects track has since split into WP4a → WP4b (T waits on
-WP4b, `PM_BUILD_PROMPTS.md` §0). `Projective-Safety` is not on this machine, so N0 is unverified and
-N1–N4 have not run here.
+### 0.0 Done
 
-| Phase                        | Prompts                                                         | Why this order                                                                                                                                                                                                                                                                                                            |
-| :--------------------------- | :-------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **0 — The last P0**          | ✅ E8                                                           | Q0.2 (a) removes the client write policies on six buckets and SVG from `public_assets`; Q0.2 (f) deletes the dead search definers. Every scanner and gate below sits behind a door an attacker can walk around until E8 lands (SEC §6, AV-1).                                                                             |
-| **Any time**                 | ✅ W1                                                           | Web Risk and the Voyage pin (T5): two provider modules, no SQL.                                                                                                                                                                                                                                                           |
-| **1 — The leakage pipeline** | P1d → P2a → P2b → P2c; P2d                                      | P1d builds Tier 1 and, in the same change, every Tier 2 category Tier 1 refuses (L8; PRODUCT_SPEC §Messaging 1.A: the database tier is the floor). P2a reuses P1d's categoriser for public copy. P2b widens the protected phase (T1) before P2c masks new surfaces with it. P2d closes the SEC grant leftovers.           |
-| **2 — The moderation loop**  | R1 → R4 → R5 → R3 → R2                                          | SEC §3.3's order: the sink, the penalty writer, Standing, the reviewer, then the report button last, so it never renders before a reviewer can act on it (root `CLAUDE.md` §3.11).                                                                                                                                        |
-| **3 — The safety node**      | SN1 → SN2 → SN3 → SN4 → SN5; SN6 after R3 and P2b; H1 after SN2 | ClamAV, then the one admission contract, then the publication gate (NudeNet + OCR), then Sightengine, then video. SN1 may start as soon as E8 merges (SEC §6 step 2) because it is file-disjoint from phases 1–2 apart from `00005060`. SN6 (Presidio) needs the review sink, the reviewer and the final phase predicate. |
-| **Last**                     | Z1                                                              | Docs sweep, the SEC status column and the decision rows.                                                                                                                                                                                                                                                                  |
+| ID | What landed                                                                                              | Commit                        | Text at    |
+| :- | :------------------------------------------------------------------------------------------------------- | :---------------------------- | :--------- |
+| E8 | Only the service role writes storage outside quarantine; no SVG in `public_assets`; search definers gone | `dd4206d3` (merge `ee0b004a`) | `f2e25929` |
+| W1 | Link reputation on Google Web Risk; embeddings pinned to Voyage, `EMBEDDINGS_ENABLED` still false        | `bc805dff` (merge `f5955b7c`) | `f2e25929` |
+| N0 | Node scaffold and `contract/openapi.yaml` (`Projective-Safety`)                                          | `f6c46b8`                     | `f2e25929` |
+| N1 | Caddy gateway: bearer, per-route body caps and timeouts (`Projective-Safety`)                            | `fea1e02`                     | `f2e25929` |
+| N2 | ClamAV `POST /scan/file`, the `macros` flag, signature age in `/healthz` (`Projective-Safety`)           | `d7e82a1`                     | `f2e25929` |
+| N4 | Presidio analyzer and anonymizer routes and the Tier 3 corpus; the node holds no recognisers             | `30c8bda`, `a4ccec5`          | `f2e25929` |
+| N6 | Withdrawn: the app calls Sightengine itself (SN4; Decision #345)                                         | —                             | `f2e25929` |
 
-**SQL lane (Part B §B.0).** E8, P1d, P2a, P2b, P2c, P2d, R1, R4, R5, R3, SN1 (its job), SN2 (its
-job), SN3, SN4 (dials) and SN6 run SQL. At most **two SQL sessions at once** across all tracks, on
-disjoint migration files. Each announces its `deno task db:reset` to the other sessions, runs
-`deno task test:probes` after each reset, and finishes with its own clean
-`deno task test:probes:fresh`. W1, R2, SN5 and H1 are app or node work only.
+| Phase                        | Prompts                                                         | Why this order                                                                                                                                                                                                                                                                                                                      |
+| :--------------------------- | :-------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Any time**                 | LK1                                                             | App only (`services/files/link-scan.ts`). It closes PRD-D4, one of the two §D rows UAT needs.                                                                                                                                                                                                                                       |
+| **1 — The leakage pipeline** | P1d → P2a → P2b → P2c; P2d                                      | P1d builds Tier 1 and, in the same change, every Tier 2 category Tier 1 refuses (L8; PRODUCT_SPEC §Messaging 1.A: the database tier is the floor). P2a reuses P1d's categoriser for public copy. P2b widens the protected phase (T1) before P2c masks new surfaces with it. P2d closes the SEC grant leftovers.                     |
+| **2 — The moderation loop**  | R1 → R4 → R5 → R3 → R2                                          | SEC §3.3's order: the sink, the penalty writer, Standing, the reviewer, then the report button last, so it never renders before a reviewer can act on it (root `CLAUDE.md` §3.11).                                                                                                                                                  |
+| **3 — The safety node**      | SN1 → SN2 → SN3 → SN4 → SN5; SN6 after R3 and P2b; H1 after SN2 | ClamAV, then the one admission contract, then the publication gate (NudeNet + OCR), then Sightengine, then video. SN1 can start now: E8 has merged and the node's N1 and N2 are built. It is file-disjoint from phases 1–2 apart from `00005060`. SN6 (Presidio) needs the review sink, the reviewer and the final phase predicate. |
+| **Last**                     | Z1                                                              | Docs sweep, the SEC status column and the decision rows.                                                                                                                                                                                                                                                                            |
+
+**Across this repo, the node repo and the people who act.** SQL steps take the gaps in §0.3's serial
+lanes. `00002510` has one writer at a time across all tracks, the identity erasure chain included.
+
+| Wave    | This repo                                                                 | Node repo / you                                              | Waits for                                                                            |
+| :------ | :------------------------------------------------------------------------ | :----------------------------------------------------------- | :----------------------------------------------------------------------------------- |
+| 1 (now) | LK1 · R1 → R4 → R5 → R3 (SQL, serial) · P1d (SQL) · P2d (SQL) · SN1 → SN2 | N3's remux, N5; §8.3 H1 keys                                 | R1 stops at its 🧑 first                                                             |
+| 2       | R2 · SN3 · H1 · P2a → P2b → P2c                                           | Provision the UAT node (§8.3 H3); `MALWARE_SCAN_LIVE` in UAT | R3 and COMMS MS3 (R2); SN2 and R1 (SN3); SN2 (H1); PM-WP4b (P2a–P2c); SCH-WP10 (P2c) |
+| 3       | SN4 · SN5 · SN6                                                           | Sightengine's data-processing terms signed                   | P2a and a ruling on #344 (b) (SN4); SN4 and N3's remux (SN5); R3 and P2b (SN6)       |
+| —       | —                                                                         | A Web Risk key per hosted environment; counsel on H1         | PRD-D5 and PRD-D14 close outside code                                                |
+
+**SQL lane (Part B §B.0).** P1d, P2a, P2b, P2c, P2d, R1, R4, R5, R3, SN1 (its job), SN2 (its job),
+SN3, SN4 (dials) and SN6 run SQL, and LK1 does if it adds its dial. At most **two SQL sessions at
+once** across all tracks, on disjoint migration files. Each announces its `deno task db:reset` to
+the other sessions, runs `deno task test:probes` after each reset, and finishes with its own clean
+`deno task test:probes:fresh`. R2, SN5 and H1 are app or node work only.
 
 ### 0.1 Cross-track waits (⏳)
 
-Track and step names are Part B's; the comms prompt IDs (MS1–MS5, NT1–NT5, SR1–SR4) are
-`COMMS_BUILD_PROMPTS.md`'s.
+Track and step names are Part B's; COMMS IDs (MS1–MS5, NT1–NT5, SR1–SR4) are
+`COMMS_BUILD_PROMPTS.md`'s, PM-* are `PM_BUILD_PROMPTS.md`'s and SCH-* are
+`SCHEDULING_BUILD_PROMPTS.md`'s. Met, and dropped from the prompts: jobs-sql (`817dbbd1`), M·MS1
+(`44382c08`), M·MS2 (`4958c708`, #508), SAC1 (`36b25912`) and SAC2 (`67d9c9d2`).
 
-| T prompt          | Waits for                                               | Why                                                                                                                                                                                                                                         |
-| :---------------- | :------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| E8                | —                                                       | Runs first. Q0.2 (f) is E8's per the Wave 1.2 brief; COMMS SR1 also lists that deletion (RED D-29), so SR1 skips it once E8 has merged. Both edit `00001400` and `00002510`: never run them in parallel.                                    |
-| P1d               | ⏳ M·MS2 (soft)                                         | MS2 builds the single send door `MessagingBackendService.sendMessage(actor, ref, input)` (CAS §6.1, ruling N1): one Tier 1 insertion point, not two. If P1d must go first, it wires both doors and leaves a `shortcut:` comment naming MS2. |
-| P2a               | ⏳ P·WP4                                                | `projects.projects` copy and its trigger file belong to the projects track while WP4 runs.                                                                                                                                                  |
-| P2b               | ⏳ M·MS2, P·WP4 (✅ M·MS1)                              | `comms.dm_threads` (`00000016`) is in MS1's schema window; the thread openers sit behind MS2's door; a cancelled project's cooling-off reads WP4's lifecycle.                                                                               |
-| P2c               | ⏳ P·WP4, C·WP10                                        | Ticket and submission text (`00000015`, `00001850`) and scheduling event text (`00001860`). Reactions are out: COMMS MS5 pins them to one emoji set.                                                                                        |
-| P2d               | —                                                       | COMMS leaves G5, G6, G13, G14 to this track; SR1 pins `fn_nearest` / `fn_nearest_to_entity` (G18's function half), so P2d does only the sync triggers.                                                                                      |
-| R1, P1d           | I's erasure chain (coordinate)                          | `ops.reports`, `ops.refusal_counts` and the evidence copies are personal data. The erasure arm lives in `00001060` (identity's hot file): whichever lands second adds it, as that file's single writer at the time.                         |
-| R2                | ⏳ M·MS2, M·MS3                                         | The message menus live in the islands MS2 and MS3 rework.                                                                                                                                                                                   |
-| R4                | not beside I's Q0.2 (b) prompt                          | Both edit `00000012_tables_security.sql`.                                                                                                                                                                                                   |
-| R5                | not beside O's read-path work                           | `services/explore/live-catalog.ts` and `00002520`.                                                                                                                                                                                          |
-| SN1, SN2, R5, SN6 | ⏳ jobs-sql (Wave 1.3)                                  | Each registers a job in `00005060`; one writer at a time across every track after that.                                                                                                                                                     |
-| W1                | not beside M's search prompts (SR1–SR4)                 | `services/search/voyage-client.ts`.                                                                                                                                                                                                         |
-| SN4               | ⏳ P2a and the owners of the public-copy write services | The text screen runs in the same doors.                                                                                                                                                                                                     |
+| T prompt | Waits for                                               | Why                                                                                                                                                                                                                                                       |
+| :------- | :------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P2a      | ⏳ PM-WP4b                                              | `projects.projects` copy and its trigger file belong to the projects track while WP4b runs (WP4 split into WP4a → WP4b).                                                                                                                                  |
+| P2b      | ⏳ PM-WP4b                                              | A cancelled project's cooling-off reads WP4b's lifecycle.                                                                                                                                                                                                 |
+| P2c      | ⏳ PM-WP4b, SCH-WP10                                    | Ticket and submission text (`00000015`, `00001850`) and scheduling event text (`00001860`). SCH-WP10 is built as `8851d4dc` on `claude/sch-wp10-calendar`, which is not on main (SCHEDULING §0). Reactions are out: COMMS MS5 pins them to one emoji set. |
+| P2d      | coordinate with PROJECTS CH1                            | Both edit the room policies in `00002012`; whichever runs second keeps the archive gate. COMMS SR1 pins `fn_nearest` / `fn_nearest_to_entity` (G18's function half), so P2d does only the sync triggers.                                                  |
+| R1, P1d  | I's erasure chain (coordinate)                          | `ops.reports`, `ops.refusal_counts` and the evidence copies are personal data. The arm lives in `00001060` (identity's hot file) and is classified in identity ERA1's `account_erasure_scope.sql`: whichever lands second adds it.                        |
+| R2       | ⏳ M·MS3                                                | The message menus live in the islands MS3 reworks.                                                                                                                                                                                                        |
+| R4       | not beside identity HK1                                 | Both edit `00000012_tables_security.sql` (HK1 is identity's Q0.2 (b) drops).                                                                                                                                                                              |
+| R5       | not beside O's read-path work                           | `services/explore/live-catalog.ts` and `00002520`.                                                                                                                                                                                                        |
+| SN4      | ⏳ P2a and the owners of the public-copy write services | The text screen runs in the same doors.                                                                                                                                                                                                                   |
+
+**Others wait on T:** MARKETPLACE SC8 waits for R1 and R2 (Decision #496: a `notice` row is filed
+only by SC8's door), and PROJECTS EX4 builds its workload-verdict appeal on R1, R3 and R4.
 
 ### 0.2 Hot files (Part B §B.0) and other shared files
 
-| File                                                    | T writers                              | Other writers                                    |
-| :------------------------------------------------------ | :------------------------------------- | :----------------------------------------------- |
-| `00001240` (finance money)                              | none                                   | F, P·WP4                                         |
-| `00005060` (jobs)                                       | SN1, SN2, R5, SN6                      | F, M, P, C, jobs-sql                             |
-| `00001155` (sessions)                                   | none                                   | every C step                                     |
-| `00001020` (workspaces)                                 | none                                   | I, SA G4                                         |
-| `00001060` (erasure)                                    | none (R1 and P1d hand their arms to I) | I, SEC G16                                       |
-| `00001300` (comms)                                      | P1d, P2b, P2c, P2d, SN6                | COMMS MS1, MS4, MS5 and every CAS messaging step |
-| `00002510` (grants)                                     | E8, P1d, P2d, R1, R3, R4, SN6          | many                                             |
-| `stripe-webhook.ts` + `00001230`                        | none                                   | F DB2, DB6; S S4                                 |
-| `live-wallet.ts` / `wallet-scope.ts`                    | none                                   | F SV2, SV3, SV5; O WP2                           |
-| `features/devtools` + `dev-seam.ts`                     | SN1, SN3, R3                           | F SV4, UI3; S S4, S6; I F6                       |
-| `00001400` (search functions)                           | E8, P2d                                | COMMS SR1–SR4                                    |
-| `00002520` (table grants)                               | P2d, R5                                | many                                             |
-| `00000012` (security tables)                            | R4                                     | I (Q0.2 (b) drops)                               |
-| `00000013` (ops tables)                                 | P1d, R1, SN6                           | —                                                |
-| `00000016` (comms tables)                               | P2b, P2d                               | COMMS MS1                                        |
-| `00001840` (comms triggers)                             | P2c, P2d, SN6                          | COMMS                                            |
-| `00005001` (platform params)                            | P2b, P2d, R4, SN1, SN2, SN3, SN4, SN6  | F (FX margin and dials)                          |
-| `00005010` (notification catalog)                       | R3, SN3                                | COMMS NT1–NT5                                    |
-| `MessagingBackendService.ts`, `projects/live-writes.ts` | P1d                                    | COMMS MS2, MS3; O D-06 / SC-9                    |
+| File                                                    | T writers                              | Other writers                                                     |
+| :------------------------------------------------------ | :------------------------------------- | :---------------------------------------------------------------- |
+| `00005060` (jobs)                                       | SN1, SN2, R5, SN6                      | F, M, P, C, OPS, PROJECTS FL1 (one writer at a time)              |
+| `00001060` (erasure)                                    | none (R1 and P1d hand their arms to I) | I (ERA1), SEC G16                                                 |
+| `00001300` (comms)                                      | P1d, P2b, P2c, P2d, SN6                | COMMS MS4, MS5; PROJECTS CH1–CH4; every CAS messaging step        |
+| `00002510` (grants)                                     | P1d, P2d, R1, R3, R4, SN6              | many                                                              |
+| `00002012` (comms policies)                             | P2d                                    | PROJECTS CH1                                                      |
+| `features/devtools` + `dev-seam.ts`                     | SN1, SN3, R3                           | identity SSO1, MFA1, MIN1; PROJECTS and PM (PROJECTS §0.2's list) |
+| `00001400` (search functions)                           | P2d                                    | COMMS SR3, SR4 (SR1 and SR2 have landed)                          |
+| `00002520` (table grants)                               | P2d, R5                                | many                                                              |
+| `00000012` (security tables)                            | R4                                     | identity HK1 (Q0.2 (b) drops)                                     |
+| `00000013` (ops tables), `00001665` (new)               | P1d, R1, R3, SN6                       | —                                                                 |
+| `00000016` (comms tables)                               | P2b, P2d                               | PROJECTS CH1–CH4                                                  |
+| `00001840` (comms triggers)                             | P2c, P2d, SN6                          | COMMS; PROJECTS CH1–CH4                                           |
+| `00005001` (platform params)                            | P2b, P2d, R4, SN1, SN2, SN3, SN4, SN6  | F (FX margin and dials)                                           |
+| `00005010` (notification catalog)                       | R3, SN3                                | COMMS NT1–NT5                                                     |
+| `MessagingBackendService.ts`, `projects/live-writes.ts` | P1d, R2                                | COMMS MS3, MS5; PROJECTS CH1, CH3, CH4; O D-06 / SC-9             |
+| `services/files/*`, `services/links/*`                  | LK1, SN1, SN2, SN3, H1                 | PROJECTS FL1–FL4                                                  |
 
 ### 0.3 These cannot run in parallel inside T
 
 - P1d / P2b / P2c / P2d / SN6 (`00001300`)
-- E8 / P1d / P2d / R1 / R3 / R4 / SN6 (`00002510`)
-- P1d / R1 / R3 / SN6 (`00000013`, `00001660`)
+- P1d / P2d / R1 / R3 / R4 / SN6 (`00002510`)
+- P1d / R1 / R3 / SN6 (`00000013`, `00001665`)
 - SN1 / SN2 / R5 / SN6 (`00005060`)
 - R3 / SN1 / SN3 (devtools + `dev-seam.ts`)
 - SN2 / SN3 / SN5 / H1 (the upload and publish pipeline: `services/files/*`, `services/media/*`)
-- SN1 / SN3 / SN5 (each waits for the node prompt that adds its route, §0.5)
+- LK1 / SN2 / SN3 (`services/files/*`)
 - P2a / SN4 (the public-copy write services)
 - P2c / P2d / SN6 (`00001840`)
 - R3 / SN3 (`00005010`)
-- E8 / P2d (`00001400`)
 
 `00005001` is shared by eight T prompts, but each adds its own rows: two may overlap, and the second
 rebases before it merges.
 
-### 0.4 Open decisions the prompts stop at
+### 0.4 Open decisions and human actions the prompts stop at
 
-None of the four non-⚖️ items still open after Wave 1.1 (`create_category` as a label, Agency and
-Enterprise storage, the FX margin, the Agency contract rate) touches this track. The ⚖️ item here is
-H1. These were found open while writing the prompts:
+H1 is the ⚖️ item. No other stop here is ruled; each prompt holds its options.
 
-| Prompt | Question                                                                                                                                                                                                             | Recommendation                                                                                     | Kind                                           |
-| :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------- | :--------------------------------------------- |
-| P2a    | Decision #147 flag (a): structured links (`org.profile_links`, a business's `website`) and article bodies                                                                                                            | Structured links refuse only payment and messaging hosts; article bodies follow the free-text rule | Open since #147                                |
-| P2b    | The cooling-off length (T1 names the window, not its length)                                                                                                                                                         | 30 days, its own dial                                                                              | Unruled value                                  |
-| P2b    | A cold DM opened from a profile reached through Explore (T1 covers marketplace surfaces and connected people only)                                                                                                   | Protect a thread between people who were not connected when it opened                              | Gap in T1                                      |
-| R1     | The report reason vocabulary (Decision #148 flag (g); only `evasion_fragmentation` is ruled)                                                                                                                         | The eleven-reason list in R1                                                                       | Open since #148                                |
-| SN3    | T3 (a) for a library file that is not an image or video                                                                                                                                                              | Only images (and videos after SN5) may be made Public                                              | Gap in T3 (a)                                  |
-| SN4    | **New contradiction.** PRODUCT_SPEC §Messaging 1.C screens public text before publication and exempts nothing, but a hosted classifier cannot run in a trigger while clients hold direct write grants on public copy | Revoke the client write grants on public-copy columns (an approval like Q0.2 (a))                  | New — flagged here, not logged (Wave 1.2 rule) |
-| SN4    | Sightengine's data-processing terms                                                                                                                                                                                  | A human signs them before `HOSTED_MODERATION_LIVE` is set                                          | Action                                         |
-| W1     | Voyage's written no-training terms                                                                                                                                                                                   | A human obtains them before `EMBEDDINGS_ENABLED` is set (ruling T5)                                | Action                                         |
-| SN1    | The node's VM and private link (4 vCPU / 8 GB, ruling T5)                                                                                                                                                            | A human provisions them; nothing here deploys                                                      | Action                                         |
-| H1     | ⚖️ Known-image hash matching: provider, reporting body, preservation                                                                                                                                                 | Counsel decides; the flag stays off                                                                | ⚖️                                             |
-
-Stale passages Wave 1.1 left, each corrected by the prompt that builds the thing: SA §Tier 3's "2 GB
-RAM VPS" (SN1); SA §Content moderation's and EPI §6.3's "hosted fallback, off by default" (SN4); EPI
-§6.3's "up to 16 sampled stills" against ruling T2's 30 (SN3); EPI §1.1 row 9's Safe Browsing (W1).
-
----
+| Prompt    | Question                                                                                                                                                                                      | Recommendation                                                                                                                                                                                   | Kind                                      |
+| :-------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------- |
+| R1        | The report reason vocabulary (Decision #148 flag (g); only `evasion_fragmentation` is ruled). It blocks R4, R5, R3 and R2, so settle it first                                                 | The eleven-reason list in R1                                                                                                                                                                     | Open since #148                           |
+| P2a       | Decision #147 flag (a): structured links (`org.profile_links`, a business's `website`) and article bodies                                                                                     | Structured links refuse only payment and messaging hosts; article bodies follow the free-text rule                                                                                               | Open since #147                           |
+| P2b       | The cooling-off length (T1 names the window, not its length)                                                                                                                                  | 30 days, its own dial                                                                                                                                                                            | Unruled value                             |
+| P2b       | A cold DM opened from a profile reached through Explore (T1 covers marketplace surfaces and connected people only)                                                                            | Protect a thread between people who were not connected when it opened                                                                                                                            | Gap in T1                                 |
+| SN1       | In production, with `MALWARE_SCAN_LIVE` off or the node unreachable, what happens to an upload                                                                                                | Architect default: it stays in quarantine and the uploader sees a 503 (OPERATIONS LD4's rule); development skips the scan                                                                        | Confirm or override                       |
+| SN3       | T3 (a) for a library file that is not an image or video                                                                                                                                       | Only images (and videos after SN5) may be made Public                                                                                                                                            | Gap in T3 (a)                             |
+| SN4       | PRODUCT_SPEC §Messaging 1.C screens public text before publication and exempts nothing, but a hosted classifier cannot run in a trigger while clients hold direct write grants on public copy | Revoke the client write grants on public-copy columns (an approval like Q0.2 (a))                                                                                                                | Logged as Decision #344 flag (b), unruled |
+| SN4       | Sightengine's data-processing terms                                                                                                                                                           | A human signs them before `HOSTED_MODERATION_LIVE` is set                                                                                                                                        | Action                                    |
+| W1 (done) | Voyage's written no-training terms                                                                                                                                                            | A human obtains them before `EMBEDDINGS_ENABLED` is set (ruling T5)                                                                                                                              | Action                                    |
+| SN1       | The node's VM and private link (4 vCPU / 8 GB, ruling T5; §8.3 H3)                                                                                                                            | A human provisions them; nothing here deploys. For UAT, provision once SN1 passes against a local node: don't wait for N5 or N3's remux, which deploy onto the same box later with no app change | Action; the timing is yours               |
+| PRD-D5    | A Web Risk key for every hosted environment (§8.3 H1.1) and a recorded live lookup of the test threat URL                                                                                     | —                                                                                                                                                                                                | Action                                    |
+| H1        | ⚖️ Known-image hash matching: provider, reporting body, preservation                                                                                                                          | Counsel decides; the flag stays off. PRD-D14 cannot reach ✅ without it                                                                                                                          | ⚖️                                        |
 
 ### 0.5 The safety node lives in its own repo
 
-Recorded as Decision #345, with its open conflicts against EPI §6.
-
-The owner created the node's repository, `Projective-Safety`, a sibling folder of this repo, and
-committed its N0 (the scaffold and the HTTP contract) there, as §8.1 recommended. That file owns the
-node: the human setup (H1–H5) and the node prompts (N1–N5). This file is the app side only, and
-nothing here creates `infra/safety-node/`.
+Recorded as Decision #345, with its open conflicts against EPI §6. The node's repository,
+`Projective-Safety`, sits beside this repo with N0–N4 committed (§0.0; N3's remux is open). §8 holds
+the node's human setup and node prompts. The rest of this file is the app side, and nothing here
+creates `infra/safety-node/`.
 
 - **The contract wins on route names.** The node's `contract/openapi.yaml` serves `GET /healthz`,
-  `POST /scan/file`, `POST /screen/image`, `POST /screen/video` and
-  `POST /presidio/analyzer/analyze`, and node prompt N3 adds `POST /remux/video`. EPI §6's `/v1/…`
-  examples yield to it, and the app's Zod is copied from it.
-- **Order across the two repos.** Node N1 (the gateway) and N2 (ClamAV) before SN1; N3 (NudeNet,
-  OCR, frame sampling and the video remux) before SN3 and SN5; N4 (Presidio) before SN6.
+  `POST /scan/file`, `POST /screen/image`, `POST /screen/video`, `POST /presidio/analyzer/analyze`
+  and `POST /presidio/anonymizer/anonymize`; N3's open remux adds `POST /remux/video`. EPI §6's
+  `/v1/…` examples yield to it, and the app's Zod is copied from it.
+- **Order across the two repos.** N1 and N2 are built, so SN1 can run. N3's screen routes are built
+  (SN3); its remux is not (SN5). N4 is built (SN6).
 - **The owner's #345 rulings (2026-10-30).** The route names stay, with a `/v1/` alias at the
   gateway if one is ever needed (a). Every verdict uses the contract's
   `{verdict, scores, model, version, ms}` envelope, and an engine failure is a typed `503`, never an
@@ -169,8 +173,33 @@ nothing here creates `infra/safety-node/`.
   app sends `moderation_image_thresholds` with each `/screen/*` request as one optional JSON form
   field, and the node falls back to its env defaults without it (e).
 - **Sightengine stays in the app.** SN4 calls it for public media and public text only (ruling T2).
-  The node has no Sightengine code and nudity never falls back to it, so the node file's N6 is
-  withdrawn.
+  The node has no Sightengine code and nudity never falls back to it (N6 withdrawn).
+
+### 0.6 Readiness rows → prompt (PRODUCTION_READINESS §D, USER_FLOWS PJ)
+
+A row flips only as its last cell says, in the same change as the prompt that flips it (the standard
+header's READINESS line).
+
+| Row     | Gate · Crit     | Prompt                 | USER_FLOWS rows                          | The row flips when                                                                                                              |
+| :------ | :-------------- | :--------------------- | :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| PRD-D3  | UAT · Critical  | SN1                    | PJ-56, PJ-63 (their scan half, with SN2) | 🟡 when SN1 merges and passes against a local node; ✅ when the target environment's node answers with `MALWARE_SCAN_LIVE=true` |
+| PRD-D4  | UAT · High      | LK1                    | PJ-54, PJ-64 → ✅                        | ✅ when no path answers `safe` without a clean reputation lookup                                                                |
+| PRD-D5  | PROD · Normal   | LK1 + you (W1 done)    | —                                        | ✅ when each hosted environment has a Web Risk key and a recorded live lookup of the test threat URL                            |
+| PRD-D7  | PROD · High     | P1d                    | PJ-57 (with P2a–P2c and SN6)             | ✅ on P1d                                                                                                                       |
+| PRD-D8  | PROD · High     | P2a → P2b → P2c        | PJ-57                                    | 🟡 on P2a (public copy); ✅ on P2c                                                                                              |
+| PRD-D9  | PROD · Critical | R1 → R4 → R5 → R3 → R2 | PJ-58 → ✅ on R2                         | 🟡 on R3 (a reviewer can act); ✅ on R2 (people can report)                                                                     |
+| PRD-D10 | PROD · Critical | SN2 → SN3              | PJ-49 (SN3 screens the group photo)      | ✅ on SN3                                                                                                                       |
+| PRD-D11 | PROD · High     | SN4                    | —                                        | ✅ on SN4                                                                                                                       |
+| PRD-D12 | PROD · Normal   | SN5                    | —                                        | ✅ on SN5                                                                                                                       |
+| PRD-D13 | PROD · Normal   | SN6                    | PJ-57 → ✅ once P1d–P2c have landed      | ✅ on SN6                                                                                                                       |
+| PRD-D14 | PROD · Critical | H1                     | —                                        | 🟡 when H1 lands with its flag off; ✅ only after counsel, a signed provider agreement and the flag on in production            |
+| —       | —               | P2d                    | PJ-47 (G5, G6)                           | No §D row: G5, G6 and G18 are comms hardening, not "public copy masked", so P2d does not gate PRD-D8                            |
+
+**What UAT needs from §D:** only D3 and D4. LK1 can run today. D3's path: SN1 against a local node
+(D3 → 🟡), then SN2; then a human does §8.3 H1 (secrets) and H3 (host and private link) and turns on
+`MALWARE_SCAN_LIVE` in the UAT environment (D3 → ✅). Every other §D row is a PROD row.
+
+---
 
 ## 1. Standard header — paste above EVERY prompt
 
@@ -264,144 +293,95 @@ tracks, on disjoint migration files (FOUNDER_QUESTIONNAIRE.md Part B §B.0); ann
 `deno task db:reset` to the other sessions before you run it; run `deno task test:probes` after
 each reset; finish with your own clean `deno task test:probes:fresh`. Then `deno task check`,
 `deno task lint`, `deno task test:unit`, and `deno fmt` on the files you touched only (never a
-directory). Four theme-engine.test.ts failures are pre-existing (Decision #96(a)). UI prompts:
+directory). Theme-engine unit failures are pre-existing (Decisions #96 (a) and #157 (m)); compare
+any red test with main before calling it yours. UI prompts:
 `deno task dev`, sign in as the seeded personas (documentation/database/Seed.md), and capture
 screenshots at 1440, 900 and 390 px in light, dark, data-contrast="high" and data-motion="reduced".
 Safety-node prompts: run the node from its own repo, Projective-Safety (`docker compose up`, the
 gateway bound to 127.0.0.1), with SAFETY_NODE_URL=http://127.0.0.1:8443.
 Commit on the branch you were given with a clear message; do not push or open a PR unless I ask.
+
+READINESS (Decision #444): in the same change, update documentation/readiness/
+PRODUCTION_READINESS.md: the row(s) TRUST_SAFETY_BUILD_PROMPTS.md §0.6 names for your prompt —
+status, and evidence naming your commit and decision; recompute §D's line and the three tier rows
+of the Scoreboard (score = Σ weight × credit / Σ weight; ✅ 1 · 🟡 0.5 · ❌ 0; Critical 3 · High 2 ·
+Normal 1; ⏸ rows excluded); add one line to §Score history. Update USER_FLOWS.md where §0.6 names
+a PJ row, or where a flow's status changes. A gap you find and do not fix gets a new row at the end
+of its area, never silence.
+
+When you finish, do the closing duty (documentation/reference/build-prompts.md §2) in the same
+commit as the work:
+  - In documentation/architecture/TRUST_SAFETY_BUILD_PROMPTS.md: a done prompt leaves the file.
+    Delete its section and add its row to §0's Done ledger (ID · what landed · commit · text at
+    <commit>^). A partly done prompt keeps only its open steps, with their numbers unchanged, under
+    one rewritten Status line. A ruled 🧑 stop becomes the ruled step, with its decision number.
+  - Treat any step you built for another prompt the same way, in the file that holds it.
+  - Run git grep -n "<ID>" documentation/ and update every place that still calls it open: the
+    PRODUCTION_READINESS / USER_FLOWS Track cells, the audit's Status column, other prompts' waits,
+    and this file's row in documentation/reference/build-prompts.md §3.
+  - If the file has no prompts left, delete it, log it in build-prompts.md §4 and repoint its links.
 ```
 
 ---
 
-## 2. Phase 0 — The last P0
+## 3. Any time — Link safety
 
-### E8 — Storage write policies, SVG and the dead search definers (Q0.2 (a), (f))
+### LK1 — The link scan fails closed
 
-> **Status 2026-11-12:** Done — landed in `dd4206d3` (merged `ee0b004a`) and re-verified in code:
-> `00002017` has no client write policy outside quarantine (`310367f4` later only narrowed a
-> workspace read), `public_assets` and `storage.ts` admit no SVG, and both search definers are gone
-> from `00001400` and `00002510`. A hosted project's buckets still need the same change by hand.
+Closes PRD-D4. It also does the code half of PRD-D5. (Was `SAFETY_MODERATION_BUILD_PROMPTS.md` §3.)
 
 ```text
-PROMPT E8: Only the service role writes the six buckets; SVG and the dead search definers go
+PROMPT LK1: No check, no "safe": the link scan fails closed offline and without a reputation answer
 
-ROLE: Postgres security engineer. SEC E8/G10, AV-1, Z3, P-1 (the policy half), E5/G11 (deletion),
-#340 (l); Decision #148 flag (b) (Decision #340, Q0.2 (a) and (f): owner-approved Additive
-exceptions).
+ROLE: Backend engineer (files / link safety). App lane. Not beside SN2 or SN3 (services/files/*)
+or another prompt that edits services/links/*.
 
-FILES:
-  - supabase/migrations/00002017_policies_storage.sql: "Project participants can upload project
-    files", "… can update project files", "Project uploaders can delete their project files",
-    "DM participants can upload message attachments", "DM uploaders can delete their message
-    attachments", "Users manage own personal files" (FOR ALL), "Entity members can upload
-    workspace files", "… can update workspace files", "Workspace uploaders can delete their
-    workspace files", "Owners can write their public assets" (FOR ALL), "Sellers can write their
-    catalogue media" (FOR ALL); the file header
-  - supabase/migrations/00005040_seed_storage_buckets.sql (:130 image/svg+xml; the :20-21 comment)
-  - supabase/migrations/00001400_functions_search.sql (fn_search_entities, fn_search_global)
-  - supabase/migrations/00002510_permissions_function_grants.sql (:256-273)
-  - packages/types/files/storage.ts (:125; BUCKETS / bucketMeta() mirror the seed field for field)
-  - supabase/probes/trust_p0.sql (the E5 region; a new E8 region)
-  - documentation/database/files/Storage.md, documentation/database/search/{Functions,Tables}.md,
-    EPI §9.2, SYSTEM_ARCHITECTURE.md §Storage Lifecycle where it mentions client writes
-
-STEPS:
-  1. Reproduce as `authenticated` (set request.jwt.claims before SET ROLE): INSERT a
-     storage.objects row under your own prefix in public_assets and in catalogue, and UPDATE
-     another participant's object under a shared project prefix. All three succeed today. Write
-     trust_p0.sql's E8 region to assert they are refused after the fix.
-  2. Prove nothing live depends on these policies: grep packages/ and apps/ for storage.from( and
-     confirm every upload, update, move and remove on these six buckets runs on the service
-     client (the signed quarantine upload stays). If a user-JWT writer exists, STOP and report it.
-  3. 00002017: drop every policy listed above. Keep every SELECT policy. The personal bucket's
-     only policy is FOR ALL, so replace it with a SELECT-only policy on the same predicate
-     (segment 1 'users', segment 2 = auth.uid()). Add no broad read: permissive SELECT policies
-     OR-combine (Storage.md's workspace warning). Rewrite the header to say the service role is
-     the only writer outside quarantine.
-  4. 00005040: drop image/svg+xml from public_assets (re-hosted favicons are raster only,
-     link-favicon.ts). Correct the :20-21 comment (#340 (l)): the service role promotes in process
-     (live-uploads.ts, media/library.ts, contact/live-attachments.ts) and nothing writes
-     target_path. The seed is ON CONFLICT DO NOTHING: if a hosted project already exists, say in
-     the commit message that its bucket needs the same change by hand; keep the conflict clause.
-  5. storage.ts: drop svg from the public_assets mirror, so the registry still matches the seed.
-  6. Delete search.fn_search_entities and search.fn_search_global from 00001400 and their lines
-     from 00002510 (nothing calls them; RED D-29). In trust_p0.sql, replace the E5
-     has_function_privilege check (it raises on a missing function) with
-     to_regprocedure('search.fn_search_entities(text,text,jsonb,text,integer,integer,uuid,vector)')
-     IS NULL and the same for fn_search_global(text,uuid,integer).
-  7. Docs: Storage.md (each affected bucket's policy sentence; §Security Enforcement's anchor
-     bullet becomes a read-anchor bullet and the "two public buckets accept direct client writes"
-     warning goes), search/Functions.md (:10-13, :71), search/Tables.md:82, EPI §9.2 (the
-     "Direct client writes flagged" note goes), SA §Storage Lifecycle.
-
-ACCEPTANCE:
-  - trust_p0.sql prints PASS for E8 (an authenticated write to each of the six buckets is refused;
-    reads are unchanged) and for E5 (both functions absent); every other probe still passes.
-  - SELECT allowed_mime_types FROM storage.buckets WHERE id = 'public_assets' has no svg.
-  - grep -rn "fn_search_entities\|fn_search_global" supabase/migrations → no hits.
-  - Under `deno task dev`: a library upload, an avatar cut, a contact attachment and a link
-    favicon all still work.
-SAME CHANGE: the storage.ts mirror, Storage.md and the search docs with the SQL (root CLAUDE.md
-§1; documentation/database/CLAUDE.md).
-SQL SESSION: at most two SQL sessions at once, on disjoint migration files; announce each
-`deno task db:reset`; run `deno task test:probes`; finish with your own clean
-`deno task test:probes:fresh`.
-CROSS-TRACK: tell the comms (SR1) and optimisation sessions that the definers are gone.
-```
-
----
-
-## 3. Any time — Provider endpoints
-
-### W1 — Link reputation on Web Risk; embeddings pinned to Voyage (T5)
-
-> **Status 2026-11-12:** Done — landed in `bc805dff` (merged `f5955b7c`) and re-verified in code:
-> `link-reputation.ts` calls Web Risk with `LINK_SAFETY_API_KEY` in the header, `voyage-client.ts`
-> calls `api.voyageai.com` only, and `EMBEDDINGS_ENABLED` still defaults to `false`. The Voyage
-> no-training terms remain a human action.
-
-```text
-PROMPT W1: Link reputation runs on Google Web Risk; embeddings call Voyage, not Atlas
-
-ROLE: Integration engineer. EPI §6.5 and flag (c); #340 (j); #339 (d) (Decision #340, ruling T5;
-= Decision #335 (c)).
-
-FILES:
-  - packages/backend/services/files/link-reputation.ts (+ the verdict cache in link-scan.ts)
-  - packages/backend/services/files/link-scan.test.ts,
-    packages/backend/services/links/LinkPreviewBackendService.test.ts
-  - packages/backend/services/search/voyage-client.ts (the default base, :26-37)
-  - apps/web/features/legal/core/content/privacy.ts (:167 Safe Browsing; the embeddings processor)
-  - EPI §1.1 rows 4 and 9, §2.2, §3.4, §5, §6.5, §11 step 5; SYSTEM_ARCHITECTURE.md :1158-1161 and
-    its Voyage / MongoDB disclosure; the .env.example comments for LINK_SAFETY_API_KEY and
-    VOYAGE_API_BASE
+CONTEXT (verified at f2e25929; re-check every line):
+  - runScan (packages/backend/services/files/link-scan.ts:175-270): with FILES_BACKEND_LIVE off,
+    any https URL that passes the face-value checks is `safe` (:203), titled from the URL. The
+    module docblock's "The gate" section says so on purpose. FilesBackendService.attachLink
+    (:278) stores that verdict in files.items.link_scan_status, and the chat preview
+    (services/links/LinkPreviewBackendService.ts:221) shows the rich card for `safe`.
+  - Live, checkReputation (link-reputation.ts:70-84) answers `unavailable` with no
+    LINK_SAFETY_API_KEY or on any API error. runScan then ignores it: a page that answers is
+    `safe` (:262) with no reputation lookup at all. That is PRD-D5's code half.
+  - LinkScanStatus (packages/types/files/assets.ts:95-104; SQL enum 00000004:378-383) already has
+    `unscannable` ("we could not check it"), and the UI already takes the cautious path for it
+    (features/files/components/LinkCard.tsx:57, features/links/islands/ExitInterstitial.island.tsx
+    :70). Failing closed needs no new state, no migration and no Zod change.
+  - The rich fields (description, favicon, image) are already `safe`-only (link-scan.ts:311-313).
+  - Google's test threat host stays `blocked` offline, so the warning path stays exercisable.
 
 STEPS:
-  1. link-reputation.ts: replace the Safe Browsing v4 POST with Web Risk
-     GET https://webrisk.googleapis.com/v1/uris:search?uri=<encoded>&threatTypes=MALWARE
-     &threatTypes=SOCIAL_ENGINEERING&threatTypes=UNWANTED_SOFTWARE, the key in the x-goog-api-key
-     header and never in the URL. {} is clean; { threat: { threatTypes, expireTime } } is listed.
-     Keep the 2.5 s timeout → unavailable, the LINK_SAFETY_API_KEY name and the placeholder rule.
-  2. Carry expireTime out of the module and cap the flagged-verdict cache TTL at it.
-  3. The offline path (FILES_BACKEND_LIVE=false) is unchanged: the Safe Browsing test host stays
-     blocked (EPI §11 step 5). Update the docblock and the tests.
-  4. voyage-client.ts: default to https://api.voyageai.com whatever the key looks like; an Atlas
-     key no longer reroutes to ai.mongodb.com (#339 (d)). EMBEDDINGS_ENABLED stays false.
-  5. Docs and the privacy notice name Google Web Risk and Voyage AI; remove SA's "not built yet"
-     note on Web Risk.
+  1. Red: unit tests on runScan with injected deps: (a) offline, https://example.com → not
+     `safe`; (b) live, reputation `unavailable`, the page answers 200 → not `safe`; (c) live,
+     reputation `clean`, 200 → `safe` (unchanged); (d) offline, the test threat host → `blocked`
+     (unchanged). (a) and (b) fail today.
+  2. Offline: `unscannable`, with a person-readable reason that link checks are off in this
+     environment. Keep the URL-derived title so the card still renders.
+  3. Live: `safe` requires reputation `clean`. `unavailable` with a page that answers →
+     `unscannable` ("We couldn't check this site's reputation"). A `listed` site stays `blocked`.
+  4. Retry: find whether a stored `unscannable` verdict is ever rescanned (link_scanned_at, the
+     preview cache). If it never is, add a rescan on the next read once a dial's minutes have passed
+     (a platform param in 00005001, your own #region), so a passing Web Risk outage does not leave
+     a link unscannable forever. If adding the dial is a SQL change you'd rather not make here, make
+     it a constant with a TODO naming the dial, and say so in your report.
+  5. Stored verdicts: no hosted data exists yet (PRD-G8). Check how the seed generator sets
+     link_scan_status. Leave seeded rows as seed truth, but note in Seed.md that a seeded `safe`
+     link was never scanned.
+  6. Production: when LINK_SAFETY_API_KEY is missing in production, print one boot warning (and a
+     line in OPERATIONS LD4's boot report, if that has landed). The links still work: they read as
+     `unscannable`, never falsely `safe`.
+  7. Copy and UI: read the new reasons in LinkCard and the exit interstitial; capture 1440 and
+     390 px of an unscannable link card and the interstitial.
 
-🧑 DECISION (an action, not a code stop): Voyage's written no-training and retention terms must be
-in hand before anyone sets EMBEDDINGS_ENABLED=true (ruling T5). Leave it false; say so in the
-commit message.
-
-ACCEPTANCE:
-  - Unit tests with a stubbed fetch: clean → clean; listed → the threat label and a TTL capped at
-    expireTime; a non-2xx or a 2.5 s stall → unavailable; the key never appears in a URL.
-  - link-scan.test.ts passes; the test host is still blocked offline.
-  - grep -rn "safebrowsing.googleapis.com\|ai.mongodb.com" packages apps → no hits.
-SAME CHANGE: EPI, SA and the privacy notice with the code (the sub-processor rule).
-CROSS-TRACK: voyage-client.ts belongs to the search track; do not run beside COMMS SR1-SR4.
+ACCEPTANCE: the step-1 tests are green. In `deno task dev` with FILES_BACKEND_LIVE=false, posting
+https://example.com to /files and to a chat shows the "not checked" card, and the exit interstitial
+asks before leaving. With FILES live and no key: the same. With a Web Risk key: example.com is
+`safe` and the test threat URL is `blocked`. check, lint and test:unit are green.
+SAME CHANGE: the link-scan.ts module docblock ("The gate"); SYSTEM_ARCHITECTURE.md's link-safety
+paragraph; EPI's Web Risk status line; .env.example's LINK_SAFETY_API_KEY comment (no key means
+links are unscannable, never safe).
 ```
 
 ---
@@ -415,9 +395,10 @@ PROMPT P1d: Tier 1 refuses at the send door; Tier 2 masks every category Tier 1 
 
 ROLE: Trust & safety engineer (TypeScript + Postgres). SEC §2.3 (SEC-P1d), L8, L9, #340 (k);
 Decision #147 (b), (e) (Decision #340, ruling T2; ruling T4: refusals counted, never stored).
-WAITS: ⏳ M·MS2 (soft). MS2 builds the one send door MessagingBackendService.sendMessage(actor,
-ref, input). If this prompt runs first, call the detector from both send doors and leave a
-`shortcut:` comment naming MS2.
+WAITS: none. M·MS2 landed (4958c708, #508): MessagingBackendService.sendMessage(actor, ref,
+input) is the one send door for both stores, and a comment there marks Tier 1's place, before
+either store is written. Today Tier 2 runs (trg_mask_message_pii, 00001840) and Tier 1 is only
+that comment.
 
 FILES:
   - packages/types/comms/pii-detect.ts (new) + test; packages/types/comms/pii.fixtures.ts (new,
@@ -428,10 +409,11 @@ FILES:
     the protected-phase door for the send services)
   - supabase/migrations/00001320_functions_editorial_community.sql (fn_feedback_idea_screen)
   - supabase/migrations/00000013_tables_ops.sql (ops.refusal_counts) and the new
-    00001660_functions_ops_moderation.sql (its writer); 00002019 (RLS); 00002510 (grants)
-  - the send doors: services/messaging/MessagingBackendService.ts + live-writes.ts (or MS2's
-    door), services/projects/live-writes.ts (the room send), services/messaging/live-requests.ts
-    (comms.send_request_message's caller)
+    00001665_functions_ops_moderation.sql (its writer; 00001660 is taken by ops_alerts);
+    00002019 (RLS); 00002510 (grants)
+  - the send doors: MessagingBackendService.sendMessage (the one door; check that
+    services/projects/live-writes.ts inserts no room message outside it),
+    services/messaging/live-requests.ts (comms.send_request_message's caller)
   - the composers' existing error slot: apps/web/features/projects/islands/ChatComposer.island.tsx
     and the /messages composer (grep MessagingService.sendMessage)
   - packages/types/ops/* (refusal counts); supabase/probes/pii_corpus.sql (generated, step 6)
@@ -490,7 +472,8 @@ SQL SESSION: at most two SQL sessions at once, on disjoint migration files; anno
 `deno task db:reset`; run `deno task test:probes`; finish with your own clean
 `deno task test:probes:fresh`.
 ERASURE: ops.refusal_counts is personal data. Hand its erasure arm to identity's chain on
-00001060; do not edit 00001060 here.
+00001060 (classified in ERA1's account_erasure_scope.sql once ERA1 lands); do not edit 00001060
+here.
 ```
 
 ### P2a — Public copy refused at the database floor (T2 (a))
@@ -500,7 +483,10 @@ PROMPT P2a: Public copy is refused at the database floor
 
 ROLE: Postgres engineer. SEC §2.5, P-5 (the leakage half), Z6 (the leakage half); #340 (c);
 Decision #147 §1.B (Decision #340, ruling T2 (a)).
-DEPENDS: P1d (comms.fn_pii_categories). WAITS: ⏳ P·WP4 (projects.projects and its trigger file).
+DEPENDS: P1d (comms.fn_pii_categories). WAITS: ⏳ PM-WP4b (projects.projects and its trigger
+file).
+ALSO PUBLIC COPY: reviews.entity_reviews.title, comment and reply_comment, written by MARKETPLACE
+RV1's doors (00001670, #487). Refuse them at the floor like the surfaces below.
 
 🧑 DECISION — STOP before touching these three surfaces; the ruled ones below proceed. Decision
 #147 flag (a) is still open (PRODUCT_SPEC §Messaging 1.B, last paragraph):
@@ -560,8 +546,8 @@ PROMPT P2b: Marketplace conversations and ended engagements stay protected for t
 
 ROLE: Postgres + messaging engineer. SEC L4 (b), (d), §2.6; #340 (b) (Decision #340, ruling T1;
 PRODUCT_SPEC §Messaging 1 "The Protected Phase").
-DEPENDS: P1d (comms.fn_send_is_protected). WAITS: ⏳ M·MS1 (comms.dm_threads is in its schema
-window), ⏳ M·MS2 (the openers behind the one door), ⏳ P·WP4 (project cancellation).
+DEPENDS: P1d (comms.fn_send_is_protected). WAITS: ⏳ PM-WP4b (project cancellation). M·MS1 and
+M·MS2 (the openers behind the one door) have landed.
 
 🧑 DECISION — STOP and put both to me before step 2:
   (1) The cooling-off length is not ruled.
@@ -609,7 +595,7 @@ STEPS:
      expired within the dial, and a cancelled project's DMs stay protected for the dial after
      cancellation, then lift. This replaces Wave 0's indefinite hold on a cancelled project
      (L4 (c)) with ruling T1's window. Read each decision instant from its own row; add a
-     decided_at in place (Zod + docs) only where a table has none, after checking what P·WP4
+     decided_at in place (Zod + docs) only where a table has none, after checking what PM-WP4b
      shipped.
   5. One predicate: the DM mask trigger, fn_send_is_protected (Tier 1) and later Tier 3's enqueue
      all read the same function. A stage room's phase is unchanged.
@@ -637,7 +623,8 @@ PROMPT P2c: Every counterparty-visible text in the protected phase is masked
 ROLE: Postgres engineer. SEC L7 (Decision #340, ruling T2; Decision #147). Reactions are out of
 scope: COMMS MS5 pins comms.message_reactions to one emoji set. org.profile_links is a public
 surface and waits on P2a's decision.
-DEPENDS: P2b. WAITS: ⏳ P·WP4 (ticket and submission text), ⏳ C·WP10 (event text).
+DEPENDS: P2b. WAITS: ⏳ PM-WP4b (ticket and submission text), ⏳ SCH-WP10 (event text; built on
+an unmerged branch, §0.1).
 
 FILES:
   - supabase/migrations/00001300_functions_comms_channels.sql (comms.fn_mask_protected)
@@ -677,39 +664,47 @@ SQL SESSION: at most two SQL sessions at once, on disjoint migration files; anno
 `deno task test:probes:fresh`.
 ```
 
-### P2d — The remaining comms and search grant gaps (G5, G6, G13, G14, G18)
+### P2d — The remaining comms and search grant gaps (G5, G6, G18)
+
+> **Status 2026-11-23:** steps 3 and 4 landed (step 3, G13: SAC2 `67d9c9d2`, #462; step 4, G14: SAC1
+> `36b25912`, #477, which made `search.is_admin(uuid)` service-role only); steps 1, 2 and 5 below
+> are open.
 
 ```text
-PROMPT P2d: Archived rooms, message size and rate, query logs and search definers
+PROMPT P2d: Archived rooms, message size and rate, and the search sync triggers' search_path
 
-ROLE: Postgres security engineer. SEC G5, G6, G13, G14, G18 (the sync-trigger half). COMMS SR1
-pins search_path on fn_nearest / fn_nearest_to_entity; skip those two. Re-check
-COMMS_BUILD_PROMPTS.md on main and skip anything it has since claimed.
+ROLE: Postgres security engineer. SEC G5, G6, G18 (the sync-trigger half). COMMS SR1 pins
+search_path on fn_nearest / fn_nearest_to_entity; skip those two. Re-check COMMS_BUILD_PROMPTS.md
+and PROJECTS_BUILD_PROMPTS.md (CH1) on main and skip anything they have since claimed.
 
 FILES:
-  - supabase/migrations/00002012_policies_comms.sql (send_messages_if_member)
+  - supabase/migrations/00002012_policies_comms.sql (send_messages_if_member :60-64,
+    edit_own_messages :82-90)
   - supabase/migrations/00000016_tables_comms.sql (body length CHECKs; an unlogged rate table)
   - supabase/migrations/00001300 + 00001840 (the per-sender rate trigger function and triggers)
-  - supabase/migrations/00002520_permissions_table_grants.sql (search.query_logs INSERT, :16)
-  - supabase/migrations/00002510 (search.is_admin(uuid)); 00001400 (the sync triggers'
-    search_path: :90, :111, :173, :193, :281)
+  - supabase/migrations/00001400 (the sync triggers' search_path: sync_team_to_index,
+    sync_freelancer_to_index, sync_project_to_index, sync_user_to_index, sync_business_to_index,
+    sync_service_to_index, sync_product_listing_to_index, sync_article_to_index)
   - supabase/migrations/00005001 (message_rate_per_minute = 60)
   - supabase/probes/trust_p2_grants.sql (new); documentation/database/{comms,search}/*
 
 STEPS:
-  1. G5: the room INSERT policy also requires the channel's archived_at IS NULL.
+  1. G5: the room INSERT policy also requires the channel's archived_at IS NULL. Today it asks
+     comms.has_channel_access (00001300:154-177), which ignores archived_at, so only a direct
+     PostgREST insert passes: the app's send door already refuses (projects/live-writes.ts
+     :2631-2637). Gate the room UPDATE policy (edit_own_messages) the same way. PROJECTS CH1
+     replaces that policy's client path with doors; whichever runs second keeps the archive gate.
   2. G6: CHECK (char_length(body) <= 8000) on both message tables (confirm the app's own limit and
      that no seed exceeds it), and a per-sender BEFORE INSERT rate trigger (a token bucket in an
-     unlogged table, refusing PR429 past the dial) so a direct PostgREST flood is bounded too.
-  3. G13: revoke INSERT on search.query_logs from anon and authenticated; the app writes through
-     fn_log_query only (check its caller). DONE by SAC2 (Decision #462): verify only.
-  4. G14: revoke EXECUTE on search.is_admin(uuid) from PUBLIC and anon. DONE by SAC1 (Decision
-     #477): no client role executes it; verify only.
+     unlogged table, refusing PR429 past the dial) so a direct PostgREST flood is bounded too. It
+     is also the fix for #508 (h): the send door's 30-a-minute limit is per process
+     (MessagingBackendService.ts MESSAGE_SEND_RULE).
   5. G18: pin search_path = '' on the sync trigger functions and qualify every name.
 
-ACCEPTANCE: trust_p2_grants.sql: a post to an archived room → refused; a 9,000-character body →
-23514; the 61st message in a minute → PR429; anon INSERT into query_logs → 42501; anon
-search.is_admin → 42501; the search index still syncs on a profile edit.
+ACCEPTANCE: trust_p2_grants.sql: a post to, or an edit in, an archived room → refused; a
+9,000-character body → 23514; the 61st message in a minute → PR429; the search index still syncs
+on a profile edit. function_grants.sql and search_query_log_attribution.sql (steps 3 and 4) still
+pass.
 SAME CHANGE: documentation/database/{comms,search}/{Tables,Policies,Functions}.md.
 SQL SESSION: at most two SQL sessions at once, on disjoint migration files; announce each
 `deno task db:reset`; run `deno task test:probes`; finish with your own clean
@@ -727,6 +722,8 @@ PROMPT R1: ops.reports — one review sink for people's reports and automated fi
 
 ROLE: Postgres + backend engineer. SEC R1/G19, §3.3; Decision #148 (a), (g); EPI flag (g)
 (Decision #340, ruling T4: the source column; ruling T2: evasion_fragmentation).
+Since RV1 (#487 (d)): the subject CHECK gains `review`. The `notice` source is already in the
+shape.
 
 🧑 DECISION — STOP before step 1 and put the reason vocabulary to me. Decision #148 flag (g) left
 it undesigned; only evasion_fragmentation is ruled. Recommended closed list, each with a
@@ -737,7 +734,7 @@ labels.
 
 FILES:
   - supabase/migrations/00000013_tables_ops.sql (ops.reports)
-  - supabase/migrations/00001660_functions_ops_moderation.sql (P1d created it; the doors)
+  - supabase/migrations/00001665_functions_ops_moderation.sql (P1d created it; the doors)
   - supabase/migrations/00002019_policies_security_ops.sql (RLS); 00002510 (grants)
   - supabase/migrations/00005040_seed_storage_buckets.sql (an `evidence` bucket: private, no
     client policy, like `verification`)
@@ -756,7 +753,9 @@ STEPS:
      counsel's), and a notice row is filed only by SC8's door, never ops.file_report; detector text
      (nudenet · ocr · sightengine · presidio · fragmentation), set exactly when automated;
      reported_user_id (the author, whom R4 penalises). reporter_user_id ON DELETE SET NULL: a
-     report outlives its reporter. Indexes on (status, created_at) and (reported_user_id).
+     report outlives its reporter. Indexes on (status, created_at) and (reported_user_id). The
+     subject types include a workload report: PROJECTS EX4 builds its workload-verdict appeal on
+     this sink, R3 and R4.
   2. Immutable: a BEFORE UPDATE trigger refuses any change to evidence_snapshot, notice,
      reporter, subject, source, detector and reason; status moves only pending → dismissed |
      actioned, through R3's door. No DELETE grant to anyone but the erasure chain.
@@ -787,7 +786,9 @@ SQL SESSION: at most two SQL sessions at once, on disjoint migration files; anno
 `deno task db:reset`; run `deno task test:probes`; finish with your own clean
 `deno task test:probes:fresh`.
 ERASURE: reporter_user_id and the evidence copies are personal data. Hand the arm to identity's
-erasure chain (00001060); the I1 retention table decides how long evidence stays.
+erasure chain (00001060); the I1 retention table decides how long evidence stays. They must be
+classified in identity ERA1's account_erasure_scope.sql: whichever of R1 and ERA1 lands second
+adds that.
 ```
 
 ### R4 — The content-penalty writer
@@ -826,7 +827,7 @@ SAME CHANGE: Zod + documentation/database/security/* with 00000012.
 SQL SESSION: at most two SQL sessions at once, on disjoint migration files; announce each
 `deno task db:reset`; run `deno task test:probes`; finish with your own clean
 `deno task test:probes:fresh`.
-CROSS-TRACK: 00000012 also carries identity's Q0.2 (b) drops; never run beside that prompt.
+CROSS-TRACK: 00000012 also carries identity HK1's Q0.2 (b) drops; never run beside HK1.
 ```
 
 ### R5 — Penalties move Standing; the discovery penalty stays server-side
@@ -841,9 +842,9 @@ FILES:
   - supabase/migrations/00001001_functions_security_context.sql (fn_recalc_penalty_aggregates)
   - supabase/migrations/00001030_functions_org_standing.sql (fn_recompute_standing reads
     penalty_severity at :78; nothing writes it)
-  - supabase/migrations/00002520_permissions_table_grants.sql (:166, discovery_penalty in the anon
+  - supabase/migrations/00002520_permissions_table_grants.sql (:190, discovery_penalty in the anon
     and authenticated column grant on search.profiles_index)
-  - packages/backend/services/explore/live-catalog.ts (:718 reads discovery_penalty with the anon
+  - packages/backend/services/explore/live-catalog.ts (:829 reads discovery_penalty with the anon
     client) and ranking.ts
   - supabase/migrations/00005060_seed_scheduled_jobs.sql (penalty-expiry, a sql job)
   - supabase/probes/penalty_standing.sql (new)
@@ -858,7 +859,7 @@ STEPS:
      org.fn_recompute_standing; a business keeps system_penalty_score. A demotion records
      'demoted' as today.
   3. Expiry: a daily penalty-expiry sql job flips active penalties past expires_at to 'expired';
-     the existing trigger then recomputes. (00005060 has one writer at a time, after jobs-sql.)
+     the existing trigger then recomputes. (00005060 has one writer at a time.)
   4. G15: drop discovery_penalty from the anon / authenticated column grant. live-catalog.ts reads
      it with the service client inside the fat service; it never reaches a client payload.
 
@@ -886,7 +887,7 @@ PRODUCT_SPEC §Messaging 1.C "Reporting" and "Consequences tie into Standing").
 DEPENDS: R1, R4, R5.
 
 FILES:
-  - supabase/migrations/00001660_functions_ops_moderation.sql: ops.list_reports_for_review (admin
+  - supabase/migrations/00001665_functions_ops_moderation.sql: ops.list_reports_for_review (admin
     only; the read is the gate) and ops.resolve_report(p_report, p_outcome, p_notes, p_severity,
     p_days); 00002510 (grants)
   - supabase/migrations/00005010_seed_notification_catalog.sql (a mandatory moderation outcome
@@ -935,8 +936,12 @@ PROMPT R2: People can report — the route and the entry points
 
 ROLE: Full-stack engineer. SEC R2; Decision #140 (the removed stub); root CLAUDE.md §3.11
 (Decision #340, ruling T4).
-DEPENDS: R3: the button never renders before a reviewer can act on it. WAITS: ⏳ M·MS2, M·MS3
-(the message menus live in the islands they rework).
+DEPENDS: R3: the button never renders before a reviewer can act on it. WAITS: ⏳ M·MS3 (the
+message menus live in the islands it reworks; MS2 has landed). MARKETPLACE SC8 waits for this
+prompt and R1 (#496).
+ENTRY POINTS ADDED SINCE: the listing's entry point is USER_FLOWS MK-47's report half, and reviews
+on /view and /:handle/reviews carry a Report action too (#487 (d)). hide_review needs R3's
+operator UI.
 
 FILES:
   - apps/web/routes/api/reports/index.ts (thin: Zod + auth) → ReportsBackendService.fileReport
@@ -972,16 +977,22 @@ PROMPT SN1: The safety node runs, and ClamAV scans every upload before it is pro
 
 ROLE: Infrastructure + backend engineer. EPI §6.1, §6.4, §6.6; SEC §4, AV-1 to AV-3, AV-5 (the
 node's half); #340 (h) (Decision #340, ruling T5: the node, 4 vCPU / 8 GB).
-DEPENDS: E8 (AV-1). May start as soon as E8 merges (SEC §6 step 2).
+DEPENDS: met. E8 (AV-1) has merged, and the node's N1 (gateway, fea1e02) and N2 (ClamAV,
+d7e82a1) are built in Projective-Safety.
+
+🧑 DECISION — confirm or override the architect default in step 4 (§0.4): in production
+(DENO_ENV=production, or unset), a gate that is off refuses the promote rather than skipping the
+scan, following OPERATIONS LD4's rule. Development skips the scan as written.
 
 FILES:
-  - NOT the node: it lives in its own repo, Projective-Safety (§0.5), where node prompt N2
-    (§8.4) builds clamd and POST /scan/file on the
-    committed contract (contract/openapi.yaml). Run N1 and N2 there first; this prompt is the app
+  - NOT the node: it lives in its own repo, Projective-Safety (§0.5), where N2 built clamd and
+    POST /scan/file on the committed contract (contract/openapi.yaml). This prompt is the app
     half, and its Zod copies that contract.
   - packages/backend/core/safety-node.ts (new: URL, bearer, timeouts, the placeholder rule)
-  - packages/backend/core/env.ts, .env.example, SA's Environment Variable Contract:
-    MALWARE_SCAN_LIVE, SAFETY_NODE_URL, SAFETY_NODE_TOKEN, FILES_CRON_SECRET (also a Vault secret)
+  - packages/backend/core/env.ts, .env.example, SA's Environment Variable Contract and
+    packages/backend/core/env-manifest.ts (its planned("…", "T&S SN1") rows flip to live in the
+    change that reads them): MALWARE_SCAN_LIVE, SAFETY_NODE_URL, SAFETY_NODE_TOKEN,
+    FILES_CRON_SECRET (also a Vault secret). This narrows PRD-H5.
   - the three hook points SN2 later folds into one: services/files/live-uploads.ts
     (completeUpload), services/media/library.ts, services/contact/live-attachments.ts
   - packages/types/files/metadata.ts (metadata.av, Zod)
@@ -995,18 +1006,20 @@ FILES:
 STEPS:
   1. Reproduce: upload the EICAR test string through /files and through the media picker. Both
      are admitted today.
-  2. Bring the node up from Projective-Safety with N2 merged there (`docker compose up`, the
-     gateway on 127.0.0.1:8443, the bearer SAFETY_NODE_TOKEN).
+  2. Bring the node up from Projective-Safety (`docker compose up`, the gateway on
+     127.0.0.1:8443, the bearer SAFETY_NODE_TOKEN).
   3. Read N2's POST /scan/file in the node's contract: the {verdict, scores, model, version, ms}
-     envelope, verdict clean · infected with the signature beside it, and the engine and
-     signature-database versions (with the database's date, for step 6) in version. An engine
-     failure is the contract's typed 503, never an error verdict (Decision #345 (b)). A macro
-     Office file comes back clean with flags ['macros'] (AV-5). Copy the schema as Zod; never
-     re-implement the scan here.
+     envelope, verdict clean · infected with the signature beside it, and version's clamav,
+     db_version and db_time (for step 6). The request carries X-Content-SHA256 (a mismatch is
+     400). An engine failure is the contract's typed 503, never an error verdict (Decision #345
+     (b)). A macro Office file comes back clean with flags ['macros'] (AV-5). Copy the schema as
+     Zod; never re-implement the scan here.
   4. App: at each hook, after the sniff and before the promote, scan the bytes already in memory.
      clean → continue; infected → refuse(row, hostile = true) (the object deleted, the row
      quarantined, a person-readable reason); a typed 503 or no answer with MALWARE_SCAN_LIVE=true →
-     the row back to pending_upload and a 503; gate off → skip, one log line in development.
+     the row back to pending_upload and a 503. Gate off: in production (DENO_ENV=production, or
+     unset) the row stays in quarantine and the uploader sees a 503 (the architect default the
+     🧑 above confirms); in development skip, with one log line.
   5. AV-2: files.items.metadata.av = { engine, db_version, verdict, signature?, flags?, at }.
   6. Staleness: a db_time older than 48 h writes an ops.log_entries warn row, scope
      files.malware_scan (not 24 h, which a healthy node crosses daily; Decision #345).
@@ -1019,14 +1032,16 @@ ACCEPTANCE:
   - With the node up: EICAR → quarantined and its object deleted; a clean PDF → uploaded with
     metadata.av; a .docm with a macro → uploaded with flags ['macros']; the node stopped → 503
     and the row is pending_upload; a retry after a restart completes.
-  - With the gate off nothing changes, and the dev axis drives each branch without the node.
+  - With the gate off in development nothing changes, and the dev axis drives each branch without
+    the node; with the gate off in production an upload answers 503 and stays in quarantine.
   - A request to the gateway without the bearer, or with a wrong one → a typed 401 (Decision
     #345 (c)); from another host → no route.
-SAME CHANGE: the env contract, .env.example and core/env.ts with their reader; EPI status marks;
-the dev axis; Zod for metadata.av; the PRODUCT_SPEC and SA malware-scan markers removed.
+SAME CHANGE: the env contract, .env.example, core/env.ts and env-manifest.ts with their reader;
+EPI status marks; the dev axis; Zod for metadata.av; the PRODUCT_SPEC and SA malware-scan markers
+removed.
 SQL SESSION (the job and the dial): at most two SQL sessions at once, on disjoint migration files;
 announce each `deno task db:reset`; run `deno task test:probes`; finish with your own clean
-`deno task test:probes:fresh`. 00005060 has one writer at a time, after jobs-sql.
+`deno task test:probes:fresh`. 00005060 has one writer at a time.
 🧑 (an action, not a decision): a human provisions the VM and the private link. Nothing here
 deploys.
 ```
@@ -1081,7 +1096,9 @@ SAME CHANGE: SA and Storage.md describe the per-purpose policy (#339 (m)); the P
 marker removed; Zod for metadata.macros.
 SQL SESSION (the job and its dials): at most two SQL sessions at once, on disjoint migration
 files; announce each `deno task db:reset`; run `deno task test:probes`; finish with your own clean
-`deno task test:probes:fresh`. 00005060 has one writer at a time, after jobs-sql.
+`deno task test:probes:fresh`. 00005060 has one writer at a time. Step 5 sweeps only stale
+pending_upload / scanning rows and their quarantine objects; PROJECTS FL1 covers soft-deleted
+items.
 ```
 
 ### SN3 — The publication gate: NudeNet and OCR (T3 (a), (b))
@@ -1091,7 +1108,8 @@ PROMPT SN3: Nothing reaches the Glass Front unscreened — the NudeNet and OCR g
 
 ROLE: Backend + infrastructure engineer. EPI §6.3; SEC §3.1-3.2, Z1, Z3, Z4, Z5, P-1, P-3, P-4;
 #340 (e), (f); Decision #148 (Decision #340, rulings T3 (a), T3 (b) and T2's frame density).
-DEPENDS: SN2, R1 (automated findings).
+DEPENDS: SN2, R1 (automated findings). WAITS: ⏳ MARKETPLACE SC4 (#494): until it lands, a bare
+UPDATE publishes a listing past the door, and so past this gate.
 
 🧑 DECISION — STOP before step 5. Ruling T3 (a) says a library file made public is served as "a
 screened, metadata-stripped copy, the original private", and is silent on files that are not
@@ -1104,19 +1122,23 @@ images or videos:
   not advised.
 
 FILES:
-  - NOT the node: node prompt N3 (Projective-Safety) builds POST /screen/image and
-    POST /screen/video (NudeNet 320n + Presidio Image Redactor + Tesseract; frames sampled on the
-    node per ruling T2). Run N3 there first; this prompt calls those routes.
+  - NOT the node: N3 built POST /screen/image and POST /screen/video in Projective-Safety
+    (4a86356, 38e52ec: NudeNet 320n + Tesseract, the OCR text scored by Presidio's built-in
+    entities and any ad_hoc_recognizers sent; frames sampled on the node per ruling T2; ocr_text
+    returned for Tier 1/2). This prompt calls those routes.
   - packages/backend/services/media/* (the one publish step; showcase-rendition.ts),
-    services/messaging/live-group-photo.ts (T3 (b)), services/catalogue/live-catalogue-writes.ts
+    services/messaging/live-group-photo.ts (T3 (b): today writeRendition → comms.set_group_photo,
+    :12-20 and :118, with no screening), services/catalogue/live-catalogue-writes.ts
     (P-1: catalogue media through cutShowcaseRendition), services/files/live-objects.ts and the
     visibility route (T3 (a)), every public_assets writer except re-hosted favicons
   - supabase/migrations/00000010_tables_files.sql (files.publication_screenings) + its RLS file;
     00001160_functions_files.sql (files.fn_can_read's public arm serves the copy, not the
-    original); 00005001 (moderation_image_thresholds; moderation_frame_sampling = { every_s: 2,
-    max: 30, first_last: true }); 00005010 (the correction-notice type)
+    original); 00005001 (moderation_image_thresholds; no sampling dial: the node samples from its
+    own env, FRAME_EVERY_S and MAX_FRAMES, and the contract takes no sampling field);
+    00005010 (the correction-notice type)
   - packages/types/files/* (the screening row; scores jsonb)
-  - env: MODERATION_BACKEND_LIVE; devtools + dev-seam (pj.dev.moderation)
+  - env: MODERATION_BACKEND_LIVE (its env-manifest.ts row flips from planned to live);
+    devtools + dev-seam (pj.dev.moderation)
   - documentation/database/files/*, EPI §6.3 (frames ≤ 30, not 16), §6.6, §1.1 row 6;
     SA §Content moderation; PRODUCT_SPEC.md :773-774, :1209-1210 and §1.C's status row
 
@@ -1133,9 +1155,10 @@ STEPS:
      with the category; the correction notice; the original stays uploaded and private; an
      automated finding through R1 (detector nudenet or ocr; ids and scores only). unavailable →
      503.
-  4. Frames (ruling T2): an animated image is screened one frame every 2 s, at most 30, always
-     including the first and the last, from the dial sent with each request; every thumbnail cut
-     from a frame is screened as its own image. Video stays refused until SN5.
+  4. Frames (ruling T2): an animated image goes to /screen/video (/screen/image answers 415 for
+     one), which the node screens one frame every 2 s, at most 30, always including the first and
+     the last; every thumbnail cut from a frame is screened as its own image through /screen/image.
+     Video stays refused until SN5.
   5. T3 (a), per the decision: a Public library row is served as a fresh, re-encoded,
      metadata-stripped copy the pipeline cut (a rendition), never the original; fn_can_read's
      public arm and live-objects.ts (:70-75) serve the copy.
@@ -1146,7 +1169,8 @@ STEPS:
 ACCEPTANCE:
   - With the node up: a flagged fixture → 422, no object in the public bucket, one screening row,
     one automated report, one notice; a clean image publishes with its tiers; the node down → 503
-    and nothing written; a 40-frame GIF sends at most 30 frames, the first and last included.
+    and nothing written; a long animated GIF is screened on at most 30 frames, the first and last
+    included (the verdict's frames count).
   - A Public library image's served bytes carry no EXIF and differ from the original's.
   - grep: every write to avatars, showcase, catalogue and public_assets passes the gate (favicons
     excepted).
@@ -1167,7 +1191,7 @@ ROLE: Integration engineer. SEC P-5 (the text half), Z6, §3.2 "open beyond EPI"
 Front material only).
 DEPENDS: SN3 (the gate and the frame set), P2a (the public-copy doors), R1.
 
-🧑 DECISION 1 — NEW CONTRADICTION; stop before step 4. PRODUCT_SPEC §Messaging 1.C screens public
+🧑 DECISION 1 — Decision #344 flag (b), unruled; stop before step 4. PRODUCT_SPEC §Messaging 1.C screens public
 text before publication and exempts nothing, and ruling T2 (b) makes the text classifier hosted.
 A hosted HTTP call cannot run inside a trigger, yet clients hold direct write grants on
 catalogue.listings / catalogue.products (00002520), marketplace.service_blueprints (00002018
@@ -1179,7 +1203,7 @@ text. P2a's leakage trigger still holds; the gap is toxicity and hate only.
   Option B: a screened-state column the trigger resets on every copy change; public reads show
   only screened copy; the service stamps it after Sightengine answers.
   Option C: screen in the doors only and record the direct-write gap.
-  Record the ruling as a decision row before building (root CLAUDE.md §8).
+  Record the ruling on #344 (b) before building (root CLAUDE.md §8).
 
 🧑 DECISION 2 (an action): a human signs Sightengine's data-processing terms and sets its
 retention and no-training options. HOSTED_MODERATION_LIVE stays false until then.
@@ -1222,11 +1246,11 @@ PROMPT SN5: Videos publish again — remuxed, screened and metadata-stripped
 
 ROLE: Media engineer. SEC Z2, P-2 (the remux branch); CAS F13; #339 (l) (Decision #340, ruling
 T2: one frame every 2 s, at most 30, the first and last always, and every derived thumbnail).
-DEPENDS: SN3, SN4.
+DEPENDS: SN3, SN4, and N3's open remux bullet (§8.4) in Projective-Safety.
 
 FILES:
-  - NOT the node: node prompt N3 adds POST /remux/video (ffmpeg -map_metadata -1
-    -map_chapters -1 -c copy, faststart; the output re-sniffed) beside /screen/video's sampling
+  - NOT the node: N3's remux adds POST /remux/video (ffmpeg -map_metadata -1 -map_chapters -1
+    -c copy, faststart; the output re-sniffed) beside /screen/video's sampling, which is built
   - services/media/showcase-rendition.ts (lift Wave 0's video MediaRejectedError),
     services/media/library.ts (poster and tiers), apps/web/features/files/components/media-crop/
     MediaCropPicker.tsx (offer videos again where the target takes them)
@@ -1235,7 +1259,8 @@ FILES:
 
 STEPS:
   1. Publishing a video: remux on the node → re-sniff (a body that is not video is refused) →
-     sample frames per the dial → screen the frames and the poster (NudeNet, OCR, Sightengine) →
+     /screen/video samples and screens the frames on the node → screen the poster and the frames
+     with Sightengine (SN4) →
      write the remuxed bytes and their tiers to showcase. The original stays private.
   2. Every thumbnail derived from a frame is screened as its own image.
   3. Slot 1 still takes a still only (PRODUCT_SPEC); the other slots take videos again.
@@ -1255,11 +1280,15 @@ window
 ROLE: Backend + Postgres engineer. EPI §6.2; SEC §2.4, T3-1 to T3-4 (Decision #340, ruling T2
 with T2.2 and T2.3: a rolling window, protected phase only, no payload kept, an
 evasion_fragmentation report, a penalty only after review; ruling T4: one sink).
-DEPENDS: node prompt N4 (Presidio), R1, R3, P2b (the one predicate), P1d (the
-normaliser and the corpus).
+DEPENDS: R1, R3, P2b (the one predicate), P1d (the normaliser and the corpus). N4 (Presidio) is
+built in Projective-Safety (30c8bda, a4ccec5): its tests/fixtures/pii_corpus.json holds six
+recognisers tuned against presidio-analyzer 2.2.362, ported from pii.test.ts; port them here. Its
+README's tuning notes apply: a phone number scores 0.4 without a context word and the corpus runs
+at 0.35, so check the 0.65 review threshold against them; an uncompilable pattern is an HTTP 500,
+so compile each pattern at the analyzer's regex version before sending.
 
 FILES:
-  - supabase/migrations/00000013_tables_ops.sql (ops.moderation_queue); 00001660 (lease and drain
+  - supabase/migrations/00000013_tables_ops.sql (ops.moderation_queue); 00001665 (lease and drain
     doors); 00001300 + 00001840 (the enqueue trigger functions and triggers); 00005060
     (moderation-drain, every minute, http); 00005001 (moderation_tier3_review_threshold 0.65,
     moderation_tier3_category_weights, moderation_fragment_window = { minutes: 5,
@@ -1268,7 +1297,8 @@ FILES:
     secret) → packages/backend/services/moderation/ModerationBackendService.ts (drainQueue)
   - packages/types/comms/pii-recognizers.ts (the ad_hoc_recognizers, versioned next to
     pii-detect.ts); packages/types/ops/* (the queue row)
-  - env: MODERATION_BACKEND_LIVE (SN3), MODERATION_CRON_SECRET
+  - env: MODERATION_BACKEND_LIVE (SN3), MODERATION_CRON_SECRET (its env-manifest.ts row flips
+    from planned to live)
   - supabase/probes/tier3_queue.sql (new); documentation/database/{ops,comms}/*; SA §Tier 3;
     EPI §6.2 and §1.1 row 5; PRODUCT_SPEC §1.A (the Tier 3 row and its "Planned with Tier 3"
     sentence)
@@ -1310,7 +1340,7 @@ SAME CHANGE: Zod + documentation/database/ops/* with the queue table; the env co
 with Tier 3" marker; SA §Tier 3.
 SQL SESSION: at most two SQL sessions at once, on disjoint migration files; announce each
 `deno task db:reset`; run `deno task test:probes`; finish with your own clean
-`deno task test:probes:fresh`. 00005060 has one writer at a time, after jobs-sql.
+`deno task test:probes:fresh`. 00005060 has one writer at a time.
 ```
 
 ### H1 — ⚖️ Known-image hash matching, built and switched off
@@ -1382,38 +1412,30 @@ added appears in documentation/database/* or ROUTING.md.
 
 ## 8. The safety node: setup runbook and node prompts (was `SAFETY_NODE_SETUP_AND_BUILD_PROMPTS.md`)
 
-**Status: WORK ORDERS, not binding.** This part covers building and hosting the content-safety node:
-ClamAV, NudeNet plus OCR and Microsoft Presidio, behind one authenticated gateway, in its own
-repository, `Projective-Safety`.
-
-The design is already specified. It does not restate it; it links to:
-
-- `documentation/api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md` §6 (EPI, Decision #335,
-  Proposed);
-- `SECURITY_MODERATION_AND_AI_GAPS.md` §2–§6 (SEC, #340).
-
-Reconciled 2026-10-30 with the rest of this file (Decision #345). This part owns the node: the human
-setup (H1–H5) and the node prompts (N0–N5). Every change in this repo is a TRUST prompt (§8.5 maps
-them), the rulings this work waited for are made (§2), and N6 is withdrawn because the app calls
-Sightengine itself (TRUST SN4).
+This part covers building and hosting the content-safety node: ClamAV, NudeNet plus OCR and
+Microsoft Presidio, behind one authenticated gateway, in its own repository, `Projective-Safety`
+(Decision #345). It does not restate the design; it links to
+`documentation/api/EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md` §6 (EPI, Decision #335,
+Proposed) and `SECURITY_MODERATION_AND_AI_GAPS.md` §2–§6 (SEC, #340). It owns the human setup (§8.3
+H1–H5) and the node prompts (§8.4); every app-side change is a prompt in §3–§7.
 
 ### 8.0 What already exists and what does not
 
-| Piece                                                          | State today                                                                                                                                                                    | Where it is built                  |
-| :------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------- |
-| Magic-byte sniffing and image decoders                         | **Built** (Wave 0). It refuses programs, undecodable images and video renditions; markup is admitted inert and SVG sanitised (#396, `0de5438f`). V3 (PDF/ZIP/OOXML) is open.   | This repo, TRUST SN2               |
-| Tier 1 in-process pre-filter (regex PII, IBAN, crypto, phones) | Not built. SEC-P1d.                                                                                                                                                            | This repo, TRUST P1d               |
-| Tier 2 `comms.mask_pii` (SQL floor)                            | Built. L8's new categories are open.                                                                                                                                           | This repo, TRUST P1d               |
-| Google Web Risk (link reputation)                              | **Wired** (`services/files/link-reputation.ts`, `bc805dff`); it answers once `LINK_SAFETY_API_KEY` holds a real key. Safe Browsing v4 is gone, in development too.             | This repo, TRUST W1 ✅             |
-| ClamAV, NudeNet + OCR, Presidio (Tier 3)                       | **Not built.** N0 (the scaffold and the HTTP contract) is recorded as committed in `Projective-Safety`; that repo is not on this machine (2026-11-12), so N0 is unverified.    | `Projective-Safety`, prompts N1–N5 |
-| Sightengine (hosted toxicity, violence and hate-symbol checks) | Not built. Ruling T2 makes it the hosted check for Glass Front media and text only.                                                                                            | This repo, TRUST SN4               |
-| App-side client, gates, queue, review sink                     | Not built. `MALWARE_SCAN_LIVE`, `MODERATION_BACKEND_LIVE`, `SAFETY_NODE_URL`, `SAFETY_NODE_TOKEN`, `MODERATION_CRON_SECRET`.                                                   | This repo, TRUST SN1–SN6           |
+| Piece                                                          | State today                                                                                                                                                                  | Where it is built                   |
+| :------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------- |
+| Magic-byte sniffing and image decoders                         | **Built** (Wave 0). It refuses programs, undecodable images and video renditions; markup is admitted inert and SVG sanitised (#396, `0de5438f`). V3 (PDF/ZIP/OOXML) is open. | This repo, SN2                      |
+| Tier 1 in-process pre-filter (regex PII, IBAN, crypto, phones) | Not built. SEC-P1d.                                                                                                                                                          | This repo, P1d                      |
+| Tier 2 `comms.mask_pii` (SQL floor)                            | Built. L8's new categories are open.                                                                                                                                         | This repo, P1d                      |
+| Google Web Risk (link reputation)                              | **Wired** (`services/files/link-reputation.ts`, W1); it answers once `LINK_SAFETY_API_KEY` holds a real key. Without one, links read `safe` until LK1 lands.                 | This repo, LK1                      |
+| ClamAV, NudeNet + OCR, Presidio (Tier 3)                       | **Built** in `Projective-Safety`: the gateway (N1), ClamAV (N2), the `/screen/*` routes (N3) and Presidio (N4); §0.0. The video remux (N3) and N5 are open.                  | `Projective-Safety`, N3's remux, N5 |
+| Sightengine (hosted toxicity, violence and hate-symbol checks) | Not built. Ruling T2 makes it the hosted check for Glass Front media and text only.                                                                                          | This repo, SN4                      |
+| App-side client, gates, queue, review sink                     | Not built. `MALWARE_SCAN_LIVE`, `MODERATION_BACKEND_LIVE`, `SAFETY_NODE_URL`, `SAFETY_NODE_TOKEN`, `MODERATION_CRON_SECRET` are `planned` rows in `core/env-manifest.ts`.    | This repo, SN1–SN6                  |
 
 ### 8.1 Repo decision
 
 **Decided: a separate repository.** The owner created it as `Projective-Safety`, beside this repo,
-and committed N0 there. The app-side client stays here, and TRUST SN1's in-repo `infra/safety-node/`
-is withdrawn.
+where N0–N4 are committed. The app-side client stays here, and nothing here creates
+`infra/safety-node/`.
 
 Why a separate repo:
 
@@ -1423,20 +1445,19 @@ Why a separate repo:
   model downloads. It must not ship with the web app.
 - **One small seam.** The only shared surface is an HTTP contract plus one bearer token. The
   contract is `Projective-Safety/contract/openapi.yaml`; this repo copies its schema as Zod and
-  shares no code. Its route names (`GET /healthz`, `POST /scan/file`, `POST /screen/image`,
-  `POST /screen/video`, `POST /presidio/analyzer/analyze`) win over EPI §6's `/v1/…` examples.
+  shares no code. Its route names (§0.5) win over EPI §6's `/v1/…` examples.
 
 ### 8.2 Rulings (all made 2026-10-30, Decision #340)
 
 | Ruling               | What it settles here                                                                                                                                   |
 | :------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **T5**               | EPI §6's self-hosted node is approved: one node, 4 vCPU / 8 GB (this also settles EPI flag (g)).                                                       |
-| **Q0.2 (a)**         | The client storage write policies go (TRUST E8). ClamAV at admission is pointless before that, so TRUST SN1 waits for E8.                              |
+| **Q0.2 (a)**         | The client storage write policies go (E8, done). ClamAV at admission was pointless before that, so SN1 waited for E8.                                  |
 | **T2 (b), (c)**      | Sightengine is the hosted check for toxicity, violence and hate symbols, on Glass Front media and text only, called by the app (TRUST SN4).            |
 | **T2 (frames)**      | One frame every 2 s, at most 30, always the first and last, and every thumbnail cut from a frame is screened too (N3).                                 |
 | **T3**               | (a) A public library file is served as a screened, metadata-stripped copy; (b) group photos are screened. These are the publish paths TRUST SN3 gates. |
 | **T4**               | The review sink is `ops.reports.source`, where Presidio findings land (TRUST R1, SN6).                                                                 |
-| **T5 (link safety)** | Google Web Risk (TRUST W1); a Safe Browsing v4 key only for local development.                                                                         |
+| **T5 (link safety)** | Google Web Risk (W1, done). W1 calls Web Risk in development too, so the ruling's Safe Browsing v4 development key is no longer used.                  |
 | **T5 ⚖️ (PhotoDNA)** | Ruled, pending counsel. TRUST H1 builds hash matching behind a flag that stays off; it is a separate vendor agreement, not part of these prompts.      |
 
 ### 8.3 Human setup (in order)
@@ -1458,10 +1479,13 @@ Never commit them.
 
 #### H2. The repo
 
-Done: the repository is `Projective-Safety`, cloned beside this repo, with N0 committed. Run N1–N5
+Done: `Projective-Safety` is cloned beside this repo, with N0–N4 committed. Run N3's remux and N5
 (§8.4) in sessions opened in that folder.
 
 #### H3. Provision the host (after N5 passes locally)
+
+For UAT you may provision sooner, once SN1 passes against a local node, and smoke-test by hand with
+EICAR (§0.4: the timing is yours). The contract is the same either way.
 
 - **Size:** one VM with 4 vCPU, 8 GB RAM and 40 GB disk (ruling T5; Presidio's spaCy model is about
   2 GB, and so is the NudeNet/Tesseract image). Any provider works (Hetzner, DO, AWS).
@@ -1482,8 +1506,8 @@ Done: the repository is `Projective-Safety`, cloned beside this repo, with N0 co
    - `SAFETY_NODE_TOKEN`;
    - `MODERATION_CRON_SECRET`;
    - `LINK_SAFETY_API_KEY`, the Web Risk key (TRUST W1 kept this name).
-2. Run the app-side prompts in **this** repo: this file's SN1–SN6, W1 and P1d (§8.5 maps them, and
-   says which node prompt each waits for).
+2. Run the app-side prompts in **this** repo: this file's SN1–SN6 and P1d (§0.5 says which node
+   route each uses).
 3. Turn the gates on, one at a time, in the EPI §6.6 order:
    - local first;
    - then staging in **shadow mode**;
@@ -1498,7 +1522,7 @@ Done: the repository is `Projective-Safety`, cloned beside this repo, with N0 co
 - Re-pin image digests monthly; rebuild and re-run N5's smoke test.
 - Uptime check on the gateway's `/healthz` from the app network.
 - Sub-processor disclosure: Google Web Risk and Sightengine in SA §Security and the privacy page
-  (#340 (j)); TRUST W1 and SN4 make that change.
+  (#340 (j)); W1 made Web Risk's, and SN4 makes Sightengine's.
 
 ### 8.4 Node prompts: run in `Projective-Safety`
 
@@ -1522,63 +1546,27 @@ compose, 6.2 Presidio, 6.3 NudeNet+OCR, 6.4 ClamAV, 6.6 dev/prod) and
 - Each verdict response carries `{verdict, scores, model, version, ms}`; errors are typed, never 200.
 - A route added or changed lands in `contract/openapi.yaml` in the same change.
 - Finish each prompt with tests passing and a commit; do not push unless asked.
+
+When you finish, do the closing duty (../Projective.com/documentation/reference/build-prompts.md
+§2) as a docs commit in ../Projective.com, after your node commit:
+  - In documentation/architecture/TRUST_SAFETY_BUILD_PROMPTS.md §8.4: a done node prompt leaves
+    the file. Delete its section and add its row to §0's Done ledger (ID · what landed · the node
+    commit · text at the Projective.com commit before your edit). A partly done one keeps only its
+    open bullets, under one rewritten Status line.
+  - Run git grep -n "<ID>" documentation/ there and mark every wait on it as met (§0.5, §8.6 and
+    the SN prompts' DEPENDS lines); update the file's row in build-prompts.md §3.
 ```
 
-#### N0: Scaffold and the contract — ✅ done (`f6c46b8`)
+#### N3: The video remux (`/remux/video`) — SN5 waits for it
 
-- The layout (`gateway/`, `safety-api/`, `clamav/`, `compose.yaml`, `.env.safety.example`,
-  `contract/openapi.yaml`, `tests/`) and the contract's routes: `POST /scan/file`,
-  `POST /screen/image`, `POST /screen/video`, `POST /presidio/analyzer/analyze` and `GET /healthz`.
+> **Status 2026-11-23:** NudeNet + OCR on `/screen/image` and `/screen/video` landed in `4a86356`
+> (Pillow re-decode, the decompression-bomb guard, frame sampling per ruling T2, the
+> `moderation_image_thresholds` field), and `38e52ec` added `ad_hoc_recognizers`; the remux below is
+> open.
 
-#### N1: Gateway and auth
-
-- Caddy enforces the bearer token, body-size limits per route and request timeouts.
-- `/healthz` is unauthenticated but reveals nothing beyond `{ok}`.
-- Tests: missing or wrong token gets 401; an oversized body gets 413; clamd and Presidio are
-  unreachable from the host network.
-
-#### N2: ClamAV (`/scan/file`) — TRUST SN1 waits for it
-
-- Stream the bytes to clamd over INSTREAM on the internal network. Return `clean | infected` in the
-  contract's envelope, with the signature name, and the engine, `db_version` and `db_time` in
-  `version` (TRUST SN1 stores them on the file row). clamd's size limit is a typed 413 and a socket
-  error a typed 503, never a verdict (Decision #345 (b)).
-- clamd.conf per EPI §6.4: StreamMaxLength and MaxFileSize 64M, MaxScanSize 256M, MaxRecursion 16,
-  ConcurrentDatabaseReload no, AlertEncrypted no.
-- `AlertOLE2Macros yes` (ruling AV-5): `Heuristics.OLE2.ContainsMacros` maps to
-  `{ verdict: 'clean', flags: ['macros'] }`, never infected; the app admits such a file privately
-  and never publishes it.
-- Run freshclam in the container, and expose the signature age in `/healthz` details behind the
-  token.
-- Tests: the EICAR string → infected; a clean PDF → clean; a macro `.docm` → clean with
-  `['macros']`; clamd down → a typed 503 (the app fails closed).
-
-#### N3: NudeNet + OCR (`/screen/image`, `/screen/video`), and the video remux — TRUST SN3 and SN5 wait for it
-
-- NudeNet v3. Thresholds come from the request's optional `moderation_image_thresholds` JSON field
-  (the app's `platform_params` value), falling back to env defaults set to the EPI §6.3 values
-  (Decision #345 (e)). Tesseract OCR text is returned for the app's Tier 1/2 text checks.
-- Re-decode every image with Pillow, and refuse decompression bombs: set a max-pixels limit and
-  refuse anything over it.
-- Video and GIF: ffmpeg samples one frame every 2 s, at most 30, always the first and last (ruling
-  T2), with the verdict as the max over frames. Every thumbnail the app cuts from a frame is
-  screened through `/screen/image` as well.
 - Add `POST /remux/video` to the contract: ffmpeg `-map_metadata -1 -map_chapters -1 -c copy`,
-  faststart, and the output re-sniffed. TRUST SN5 publishes videos through it.
-- Tests use small committed fixtures: a safe image, a synthetic explicit-label stub (mock the model
-  in unit tests; one real-model integration test), a GIF, a video carrying GPS metadata (gone after
-  the remux), and a decompression bomb.
-
-#### N4: Presidio (Tier 3) — TRUST SN6 waits for it
-
-- Analyzer and anonymizer images from EPI §6.2. Projective's recognisers for its leak patterns
-  (IBAN, crypto wallets, phone numbers with ≥ 9 digits, "contact me on…" handles) travel per request
-  from the app as `ad_hoc_recognizers` (EPI §6.2; Decision #345 (d)), so Tier 2 and Tier 3 share one
-  pattern source and the node holds none. Port the main repo's `pii.fixtures.ts` corpus (TRUST P1d
-  writes it) and its recognisers to a JSON fixture here, as the test corpus only.
-- `/presidio/analyzer/analyze` returns entity types and scores, **never** the matched text.
-- Tests: every corpus case, sent with its recognisers, scores as expected; the response contains no
-  substring of the input.
+  faststart, and the output re-sniffed. SN5 publishes videos through it.
+- Tests: a small committed video carrying GPS metadata, gone after the remux.
 
 #### N5: Smoke test, CI and the deploy script
 
@@ -1588,34 +1576,29 @@ compose, 6.2 Presidio, 6.3 NudeNet+OCR, 6.4 ClamAV, 6.6 dev/prod) and
   push to GHCR on tag.
 - `deploy/README.md`: the H3 steps as commands.
 
-#### N6: withdrawn
-
-Ruling T2 makes Sightengine the hosted check for public media and public text, which the app's write
-services already hold, so TRUST SN4 calls it from the app
-(`packages/backend/services/moderation/sightengine.ts`). The node keeps no Sightengine code, and
-nudity never falls back to it.
-
-### 8.5 App prompts in this file that wait on the node
-
-The work in this repo is written once, as TRUST prompts run under this file's §1 standard header.
-The A-prompts this file first drafted map onto them:
-
-| Drafted here                           | Now                                          | Waits for, in `Projective-Safety` |
-| :------------------------------------- | :------------------------------------------- | :-------------------------------- |
-| A1 sniffers (SEC V3, V5, V6; CAS F15)  | TRUST SN2                                    | —                                 |
-| A2 Tier 1 and the L8 categories        | TRUST P1d                                    | —                                 |
-| A3 safety client and malware admission | TRUST SN1, then SN2's one admission contract | N1, N2                            |
-| A4 publication gate                    | TRUST SN3 (and SN5 for video)                | N3                                |
-| A5 link safety (Web Risk)              | TRUST W1                                     | —                                 |
-| A6 Presidio Tier 3 queue and review    | TRUST SN6                                    | N4                                |
-
 ### 8.6 Order at a glance
 
 1. **Rulings:** made (§8.2).
-2. **This repo, now:** TRUST E8 first; P1d, SN2 and W1 need no node.
-3. **`Projective-Safety`:** N1 → N2 → N3 → N4 → N5 (N0 is done). N2, N3 and N4 can run in parallel
-   sessions once N1 lands; they touch separate modules, but serialise any edits to `compose.yaml`
-   and `contract/openapi.yaml`.
-4. **Host:** H1 → H3 after N5 passes locally.
-5. **This repo, as each node route lands:** TRUST SN1 (after N2), SN3 and SN5 (after N3), SN6 (after
-   N4); then turn the gates on per H4.
+2. **This repo, now:** LK1, P1d, P2d, R1 and SN1 (§0). SN2 follows SN1: it folds SN1's three hook
+   points into one.
+3. **`Projective-Safety`:** N3's remux and N5 (N0–N2 and N4 are done). They may run in parallel
+   sessions, but serialise any edits to `compose.yaml` and `contract/openapi.yaml`.
+4. **Host:** H1 → H3, after N5 passes locally (for UAT, once SN1 passes against a local node).
+5. **This repo, as each node route lands:** SN1 (N2 is built), SN3 (N3's screen routes are built),
+   SN5 (after N3's remux), SN6 (N4 is built); then turn the gates on per H4.
+
+---
+
+## Map of merged files
+
+| Old file and section                                                     | Where it went                                                                             |
+| :----------------------------------------------------------------------- | :---------------------------------------------------------------------------------------- |
+| `readiness/SAFETY_MODERATION_BUILD_PROMPTS.md` §0.1 (row → work order)   | §0.6                                                                                      |
+| SAFETY_MODERATION §0.2 (D3's critical path, the UAT node recommendation) | §0.6 "What UAT needs"; the recommendation in §0.4 and §8.3 H3. Its clone step is done     |
+| SAFETY_MODERATION §0.3 (run order; the §D score projection)              | §0's wave table and §0.3. The projection is dropped: the readiness Scoreboard computes it |
+| SAFETY_MODERATION §0.4 (human stops and actions)                         | §0.4                                                                                      |
+| SAFETY_MODERATION §1 (headers; the §1.2 readiness addendum)              | §1's READINESS line; LK1 now takes §1 too                                                 |
+| SAFETY_MODERATION §2 (per-prompt deltas)                                 | Folded into each prompt's text, §0.1–§0.3 and §0.6's rows                                 |
+| SAFETY_MODERATION §3 (LK1)                                               | §3                                                                                        |
+| This file §2 (E8), §3 (W1)                                               | Done, §0.0                                                                                |
+| This file §8.4 N0, N1, N2, N4, N6; §8.5 (the drafted A1–A6 map)          | Done or withdrawn, §0.0. A1–A6 became SN2, P1d, SN1, SN3 and SN5, W1, SN6                 |

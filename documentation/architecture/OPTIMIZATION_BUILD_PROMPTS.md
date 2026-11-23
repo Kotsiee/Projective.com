@@ -1,75 +1,75 @@
 # Optimisation Build Prompts — Claude Code Work Orders for Read Paths, Caching & the Design System
 
-> **Status: WORK ORDERS, not binding.** This is a sequenced series of self-contained Claude Code
-> prompts for track O ("Optimisation and design") of
-> [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part B §B.3. Together they close the open
-> work of the [redundancy audit](PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md) under the owner's
-> rulings on Decision #341 (E1–E3). Every prompt cites its evidence by finding ID (`U-`, `L-`, `D-`,
-> `G-`, and the audit's `QW-`, `SC-`, `DB-` rows) and its ruling as `(Decision #NNN, ruling X)`. The
-> options behind each ruling are in
-> [`PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md`](PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md)
-> (ADC, Q1–Q17). Paste each prompt into its **own fresh session**, after the standard header (§1).
+> **Status: WORK ORDERS, not binding.** Track O ("Optimisation and design") of
+> [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part B §B.3. These prompts close the open
+> work of the [redundancy audit](PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md) (its §3 findings,
+> its §4 remediation map, and §2's questions Q1–Q17, formerly ADC) under the owner's rulings on
+> Decision #341 (E1–E3).
 >
-> **Before you start:** these prompts assume `main` at or after `94d22e84` (Wave 1.1). Run them in
-> the §0 order. A prompt marked **🧑 DECISION** must stop and put the named question to a human
-> before it changes behaviour; it gives the options and a recommendation. What Wave 0 built was
-> verified against git on 2026-10-30 and is listed in §0.3; it is not rebuilt here.
+> **Verified against code 2026-11-23 at `f2e25929`.** 17 open, 0 partly done, 5 done (§0 ledger).
+> Runnable now: WP17, Q9, WP10b (steps 2–6), Q12 (it stops at step 3), WP5a.
 >
-> **IDs.** The questionnaire names the RED work packages (§B.1, §B.3: "RED WPn", "O: WPn") without
-> defining them. §0.1 is the mapping this file uses, reconstructed from those sections and the
-> audit's §4 rows. A letter suffix splits a package whose halves wait on different tracks. `Q9`,
-> `Q12` and `Q15` are #341 E1 rulings with no work package of their own.
->
-> **Migrations are edited in place** (root `CLAUDE.md` §1). Every SQL prompt names the existing
-> category file to edit.
->
-> **Status 2026-11-12, re-verified in code at `8a3fd595`:** WP10a (`7f6b43d5`) and WP3b
-> (`0c1e474f`) are done, with Wave 0's RED WP3 and WP15 (§0.3). No other prompt here has started:
-> the commits since 2026-11-03, the modal, files and inspector work included, built none of them.
-> Two findings were fixed outside a prompt: U-09's shared scope picker (`21309eeb`) and U-30's
-> native `title` (`7ffe91b6`). Prompts whose premise has gone stale say so under their heading.
+> **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
+> (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
+
+Every prompt cites its evidence by finding ID (`U-`, `L-`, `D-`, `G-`, and the audit's `QW-`, `SC-`,
+`DB-` rows) and its ruling as `(Decision #NNN, ruling X)`. Paste each prompt into its **own fresh
+session**, after the standard header (§1), and run them in the §0 order. A prompt marked **🧑
+DECISION** stops and puts the named question to a human before it changes behaviour; it gives the
+options and a recommendation. **Migrations are edited in place** (root `CLAUDE.md` §1): every SQL
+prompt names the existing category file to edit.
+
+**IDs.** The questionnaire names the RED work packages (§B.1, §B.3: "RED WPn", "O: WPn") without
+defining them; §0.1 is this file's mapping, reconstructed from those sections and the audit's §4
+rows. A letter suffix splits a package whose halves wait on different tracks. `Q9`, `Q12` and `Q15`
+are #341 E1 rulings with no work package of their own. PM-WP5a/b and O·WP5a/b share IDs, so cite
+these with their `O·` prefix (Decision #412).
 
 ---
 
 ## 0. Run order & dependencies
 
-**Re-verified in code 2026-11-12 at `8a3fd595`:** ✅ WP10a and ✅ WP3b; every other prompt is not
-started. Runnable now: WP17 first, then Q9, WP10b (steps 2–6; step 1 waits on F·DB17 and F·SV5),
-Q12 (🧑 mid-run) and WP5a (once a peer's uncommitted `board.ts` and pricing edits land). The rest
-wait on F·SV5, F·UI1–UI5, S·S5, PM-WP6, P·WP8/WP9, C·WP10 and COMMS MS3 (the table below).
+### 0.0 Done
 
-| Phase                               | Prompts                                  | Why this order                                                                                                                                                                                                                                                           |
-| :---------------------------------- | :--------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0 — Doctrine**                    | WP17                                     | Docs only, no waits. The binding SA text stops teaching the unsafe `withCache` sample before any Wave 2 track writes a cache.                                                                                                                                            |
-| **1 — Cache primitives**            | ✅ WP10a                                 | Single-flight, one request memo, `cachedGlobal` and KV version keys. Every later read-path prompt, and track M's N2 long-poll, builds on them. No cross-track wait.                                                                                                      |
-| **2 — Read paths**                  | WP2 → WP11; WP10b; ✅ WP3b → Q12; Q9 → WP13 | WP2 memoises the wallet context and runs the Q13 check that sets WP11's priority (**P0** if a shown figure comes from the 1,000-row window). WP10b and WP3b need WP10a. Q12 shares `live-catalog.ts` with WP3b. WP13 needs Q9's claims, WP10a's version keys and M's N2. |
-| **3 — Shared rules & server flags** | WP5a → WP5b → WP6; Q15                   | WP5a has no open wait (P·WP2 merged in Wave 0). WP5b and WP6 write the projects function files, so they follow P·WP6. Q15 follows WP2 (the wallet DTO) and F·UI3/UI4 (the wallet literals).                                                                              |
-| **4 — UI & design system**          | WP4; WP7; WP8 → WP9 → WP16               | WP4 and WP7 follow the finance UI prompts that edit the same files. WP8 lands the stylesheet gate that WP9 drives to zero. WP16 goes last because it touches the ten modal files that tracks P and C also edit.                                                          |
-| **Last**                            | Z1                                       | Docs sweep and the audit's status column.                                                                                                                                                                                                                                |
+| ID        | What landed                                                                                                                         | Commit                        | Text at    |
+| :-------- | :---------------------------------------------------------------------------------------------------------------------------------- | :---------------------------- | :--------- |
+| WP10a     | Single-flight in `ArcCache.through`, one `request-memo.ts`, `cachedGlobal` and the KV version keys                                  | `7f6b43d5` (merge `508c2290`) | `f2e25929` |
+| WP3b      | `invalidateCatalog()` bumps `["cache","v","catalogue"]`; other isolates refresh through SWR; a 5 min TTL                            | `0c1e474f` (merge `7e476d6e`) | `f2e25929` |
+| RED WP3   | D-09 keyset paging past `max_rows`, articles without `body`, SWR on expiry, parallel `byIds`, QW-8, QW-9                            | `92c7941f` (merge `b91de658`) | — (Wave 0) |
+| RED WP15  | QW-10's registry glyphs and one brand-marks module; QW-11's dead CSS (its search half went to RED WP14)                             | `e30b4111` (merge `8c825070`) | — (Wave 0) |
+| QW-1–QW-3 | `formatTicketMoney` takes a currency and its exponent; no sheet uses the four undefined tokens; `QuoteRequestModal` on `MoneyInput` | `660c9658`                    | — (Wave 0) |
 
-**Cross-track waits.** §B.3 lists the first five rows. The rest are added here because the prompt
-writes a file that the named step also writes.
+Fixed outside any prompt: U-09's shared scope picker (`ScopeSelect`, `21309eeb`) and U-30's native
+`title` (`7ffe91b6`).
 
-| Prompt                 | Waits for                                                                  | Status on 2026-11-12                                                                                      |
-| :--------------------- | :------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
-| WP2, WP11              | F·SV2, F·SV3, F·SV5 (`live-wallet.ts` / `wallet-scope.ts`)                 | Open. F·SV2 (`d4c4a194`) and F·SV3 (`fdeb3018`) merged; F·SV5 not started (it follows F·DB9).             |
-| WP5a                   | P·WP2                                                                      | **Merged** in Wave 0 (`3fcf2d54`, merge `8464dbdd`): X4, X8, W7, without D12.                             |
-| WP4                    | F·UI2, F·UI3, F·UI5                                                        | Open: none of F·UI2, UI3, UI5 has started.                                                                |
-| WP7                    | F·UI5, S·S5 (and F·UI2/UI3, which edit `WalletDialogs.tsx`)                | Open: F·UI5 and S·S5 not started. S5 fixes `PlanBlock.tsx`; WP7 leaves it.                                |
-| WP13                   | M·N2 (the ETag long-poll)                                                  | Open: N2's long-poll is COMMS MS3, after MS1 (✅ `bbcf3506`) and MS2; MS2 and MS3 have not started.       |
-| WP5b, WP6              | P·WP6 (P·WP1–WP6 edit `00001110` / `00001140` and the board files)         | Open: P·WP6 not started; it now follows PM-WP5a, after PM-WP4's finance window. It also owns L-03 (§0.3). |
-| WP10b (FxService step) | F's FX-feed prompt (#337 M5 (f)) and F·SV5, if either edits `FxService.ts` | Open. The FX feed is FBP DB17; DB17 and SV5 both edit `FxService.ts`. Steps 2–6 do not wait.              |
-| Q15                    | WP2; F·UI3, F·UI4 (`wallet-home.ts`, `AnalyticsView.tsx`)                  | Open: WP2, F·UI3 and F·UI4 not started.                                                                   |
-| WP8                    | F·UI1 (the wallet sheets, `wlt-account`)                                   | Open: F·UI1 not started.                                                                                  |
-| WP9, WP16              | P·WP8/WP9 and C·WP10, while they are open on the modal files               | Open: P·WP8, P·WP9 and C·WP10 not started.                                                                |
+### Run order
+
+| Phase                               | Prompts                           | Why this order                                                                                                                                                                                            |
+| :---------------------------------- | :-------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **0 — Doctrine**                    | WP17                              | Docs only, no waits. The binding SA text stops teaching the unsafe `withCache` sample before any track copies it.                                                                                         |
+| **2 — Read paths**                  | WP2 → WP11; WP10b; Q12; Q9 → WP13 | WP2 memoises the wallet context and runs the Q13 check that sets WP11's priority (**P0** if a shown figure comes from the 1,000-row window). WP13 needs Q9's claims and COMMS MS3's long-poll.            |
+| **3 — Shared rules & server flags** | WP5a → WP5b → WP6; Q15            | WP5b and WP6 write the projects function files, so they follow PM-WP6. Q15 follows WP2 (the wallet DTO) and F·UI3/UI4 (the wallet literals).                                                              |
+| **4 — UI & design system**          | WP4; WP7; WP8 → WP9 → WP16        | WP4 and WP7 follow the finance UI prompts that edit the same files. WP8 lands the stylesheet gate that WP9 drives to zero. WP16 goes last because it touches the ten modal files that track P also edits. |
+| **Last**                            | Z1                                | Docs sweep and the audit's status column.                                                                                                                                                                 |
+
+**Cross-track waits.** A prompt waits on the named step because both write the same file.
+
+| Prompt                 | Waits for                                                                     | Status on 2026-11-23                                                                  |
+| :--------------------- | :---------------------------------------------------------------------------- | :------------------------------------------------------------------------------------ |
+| WP2, WP11              | F·SV5 (`live-wallet.ts` / `wallet-scope.ts`)                                  | Open: F·SV5 not started (F·SV2 and F·SV3 have merged).                                |
+| WP4                    | F·UI2, F·UI3, F·UI5                                                           | Open: F·UI2 is partly done (D16 only); F·UI3 and F·UI5 not started.                   |
+| WP7                    | F·UI5, S·S5 (and F·UI2/UI3, which edit `WalletDialogs.tsx`)                   | Open. S5 fixes `PlanBlock.tsx`; WP7 leaves it.                                        |
+| WP13                   | COMMS MS3 (the ETag long-poll)                                                | Open: MS3 is partly done (its step 2 was WP10a's version keys); the long-poll is not. |
+| WP5b, WP6              | PM-WP6 (`00001110` / `00001140` and the board files)                          | Open: PM-WP6 not started. It also owns L-03 (§0.3).                                   |
+| WP10b (FxService step) | FBP DB17 (the FX feed, #337 M5 (f)) and F·SV5, which both edit `FxService.ts` | Open. Steps 2–6 do not wait.                                                          |
+| Q15                    | WP2; F·UI3, F·UI4 (`wallet-home.ts`, `AnalyticsView.tsx`)                     | Open.                                                                                 |
+| WP8                    | F·UI1 (the wallet sheets, `wlt-account`)                                      | Open: F·UI1 is partly done (D6 and D11).                                              |
+| WP9, WP16              | PM-WP8 and PM-WP9, while they are open on the modal files                     | Open: PM-WP8 partly done, PM-WP9 not started.                                         |
 
 These cannot run in parallel because they edit the same files:
 
 - WP2 / WP11 / Q15 (`live-wallet.ts`, `WalletBackendService.ts`, the wallet DTO), and none of them
-  beside F·SV2, SV3 or SV5
-- WP10a before WP10b and WP3b (`packages/backend/core/cache.ts`, `kv.ts`); WP10b and WP3b may then
-  run together
-- WP3b / Q12 (`live-catalog.ts`)
+  beside F·SV5
 - Q9 / WP13 (`UserBackendService.ts`, `apps/web/routes/api/user/*`)
 - WP5a / WP5b / WP6 (`packages/types/projects/*`; `00001110`, `00001140`)
 - WP6 / WP7 (`stage-funding.ts`); WP4 / WP7 (`ConsultationModal.tsx`, `ScopeBriefModal.island.tsx`,
@@ -80,35 +80,32 @@ These cannot run in parallel because they edit the same files:
 **Hot files (§B.0).**
 
 - `live-wallet.ts` / `wallet-scope.ts`: WP2, then WP11, then Q15. One O writer at a time, and never
-  beside F·SV2, SV3 or SV5.
+  beside F·SV5.
 - `00002510` (grants): WP11, WP6, and WP5b if it grants. One writer across all tracks.
 - `features/devtools` + `apps/web/utils/dev-seam.ts`: no O prompt plans to write them. Q9 writes
   them only if the existing `layoutDirection` override stops winning over the new claim.
 - `00001240`, `00005060`, `00001155`, `00001020`, `00001060`, `00001300`, `stripe-webhook.ts` +
   `00001230`: no O prompt writes them.
-- Shared but not in §B.0: `FxService.ts` (F); the wallet and checkout components and sheets (F UI
-  prompts, and the #243 peers); `PlanBlock.tsx` (S5); `00001110` / `00001140` and the board files
-  (P); the modal files (P, C); `00001700` (I3's session guard may edit it); `DESIGN_SYSTEM.md` and
+- Shared but not in §B.0: `FxService.ts` (F); the wallet and checkout components and sheets (the F
+  UI prompts); `PlanBlock.tsx` (S5); `00001110` / `00001140` and the board files (P); the modal
+  files (P); `00001700` (I3's session guard may edit it); `DESIGN_SYSTEM.md` and
   `SYSTEM_ARCHITECTURE.md` (every track). Check `git log` on these before starting.
 
 **Peer warning:** other sessions edit `apps/web/features/wallet/**` and
-`apps/web/features/checkout/**` (the finance UI prompts and the Decision #243 work). Check
-`git status` before WP4, WP7, WP8 or WP9.
+`apps/web/features/checkout/**`. Check `git status` before WP4, WP7, WP8 or WP9.
 
 ### 0.1 The work packages
 
 | ID    | Audit rows                                                                 | Ruling                      |
 | :---- | :------------------------------------------------------------------------- | :-------------------------- |
 | WP2   | DB-1, QW-4 (D-01, D-02)                                                    | #341 E1 Q13                 |
-| WP3b  | DB-4 / DB-8 invalidation half (D-14)                                       | #339 N2; #341 E1 Q11 ✅     |
-| WP4   | SC-1, SC-2 (U-02, U-03, U-05–U-09, U-13–U-15), plus U-10, U-11, U-16, U-26 | none needed (audit §4.2)    |
+| WP4   | SC-1, SC-2 (U-02, U-03, U-05–U-08, U-13–U-15), plus U-10, U-11, U-16, U-26 | none needed (audit §4.2)    |
 | WP5a  | SC-3 (L-04, L-05, L-07, L-09 TS half, L-10, L-12, L-14, L-16, L-17)        | #338 P5 (e) = #341 flag (n) |
 | WP5b  | SC-3 (L-09 SQL half)                                                       | #338 P5 (e) = #341 flag (n) |
 | WP6   | SC-4 (L-06, L-08, L-20)                                                    | #338 P5 (e) = #341 flag (n) |
 | WP7   | SC-5 (L-11, L-13), FDD N10, L-01's locale half                             | #341 E2                     |
 | WP8   | SC-6, SC-11 (U-21, U-22, U-28)                                             | #341 E3 Q6                  |
 | WP9   | SC-7, SC-8 (U-23, U-24, U-25, U-27), the split panes                       | #341 E3 Q4, Q5              |
-| WP10a | SC-9 (D-06's and D-23's primitives), `cachedGlobal`, version keys          | #341 E1 Q10, Q2; #339 N2 ✅ |
 | WP10b | QW-7, DB-6, DB-7 (D-12, D-16, D-17, D-21, D-24, D-25)                      | #341 E1 Q11, Q10            |
 | WP11  | DB-2 (D-03, D-20)                                                          | #341 E1 Q13                 |
 | WP13  | DB-5 (D-08)                                                                | #341 E1 Q9; #339 N2         |
@@ -122,7 +119,7 @@ These cannot run in parallel because they edit the same files:
 
 - **🧑 Q12:** the in-isolate catalogue budget's value. The prompt measures first, then stops.
   Recommendation: a serialised-size budget plus a reload-latency budget, whichever trips first.
-- **🧑 WP7, a new ambiguity (not logged, per the Wave 1 rule):** the ticked E2 text in
+- **🧑 WP7: money strings on commit buttons** (Decision #344 (c), unruled). The ticked E2 text in
   `FOUNDER_QUESTIONNAIRE.md` and the #341 row say money strings appear "only in aria and sentences".
   ADC Q16 option A, which the ⭐ points at, also allows "commit-button labels in the charge
   currency". Recommendation: the strict reading, with `MoneyView` pinned to the charge currency
@@ -132,62 +129,30 @@ These cannot run in parallel because they edit the same files:
   the FA D20 allocation-ring exception stand, and no prompt here adds a ring. When the owner rules,
   one prompt restores a keyboard-only `:focus-visible` ring in `apps/web/styles/global.css`, adds
   the forced-colors outline (closing DESIGN_SYSTEM §F.1), and corrects the cited criterion to WCAG
-  2.4.7.
-- **Owner action, no prompt: Q0.5.** The root `CLAUDE.md` diff is drafted in
-  the root `CLAUDE.md` edit `f1f10e31`. Agents may not edit guardrail files.
-- **Inherited open items:** none of the five rulings still open after Wave 1.1 (#338 P4's
-  `create_category` label, #252 S2's storage and contract-rate questions, #337 M5's FX margin, and
-  the ⚖️ items) gates a prompt here.
+  2.4.7. That prompt also settles Decision #412 (e), unruled: the catalogue sheets still draw
+  `var(--focus-ring-shadow)` on `:focus-visible` in ten rules (`analytics.css`, `client-drawer.css`,
+  `clients.css`, `console.css`, `edit-sections.css`, `lane.css`, `listing-card.css` under
+  `apps/web/features/catalogue/styles/`), against the no-ring convention (`152a27a9`).
 
-### 0.3 Done, owned elsewhere, or unassigned
+### 0.3 Owned elsewhere, or unassigned
 
-- **Done in Wave 0** (verified against git, 2026-10-30):
-  - QW-1–QW-3 are in `660c9658`. `formatTicketMoney` requires a currency and uses
-    `currencyExponent`, but still formats with `en-US` (WP7 takes that). No sheet uses the four
-    undefined tokens. `QuoteRequestModal` uses `MoneyInput`.
-  - RED WP3 (`92c7941f`, merge `b91de658`): D-09 keyset paging past `max_rows`, articles without
-    `body`, SWR on expiry, `byIds` in parallel, QW-8, QW-9. Its invalidation half is WP3b.
-  - RED WP15 (`e30b4111`, merge `8c825070`): QW-10's registry glyphs and the one brand-marks module;
-    QW-11's dead CSS. QW-11's search half belongs to WP14.
-  - Not done (verified): QW-4 (the lane still re-runs `overviewWithSwitcher`), QW-5, QW-6, QW-7,
-    single-flight (the `through()` comment still argues against it), the shared request memo (six
-    copies), `cachedGlobal`, every SC row, DB-1, DB-2, DB-5 to DB-10.
-- **Owned by [`COMMS_BUILD_PROMPTS.md`](COMMS_BUILD_PROMPTS.md) (track M):** RED WP12, the inbox
-  (DB-3: D-04, D-05; #339 N1 = ADC Q8), with QW-5 (D-06, D-13); D-27 is declined there and closed
-  (the id cursor stays: a JavaScript timestamp would drop the microseconds the keyset needs);
-  messaging invalidation across isolates (D-22, #339 N2); RED WP14, search (DB-9: D-28 at
-  `ef_search` 200 plus `iterative_scan` per #339 N4, D-29, and Q0.2 (f)'s deletion of
-  `fn_search_entities` / `fn_search_global`, which #340 (E) / G11 also names for track T). Track M
-  consumes WP10a's primitives. If an M step lands first, it creates them at WP10a's paths and names.
-- **Owned by [`PM_BUILD_PROMPTS.md`](PM_BUILD_PROMPTS.md) (track P), PM-WP6:** L-03, the ticket-move
-  matrix: the P5 (a)–(d) changes to `projects.fn_assert_ticket_move`, the pure TS mirror in
+- **[`COMMS_BUILD_PROMPTS.md`](COMMS_BUILD_PROMPTS.md) (track M):** RED WP12's inbox (DB-3: D-04,
+  D-05; #339 N1 = ADC Q8) landed with COMMS MS1, and RED WP14's D-28 (`ef_search` 200 plus
+  `iterative_scan`, #339 N4) with SR1 (`481aa59a`); D-29, Q0.2 (f)'s deletion of
+  `fn_search_entities` / `fn_search_global`, landed in TRUST E8 (`dd4206d3`). Still COMMS's: QW-5
+  (D-06, D-13) and messaging invalidation across isolates (D-22, #339 N2, MS3). D-27 is declined
+  there and closed (the id cursor stays: a JavaScript timestamp would drop the microseconds the
+  keyset needs).
+- **[`PM_BUILD_PROMPTS.md`](PM_BUILD_PROMPTS.md), PM-WP6:** L-03, the ticket-move matrix: the P5
+  (a)–(d) changes to `projects.fn_assert_ticket_move`, the pure TS mirror in
   `@projective/types/projects/board.ts` with its SQL-probe parity test, and replacing
-  `ProjectBoard`'s `canDrag` (#338 P5). WP6 takes the other server flags. This boundary was sent to
-  the PM session on 2026-10-30. If that file draws it differently, the coordinator keeps one owner.
-- **Owned by [`FINANCE_BUILD_PROMPTS.md`](FINANCE_BUILD_PROMPTS.md) (track F):** the wallet's D-13
-  (Top up becomes tier 1), FA (h) (an Expand Dialog), FA (l) (aurora violet kept for reserved
-  funds).
-- **Owned by [`SUBSCRIPTIONS_BUILD_PROMPTS.md`](SUBSCRIPTIONS_BUILD_PROMPTS.md) S5:**
-  `PlanBlock.tsx` (L-11's plan half; #252 D11).
-- **No work package in §B.3, recorded Open by Z1:** U-12, U-17, U-30 (field and tooltip hygiene);
-  G-2, G-3, G-5 (package proposals); G-4 and G-6, which block U-15's `ContactList` and `RoleToggle`
-  rows.
-
-### 0.4 Findings for the coordinator
-
-- §B.3's O row misses two waits that the file overlap forces: F·SV3 (a §B.0 writer of
-  `live-wallet.ts`) for WP2/WP11, and P·WP6 for the projects SQL that WP5b and WP6 write.
-- Part C's N2 row unblocks "RED WP3 invalidation" without naming a track. This file gives it to O
-  (WP3b) and gives the KV version-key primitive to WP10a, which track M's N2 consumes.
-- **Q13 pre-scan (read-only, 2026-10-30):** shown values probably derive from the 1,000-row ledger
-  window: `smootherState`'s first-earning date, which decides Income Smoother eligibility and the
-  weeks to go (`live-wallet.ts:423`), and the invoice statements over a 200-day window (`:1688`).
-  The CSV export is capped at `LEDGER_WINDOW` (`:1081`), so a long history exports truncated. The
-  overview's `lifetime` and the per-project `byProject` attribution (`:1245-1265`) are
-  window-derived too, but no component was found rendering them. If WP2 confirms any shown value,
-  WP11 is **P0**.
-- Wave 1.1 applied no DESIGN_SYSTEM or SYSTEM_ARCHITECTURE edits for #341. DESIGN_SYSTEM §F.5 still
-  reads "Ruling needed" and SA still carries `withCache`. WP17, WP8, WP9 and WP16 land those halves.
+  `ProjectBoard`'s `canDrag` (#338 P5). WP6 takes the other server flags.
+- **[`FINANCE_BUILD_PROMPTS.md`](FINANCE_BUILD_PROMPTS.md) (track F):** the wallet's D-13 (Top up
+  becomes tier 1), FA (h) (an Expand Dialog), FA (l) (aurora violet kept for reserved funds).
+- **[`SUBSCRIPTIONS_BUILD_PROMPTS.md`](SUBSCRIPTIONS_BUILD_PROMPTS.md) S5:** `PlanBlock.tsx` (L-11's
+  plan half; #252 D11).
+- **No work package, recorded Open by Z1:** U-12, U-17 (field and tooltip hygiene); G-2, G-3, G-5
+  (package proposals); G-4 and G-6, which block U-15's `ContactList` and `RoleToggle` rows.
 
 ---
 
@@ -205,9 +170,9 @@ Before writing code:
      documentation/CLAUDE.md and packages/ui/CLAUDE.md; documentation/database/CLAUDE.md when SQL
      changes), then documentation/reference/guardrails.md and
      documentation/reference/pr-checklist.md.
-  2. Read documentation/architecture/PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md (the U-, L-,
-     D-, G-, QW-, SC- and DB- IDs cited below) and PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md
-     (Q1-Q17, the options behind each ruling).
+  2. Read documentation/architecture/PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md: §3 and §4
+     (the U-, L-, D-, G-, QW-, SC- and DB- IDs cited below) and §2 (Q1-Q17, formerly ADC, the
+     options behind each ruling).
   3. Read Decision #341's OWNER RULINGS (grep -n '^| 341 |'
      documentation/reference/decisions/decisions-122-126.md) and FOUNDER_QUESTIONNAIRE.md Part C,
      rows E1, E2 and E3. Where a prompt cites #337, #338 or #339, read that row's rulings too.
@@ -282,6 +247,18 @@ before treating a failure as yours. SQL prompts follow their SQL RULES block. UI
 data-contrast="high" and data-motion="reduced". Docs are CRLF in the working tree: edit them with
 an editor, never sed. Commit on the branch you were given with a clear message; do not open a PR
 unless I ask.
+
+When you finish, do the closing duty (documentation/reference/build-prompts.md §2) in the same
+commit as the work:
+  - In documentation/architecture/OPTIMIZATION_BUILD_PROMPTS.md: a done prompt leaves the file.
+    Delete its section and add its row to §0's Done ledger (ID · what landed · commit · text at
+    <commit>^). A partly done prompt keeps only its open steps, with their numbers unchanged, under
+    one rewritten Status line. A ruled 🧑 stop becomes the ruled step, with its decision number.
+  - Treat any step you built for another prompt the same way, in the file that holds it.
+  - Run git grep -n "<ID>" documentation/ and update every place that still calls it open: the
+    PRODUCTION_READINESS / USER_FLOWS Track cells, the audit's Status column, other prompts' waits,
+    and this file's row in documentation/reference/build-prompts.md §3.
+  - If the file has no prompts left, delete it, log it in build-prompts.md §4 and repoint its links.
 ```
 
 ---
@@ -290,10 +267,7 @@ unless I ask.
 
 ### WP17 — SYSTEM_ARCHITECTURE §Caching Strategy describes the real tiers
 
-> **Status 2026-11-12:** Not started; runnable now (SA still carries `withCache`). Stale premise:
-> WP10a built all four helpers (`request-memo.ts`, single-flight in `through()`, `cachedGlobal`,
-> the version keys) and WP3b the catalogue's 5 min TTL and version key, so step 5 marks none of
-> them "Not built yet": describe them as built.
+> **Status 2026-11-23:** Open and runnable; SA still carries `withCache`.
 
 ```text
 PROMPT WP17: SA §Caching Strategy describes the four real tiers and the placement table
@@ -308,16 +282,16 @@ metadata "5 minutes in KV" is a 30 s per-isolate ArcCache, static metadata is un
 profile-view counters use the search.record_view definer, not kv.atomic(). Ruled: SA rewritten to
 the four real tiers plus cachedGlobal on KV (Decision #341, ruling E1 Q2), with Q11's placement
 table (ruling E1 Q11), Q10's coalescing (ruling E1 Q10) and Q7's invalidation (Decision #339,
-ruling N2). This runs first so no Wave 2 track copies the unsafe sample while WP10a builds the
-real helpers.
+ruling N2). WP10a has built the real helpers and WP3b the catalogue's version key, so the SA text
+describes code that exists.
 
 WAITS: none.
 
 FILES:
-  - documentation/architecture/SYSTEM_ARCHITECTURE.md §Caching Strategy (:2942-3056). Rewrite the
-    intro (:2944-2946), "Server-Side: Deno KV" (:2948-2963), "What to Cache" (:3023-3029) and
-    "Implementation Patterns" (:3031-3054). Leave "Browser Storage", "Service Workers" and the
-    shipped offline table (:2965-3021) as they are.
+  - documentation/architecture/SYSTEM_ARCHITECTURE.md §Caching Strategy (re-find the lines; the
+    withCache sample was at :3603 at f2e25929). Rewrite the intro, "Server-Side: Deno KV", "What
+    to Cache" and "Implementation Patterns". Leave "Browser Storage", "Service Workers" and the
+    shipped offline table as they are.
 
 STEPS:
   1. The tiers, in read order: request memo (one request; apps/web/utils/request-memo.ts) →
@@ -336,10 +310,10 @@ STEPS:
      backstops out-of-band writes (SQL console, cron).
   4. Replace the withCache sample with the cachedGlobal(key, ttlMs, fetch) contract (global public
      values only, never a tenant-scoped one) and a short ArcCache example with a tenant key.
-  5. Mark each helper WP10a has not built yet "**Not built yet** (Decision #341, ruling E1 Q10)" or
-     "(… ruling E1 Q2)" or "(Decision #339, ruling N2)": the request memo module, single-flight in
-     through(), cachedGlobal, the version keys. WP10a removes the markers.
-  6. Do NOT delete "Search Results … cached in Deno KV" (:3028-3029). The owner ruled the pgvector
+  5. Describe WP10a's helpers as built, with no marker: apps/web/utils/request-memo.ts,
+     single-flight in ArcCache.through, and cachedGlobal, bumpCacheVersion, cacheVersion and
+     cacheVersionTag in kv.ts; and WP3b's catalogue version key with its 5 min TTL.
+  6. Do NOT delete "Search Results … cached in Deno KV". The owner ruled the pgvector
      KV cache Build now (Decision #339, ruling P3 (c)); track M's search step builds it. Rewrite
      it as a placement row (KV, global, public results only, ids not payloads, under 64 KiB) marked
      "**Not built yet** (Decision #339, ruling P3 (c))".
@@ -349,79 +323,9 @@ STEPS:
 
 ACCEPTANCE:
   - grep -n "withCache" documentation/architecture/SYSTEM_ARCHITECTURE.md → no hits.
-  - The placement table is present, and every unbuilt helper carries a marker naming its ruling.
+  - The placement table is present, and every unbuilt piece (the search-results row) carries a
+    marker naming its ruling.
   - No code file changed.
-```
-
----
-
-## 3. Phase 1 — Cache primitives
-
-### WP10a — Single-flight, one request memo, `cachedGlobal` and version keys
-
-> **Status 2026-11-12:** Done in `7f6b43d5` (merge `508c2290`): single-flight in
-> `ArcCache.through`, `apps/web/utils/request-memo.ts` adopted by all six copies, and
-> `cachedGlobal`, `bumpCacheVersion` and `cacheVersionTag` in `kv.ts`, each with its test. Step 6
-> had no marker to remove, because WP17 has not run.
-
-```text
-PROMPT WP10a: Single-flight in ArcCache, one request memo, cachedGlobal and KV version keys
-
-ROLE: Backend platform engineer (Deno). Code only; no SQL.
-
-CONTEXT: ArcCache.through does not coalesce concurrent misses, and its comment's rationale does
-not hold, because keys are tenant-prefixed by type, so one key is one RLS scope (D-06, D-23; ADC
-Q10). The per-request memo is copy-pasted six times (D-23). The get() comment says an expired entry
-is demoted to its ghost list, but #expire deletes it (ADC Q2). Nothing invalidates across isolates
-(D-14, D-22). Ruled: single-flight in through() plus one shared request memo (Decision #341, ruling
-E1 Q10); cachedGlobal on KV (ruling E1 Q2); KV version keys bumped by the writer, with the TTL as
-the backstop (Decision #339, ruling N2). Track M's N2 long-poll and RED WP12 consume these. If an M
-step already created any of them at these paths, adopt it and only migrate the remaining copies.
-
-WAITS: none (WP17 first is preferred, not required).
-
-FILES:
-  - packages/backend/core/cache.ts (get() doc :298-303 vs #expire :253; through() and its comment
-    :425-438) + cache.test.ts
-  - packages/backend/core/kv.ts (cachedGlobal; the version keys) + kv.test.ts (new)
-  - apps/web/utils/request-memo.ts (new) + request-memo.test.ts (new)
-  - the six copies: apps/web/features/workspaces/core/workspace-memo.ts (:23),
-    apps/web/features/catalogue/core/catalogue-ssr.ts (:64), apps/web/features/calendar/core/
-    calendar-slots.tsx (:45), apps/web/features/projects/core/files-ssr.ts (:61),
-    apps/web/features/projects/core/submissions-ssr.ts (:35), apps/web/utils/session.ts (:57)
-  - documentation/architecture/SYSTEM_ARCHITECTURE.md §Caching Strategy (remove WP17's markers for
-    what you build)
-
-STEPS:
-  1. Reproduce: a test fires two concurrent through() misses for one key and counts the compute
-     calls (2 today).
-  2. Single-flight: an in-flight Map<string, Promise<V>> keyed exactly as the entry. A second miss
-     awaits the first flight; the slot clears in finally; a rejection reaches only that flight's
-     callers and is never set. Rewrite the :425-432 comment to say why this is safe (one key = one
-     tenant = one RLS scope), and correct the get() comment to match #expire.
-  3. request-memo.ts: once<T>(scope: object, key: string, run: () => Promise<T>): Promise<T> over a
-     WeakMap<object, Map<string, Promise<unknown>>>, keyed by the request's own URL (or Request)
-     object so it is collected with the request. A rejected promise leaves the memo, so a retry in
-     the same request runs again. Migrate the six copies (session.ts keeps its Request scope) and
-     delete each local copy and its comment.
-  4. cachedGlobal<T>(key: Deno.KvKey, ttlMs: number, fetch: () => Promise<T>): Promise<T> in kv.ts:
-     memory → KV → fetch; a KV hit fills memory; single-flight; the KV write not awaited on the
-     answer path; a value over 60 KiB served from memory only (log once); null, false, 0 and "" are
-     cacheable (store a wrapper, never test `if (value)`). Its JSDoc says it takes global public
-     values only.
-  5. Version keys: bumpCacheVersion(scope: readonly string[]) writes a fresh crypto.randomUUID()
-     to ["cache","v",...scope]; cacheVersion(scope) reads it at most once a second per isolate per
-     scope. With KV absent, versions are constant and TTLs carry freshness. Document how a version
-     enters a cache key (one helper, used everywhere).
-  6. SA: remove the Not built yet markers for these four pieces.
-
-ACCEPTANCE:
-  - The concurrency test shows one compute; a rejection test shows the next flight recomputes.
-  - grep -rn "new WeakMap<URL" apps/web/features → no hits. request-memo.test.ts covers reuse,
-    isolation between two requests, and the rejection drop.
-  - kv.test.ts runs with KV absent (test:unit passes no --unstable-kv) and with a stub Kv handle; a
-    falsy answer is cached; an oversized value is served from memory.
-  - Callers see no behaviour change beyond fewer duplicate reads; `deno task test` passes.
 ```
 
 ---
@@ -443,7 +347,7 @@ reads on the TVL-critical surface. Ruled: memoise the wallet context, then SQL a
 any displayed figure comes from the 1,000-row window (Decision #341, ruling E1 Q13). This prompt is
 the memoisation and the verification; WP11 is the aggregates.
 
-WAITS: F·SV2, F·SV3 and F·SV5 merged (all three write live-wallet.ts / wallet-scope.ts).
+WAITS: F·SV5 merged (it writes live-wallet.ts / wallet-scope.ts).
 
 FILES:
   - packages/backend/services/finance/WalletBackendService.ts (read() :70-79; a new home())
@@ -504,7 +408,7 @@ empty while hasMore is true (D-20). Ruled: SQL aggregates after the memoised con
 displayed figure is window-derived (Decision #341, ruling E1 Q13); fetch less rather than cache
 more (ruling E1 Q11, option C). WP2's commit message holds the verification table.
 
-WAITS: WP2 merged (and so F·SV2/SV3/SV5). Not while F·DB3 runs (00001210) or any session writes
+WAITS: WP2 merged (and so F·SV5). Not while F·DB3 runs (00001210) or any session writes
 00002510.
 
 FILES:
@@ -551,9 +455,7 @@ ACCEPTANCE:
 
 ### WP10b — Each cacheable read in its Q11 tier
 
-> **Status 2026-11-12:** Not started. Steps 2–6 can run now. Step 1 waits: F's FX feed is now FBP
-> DB17, and DB17 and SV5 both edit `FxService.ts`. D-21's lane now calls `resolveWorkspaceDetail`
-> per team: still one detail read per team.
+> **Status 2026-11-23:** Open. Steps 2–6 can run now; step 1 waits on FBP DB17 and F·SV5.
 
 ```text
 PROMPT WP10b: Put each cacheable read in its Q11 tier
@@ -564,12 +466,13 @@ CONTEXT: FxService reads KV first, and a KV hit never fills memory, so every req
 poller included) pays a KV read, with no single-flight on expiry (D-12, QW-7). The public profile
 view and its section RPCs run on every anonymous hit (D-16). The /view similar rail runs a vector
 search per request (D-17). Reference data (standing_*, plans, platform_params) is read per call
-(D-24). The seller console builds actors with one WorkspaceBackendService.detail per team (D-21).
+(D-24). The seller console builds actors with one resolveWorkspaceDetail read per team (D-21).
 The reviews tab re-reads get_profile_view (D-25). Ruled: memory first, KV only for small global
 values, per the placement table (Decision #341, ruling E1 Q11); single-flight (ruling E1 Q10).
 
-WAITS: WP10a merged. The FxService step also waits for F's FX-feed prompt (#337 M5 (f)) and F·SV5
-if either edits FxService.ts: check git log -- packages/backend/services/finance/FxService.ts.
+WAITS: the FxService step (1) waits for FBP DB17 (the FX feed, #337 M5 (f)) and F·SV5, which both
+edit FxService.ts: check git log -- packages/backend/services/finance/FxService.ts. Steps 2–6 do
+not wait.
 
 FILES:
   - packages/backend/services/finance/FxService.ts (the tier order :69-95; :214-227;
@@ -607,50 +510,6 @@ ACCEPTANCE:
   - The per-table RLS finding is in the commit message.
 ```
 
-### WP3b — The catalogue invalidates across isolates
-
-> **Status 2026-11-12:** Done in `0c1e474f` (merge `7e476d6e`): `invalidateCatalog()` bumps
-> `["cache","v","catalogue"]`, other isolates refresh in the background through SWR,
-> `CATALOG_TTL_MS` is 5 min, and `live-catalog-version.test.ts` covers the two-isolate case.
-
-```text
-PROMPT WP3b: The catalogue invalidates across isolates, so its TTL can grow
-
-ROLE: Backend engineer. Code only.
-
-CONTEXT: Wave 0 (92c7941f) fixed the 1,000-row truncation (D-09), parallelised byIds and added SWR,
-but invalidation stayed in one isolate: invalidateCatalog() reaches only the writer's isolate and
-forces a blocking reload there. So the TTL stays 30 s (live-catalog.ts:438), and each expiry costs
-a reload of about 20 requests (D-14; ADC Q7). Ruled: KV version keys bumped by the writer, with the
-TTL as the backstop (Decision #339, ruling N2); public read models at 5-15 min (Decision #341,
-ruling E1 Q11).
-
-WAITS: WP10a merged.
-
-FILES:
-  - packages/backend/services/explore/live-catalog.ts (CATALOG_TTL_MS :438; loadCatalog;
-    invalidateCatalog :489)
-  - its callers: packages/backend/services/catalogue/CatalogueBackendService.ts,
-    packages/backend/services/search/embedding-sync.ts, and any writer step 3 finds
-  - packages/backend/services/explore/live-catalog-version.test.ts (new)
-
-STEPS:
-  1. invalidateCatalog() keeps its local reset, so the writer reads its own write, and also bumps
-     ["cache","v","catalogue"] after the write commits. Every other isolate's loadCatalog() reads
-     the version (at most once a second) and treats a change as expiry: serve `latest` and refresh
-     in the background, through the existing SWR path.
-  2. CATALOG_TTL_MS moves into Q11's 5-15 min band. Its comment says the version key is the
-     freshness path and the TTL the backstop for out-of-band writes.
-  3. Every catalogue-visible write (publish, unpublish, profile, article, placement, skill) reaches
-     invalidateCatalog(). List the writers you found in the commit message.
-
-ACCEPTANCE:
-  - Two simulated isolates (import the module twice, the second with a query string such as
-    "./live-catalog.ts?isolate=2", sharing a stub Kv): a bump in one makes the other refresh on its
-    next read after the 1 s version check, without a blocking reload.
-  - With KV absent, the catalogue still refreshes by TTL.
-```
-
 ### Q12 — Measure the in-memory catalogue and name the switch
 
 ```text
@@ -663,7 +522,7 @@ linearly with the marketplace (ADC Q11, Q12). Ruled: in memory now, loaded corre
 in Wave 0), with a measured switch to per-query search later (Decision #341, ruling E1 Q12), and a
 memory budget for the in-isolate catalogue (ADC Q11).
 
-WAITS: WP3b merged (same file).
+WAITS: none.
 
 FILES:
   - packages/backend/services/explore/live-catalog.ts (a size measure after each load)
@@ -770,7 +629,7 @@ every 30 s (D-08). Ruled: one chrome endpoint (DB-5) whose identity and preferen
 token after Q9 (Decision #341, ruling E1 Q9), cached per tenant and invalidated through KV version
 keys (Decision #339, ruling N2); the 30 s summary poll gives way to N2's long-poll.
 
-WAITS: Q9 and WP10a merged; track M's N2 long-poll step merged (it owns the notification transport).
+WAITS: Q9 merged; COMMS MS3's long-poll merged (it owns the notification transport).
 
 FILES:
   - apps/web/routes/api/user/me.ts (carries the setup projection too); apps/web/routes/api/user/
@@ -806,11 +665,11 @@ ACCEPTANCE:
 
 ### WP5a — One home for each shared pure rule
 
-> **Status 2026-11-12:** Not started; its wait (P·WP2) is met. Hold it while a peer session's
-> uncommitted edits to `packages/types/projects/board.ts`,
-> `packages/backend/services/explore/pricing.ts` and `catalogue/core/pricing-model.ts` are open:
-> they move `INTENSITY_MULTIPLIER` to 0.75× / 1.5× (ruling P4) and point `PIPELINE_LOW` /
-> `PIPELINE_HIGH` and the client range at it, which changes L-04's premise.
+> **Status 2026-11-23:** Open and runnable. The peer's intensity edit landed in `44382c08`:
+> `board.ts` exports `INTENSITY_PRICE_MULTIPLIER` (ruling P4), `PIPELINE_LOW` / `PIPELINE_HIGH`
+> moved to `packages/types/catalogue/catalogue.ts` (:553) over it, and `explore/pricing.ts` no
+> longer holds a range. Unverified: which L-04 copies remain (`catalogue/core/pricing-model.ts` :103
+> still rounds its own); re-find them, and every line number below, before step 1.
 
 ```text
 PROMPT WP5a: One home for each shared pure rule, each with a parity test
@@ -826,12 +685,12 @@ at 4 dp in the wallet and 6 dp in MoneyView (L-14), and about ten bp→% formatt
 pure rules mirrored in TS with a parity test (Decision #338, ruling P5 (e) = Decision #341 flag
 (n); ADC Q14 A). PM-WP6 owns the ticket-move matrix (L-03); this prompt does not touch it.
 
-WAITS: P·WP2, merged in Wave 0 (3fcf2d54). The projects service files below are P-track files:
-one-line edits, but do not run while a P step is open on the same file (git status, git log).
+WAITS: none. The projects service files below are P-track files: one-line edits, but do not run
+while a P step is open on the same file (git status, git log).
 
 FILES (each helper lands with a unit test asserting parity with every copy it replaces):
-  - packages/types/projects/board.ts: pipelineRange() beside stageCostCents, on INTENSITY_MULTIPLIER
-    (:111); CHAIN_REACTION_DEFAULT; TICKET_PARAM, ticketHref() and one exclusion set, re-exported
+  - packages/types/projects/board.ts: pipelineRange() beside stageCostCents, on
+    INTENSITY_PRICE_MULTIPLIER; CHAIN_REACTION_DEFAULT; TICKET_PARAM, ticketHref() and one exclusion set, re-exported
     by apps/web/features/projects/core/ticket-link.ts (:76-89) and used by
     apps/web/routes/(public)/_layout.tsx (:16, :22)
   - packages/types/explore/*: lowestActivePrice, from apps/web/features/explore/core/pricing.ts
@@ -842,9 +701,9 @@ FILES (each helper lands with a unit test asserting parity with every copy it re
     currency-store.ts (:188) re-exports it. Export fxRateLabel from currency-store.ts; MoneyView's
     spokenLabel (MoneyView.tsx :103) and apps/web/features/shell/core/currency-state.ts (:84) use it
   - one formatPercentBp (or formatSplitPercent from @projective/ui/fields where it already fits)
-  - callers: apps/web/features/catalogue/core/pricing-model.ts (:77-78);
-    packages/backend/services/explore/{pricing.ts :24-26 and its comment :10, live-view.ts
-    :146-147}; apps/web/features/explore/core/pricing.ts (:87-88); the WORK_STATUSES and
+  - callers: the pipeline range in apps/web/features/catalogue/core/pricing-model.ts (:103-104)
+    and packages/types/catalogue/catalogue.ts (:553-598), against pipelineTicketSpan
+    (@projective/types/explore), which explore's pricing.ts and live-view.ts already share; the WORK_STATUSES and
     ticketWorkLocked sites (types/projects/board.ts :352, :355; workspace.ts :334, :750;
     packages/backend/services/finance/funding-state.ts :95; ProjectBackendService.ts :596, :2979;
     live-members.ts :585); the `chain_reaction ?? true` sites (live-writes.ts :450, live-board.ts
@@ -1025,12 +884,11 @@ literal remains outside the landing.
 
 ### WP4 — Keyboard-complete money paths
 
-> **Status 2026-11-12:** Not started; waits on F·UI2, UI3, UI5. Stale premises: one shared scope
-> picker already exists (`explore/components/ScopeSelect.tsx`, `21309eeb`, in the shell, hero and
-> results search bars; the site header has no scope listbox now), so that step at most moves it
-> onto `Select`.
-> `SessionSchedulerStage.island.tsx` was deleted in `8a3fd595`, leaving U-13 to `StageInspector`.
-> U-10's combobox moved to `invites/components/InviteBar.tsx` in the #405 rewrite (`8b63f2b0`).
+> **Status 2026-11-23:** Open; waits on F·UI2, UI3, UI5. Three surfaces were fixed outside it and
+> left the lists below: U-09's shared scope picker (`ScopeSelect`, `21309eeb`), `lane-parts.tsx`'s
+> menus on `ActionMenu` (`728b1250`), and `EventPopoverActions.tsx`, rewritten by SCH-WP10
+> (`44382c08`) with no hand-built menu. `ContactPopover.island.tsx` was rewritten in `862a4b14`
+> (#524) and still draws `role="menu"`.
 
 ```text
 PROMPT WP4: Every money-path choice is keyboard-complete through @projective/ui
@@ -1043,16 +901,15 @@ so the reason is lost (U-02). Thirteen more menus are hand-built; the ticket men
 role=dialog behind aria-haspopup="menu" (U-03). Escrow and payment choices are role="radio" buttons
 with no roving tabindex (U-05). Seat steppers that drive the charged amount are raw type=number
 inputs (U-06). ServiceModifier has its own document listeners and an in-tree listbox (U-07). The
-site header has a document-level Escape listener (U-08). The search-scope listbox is copied into
-two headers (U-09). role="tab" has no roving tabindex (U-13). The wallet display-currency
+site header has a document-level Escape listener (U-08). role="tab" has no roving tabindex (U-13). The wallet display-currency
 radiogroup has an <li> between group and radio (U-14). Segmented controls lack a keyboard model
 (U-15). The revision and brief commit paths use raw textareas (U-16). Two comboboxes lack
 aria-activedescendant, and one renders duplicate ids (U-10, U-11). SelectButton's status ring never
 clears on focus (U-26). Audit SC-1, SC-2; quick-win and structural work needing no ruling.
 
 WAITS: F·UI2, F·UI3 and F·UI5 merged (WalletHero, WalletTools, the dialogs and checkout). Not
-while track M's N1 window is open on the three channel headers, nor while P·WP8/WP9 are open on
-TicketView.tsx or StageInspector.tsx (git log on each file before you start it).
+while PM-WP8/WP9 are open on TicketView.tsx or StageInspector.tsx (git log on each file before you
+start it).
 
 FILES (line numbers from the 2026-10-30 tree; re-find them):
   - SC-1, ActionMenu (@projective/ui/navigation; disabledReason, hint, danger, linkActionItems):
@@ -1060,20 +917,20 @@ FILES (line numbers from the 2026-10-30 tree; re-find them):
     three chan-menu copies in apps/web/features/projects/islands/ChannelHeader.island.tsx,
     apps/web/features/messaging/islands/ConversationHeader.island.tsx and
     apps/web/features/workspaces/islands/WorkspaceChannelHeader.island.tsx; then
-    projects/components/MessageActions.tsx, calendar/components/EventPopoverActions.tsx,
+    projects/components/MessageActions.tsx,
     projects/components/composer/ComposerActions.tsx, projects/components/SidebarHeader.tsx,
-    shell/islands/UserActions.island.tsx, view/components/lane-parts.tsx,
+    shell/islands/UserActions.island.tsx,
     projects/components/ticket/TicketView.tsx (TicketMenu), view/islands/ContactPopover.island.tsx
   - SC-2: SelectButton or RadioGroup for view/islands/ScopeBriefModal.island.tsx (:310),
     view/islands/SessionBookingModal.island.tsx (:308-318) and profile/components/hire/
     ConsultationModal.tsx (:407-418); NumberStepper for SessionBookingModal (:365) and
     profile/components/hire/ServiceDetailModal.tsx (:449); Select for
-    projects/components/ServiceModifier.tsx (:28-42); one shared scope picker (Select + the
-    registry search glyph) for marketing/islands/SiteHeader.island.tsx and
-    shell/islands/NavSearchBar.island.tsx; MegaMenu for SiteHeader (:127-140); TabStrip for
-    projects/components/ticket/StageInspector.tsx and view/islands/SessionSchedulerStage.island.tsx;
-    CurrencySelect for wallet/components/WalletTools.tsx (:66, :342)
-  - U-10 invites/components/UniversalInviteModal.tsx → AutoComplete freeText; U-11
+    projects/components/ServiceModifier.tsx (:28-42); the shared explore/components/ScopeSelect.tsx
+    onto Select only if it lacks the keyboard model; MegaMenu for SiteHeader (:127-140); TabStrip
+    for projects/components/ticket/StageInspector.tsx; CurrencySelect for
+    wallet/components/WalletTools.tsx (:66, :342)
+  - U-10 invites/components/InviteBar.tsx (the combobox moved there in `8b63f2b0`) → AutoComplete
+    freeText; U-11
     auth/components/TagSelect.tsx → TagCombobox; U-16 projects/components/SubmissionReviewModal.tsx
     (:501, :575) and ScopeBriefModal (:243) → Textarea + useFieldValidation
   - U-26 packages/ui/fields/styles/select-button.css (:139-149): status paint on the --fld-* border
@@ -1208,7 +1065,8 @@ STEPS:
         not literals);
      c. a block whose selector contains "card" sets padding, border-radius or aspect-ratio only
         through --card-* tokens;
-     d. color-mix(…var(--primary) or var(--accent)…, transparent) on a state selector (:hover,
+     d. color-mix(…var(--primary) or var(--accent)…, transparent), with a literal or a token
+        percentage (the washes now read var(--primary) var(--tint)), on a state selector (:hover,
         :active, :checked, [aria-selected], [aria-current], [data-active], .is-active). WP9 drives
         it to zero.
   2. The ratchet: the first run writes design-tokens.baseline.json (rule → file → count). The test
@@ -1236,11 +1094,7 @@ ACCEPTANCE:
 
 ### WP9 — No brand washes, no boxed facts, no metadata pills, one device per split pane
 
-> **Status 2026-11-12:** Not started; waits on WP8, F·UI5, P·WP9 and C·WP10. U-27's
-> `invite-modal.css` instance went in the `8b63f2b0` rewrite. `action-menu.css`'s `:focus` is
-> deliberate (its comment: the roving focus follows the pointer), so swapping it for
-> `:focus-visible` would drop the pointer's row tint. The washes now take token percentages
-> (`var(--primary) var(--tint)`), so WP8's rule (d) must match those too.
+> **Status 2026-11-23:** Open; waits on WP8, F·UI5 and PM-WP9.
 
 ```text
 PROMPT WP9: No brand washes, no boxed facts, no metadata pills, one device per split pane
@@ -1257,8 +1111,8 @@ over a known parent (#330) is the sanctioned active fill everywhere (Decision #3
 a layout region inside an elevated panel carries one tonal step or one hairline, never a shadow and
 never both, and the list is refreshed (ruling E3 Q5). Audit SC-7, SC-8.
 
-WAITS: WP8 merged (the gate and its baseline); F·UI5 merged (the checkout sheets); P·WP9 and
-C·WP10 merged, or not open on the TicketView, SubmissionReviewModal and EventModal sheets.
+WAITS: WP8 merged (the gate and its baseline); F·UI5 merged (the checkout sheets); PM-WP9
+merged, or not open on the TicketView and SubmissionReviewModal sheets.
 Re-read DESIGN_SYSTEM.md from main first.
 
 FILES:
@@ -1279,9 +1133,9 @@ FILES:
     :577, channel-header.css :170, submission-rig.css :53}; package: packages/ui/display/styles/
     tree.css (:99, :103) and the selected states of listbox, menu, multiselect, cascadeselect,
     command palette, treetable, calendar month and mini, the money-flow popover and gantt
-  - U-27: invites/styles/invite-modal.css (:272), inspector/styles/viewer-document.css (:135),
-    packages/ui/navigation/styles/action-menu.css (:70), packages/ui/calendar/styles/
-    availability-scheduler.css (:273)
+  - U-27: inspector/styles/viewer-document.css (:135), packages/ui/calendar/styles/
+    availability-scheduler.css (:274). Leave action-menu.css's :focus: it is deliberate (the
+    roving focus follows the pointer), so :focus-visible would drop the pointer's row tint.
   - the split panes: the .tkv__side, .evm__side and .subm-review__aside sheets
   - DESIGN_SYSTEM.md §B.4.2 (the two clauses), §B.9.2 / §B.9.3 (the split-pane carve-out), §F.5
     (marked resolved with its ruling, the list refreshed: attachment preview, ticket, submission
@@ -1312,11 +1166,8 @@ surface (checkout summary, project sidebar, the ticket and event modals, explore
 
 ### WP16 — Delete `Overlay`; one `useAppModal()` for the ten app modals
 
-> **Status 2026-11-12:** Not started. `Overlay` is still exported (`overlay/mod.ts:26-27`), still
-> renders through `Portal`, and has 0 consumers; no `useAppModal` exists. Neither `8b63f2b0` nor
-> `7ffe91b6` touched `packages/ui/overlay`. The ten modals assemble five pieces, not six:
-> `BodyPortal`, `Backdrop` (which carries `useBackdropPress`), `useFocusTrap`, `useDismiss` and
-> `useOverlayStack`; `LightboxDialog` has no `Backdrop`. No new hand-rolled modal has appeared.
+> **Status 2026-11-23:** Open; waits on WP4, WP9 and PM-WP8/WP9. `Overlay` is still exported
+> (`overlay/mod.ts:26-27`) and no `useAppModal` exists.
 
 ```text
 PROMPT WP16: Delete Overlay; one useAppModal() for the ten app modals
@@ -1328,9 +1179,9 @@ CONTEXT: @projective/ui/overlay exports Overlay, which renders through Portal in
 useFocusTrap, useDismiss and useOverlayStack (G-1). Ruled: delete Overlay and extract useAppModal()
 (Decision #341, ruling E3 Q17; ADC Q17 B; SC-10).
 
-WAITS: WP4 and WP9 merged (TicketView's menu; the split-pane sheets). P·WP8/WP9 (TicketView,
-SubmissionReviewModal, PreSubmitModal, PreviewShell, ProjectCreateModal) and C·WP10 (EventModal)
-merged, or not open on those files.
+WAITS: WP4 and WP9 merged (TicketView's menu; the split-pane sheets). PM-WP8/WP9 (TicketView,
+SubmissionReviewModal, PreSubmitModal, PreviewShell, ProjectCreateModal) merged, or not open on
+those files.
 
 FILES:
   - packages/ui/overlay/islands/Overlay.tsx (delete) and packages/ui/overlay/mod.ts (:26-27)
@@ -1350,7 +1201,9 @@ STEPS:
      zero consumers.
   2. useAppModal({ open, onClose, initialFocus?, returnFocus?, label }), where open is a Signal,
      returns what the modals assemble today: the portal target, the backdrop props, the trap ref,
-     the dismiss handlers and the stack entry. Exactly the six-hook assembly; no layout.
+     the dismiss handlers and the stack entry. Exactly the five-piece assembly the modals use
+     today (BodyPortal, Backdrop with its useBackdropPress, useFocusTrap, useDismiss,
+     useOverlayStack; LightboxDialog has no Backdrop); no layout.
   3. Migrate the ten modals one at a time. Each keeps its own layout and CSS, and its behaviour is
      unchanged: Escape order through the overlay stack, scrim press through useBackdropPress, focus
      return.
@@ -1373,8 +1226,8 @@ PROMPT Z1: Track O documentation sweep
 ROLE: Documentation steward. Runs after every prompt above has merged.
 
 FILES: architecture/PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md (a Status column on every U-,
-L-, D-, G-, QW-, SC- and DB- row: Fixed by <prompt> / Owned by <track and prompt> / Open),
-architecture/PROJECTIVE_REDUNDANCY_AND_OPTIMIZATION_AUDIT.md (each Q: ruled, and built by <prompt>),
+L-, D-, G-, QW-, SC- and DB- row: Fixed by <prompt> / Owned by <track and prompt> / Open; and in
+§2, each Q: ruled, and built by <prompt>),
 the #341 decision row (each flag (a)-(q) Resolved with its ruling and prompt, or Open with an
 owner), architecture/SYSTEM_ARCHITECTURE.md §Caching Strategy (no Not built yet marker left on a
 built piece), design-system/DESIGN_SYSTEM.md (§B.4.2, §B.9.6, §B.10.1, §B.14, §C.1, §F.1, §F.5,
@@ -1385,9 +1238,10 @@ STEPS:
   1. Rollup, not restatement (documentation/CLAUDE.md rule 2).
   2. §F.1: record that a keyboard-only focus ring is accepted in principle (Decision #341, ruling
      E3 Q3) and not built while the owner's design is pending; #245 (a) stands until then.
-  3. List as Open, each with an owner: U-12, U-17, U-30 (no work package); G-2, G-3, G-5 (package
+  3. List as Open, each with an owner: U-12, U-17 (no work package); G-2, G-3, G-5 (package
      proposals); G-4 and G-6 with U-15's ContactList and RoleToggle rows, if still blocked; and
-     anything a prompt above deferred.
+     anything a prompt above deferred. U-09 (`21309eeb`) and U-30 (`7ffe91b6`) are Fixed outside a
+     prompt.
 
 ACCEPTANCE: the audit's Status column has no blank cell; every #341 flag ends Resolved or Open with
 an owner; grep -n "withCache\|Not built yet" documentation/architecture/SYSTEM_ARCHITECTURE.md

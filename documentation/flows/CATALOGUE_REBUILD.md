@@ -2,8 +2,9 @@
 
 > **Status: PLAN, not binding.** This document plans the teardown and rebuild of the seller
 > catalogue: `/catalogue` and the per-item workspace `/catalogue/[id]`. It was written against `main`
-> @ `2eafa14` (2026-10-14). The work orders that build it are in
-> [`CATALOGUE_REBUILD_BUILD_PROMPTS.md`](CATALOGUE_REBUILD_BUILD_PROMPTS.md). Where the brief
+> @ `2eafa14` (2026-10-14). Its work orders, C0–C17, all landed on 2026-10-14 and 15, and
+> their file is retired: `git show f2e25929:documentation/flows/CATALOGUE_REBUILD_BUILD_PROMPTS.md`
+> ([`build-prompts.md`](../reference/build-prompts.md) §4). Where the brief
 > contradicts a source document or a logged decision, this plan proposes an answer and does **not**
 > choose a side. Every such point is listed in §2. Prompt C0 logs them as **Decision #217 (PROPOSED)** and
 > stops until a human has ruled on each one (root `CLAUDE.md` §8).

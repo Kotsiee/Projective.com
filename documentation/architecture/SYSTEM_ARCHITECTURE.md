@@ -4109,7 +4109,7 @@ spec,
    destination checks by design, because `stripe listen` forwards events without creating a
    destination.
 7. **Run MR5's reconciliation once on live**, with a small real top-up and its refund
-   (`MONEY_BUILD_PROMPTS.md` MR5, Decision #460). Until MR5 lands, compare the ledger with the
+   (`FINANCE_BUILD_PROMPTS.md` MR5, Decision #460). Until MR5 lands, compare the ledger with the
    Stripe balance by hand.
 8. **Record the date in PRD-F17** (`readiness/PRODUCTION_READINESS.md`), with the preflight's
    output. That run flips the row to ✅.

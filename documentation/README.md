@@ -65,7 +65,9 @@ Implementation-level workflow detail (state diagrams, stage archetypes) compleme
 Two living trackers (Decision #444), each scored for Investor MVP, UAT and Production by one
 published formula: [PRODUCTION_READINESS.md](readiness/PRODUCTION_READINESS.md) lists every gap
 between the code and a public launch; [USER_FLOWS.md](readiness/USER_FLOWS.md) lists every user flow
-and what it still lacks. Updated in the same change as the work.
+and what it still lacks. Updated in the same change as the work. The work orders that close their
+rows are the `*_BUILD_PROMPTS.md` files. They hold open work only, and their registry and lifecycle
+rule are [reference/build-prompts.md](reference/build-prompts.md) (Decision #526).
 
 ### [PRODUCT_MANAGEMENT.md](PRODUCT_MANAGEMENT.md)
 

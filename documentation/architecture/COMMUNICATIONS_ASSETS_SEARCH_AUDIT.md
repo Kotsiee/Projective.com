@@ -195,10 +195,11 @@ exists:
    PS:1239.
 
 **Ruled:** N3 adopts this order (COMMS phase 3: NT1 → NT5). **Status:** step 1 Fixed (`660c9658`);
-step 2 Fixed (`e18489d4`); step 3 Partly fixed (the Resend transport, `527b4cd6`) · Open → NT2,
-NT3; step 4 Open → NT4; step 5 ruled differently (P3 (n): SMS built now on placeholders, its toggle
+step 2 Fixed (`e18489d4`); step 3 Fixed (NT2, `ee275e93`; NT3, `153f20d9`, on the Resend transport
+`527b4cd6`); step 4 Fixed (NT4, `a7ceeb92`); step 5 ruled differently (P3 (n): SMS built now on placeholders, its toggle
 shown only once Twilio is configured) → NT5. COMMS 🧑 1, where the dispatcher runs (SA:2531 and EPI
-§8.1 Edge Functions against ruling C4 (a)'s Fresh routes), is logged as Decision #410 (g), open.
+§8.1 Edge Functions against ruling C4 (a)'s Fresh routes), was ruled a Fresh route (#344 (a)) and
+built by NT2.
 
 ---
 
@@ -395,7 +396,7 @@ This needs an owner ruling because it changes addresses (#339 (f)).
 
 **Ruled:** N1 = (f) ⭐ — adopt this section: a `cht-` ref on `dm_threads`, `dm-<handle>` answering
 303, one `sendMessage(actor, ChatRef)`, `dm_messages.project_id` written, the tables not merged.
-**Status:** Open → COMMS MS1 (the schema window), MS2 (the door). MS1 stores the ref in a new
+**Status:** Fixed (COMMS MS1, `44382c08`; MS2, `4958c708`, #508). MS1 stores the ref in a new
 column, `ref`, because `dm_threads.slug` already holds the entity-channel name (#306).
 
 #### 6.1.1 The inbox read model (absorbed from ADC Q8, 2026-10-29)
@@ -420,7 +421,7 @@ existing columns, and it removes the N+1 by construction.
 
 **Ruled:** N1 ⭐ (= #341 (h) Q8; #218 (a)) — the `inbox_tails` RPC now, then the additive summary
 columns plus a trigger, in the same schema window as the `cht-` ref; not a materialised view.
-**Status:** Open → COMMS MS1 (RED WP12).
+**Status:** Fixed (COMMS MS1, `44382c08`; RED WP12).
 
 ### 6.2 Real-time — a server-owned stream, not a browser Supabase client
 
@@ -440,7 +441,7 @@ publication membership changes no schema shape, but it is a behaviour change to 
 **Status:** Open → COMMS MS3. The other half of ruling N2 — caches invalidated through KV version
 keys bumped by the writing service, TTL as the backstop — is RED's (ADC Q7, RED D-22; the primitive
 landed in O·WP10a, `7f6b43d5`); MS3 consumes it. RED D-27 (a `(created_at, id)` message cursor) is
-declined by MS3 (COMMS §0 notes).
+declined by MS3 (COMMS §0.4).
 
 ### 6.3 Notifications — the engine is built; nothing drives it
 
@@ -472,7 +473,7 @@ discovery degrades exactly as the catalogue grows; erasure (SEC G16); a schedule
 search surfaces suspended teams or cancelled briefs, or returns an empty Teams tab at scale, loses
 buyer trust faster than a missing relevance signal costs conversion.
 
-**Status:** SEC E5 Fixed (`660c9658`, deleted `dd4206d3`) and E6 Fixed (`48c1d1a5`); S11 Open → SR1;
+**Status:** SEC E5 Fixed (`660c9658`, deleted `dd4206d3`) and E6 Fixed (`48c1d1a5`); S11 Fixed (SR1, `481aa59a`);
 G16 Open → IWA; S14 Open → SR2; S21 Fixed (DS1, Decision #459).
 
 ---

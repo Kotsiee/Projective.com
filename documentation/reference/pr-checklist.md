@@ -60,3 +60,7 @@
       `readiness/PRODUCTION_READINESS.md` and/or `readiness/USER_FLOWS.md` (status + evidence),
       recomputes that file's scoreboard by its published formula and adds a §Score history line; a
       newly found gap gets a row (Decision #444).
+- [ ] A change that runs a build prompt (any `*_BUILD_PROMPTS.md` work order, or a step of one)
+      does its closing duty in the same change (`reference/build-prompts.md` §2). A done prompt
+      leaves its file for the §0 Done ledger. A partly done prompt keeps only its open steps under
+      one status line. Every reference to it, and the registry row, are updated (Decision #526).
