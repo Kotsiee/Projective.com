@@ -122,7 +122,7 @@ Why this order:
 
 | Hot file                             | Finance prompts that write it                            | Other writers (never at the same time)                             |
 | :----------------------------------- | :------------------------------------------------------- | :----------------------------------------------------------------- |
-| `00001240` (finance money)           | DB6, DB8, DB15, DB18, DB21, SV8, MR8b                    | PM-WP4, LEGAL_COMPLIANCE LG7                                       |
+| `00001240` (finance money)           | DB6, DB8, DB15, DB18, DB21, SV8, MR8b                    | PM-WP4, LEGAL_COMPLIANCE LG4, LG7                                  |
 | `00005060` (jobs)                    | DB17, MR5                                                | PM-GH1; comms, PM, scheduling and security packages that add a job |
 | `00001150` (stage funding)           | DB13, DB14, MR8b                                         | PM-GH1 and every P-track SQL step on it                            |
 | `00001155` (sessions)                | DB15 (booking backstops), MR8b                           | every SCH work package                                             |
@@ -151,6 +151,9 @@ Why this order:
 - **Marketplace:** CK4 (checkout tax, #490) and SC7 (#493) wait for DB21.
 - **LEGAL_COMPLIANCE LG7** edits `00001240`'s withdrawal path in this lane, never beside MR8a or
   MR8b.
+- **LEGAL_COMPLIANCE LG4** adds one enqueue line each to `fn_mature_pending_releases` and
+  `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6,
+  whose clearing-window holds decide which escrows count as finally released (#530 (g)).
 - **Identity:** MFA's AAL2 step-up on withdrawals and payout-account changes, and IW-M13, wait for
   the finance SQL lane (`begin_payout`, `record_payout_account`). DB9's sign-up suggestion edits the
   identity track's wizard files (`apps/web/features/auth/core/*`): coordinate with
@@ -1071,8 +1074,8 @@ payment on v_ops_unledgered_payments and (ii) a top-up that support agrees to re
 wallet still holds it. Payers withdraw to their bank as today. The gate is security.is_admin() plus
 a sign-in within the last 10 minutes (the token's amr, org.fn_session_signed_in_at() as #450 uses),
 until MFA step-up (PRD-C17) replaces it. Read #464's FLAGS (a)-(d) before you build. The
-refund-destination question for counsel is FOUNDER_QUESTIONNAIRE.md Part E2.13 (LEGAL_COMPLIANCE
-LG2, #528); MR7's Part D does not hold it.
+refund-destination question for counsel is carried by LEGAL_COMPLIANCE LG2's Part E.2
+(FOUNDER_QUESTIONNAIRE.md); MR7's Part D does not hold it.
 
 FILES:
   - 00000017: finance.card_refunds (payment, amount_minor, currency, reason, requested_by,

@@ -6,7 +6,7 @@
 > PRD-A4. The rulings it builds on are the legal library's (#270), the AML posture (#336 I1) and
 > checkout tax (#490).
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 9 open, 1 partly done, 0 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 10 open, 0 partly done, 0 done (§0 ledger).
 > Runnable now: LG0, LG1, LG6, LG7.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -74,7 +74,7 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
    can be assigned in advance (s.91). The US rule is the same (17 U.S.C. §204(a)). PRODUCT_SPEC
    §Identity, Taxes & Compliance 4 has **Projective** sign the deed, while §18 and over (rule 1) has
    the adult party "sign IP transfer deeds". Whether the sign-up acceptance of the Terms is that
-   signature is for counsel (FOUNDER_QUESTIONNAIRE Part E2.16; LG3).
+   signature is for counsel (LG2, LG3).
 3. **"Deed" is a legal term of art.** In English law a deed has execution formalities (LP(MP)A 1989
    s.1) that a click cannot meet. An assignment needs only a signed writing. Counsel may prefer
    another name. Code keeps "deed" (the spec's word) until counsel rules, and the UI label follows
@@ -97,17 +97,15 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
    royalty, #480's consent and #270 (h)'s data controller identity uncovered. #270's flags (c), (d),
    (f), (g) and (o) are still open.
 8. **No cancellation-right step at checkout.** Nothing in `features/checkout` or the legal content
-   mentions a consumer's statutory right to cancel. Since #488, `/checkout/payment` shows
-   `DeliveryTermsNotice` for a basket that delivers files: a notice and an unticked box before Pay,
-   which speak of a refund, not of the right to cancel. Nothing covers services or sessions. This is
-   a candidate gap for counsel (FOUNDER_QUESTIONNAIRE Part E2.11, E2.12), not a row yet.
+   mentions a consumer's statutory right to cancel, or the express consent that waives it for
+   digital content. This is a candidate gap for counsel (LG2), not a row yet.
 
 ### 0.3 Run order
 
 | Wave | Content / docs lane | SQL lane (serial)                                                                        | App lane                 | Waits for                                                                                       |
 | :--- | :------------------ | :--------------------------------------------------------------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------- |
-| 1    | **LG1** → **LG2**   | —                                                                                        | **LG0**                  | Nothing. LG2's brief is written (#528); its E.1.7 waits for LG1's drift table                   |
-| 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                                           | (LG4/LG5's UI halves)    | LG4 needs LG2's brief sent (not answered): it builds the mechanism, and counsel rules the words |
+| 1    | **LG1** → **LG2**   | —                                                                                        | **LG0**                  | Nothing. LG2 needs LG1's drift table and its 🧑 answers                                         |
+| 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                                           | (LG4/LG5's UI halves)    | LG4 builds once LG2's brief is sent and LG3 and FINANCE DB6 land (#530 (g)); counsel rules text |
 | 3    | —                   | **LG7** takes a turn in [the finance SQL lane](../architecture/FINANCE_BUILD_PROMPTS.md) | **LG6** (research first) | LG7: never beside MR8a/MR8b. LG6's reader after its 🧑                                          |
 | 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (which waits for DB21)                                                                      |
 | Last | **LG9**             | —                                                                                        | —                        | Everything above that can land                                                                  |
@@ -147,16 +145,18 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
    each first commits? Recommended **A**: once per version, at the first paid claim or the first
    funding, so friction stays low. **B** (rely on the Terms' links) is valid only if counsel says
    so. On B, skip LG3.
-5. **LG4:**
-   - (a) when a record issues: at maturity (recommended) or at release;
-   - (b) a Fair Exit partial release: no record (recommended), with the deed text saying so (⚖️);
-   - (c) signing: a platform Ed25519 signature over canonical JSON with published keys
-     (recommended), or an e-signature vendor;
-   - (d) the name (⚖️, finding 3);
-   - (e) public verification: given the record's hash, answer only "valid, issued <date>"
-     (recommended).
-6. **LG5:** who gets which pack. Recommended: the client party gets the whole project, and a payee
-   gets their own records and the agreements they are party to.
+5. **LG4:** ruled (#530), every recommendation taken:
+   - (a) a record issues at maturity, one per ticket escrow, and never for money that went back;
+   - (b) no record on a Fair Exit; what happens to its IP is counsel's (⚖️, E2.18);
+   - (c) a platform Ed25519 signature over RFC 8785 JSON, with a key id and published keys;
+   - (d) "deed" in code, "Transfer record" in the UI until counsel rules (⚖️, E2.17);
+   - (e) a public check that answers only "valid, issued <date>" or "not valid";
+   - (f) every IP setting issues a record, which names the setting;
+   - (g) LG4 builds after FINANCE DB6, LG2's brief and LG3.
+6. **LG5:** ruled (#530): A. The client party gets the whole project, with every consolidated
+   invoice that carries a line for it. A payee gets their own records, the agreements they are party
+   to and their own payout statement, never a client invoice. An operator produces either through an
+   audited door.
 7. **LG6:** Stripe first (recommended): use what Stripe files, and keep a reporting dataset for what
    it doesn't. Log the US framing (finding 6) as a decision row.
 8. **LG7:** answer Identity X2's stop (who builds what; A recommended), and set the signal
@@ -413,37 +413,71 @@ Readiness rows (§1.1): **PRD-M1** stays ❌, with the evidence "library brought
 
 ### LG2 — One counsel brief for the legal library and every open ⚖️ item
 
-> **Status 2026-11-23:** partly done. Steps 2 and 3, and step 1 except Part E.1.7, landed in
-> COMMIT_LG2 (FOUNDER_QUESTIONNAIRE Part E, Decision #528). Step 1's E.1.7 is open: it waits for
-> LG1's drift table. Sending the brief to counsel is yours.
+> **Status 2026-11-23:** open; runs after LG1.
 
 Prepares PRD-M1. Docs only.
 
 ```text
-PROMPT LG2 (the rest): Fill FOUNDER_QUESTIONNAIRE.md Part E.1.7 from LG1's drift table
+PROMPT LG2: One brief for counsel: the library, every open legal question on the tracker, and
+the regimes to rule in or out; plus the sign-off runbook
 
-ROLE: Compliance analyst. Docs only; no code. Runs once LG1 has landed.
+ROLE: Compliance analyst. Docs only; no code. Runs after LG1.
 
 CONTEXT:
-  - Part E is written (#528). E.1.7 is a slot that reads "Pending: LG1's drift table …".
-  - LG1's drift table has one row per difference: document · clause id · what it says · what
-    is true now · source. LG1 fixes what it can in the drafts and leaves the rows whose product
-    rule is unsettled for this brief.
+  - FOUNDER_QUESTIONNAIRE.md is the house for counsel questions: Part D (#473, MR7) holds the
+    money ones (M2 holding period, M9, #435 (d)). Don't repeat them; link to them.
+  - The ⚖️ items are scattered: #336 I1 (the AML "No" and the retention table), I4 (minors);
+    Identity ERA2 / ERA4 (retention dials, PITR statement); T&S H1 (CSAM hashing, PRD-D14);
+    #490 (the tax obligation, (c) tax-exclusive display to consumers); #493 (the licence
+    wording); #496 (the notice regime); PRD-M7 (tax on the platform's own fees); #270 (f)
+    (`projective_partner`); the open items in LG1's drift table.
+  - One money question Part D lacks (MARKETPLACE_BUILD_PROMPTS.md §0.3, "For counsel"): may a
+    buyer-started refund of a card-paid line land in the wallet? UK consumer rules generally
+    expect a refund to the original payment method unless the buyer agrees otherwise; FBP DB21
+    credits the wallet, and MR3 keeps card refunds operator-only. Put it in E.2.
+  - Findings that need counsel (LEGAL_COMPLIANCE_BUILD_PROMPTS.md §0.2): 2 (the assignor's
+    signature), 3 (the word "deed"), 6 (US-framed tax documents for a GB platform), 8 (no
+    cancellation-right step at checkout).
 
 STEPS:
-  1. (E.1.7 only.) Replace the slot with the rows LG1 left open, one line each, naming the
-     question each puts to counsel. A row that is the owner's product question, not counsel's,
-     gets a row in PRODUCTION_READINESS §Decisions awaiting a human instead. A new ⚖️ item
-     goes into E.2 at the next free E2 number, with its §Decisions row. If the owner has
-     answered LG1's stops, update E.1's planned documents and E.5 items 1 and 4.
+  1. Write Part E of FOUNDER_QUESTIONNAIRE.md, "Counsel brief: the legal library and the open
+     compliance questions", in the style of Part D (facts first, then numbered questions, then
+     what each answer decides):
+     E.1 The library. Each document: its slug, newest version, what it governs, the product
+         rules it states with their sources, and its open clause-level questions from LG1.
+     E.2 Every open ⚖️ item not in Part D, one table: the question · source decision · the
+         owner's position, if any · the switch, dial or prompt that waits on the answer.
+     E.3 Regimes for counsel to rule in or out. List each one as a candidate, with where the
+         product touches it, and draw no legal conclusion: UK GDPR / DPA 2018 and PECR
+         (cookies, marketing, #492); the 2013 Consumer Contracts Regulations and the EU
+         Consumer Rights Directive (cancellation rights and the digital-content waiver at
+         checkout); the DMCC Act 2024 (subscriptions, fake reviews: #486); the Online Safety
+         Act 2023 (messaging, public profiles, reports); the EU DSA (notice and action, #496;
+         marketplace trader traceability); the UK platform-operator reporting regulations
+         (2023) and EU DAC7 (LG6); CDPA 1988 s.90(3) / s.91 and 17 U.S.C. §204(a) (LG3, LG4);
+         MLR 2017 (#336 I1, LG7); e-money and safeguarding (link to Part D).
+     E.4 The sign-off runbook, for a human, once counsel approves a document: set
+         reviewedAt to the approval date (a code edit; a review never pre-dates the text);
+         remove the reconstructed 1.0 baselines (#270 (b)); confirm effective dates; add the
+         version to org.legal_document_versions and LEGAL_VERSIONS with `material` set as
+         counsel says, so fn_needs_reacceptance re-asks; check that the noindex and the
+         disclosure lift and the sitemap lists the document; then flip PRD-M1 when the last
+         one is done.
+     E.5 What is missing for counsel to start: the data controller's identity (LG1 (b)), and
+         anything else only I can supply.
+  2. Point every matching row of PRODUCTION_READINESS §Decisions awaiting a human at its E.2
+     line, and add a row for any item that has none.
+  3. A decision row (newest decisions-*.md and its README line; re-check the next free number
+     right before you write it) that records the brief and rules nothing, like #473.
 
-ACCEPTANCE: E.1.7 has no "Pending" text. Every ⚖️ on the tracker is in Part D, in Part E, or
-ruled.
-SAME CHANGE: PRODUCTION_READINESS §Decisions awaiting a human, for any row added; #528's index
-line, if E.2 grows.
+ACCEPTANCE: Part E exists. Every ⚖️ on the tracker is either in Part D, in Part E, or ruled.
+PRD-M1's evidence names the brief.
+SAME CHANGE: PRODUCTION_READINESS §Decisions awaiting a human; the decision row.
 ```
 
-Readiness rows (§1.1): **PRD-M1** stays ❌ (its evidence already names the brief). No score changes.
+Readiness rows (§1.1): **PRD-M1** stays ❌, with the evidence "counsel brief written <date> (Part
+E); awaiting counsel". No score changes.
+
 ### LG3 — The maker accepts the deed and the payer the Escrow Terms, once per version (conditional)
 
 > **Status 2026-11-23:** open; runs only on A at §0.4 item 4, after LG2's brief is sent.
@@ -507,7 +541,9 @@ Readiness rows (§1.1): **PRD-M2**'s evidence gains "the Escrow Terms and the de
 
 ### LG4 — A signed transfer record on each final release
 
-> **Status 2026-11-23:** open; runs once LG2's brief is sent (not answered).
+> **Status 2026-11-23:** open; its stops are ruled (#530). It builds once FINANCE DB6 has landed,
+> LG2's brief is sent (not answered) and LG3 has landed (#530 (g)). Step 1 was run red in the ruling
+> session and lands with step 2, so peers' gates stay green.
 
 PRD-M4 → 🟡, MW-56 → 🟡, MW-55 → 🟡.
 
@@ -527,8 +563,15 @@ CONTEXT (verified at 197b0d0c; re-check every line):
   - Deliverables: projects.stage_submissions (ticket_id) → projects.submission_files →
     files.items. files.items.content_hash is computed in the browser and may be sampled
     (00000010:130-140), so it cannot anchor a legal record.
-  - The IP setting: projects.ip_ownership_mode, overridden per stage by project_stages.ip_mode
-    (ip_option_mode, 00000003:41), plus portfolio_display_rights.
+  - The IP setting (ip_option_mode, 00000003:41): projects.ip_ownership_mode, overridden per
+    stage by project_stages.ip_ownership_override (NULL inherits), plus
+    portfolio_display_rights. project_stages.ip_mode is a copy written at stage creation that
+    falls back to exclusive_transfer (00001130:541), and nothing reads it (#530 (D) 1).
+  - The clearing window: a lost chargeback recovers from the payee's pending rows across the
+    whole wallet, soonest first (finance.fn_recover_from_pending), until DB6 ties a hold to the
+    disputed escrow. With pending_release_days at 0, fn_wallet_credit_pending credits at once
+    and writes no row. A team release clears as several rows (members, finder, vault), and a
+    team Fair Exit's member rows carry `team_split`, as a full release's do (#530 (D) 2–4).
   - The deed text (ip-transfer-deed.ts): ownership passes "when the escrow for that work is
     finally released"; the record clause says a signed deed is being built.
   - Machinery to reuse: the PDF writer (packages/backend/core/pdf.ts + services/legal/
@@ -536,28 +579,31 @@ CONTEXT (verified at 197b0d0c; re-check every line):
     catalogue (00005010).
   - LG3's acceptance rows if LG3 ran; otherwise the assignor's latest acceptance of the Terms.
 
-🧑 + ⚖️ STOPS (put them to me before step 2; each has a recommendation):
-  (a) When a record issues: A at maturity of the pending release (recommended: "finally
-      released", and a dispute inside the clearing window cannot leave a record for money that
-      went back), or B at release.
-  (b) A Fair Exit partial release: no record (recommended); the deed text must say what
-      happens to the IP (⚖️, add it to LG2 E.2).
-  (c) Signing: A an Ed25519 platform signature over the record's canonical JSON (RFC 8785),
-      with a key id; the private key in env LEGAL_DEED_SIGNING_KEY, which I generate; the
-      public keys published at a stable URL (recommended). B an e-signature vendor.
-  (d) The name (finding 3): keep "deed" in the code until counsel rules; the UI says "Transfer
-      record" meanwhile (recommended), or "Deed of Transfer".
-  (e) Verification: a public check that, given a record's slug and hash, answers only "valid,
-      issued <date>" or "not valid", and reveals no party (recommended).
-  Also log one decision row for who signs: PRODUCT_SPEC §IP 4 (Projective signs) versus
-  §18 and over rule 1 (the adult "signs IP transfer deeds"). The record carries both: the
-  platform's signature, and the assignor's acceptance by reference.
+RULED (Decision #530; the owner took every recommendation):
+  (a) A record issues when the escrow's money has cleared to its payee, never at release: at
+      the sweep's maturity, and at the immediate credit when pending_release_days is 0. One
+      request per ticket escrow, however many rows it cleared as. An escrow whose clearing
+      money went back (DB6's hold, then a lost dispute) gets none.
+  (b) A Fair Exit partial release issues no record. Tell it apart by how the escrow settled
+      (its `fair_exit_refund`), not by the row's reason. ⚖️ What happens to the IP after a
+      Fair Exit is counsel's (FOUNDER_QUESTIONNAIRE E2.18); the deed's text follows the answer.
+  (c) An Ed25519 platform signature over the record's canonical JSON (RFC 8785), with a key
+      id. The private key is env LEGAL_DEED_SIGNING_KEY, which the owner generates; the public
+      keys are published at a stable URL.
+  (d) ⚖️ The code keeps "deed"; the UI says "Transfer record" until counsel rules (E2.17).
+  (e) A public check: given a record's slug and hash, it answers only "valid, issued <date>"
+      or "not valid", and names no party.
+  (f) Every IP setting issues a record, and the record names the setting as at issue: the
+      effective one, COALESCE(stage ip_ownership_override, project ip_ownership_mode).
+  (g) Who signs (#530 (C); counsel: E2.16): the record carries the platform's signature and
+      the assignor's acceptance by reference.
 
 STEPS:
   1. Red: a probe that a matured ticket release under exclusive_transfer creates exactly one
-     pending record request; a probe that a refund, a dispute reversal or a Fair Exit creates
-     none; a unit test that the canonical payload signs and verifies, and fails verification if
-     one byte changes.
+     pending record request per escrow (individual, and a team release that clears as several
+     rows) and that a second sweep adds none; a probe that a refund, a dispute reversal or a
+     Fair Exit (individual and team) creates none; a unit test that the canonical payload
+     signs and verifies, and fails verification if one byte changes.
   2. Schema, additive and in place: projects.ip_transfer_deeds (or the schema you justify in a
      decision row). It holds a prefixed opaque slug (pick an unused prefix, Decision #88); the
      ticket, stage, project, pending release and escrow; the assignor (person or team) and the
@@ -566,9 +612,12 @@ STEPS:
      SHA-256); the canonical payload, its SHA-256, the signature and key id; and issued_at.
      Append-only by trigger. Its lifecycle (requested → issued; never deleted) goes into
      PRODUCT_MANAGEMENT.md. Read by the parties through RLS helpers (a business party's
-     members by the capability you name), and never by a 13–17 account.
-  3. Enqueue: fn_mature_pending_releases (or the release, on (a) B) records a request row in
-     the same transaction, with one PERFORM line in 00001240.
+     members by the capability you name), and never by a 13–17 account. In the same change,
+     either make project_stages.ip_mode follow the effective setting (if the P track is clear
+     of 00001130) or give the stale copy a PRODUCTION_READINESS row (#530 (D) 1).
+  3. Enqueue, per (a): fn_mature_pending_releases and fn_wallet_credit_pending's immediate
+     branch each record the escrow's request in the same transaction, with one PERFORM line
+     each in 00001240 (one request per escrow, a replay adds none).
   4. The job `legal-issue-deeds` (registered in 00005060, its bearer added to OPS1's registry)
      takes requests, streams each submission file from storage and hashes the stored bytes,
      builds the payload, signs it, and writes the record through a service-role definer door.
@@ -597,7 +646,7 @@ Readiness rows (§1.1): **PRD-M4** → 🟡; **MW-56** → 🟡 ("text pending c
 
 ### LG5 — Audit packs
 
-> **Status 2026-11-23:** open; waits for LG4.
+> **Status 2026-11-23:** open; its stop is ruled (#530); waits for LG4.
 
 PRD-M4 → ✅, MW-55 → ✅.
 
@@ -618,15 +667,20 @@ CONTEXT (verified at 197b0d0c; re-check every line):
     (org.legal_acceptances, LG3's if any); the project's NDA document if one is set
     (projects.nda_document_id); the invoices and receipts for the project's money (finance; the
     consolidated invoice PDF); the project's IP setting history if it is stored.
+  - A consolidated invoice spans many stages and projects (finance.invoices.project_stage_id
+    is nullable; its line items point at escrows), so no invoice belongs to one project.
 
-🧑 STOP: who gets which pack. A (recommended): the client party (a person, or a business member
-holding the capability you name) gets the whole project; a payee gets a pack of their own
-records and the agreements and invoices they are party to, never another payee's payouts; an
-operator may produce either for a dispute, through an audited door. B: the client party only.
+RULED (Decision #530, A): the client party (a person, or a business member holding the
+capability you name) gets the whole project, with every consolidated invoice that carries a
+line for the project's escrows, whole. A payee gets their own transfer records, the agreements
+they are party to and a statement of their own payouts on the project, never a client invoice
+or another payee's payout. An operator may produce either for a dispute, through an audited
+door.
 
 STEPS:
-  1. Red: probes that a payee's pack never contains another payee's invoice; that the client's
-     does; that a 13–17 account and a stranger are refused.
+  1. Red: probes that a payee's pack never contains a client invoice or another payee's
+     payout; that the client's holds every invoice with a line for the project; that a 13–17
+     account and a stranger are refused.
   2. The request door and the job, on #450's pattern. The ZIP holds a manifest.json listing
      every file with its SHA-256, and the manifest is signed with LG4's key, so the bundle is
      "verified".
