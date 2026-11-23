@@ -272,7 +272,7 @@ async function escrowsFor(ctx: WalletContext, account: WalletAccount): Promise<E
 
 /** Escrow still working (`held`, the column default `funded`, and a prepaid later stage, `reserved`). */
 function isLive(e: EscrowRow): boolean {
-	return e.status === "held" || e.status === "funded" || e.status === "reserved";
+	return e.status === "held" || e.status === "reserved";
 }
 
 /** What an escrow is worth to this account: what a payee will receive, or what a payer committed. */

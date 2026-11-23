@@ -1,6 +1,7 @@
 import {
 	ACTION_SEVERITY,
 	type ClientEngagement,
+	type ClientEngagementRow,
 	ClientEngagementRowSchema,
 	type ClientIdentity,
 	ClientKey,
@@ -39,8 +40,9 @@ const MONEYED_KINDS = new Set(["order", "session_booking", "pipeline_project"]);
 
 /**
  * Map RPC rows to engagements. A row whose listing is outside the scope, whose buyer has no handle
- * (an order a team placed records no person) or which does not parse is dropped, never guessed at.
- * `hasOrder` is whether the same buyer has an order, sitting or project on the same listing.
+ * (an enterprise's order) or which does not parse is dropped, never guessed at. A team or business
+ * buyer is the entity, with its owner as `messageTo`. `hasOrder` is whether the same buyer has an
+ * order, sitting or project on the same listing.
  */
 export function toEngagements(
 	rows: readonly unknown[],
@@ -72,7 +74,7 @@ export function toEngagements(
 		id: `${row.engagement_kind}-${row.engagement_id}`,
 		kind: row.engagement_kind,
 		status: row.status,
-		client: identities.get(handle) ?? { handle, name: handle.slice(1), avatar: "" },
+		client: clientOf(row, handle, identities),
 		listingId: listing.slug,
 		listingTitle: listing.title.slice(0, 200),
 		hasOrder: bought.has(`${handle}|${row.listing_id}`),
@@ -86,6 +88,23 @@ export function toEngagements(
 		nextEventAt: row.next_event_at ? new Date(row.next_event_at).toISOString() : null,
 		href: row.href,
 	}));
+}
+/** The buyer's identity: the directory's, else the handle; an entity's kind and contact from the row. */
+function clientOf(
+	row: ClientEngagementRow,
+	handle: string,
+	identities: ReadonlyMap<string, ClientIdentity>,
+): ClientIdentity {
+	const base = identities.get(handle) ?? { handle, name: handle.slice(1), avatar: "" };
+	if (row.buyer_kind !== "team" && row.buyer_kind !== "business") return base;
+	const contact = toClientKey(row.buyer_contact_handle);
+	return {
+		...base,
+		entityKind: row.buyer_kind,
+		...(contact
+			? { messageTo: { handle: contact, name: identities.get(contact)?.name ?? contact.slice(1) } }
+			: {}),
+	};
 }
 // #endregion
 

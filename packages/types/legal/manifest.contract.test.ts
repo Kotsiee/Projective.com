@@ -1,5 +1,5 @@
 /**
- * The sign-up legal manifest against the database that re-checks it (Decision #446): the versions
+ * The legal manifest against the database that re-checks it (Decision #446, LG3): the versions
  * seeded into `org.legal_document_versions`, the enums and CHECKs of `org.legal_acceptances`, and both
  * tables' columns. A version published on one side only would refuse every sign-up, so it fails here.
  */
@@ -7,13 +7,15 @@ import { assertEquals } from "@std/assert";
 import { columnDrift, readRepoFile, tableColumns } from "../core/table-contract.ts";
 import { LegalAcceptanceRowSchema, LegalDocumentVersionRowSchema } from "./acceptance.ts";
 import {
+	ACCEPTED_LEGAL_SLUGS,
+	COMMIT_LEGAL_DOCUMENTS,
+	COMMIT_LEGAL_SLUGS,
 	currentLegalVersion,
 	currentLegalVersions,
 	LEGAL_ACCEPTANCE_KINDS,
 	LEGAL_ACCEPTANCE_SURFACES,
 	LEGAL_VERSIONS,
 	legalAcceptanceKind,
-	SIGNUP_LEGAL_SLUGS,
 } from "./manifest.ts";
 
 const SEED = readRepoFile("supabase/migrations/00005050_seed_reference_data.sql");
@@ -34,7 +36,7 @@ Deno.test("org.legal_document_versions seeds exactly LEGAL_VERSIONS, newest firs
 	const seeded = [
 		...statement[0].matchAll(/\('([^']+)', '([^']+)', '([^']+)', (true|false)\)/g),
 	].map((m) => `${m[1]} ${m[2]} ${m[3]} ${m[4]}`);
-	const manifest = SIGNUP_LEGAL_SLUGS.flatMap((slug) =>
+	const manifest = ACCEPTED_LEGAL_SLUGS.flatMap((slug) =>
 		LEGAL_VERSIONS[slug].map((v) => `${slug} ${v.version} ${v.effectiveDate} ${v.material}`)
 	);
 	assertEquals(seeded, manifest);
@@ -57,13 +59,13 @@ Deno.test("org.legal_document_versions and org.legal_acceptances ⇄ their row s
 	}
 });
 
-Deno.test("the version CHECK lists every sign-up document", () => {
+Deno.test("the version CHECK lists every accepted document", () => {
 	const at = ORG_SQL.indexOf("CONSTRAINT legal_document_versions_slug_check");
 	const open = ORG_SQL.indexOf("IN (", at) + 4;
 	const slugs = [...ORG_SQL.slice(open, ORG_SQL.indexOf(")", open)).matchAll(/'([^']*)'/g)].map((
 		m,
 	) => m[1]);
-	assertEquals(slugs, [...SIGNUP_LEGAL_SLUGS]);
+	assertEquals(slugs, [...ACCEPTED_LEGAL_SLUGS]);
 });
 
 Deno.test("the current version is the newest in effect, else the oldest", () => {
@@ -76,8 +78,27 @@ Deno.test("the current version is the newest in effect, else the oldest", () => 
 		privacy: "1.1",
 	});
 	assertEquals(currentLegalVersion("privacy", "2026-11-17"), "1.0");
+	assertEquals(currentLegalVersion("ip-transfer-deed", "2026-11-18"), "1.0");
+	assertEquals(currentLegalVersion("escrow-terms", "2026-11-18"), "2.0");
 });
 
 Deno.test("privacy is shown, the terms and the AUP are accepted", () => {
-	assertEquals(SIGNUP_LEGAL_SLUGS.map(legalAcceptanceKind), ["accepted", "accepted", "shown"]);
+	assertEquals(ACCEPTED_LEGAL_SLUGS.map(legalAcceptanceKind), [
+		"accepted",
+		"accepted",
+		"shown",
+		"accepted",
+		"accepted",
+	]);
+});
+
+Deno.test("each commit document's surface is the one org.fn_legal_commit_surface answers", () => {
+	const FUNCTIONS = readRepoFile("supabase/migrations/00001010_functions_org_onboarding.sql");
+	const body = FUNCTIONS.slice(FUNCTIONS.indexOf("FUNCTION org.fn_legal_commit_surface"));
+	const sql = [...body.slice(0, body.indexOf("$$;")).matchAll(/WHEN '([^']+)' THEN '([^']+)'/g)]
+		.map((m) => [m[1], m[2]]);
+	assertEquals(
+		sql,
+		COMMIT_LEGAL_SLUGS.map((slug) => [slug, COMMIT_LEGAL_DOCUMENTS[slug].surface]),
+	);
 });

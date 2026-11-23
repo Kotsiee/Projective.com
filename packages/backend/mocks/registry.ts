@@ -282,7 +282,7 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		ungated: [
 			"the /files hub: library, folder tree, mounted project files, quota, item inspect",
 			"the upload pipeline, folder and file writes, sharing and access, the download ledger",
-			"private object URLs (/api/files/object/[id])",
+			"the media proxy's private reads (/api/media/proxy/[fileId])",
 		],
 		modules: [],
 		schemas: ["files", "storage"],

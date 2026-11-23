@@ -208,7 +208,10 @@ released after its last.
    or the seller's profile — and the Client answers the seller's own intake questions for every
    session format, a group seat included; the answers travel with the booking onto its order line,
    where the receipt keeps them. Checkout names a block by how much of it is timed ("2 of 6 sittings
-   scheduled") and lists each chosen time, never the first sitting alone (Decision #453).
+   scheduled") and lists each chosen time, never the first sitting alone (Decision #453). A
+   listing sold by the hour prices each sitting at its own length, and checkout, the booking dialog
+   and the card show the hourly rate with each sitting's price ([§Why Sessions are
+   Fixed](#why-sessions-are-fixed), Decision #__SC10_DEC__).
 2. **Coordination:** Parties finalize time/location via the Calendar Proposal interface. A
    **set-session block** needs ONE chosen time — session 1 — and the Client may also choose times
    for any of the later sessions when booking; every chosen sitting is confirmed. The sessions left
@@ -2104,13 +2107,17 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
 - **Freelancers must be _payout-ready before they earn_.** Identity verification (KYC) **and** a
   verified payout account are **onboarding gates**: a freelancer cannot apply for or accept paid
   work, be assigned or claim a ticket, or create or join a team until both are in place (Decision
-  #196). The same gate stands where a seller starts to earn without a ticket: publishing a listing,
-  taking a session or seat booking, and switching on paid calls (Decision #337, ruling M4) — **Not
-  built yet** at those three doors. A team is seated, and a team listing published or booked, only
+  #196). The same gate stands where a seller starts to earn without a ticket (Decision #337, ruling
+  M4): publishing a product or session listing, taking a session or seat booking, and switching on
+  paid calls. A Pipeline, one-off or direct-deliverable service binds no seller (its tickets are
+  claimed through the gated doors), so it publishes freely, and drafting is always free. A buyer
+  refused because the seller is not ready is told the seller has to act. A team is seated, and a
+  team listing published or booked, only
   when everyone with a share of its earnings is payout-ready; a team that already holds a stage
   keeps working on it. A team invite shows each invitee's readiness on the roster (**Not built
   yet**), and accepting is where an unready invitee is refused. Earnings that reach a person's own
-  wallet or a team vault leave only with a payout-ready withdrawer; a buyer's refund balance never
+  wallet or a team vault, by any route (a release, a share, a team distribution, or a transfer from
+  a wallet that earned), leave only with a payout-ready withdrawer; a buyer's refund balance never
   needs ID. Whoever is refused is told who has to act, and is linked to Settings → Verification when
   it is them. This is the platform's **No Forever-Escrow Guarantee** — because every earner is
   payable before any work is accepted, funds can never become locked in a permanent, un-releasable
@@ -2435,8 +2442,9 @@ provider's hidden **Consultations** engagement — one per provider, never shown
 moment of the request, so the host decides on a request that is already funded; it is refunded if
 the host declines or the request expires, and otherwise settles exactly as a 1-on-1 Session sitting
 does, creating no project either party manages and counting nothing toward Workload Intensity.
-Switching paid calls on needs the provider to be payout-ready (Decision #337, ruling M4). The
-switch-off is built; the paid path is **Not built yet**.
+Switching paid calls on needs the provider to be payout-ready, a team's every shareholder (Decision
+#337, ruling M4), wherever the setting is saved. The switch-off is built; the paid path is **Not
+built yet**.
 
 **Who may move a call, and when** (Decision #343, ruling C3). The host confirms or declines a
 request (a decline refunds a paid one). Either side may propose a new time outside the reschedule
@@ -2541,6 +2549,18 @@ the composer quotes, computed by the database (`projects.fn_ticket_stage_price`,
 Since Session-Based projects are defined as **Services** (the freelancer’s product), the price is
 set by the provider. This ensures that advisors and tutors can maintain a consistent "Market Rate"
 without the administrative friction of haggling over hourly time slots.
+
+**Per session or per hour (SC10, Decision #__SC10_DEC__).** The provider prices a Session or Group
+Session one of two ways. **Per session**, every sitting costs the listed price. **Per hour**, the
+price is an hourly rate and each sitting costs it for its own length, rounded down to the minor unit
+per sitting ([finance-model.md §4](finance-model.md#session-based-educateadvise)). Per hour is still
+a fixed price, not metered time: every sitting's length is on the listing before anyone books, the
+buyer pays for that length, and a sitting that runs long or short changes nothing. Only a per-hour
+listing may give its sittings lengths of their own (a 90-minute kickoff, then 45-minute check-ins).
+A per-session listing has one length, so one flat price never covers a 30-minute and a two-hour
+sitting alike. A block costs the sum of its sittings and holds each one's own price in escrow. A
+Group Session seat sold per hour costs the sum over the listing's sittings, held as one escrow per
+seat, as every seat is.
 
 #### 4. Participation & Onboarding
 
@@ -3318,6 +3338,16 @@ The commerce rules every order follows (Decision #337, ruling M8):
   `awaiting_payment` states are retired. **Built.**
 - **A promo code is recorded on the order,** and by default each account may redeem a code once; a
   code may allow more. A refund does not give the use back. **Built** (FBP DB19).
+- **A seller issues promo codes for their own products** (Decision #485): a person for their own
+  listings, a team member holding `publish_listings` for the team's, over all of their product
+  listings or the ones they choose, from the seller console's Promotions view. The seller funds the
+  discount: their commission is taken on what the buyer paid after it. In a mixed basket a seller's
+  code discounts only that seller's product lines, and no code ever discounts an escrow line (a
+  ticket, a revision, a seat, a session, a One-Off or a Task). A code is never edited; the seller
+  archives it and issues another, and an archived code stays listed. Platform-wide codes stay
+  operator-only, and the platform funds them: the seller is credited as if the code had not applied.
+  The code box is rate-limited, so codes cannot be guessed in bulk. **Built** (MARKETPLACE CK2,
+  Decision #536).
 
 The download refusal above waits for counsel, and a refund the buyer or provider starts is **Not
 built yet** (FBP DB21).
@@ -3533,17 +3563,37 @@ the purchasers.
 - **One reminder:** each client party and attendee is asked once per engagement or session to review
   it, three days after it completed.
 - **Reciprocity:** Freelancers and Teams provide ratings for Clients and Businesses. These ratings
-  contribute to the **Client Trust Score**.
+  contribute to the **Client Trust Score**. Ruled (Decision #486): each provider who worked on an
+  engagement (the same seats that open the client's review of them, and the listing's provider)
+  reviews the client party back on the same anchor, within the same window; a team reviews as one
+  party, like a business.
+- **Double-blind:** on an engagement, each side's review is read by its author alone until the other
+  side's review of them on the same anchor arrives, or the 30-day window closes; until then it is in
+  no reader, no average and no score, and it tells nobody. The second submit reveals the pair at once,
+  and the target is told at reveal. A session seat or a product purchase is reviewed one way and is
+  public as it is written.
+
+##### The Client Trust Score
+
+One score per client party, a person or a business (Decision #486 (B), (D)). Over the party's
+revealed, visible reviews by providers, it is the Bayesian mean with a cold-start prior of 5
+pseudo-reviews at the client track's mean (finance-model §16.7), less a named deduction for each
+dispute the party opened and lost in the last 12 months, floored at 1.00. It is recomputed on every
+reveal, edit, withdrawal or hiding of a revealed review and every dispute ruling, and shown, as plain
+text, only once 3 reviews stand behind it; below that a profile says how many reviews it has. The
+numbers are in finance-model §16.7.
 
 ##### The Warning System
 
-If a Client or Business falls below a critical Trust threshold:
+If a Client or Business falls below a critical Trust threshold (a shown score under **3.00**):
 
 1. **Search Penalty:** Their project posts are de-ranked on the Explore page.
 2. **Safety Guard:** When a freelancer attempts to join a low-rated project, the UI triggers warning
    modal.
 3. **Informed Consent:** The freelancer must acknowledge the low rating and review the client's
-   history before the system allows them to submit a proposal or accept a hire.
+   history before the system allows them to submit a proposal or accept a hire. The acknowledgement is
+   recorded once per freelancer and project, with the score shown, and the proposal, invite-link and
+   hire doors refuse without it, so no request can skip the dialog.
 
 #### 4. Discovery for Services
 
@@ -3638,9 +3688,9 @@ unconfirmed email.
 
 Clients, businesses and enterprises carry the **Client Trust Score** and verification badges, not a
 Standing rung. Buyers want efficiency and trust, not quests; over-gamifying that side makes serious
-clients leave. Until the score's weighting is defined, a business profile shows the one input that
-is computed — its **client rating** from the freelancers it engaged, with how many reviews stand
-behind it — and no Standing block (Decision #244).
+clients leave. A business profile shows its **Client Trust Score** with how many freelancer reviews
+stand behind it, once there are 3; below that it shows how many there are and that the score
+appears from 3. It shows no Standing block (Decisions #244, #486).
 
 (Rung thresholds, the score weighting, the listing/proposal/commission ladder and the interaction
 with subscriptions are all in `finance-model.md` §16.3.)
@@ -3716,8 +3766,9 @@ Disputes have a significant weight on the **Reliability Index ($R_i$)**.
 - **The "Strike" System:** Frequent disputes, even those resolved in the freelancer's favor, will
   trigger a "Quality Audit" of the freelancer's services.
 - **Bad-Faith Reporting:** If a client is found to be abusing the dispute system to avoid payment
-  (demonstrated by a pattern of "No-Show" claims that are proven false by API logs), their Business
-  Trust Score is severely penalized.
+  (demonstrated by a pattern of "No-Show" claims that are proven false by API logs), their **Client
+  Trust Score** is severely penalized: each dispute they opened and lost costs it the deduction in
+  finance-model §16.7 (Decision #486 (D): one score per client party, a person or a business).
 
 #### 5. Finality & The Legal Shield
 
@@ -3786,23 +3837,36 @@ counsel's (#527 (A)); this section describes what is built, not that it meets th
 
 #### 3. Anti-Money Laundering (AML) & Fraud Detection
 
-The `ComplianceService` monitors all movement of capital within the platform's wallets to detect and
-prevent illicit activity.
+The money doors themselves record what they see as monitoring signals, which a platform operator
+reads beside the ledger (Decision #529). A signal is a fact, never a finding about a person: the person
+never sees it, and nothing acts on it except the Safety Hold below.
 
 - **Suspicious Pattern Detection:** Automated flags for "Round-Tripping" (where a user hires
-  themselves via a second account to move money) and "Rapid Churn" (large deposits followed by
-  immediate withdrawal requests).
+  themselves to move money) and "Rapid Churn" (large deposits followed by immediate withdrawal
+  requests). **Built:** a round trip is recorded when an escrow is funded and when it is released, if
+  one person is on both sides: the same account pays and is paid, or the person holds a seat on the
+  paying business or the paid team. A withdrawal is rapid churn when it, and the card money the person
+  put in shortly before, both reach the churn dial. **Not built:** hiring yourself through a _second_
+  account, which needs a card or bank fingerprint the platform does not store (Decision #529 (d);
+  PRODUCTION_READINESS PRD-M9).
 - **Sanctions Screening:** All users are screened against global watchlists (OFAC, etc.) during
   Level 2 and Level 3 verification.
 - **The "Safety Hold":** New accounts or high-risk transactions may be subject to a 72-hour security
-  hold before funds can be withdrawn from the platform.
+  hold before funds can be withdrawn from the platform. **Built behind a switch that is off** (⚖️,
+  `aml_safety_hold_enabled`; the owner turns it on after counsel). When on, a withdrawal waits 72 hours
+  after a sign-in change (Decision #451 (c)), after the card money behind rapid churn, after a round
+  trip, or, for a new account, after any card payment. The withdrawal is refused with the time the
+  person can try again, in plain words; no money moves and the escrow holding period is untouched. The
+  dials are in `finance-model.md` §13.1.
 - **Posture: not AML-obliged, AML-ready.** Projective operates as a platform that is not obliged
   under anti-money-laundering law, but it captures from day one the records an obliged platform
   would need — customer due-diligence and KYC references and the monitoring signals above — and
-  keeps them for the AML period. The programme around them (a reporting officer's role, a
+  keeps them for the AML period. The monitoring signals are **built** and kept for the AML period
+  (`finance-model.md` §17). The programme around them (a reporting officer's role, a
   suspicious-activity review queue, regulator registration, reporting exports) exists but stays
   switched off, ready if a court or regulator rules that Projective is obliged (Decision #336,
-  ruling I1, pending counsel). **Not built yet.**
+  ruling I1, pending counsel). **The programme half is not built yet** (Identity X2, Decision #529
+  (a)).
 
 #### 4. Legal Handover & IP Documents
 
@@ -3811,6 +3875,14 @@ Compliance doesn't end with money; it extends to the **Chain of Title** for Inte
 - **The IP Transfer Deed:** Upon the release of Escrow, Projective generates a cryptographically
   signed **Deed of Transfer**. This document links the specific file hashes, project IDs, and
   participant IDs, serving as a permanent legal record of the IP handover.
+- **When each party accepts (Decision #534):** a maker accepts the IP Transfer Deed on their **first
+  paid claim** (a claim that holds escrow, on any project but a personal one), and a payer accepts the
+  Escrow Terms on their **first funding** (a stage, a ticket or a paid revision round, from a wallet,
+  in their own currency or by card). Each is asked **once per version**: a dialog names the version in
+  effect beside an unticked box, and the claim or funding goes ahead only once it is ticked, recorded
+  as part of that claim or funding. A new version asks again at the next commit. A 13–17 account is
+  never asked (it cannot transact, Decision #190), and checkout does not ask yet. Whether this click
+  is the assignor's signature an assignment needs is counsel's (⚖️, FOUNDER_QUESTIONNAIRE E2.16).
 - **Verified Audit Trail:** In the event of a dispute or an acquisition, Projective can provide an
   "Audit Pack," which includes all contracts, invoices, and IP deeds in a single,
   verified bundle.

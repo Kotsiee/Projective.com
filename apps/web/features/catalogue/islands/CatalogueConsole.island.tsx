@@ -8,6 +8,7 @@ import { ListingsCanvas } from "../components/listings/ListingsCanvas.tsx";
 import { ClientsCanvas } from "../components/clients/ClientsCanvas.tsx";
 import { CatalogueToolbar } from "../components/CatalogueToolbar.tsx";
 import { AnalyticsCanvas } from "../components/analytics/AnalyticsCanvas.tsx";
+import { PromotionsCanvas } from "../components/promotions/PromotionsCanvas.tsx";
 import { consoleAnalyticsTarget } from "../core/analytics-view.ts";
 import CatalogueCreateModal from "./CatalogueCreateModal.island.tsx";
 import { CONSOLE_CANVAS_ID } from "../core/catalogue-model.ts";
@@ -36,7 +37,7 @@ import {
 
 /**
  * CatalogueConsole — the `/catalogue` canvas: the sticky {@link CatalogueToolbar}, then a router over
- * the console views (`?view=listings | analytics | clients`), labelled as the panel the header's view
+ * the console views (`?view=listings | analytics | clients | promotions`), labelled as the panel the header's view
  * tabs control.
  *
  * It owns the listings read. The server's first page arrives as props and seeds the console store;
@@ -65,6 +66,7 @@ const VIEW_LABEL: Record<ConsoleView, string> = {
 	listings: "Listings",
 	analytics: "Analytics",
 	clients: "Clients",
+	promotions: "Promotions",
 };
 
 function isTextEntry(target: EventTarget | null): boolean {
@@ -148,6 +150,8 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 			<CatalogueToolbar state={state} initialTotal={props.initial.total} laned={!state.team} />
 			{state.view === "listings"
 				? <ListingsCanvas state={state} page={page} error={error} />
+				: state.view === "promotions"
+				? <PromotionsCanvas defaultCurrency={props.defaultCurrency} />
 				: state.view === "analytics"
 				? (
 					<AnalyticsCanvas

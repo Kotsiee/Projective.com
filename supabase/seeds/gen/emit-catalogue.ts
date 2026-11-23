@@ -33,6 +33,18 @@ function ownerOf(world: World, handle: string): Principal {
 	return principal;
 }
 
+/**
+ * Whether a listing that earns without a ticket — a product, or a service sold as sessions — may be
+ * seeded `published` (Decision #337, ruling M4): its person owner is KYC-verified with a payout
+ * account. A team listing is judged by the publish gate itself (`catalogue.trg_listings_publish_payout_gate`,
+ * every shareholder), so a team seed that breaks the rule fails the reset instead of passing here.
+ */
+function payable(world: World, owner: Principal): boolean {
+	if (owner.kind === "team" || owner.kind === "business") return true;
+	const p = [...world.personas.values()].find((x) => x.userId === owner.accountUserId);
+	return p?.kyc === "verified" && p.payoutReady === true;
+}
+
 /** The skill vocabulary seeded into `org.skills` (`world.ts` SKILLS); every listing skill must name one. */
 const SKILL_SLUGS = new Set(SKILLS.map(([slug]) => slug));
 
@@ -443,6 +455,8 @@ export function emitCatalogue(world: World): string {
 		}
 	};
 
+	// A seller who is not payout-ready keeps their product as a draft they cannot publish until they are
+	// (Juno, KYC pending): it was on sale before the gate, so its `published_at` and its sales stand.
 	PRODUCTS.forEach((p, i) => {
 		const owner = ownerOf(world, p.owner);
 		const listingId = world.listingId(p.key);
@@ -451,7 +465,7 @@ export function emitCatalogue(world: World): string {
 			id(owner.accountUserId),
 			id(owner.kind === "team" ? owner.entityId : null),
 			"'product'",
-			"'published'",
+			payable(world, owner) ? "'published'" : "'draft'",
 			"NULL",
 			id(world.productId(p.key)),
 			q(p.title),
@@ -480,6 +494,11 @@ export function emitCatalogue(world: World): string {
 	SERVICES.forEach((s, i) => {
 		const owner = ownerOf(world, s.owner);
 		const listingId = world.listingId(s.key);
+		if ((s.model === "session" || s.model === "group_session") && !payable(world, owner)) {
+			throw new Error(
+				`catalogue: "${s.key}" sells sessions, so its owner must be payout-ready (Decision #337, ruling M4)`,
+			);
+		}
 		listingRows.push([
 			id(listingId),
 			id(owner.accountUserId),

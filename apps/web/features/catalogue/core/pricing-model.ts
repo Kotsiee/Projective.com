@@ -59,8 +59,24 @@ export interface PriceAsk {
 /**
  * The price a form archetype is sold at: a fixed fee for a product or a One-Off, the baseline
  * ticket for a Pipeline (buyers see a range around it), a fee per session, or per seat for a cohort.
+ * A session listing sold by the hour (SC10) asks for an hourly rate instead.
  */
-export function priceAsk(archetype: FormArchetype): PriceAsk {
+export function priceAsk(archetype: FormArchetype, perHour = false): PriceAsk {
+	if (perHour && archetype === "session") {
+		return {
+			field: "sessionPrice",
+			label: "Price per hour",
+			hint: "Each session costs this rate for its own length, rounded down to the penny.",
+		};
+	}
+	if (perHour && archetype === "cohort") {
+		return {
+			field: "sessionPrice",
+			label: "Price per hour, per seat",
+			hint:
+				"One seat costs this rate for every hour of the cohort's sessions, rounded down per session.",
+		};
+	}
 	switch (archetype) {
 		case "pipeline":
 			return {

@@ -56,7 +56,10 @@ Reachable only through `SECURITY DEFINER` functions and the service role; no cli
 `finance.promo_codes` (a list of codes **is** the leak — a checkout resolves one code at a time,
 server-side), `finance.ratings` (nothing reads it), `finance.idempotency_keys` (system table),
 `finance.processor_customers` (the Stripe Customer each owner's cards attach to — reached only through
-`card_owner_for` / `record_processor_customer` / `claim_due_deposit_rules`, Decision #126), and the
+`card_owner_for` / `record_processor_customer` / `claim_due_deposit_rules`, Decision #126),
+`finance.aml_signals` (the AML monitoring signals, Decision #529: never visible to the subject, no
+grant to the service role either; written by `begin_payout` and the escrow trigger, read only through
+the operator door `read_aml_signals`), and the
 `finance.v_wallet_reconciliation` view (service role only), as is the
 `finance.v_ops_unledgered_payments` ops view (Decision #200).
 
@@ -94,7 +97,7 @@ Writes to `finance.escrows` remain definer-only (`fn_hold_ticket_escrow` /
 
 | Table                        | SELECT                                                           | Write                                                                                          |
 | :--------------------------- | :--------------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
-| `finance.fx_rates`           | `USING (true)` for `anon` **and** `authenticated` — public reference data SSR converts a guest's prices with (Decision #69). | Service-role / definer only (ingestion job). |
+| `finance.fx_rates`           | `USING (true)` for `anon` **and** `authenticated` — public reference data SSR converts a guest's prices with (Decision #69). | Service-role / definer only: the daily feed's door `finance.record_fx_rates` (FBP DB17). |
 | `finance.verification_cases` | Subject or its members (`fn_owner_visible`-style) + admin.       | Definer / service only (verification webhook).                                                 |
 | `finance.payment_methods`    | `fn_owner_visible(owner_type, owner_id)`.                        | **UPDATE only**, `fn_owner_capability(…, 'manage_billing')` — relabel / change the default. No INSERT: the processor handshake creates a method. Identity columns immutable (`trg_payment_methods_immutable`). |
 | `finance.deposit_rules`      | `fn_can_view_wallet(wallet_id)`.                                 | **None** (clients hold SELECT only). A rule charges the card of the member who authorised it, so it is written only by `finance.create_deposit_rule` (`add_funds`, stamps `created_by`), `finance.update_deposit_rule` (pause / resume / re-price / archive, `add_funds`; a re-price or resume re-stamps `created_by` and re-checks the card, A13) and the scheduler. The former `FOR ALL` on `spend` let any spender rewrite another member's rule (FINANCE_AUDIT A12; `supabase/probes/deposit_rule_authority.sql`). `failure_count` / `last_error` / `created_by` guarded as a backstop (`trg_deposit_rules_derived`). |
@@ -288,7 +291,12 @@ wallet with any amount. So (`00002510`):
   the definer predicates and money RPCs, which run it as its owner.
 - **`fn_purchase_owner_json` is internal** — it builds the owner projection for the two owner doors and
   is callable by neither client role, because it answers for whatever owner it is handed.
-- **`resolve_promo_code` takes an account now** (`(text, text, uuid)`, FBP DB19): `authenticated` keeps
+- **The seller's promo doors** (`save_promo_code`, `archive_promo_code`, `list_own_promo_codes`;
+  MARKETPLACE CK2, Decision #536) are granted to `authenticated` and check the caller's right to issue
+  for the seller themselves (`fn_can_issue_promo`); `fn_can_issue_promo`, `fn_promo_covers` and
+  `fn_promo_code_json` are internal. `promo_codes` keeps no policy and no client grant.
+- **`resolve_promo_code` takes an account and the basket's products** (`(text, text, uuid, uuid[])`,
+  FBP DB19, CK2): `authenticated` keeps
   it, and it counts the account's past uses only when `fn_owner_visible` lets the caller see that
   account (reviewed in `function_grants.sql` (d)). **The order-refund writer and its helpers are
   internal** — `fn_record_order_line_refund`, `fn_order_line_of_escrow`, `fn_order_line_delivery_began`,

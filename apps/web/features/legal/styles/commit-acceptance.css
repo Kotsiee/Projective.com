@@ -1,0 +1,47 @@
+/* CommitAcceptanceDialog (LG3): the IP Transfer Deed or the Escrow Terms, once per version. */
+
+/* #region Body */
+.legal-commit {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.legal-commit__lead {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+
+.legal-commit__row {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+
+.legal-commit__text {
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.legal-commit__link {
+	color: var(--primary-ink);
+	font-weight: var(--fw-semibold);
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+/* #endregion */
+
+/* #region Footer */
+.legal-commit__foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+}
+/* #endregion */

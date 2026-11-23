@@ -6,8 +6,14 @@ import type {
 	FundingCharge,
 	StageFundingQuote,
 } from "@projective/types/finance";
+import {
+	type LegalAcceptanceRequired,
+	type LegalCommitStamp,
+	readLegalAcceptanceRequired,
+} from "@projective/types/legal";
 import { Alert, Dialog } from "@projective/ui/feedback";
 import { Button, SelectButton } from "@projective/ui/fields";
+import { CommitAcceptanceDialog } from "@features/legal/components/CommitAcceptanceDialog.tsx";
 import { WalletService } from "@features/wallet/core/WalletService.ts";
 import { newAttemptKey } from "@features/wallet/core/wallet-state.ts";
 import { PaymentsService } from "../core/PaymentsService.ts";
@@ -56,6 +62,7 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 	const method = useSignal<StageFundMethod>("wallet");
 	const handoff = useSignal<CardPaymentHandoff | null>(null);
 	const message = useSignal<string | null>(null);
+	const escrowAsk = useSignal<LegalAcceptanceRequired | null>(null);
 	const attempt = useRef("");
 
 	const load = async (payIn: string | null = null) => {
@@ -88,7 +95,17 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 		if (outcome !== "declined") props.onFunded();
 	};
 
-	const commit = async (q: StageFundingQuote) => {
+	// A payer's first funding is asked for the Escrow Terms (LG3): the dialog's Accept commits again
+	// carrying the version it showed, by the same route.
+	const asked = (details: unknown): boolean => {
+		const ask = readLegalAcceptanceRequired(details);
+		if (!ask) return false;
+		escrowAsk.value = ask;
+		step.value = "choose";
+		return true;
+	};
+
+	const commit = async (q: StageFundingQuote, legalAcceptance?: LegalCommitStamp) => {
 		step.value = "sending";
 		message.value = null;
 		const charge = funding.value?.charge ?? null;
@@ -100,7 +117,9 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 				amountMinor: q.amountMinor,
 				currency: q.currency,
 				fxQuoteId: charge?.quote?.quoteId ?? null,
+				legalAcceptance,
 			});
+			if (!res.ok && asked(res.details)) return;
 			if (!res.ok) {
 				message.value = res.message ?? "The stage couldn't be funded.";
 				step.value = "error";
@@ -119,7 +138,9 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 			currency: converted && charge ? charge.currency : q.currency,
 			fxQuoteId: converted,
 			idempotencyKey: attempt.current,
+			legalAcceptance,
 		});
+		if (!res.ok && asked(res.details)) return;
 		if (!res.ok || !res.data) {
 			message.value = res.message ?? "The card payment couldn't be started.";
 			step.value = "error";
@@ -250,6 +271,12 @@ export function FundStageDialog(props: FundStageDialogProps): JSX.Element {
 
 				{step.value === "done" && <p class="sfd__lead" role="status">{message.value}</p>}
 			</div>
+			<CommitAcceptanceDialog
+				request={escrowAsk}
+				onAccept={(stamp) => {
+					if (quote.value) void commit(quote.value, stamp);
+				}}
+			/>
 		</Dialog>
 	);
 }

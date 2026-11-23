@@ -8,7 +8,9 @@ import {
 } from "@features/checkout/core/respond.ts";
 import { BasketBackendService } from "@server/services/finance/BasketBackendService.ts";
 import { basketQueryFromBody } from "@server/services/finance/basket-query.ts";
+import { promoThrottle, retryAfterSeconds } from "@server/services/finance/promo-throttle.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { clientKey } from "@web/utils/client-key.ts";
 
 /**
  * `POST /api/basket/promo` — attach a promotional code to a whole basket, or clear it with
@@ -19,8 +21,12 @@ import { readActor } from "@web/utils/api-session.ts";
  * credit. A refused code still comes back as a resolved `promo` carrying its reason — the surface must
  * be able to say *why* it did not apply, not merely fail to change the total.
  *
- * Thin: parse + Zod-validate + resolve the acting context and session + delegate. The fat service
- * writes as the signed-in caller, so `finance.*` RLS and its spend predicate are the gate.
+ * An attempt that names a code is throttled per account and per client address ({@link promoThrottle},
+ * FINANCE_AUDIT CO22): past the ceiling it is a 429 with `Retry-After`, so a burst cannot enumerate
+ * codes. Clearing a code is never throttled.
+ *
+ * Thin: parse + Zod-validate + throttle + resolve the acting context and session + delegate. The fat
+ * service writes as the signed-in caller, so `finance.*` RLS and its spend predicate are the gate.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -29,11 +35,23 @@ export const handler = define.handlers({
 		if (raw === null || typeof raw !== "object") return malformedBody();
 		const parsed = ApplyPromoCodeSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
+		const actor = readActor(ctx);
+		if (parsed.data.code !== null) {
+			const refused = promoThrottle.admit({
+				account: actor.userId ?? "signed-out",
+				clientKey: clientKey(ctx.info.remoteAddr, ctx.req.headers),
+			});
+			if (refused) {
+				const res = toCheckoutResponse(refused);
+				res.headers.set("retry-after", String(retryAfterSeconds(refused)));
+				return res;
+			}
+		}
 		return toCheckoutResponse(
 			await BasketBackendService.applyPromo(
 				parsed.data,
 				basketQueryFromBody(raw as Record<string, unknown>, context),
-				readActor(ctx),
+				actor,
 			),
 		);
 	},

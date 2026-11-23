@@ -33,6 +33,7 @@ import { useIntakeAnswers } from "../hooks/useIntakeAnswers.ts";
 import type { BookableSlot, SlotGrid, SlotPurpose } from "@projective/types/scheduling";
 import { addDaysInZone, firstOpenDay } from "@projective/types/scheduling";
 import type { SessionPlanItem } from "@projective/types/explore";
+import { sittingPricesMinor } from "@projective/types/catalogue";
 import {
 	type IntakeField,
 	plural,
@@ -397,6 +398,17 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 	const simulated = simulating.value;
 	const bothCallTypes = !!call?.courtesyEnabled && !!call?.paidEnabled;
 	const blockSize = maxSlots.value;
+	// A listing sold by the hour (SC10) prices each sitting at its own length, as checkout does.
+	const hourly = summary?.price.unit === "hour" || summary?.price.unit === "hour per seat";
+	const sittingPrices = hourly && summary?.price.amount
+		? sittingPricesMinor(
+			summary.price.amount.minor,
+			"per_hour",
+			60,
+			sessionPlan.map((p) => ({ durationMinutes: p.minutes })),
+			isCohort.value ? Math.max(1, sessionPlan.length) : blockSize,
+		)
+		: null;
 	const sellerName = o?.contact.sellerName ?? "The provider";
 	const dayHasSlots = !!g && !!selectedDay.value && (g.slots[selectedDay.value]?.length ?? 0) > 0;
 	const windowEmpty = !!g && !firstOpenDay(g);
@@ -409,8 +421,8 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 			grid.value?.durationMinutes ?? null,
 		)
 		: isCohort.value
-		? seatLedger(summary.price, seats.value ?? 1, sittingsLine.value)
-		: sessionLedger(summary.price, pickLabels.value, blockSize);
+		? seatLedger(summary.price, seats.value ?? 1, sittingsLine.value, sittingPrices)
+		: sessionLedger(summary.price, pickLabels.value, blockSize, sittingPrices);
 	const total = ledger?.total ?? null;
 
 	const left = !o
@@ -551,6 +563,16 @@ export function SessionBookingDialog(props: SessionBookingDialogProps): JSX.Elem
 										<dt class="sbk__stagename">
 											<span class="sbk__stagenum">{i + 1}</span>
 											<span>{title || `Session ${i + 1}`}</span>
+											{sittingPrices && summary?.price.amount && (
+												<span class="sbk__stagemeta">
+													{sessionPlan[i]?.minutes ?? 60} min ·{" "}
+													<MoneyView
+														minor={sittingPrices[i]}
+														currency={summary.price.amount.currency}
+														hideOrigin
+													/>
+												</span>
+											)}
 										</dt>
 										<dd class="sbk__stagevalue">
 											{pick

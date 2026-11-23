@@ -152,7 +152,8 @@ export const OrderLineSchema = z.object({
 	/**
 	 * This line's share of the order's basket-wide promo (`finance.order_lines.promo_discount_minor`;
 	 * the shares sum to the order's promo discount). What the buyer paid for the line is
-	 * `lineTotal − promoDiscount`, the base its fee was charged on.
+	 * `lineTotal − promoDiscount`. A seller's own code is the seller's to fund, so its fee was charged
+	 * on that; a platform code is the platform's, so its fee was charged on `lineTotal` (Decision #485).
 	 */
 	promoDiscount: MoneyViewSchema,
 	/**
@@ -424,7 +425,10 @@ export const SellerCommissionWindowSchema = z.object({
 	currency,
 	/** The product lines counted: their order still stands and their rate was recorded. */
 	lines: z.number().int().min(0),
-	/** What the buyers paid for those lines (`line_total_minor − promo_discount_minor`). */
+	/**
+	 * What those sales were worth to the seller: `line_total_minor`, less a promo share the seller
+	 * funded (a platform-funded share is the platform's, Decision #485 (a)). The base the fee was on.
+	 */
 	paid_minor: minorUnitsNonNeg,
 	/** The commission recorded on them (`platform_fee_minor`). */
 	fee_minor: minorUnitsNonNeg,

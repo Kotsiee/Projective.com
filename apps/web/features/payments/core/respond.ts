@@ -15,6 +15,8 @@ export interface PaymentsResponse<T> {
 	ok: boolean;
 	message?: string;
 	errors?: Record<string, string>;
+	/** A typed refusal's facts (LG3's `legal_acceptance_required`: which document, which version). */
+	details?: Record<string, string | number | boolean | null>;
 	data?: T;
 }
 
@@ -24,6 +26,7 @@ export function toPaymentsResponse<T>(result: ServiceResult<T>): Response {
 		ok: result.ok,
 		message: result.message,
 		errors: result.errors,
+		details: result.details,
 		data: result.data,
 	};
 	return Response.json(body, {

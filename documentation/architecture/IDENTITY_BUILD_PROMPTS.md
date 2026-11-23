@@ -9,7 +9,7 @@
 > (Security & access control); §0.6 maps each row to its prompt.
 >
 > **Verified against code 2026-11-23 at `f2e25929`.** 16 open, 1 partly done, 8 done (§0 ledger).
-> Runnable now: HK1, SSO1, MFA1, MIN1, LOW1; X1 and X2 stop at their 🧑 at once.
+> Runnable now: HK1, SSO1, MFA1, MIN1, LOW1, X2 (its 🧑 ruled A, #529); X1 stops at its 🧑 at once.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -58,7 +58,7 @@ it.
 | **8 — Last**              | RLS1                      | SQL                    | It breaks every invoker reader of other people's names, so every other track's readers move first.                                                                  |
 | **Any time**              | LOW1                      | app                    | The remaining Low findings.                                                                                                                                         |
 | **Any time (you)**        | The hosted auth runbook   | —                      | Not a prompt. SAC6 built `deno task auth:parity` and the runbook; you apply it once per hosted environment (PRD-G8). No agent changes a hosted setting. C13–C16.    |
-| **Roadmap**               | X1, X2                    | docs                   | Not buildable yet; each stops at a 🧑.                                                                                                                              |
+| **Roadmap**               | X1, X2                    | docs · SQL             | X1 stops at its 🧑. X2's 🧑 is ruled A (#529): LG7 built the signals and the hold; X2 builds the dormant flags and queue. |
 | **Last**                  | Z1                        | docs                   | Docs sweep and the audit status columns.                                                                                                                            |
 
 - **Part B names.** §B.3's steps map onto this file as:
@@ -153,8 +153,8 @@ Shared files outside §B.0 that still collide:
    work.
 6. **X1.** When the verified-domain, SAML and JIT build starts. Recommended: when the first
    Enterprise customer asks.
-7. **X2.** Who builds the dormant AML programme. Recommended: F builds the signals; this track
-   builds the flags.
+7. **X2.** Who builds the dormant AML programme. **Ruled A (#529):** LEGAL_COMPLIANCE LG7 built
+   the signals, their reader and the Safety Hold; this track builds the flags.
 
 **Contradictions logged in Decision #344, unruled:**
 
@@ -469,11 +469,15 @@ CONTEXT:
     I1 (d)).
   - What survives follows the owner's retention table (finance-model.md §17, ⚖️ pending counsel).
     ERASED with the account: messages, files and profiles that are not under a hold. KEPT, linked
-    only to the anonymous tombstone: ledger, escrow, payout, invoice, order and fee rows; disputes
+    only to the anonymous tombstone: ledger, escrow, payout, invoice, order and fee rows; the AML
+    monitoring signals in finance.aml_signals (Decision #529: HOLD for the AML period; append-only,
+    its person FK RESTRICT, so the erasure must not delete or blank it); disputes
     with their evidence and attached messages; reviews and Standing (#156 (a)); consent records,
     including the sign-up acceptances in org.legal_acceptances (Decision #446: HOLD, life of the
     account + 6 years; its person FK is RESTRICT and the table is append-only, so the erasure must
-    not delete or blank it); and security logs (12 months).
+    not delete or blank it) and the IP Transfer Deed and Escrow Terms rows the first claim and
+    funding add to it (surfaces `claim`, `fund`: LG3, #534, HOLD as contract evidence); and
+    security logs (12 months).
   The legal-hold identity record is ERA4. The 12-month security-log prune is ERA2.
 
 FILES:
@@ -542,16 +546,16 @@ STEPS:
        - null user_id and session_id on their search.interest_events (others' engagement
          aggregates stay whole);
        - delete their search.talent_signals rows.
-     Leave every HOLD class untouched. Keep the function idempotent: a second run changes nothing.
-  4. The sweep. fn_purge_due_deletions returns the claimed objects, or a new
-     security.claim_erased_objects(p_limit) does.
-     - AccountLifecycleBackendService.sweepDue removes them with
      - ops (T&S R1 landed first, so this arm is ERA1's): ops.reports has three FKs onto
        auth.users, all ON DELETE SET NULL (reporter_user_id, reported_user_id, resolved_by), so a
        report outlives everyone it names; classify them. The snapshot keeps what was reported and
        the person's evidence/{report_id}/{file_id} copies keep their bytes: how long each stays is
        the I1 retention table's (a moderation record, likely HOLD while a report is pending or its
        penalty is active). A notice row's complainant is not a user (#496 (c)): counsel words it.
+     Leave every HOLD class untouched. Keep the function idempotent: a second run changes nothing.
+  4. The sweep. fn_purge_due_deletions returns the claimed objects, or a new
+     security.claim_erased_objects(p_limit) does.
+     - AccountLifecycleBackendService.sweepDue removes them with
        getServiceClient().storage.from(bucket).remove(paths), then confirms each one.
      - A failure is retried on the next run, and it never un-erases the rows.
 
@@ -1515,34 +1519,34 @@ ACCEPTANCE: the three docs agree, and no code changed.
 
 ### X2 — The AML-ready programme, dormant behind flags (⚖️)
 
+> **Status 2026-11-23:** stop ruled **A** (Decision #529 (a)). The monitoring signals, their operator
+> reader and the Safety Hold landed in LEGAL_COMPLIANCE LG7 (LG7_COMMIT); X2 builds only the dormant
+> programme, and is runnable.
+
 ```text
 PROMPT X2: The AML-ready programme, dormant behind flags (roadmap; ⚖️)
 
-ROLE: Compliance architect. Docs only until the 🧑 stop is answered.
+ROLE: Compliance architect. SQL + docs.
 
-CONTEXT: Ruled, pending counsel (Decision #336, ruling I1 ⚖️; PRODUCT_SPEC §AML "Posture": Not
-built yet):
+CONTEXT: Ruled, pending counsel (Decision #336, ruling I1 ⚖️; PRODUCT_SPEC §Identity, Taxes &
+Compliance 3 "Posture": the programme half is not built yet):
   - Projective operates as not AML-obliged, but every AML function, record and process exists and
     is deployable.
-  - The data half runs from day one: CDD and KYC references, transaction-monitoring signals, and
-    retention covering the AML period. ERA2 and ERA4 build the retention and the AML-grade identity
-    set.
+  - The data half runs from day one. The monitoring signals are built (LG7, Decision #529):
+    finance.aml_signals (append-only, never visible to the subject, HOLD under erasure), read by
+    operators through finance.read_aml_signals on /admin/ledger, and the Safety Hold in
+    finance.begin_payout behind aml_safety_hold_enabled (off). ERA2 and ERA4 build the retention
+    and the AML-grade identity set.
   - The programme half stays dormant behind flags: an MLRO role, a suspicious-activity review
     queue, regulator registration, and reporting exports.
-  PRODUCT_SPEC §AML 3 already promises the ComplianceService's round-tripping and rapid-churn flags,
-  and the 72-hour Safety Hold.
 
-🧑 DECISION — STOP. Put this to me: who builds what?
-  Option A (recommended): the F track builds the monitoring signals, which read money movement on
-  00001240, and the Safety Hold. This track builds the dormant programme: security.feature_flags
-  aml.* = false, an operator role row, and a review-queue table with no writer. Counsel's sign-off
-  switches nothing on.
-  Option B: one compliance track owns all of it after Wave 2.
-  LEGAL_COMPLIANCE LG7 carries this stop as its (a). On A, X2 builds only the dormant programme
-  (the aml.* flags, the operator role, a review queue with no writer), and LG7 builds the signals,
-  their reader and the Safety Hold. On B, LG7 builds both, and LG7 marks X2 done.
+STEPS (ruled, Decision #529 (a): LG7 built the signals, their reader and the hold; X2 builds only
+the dormant programme):
+  1. security.feature_flags aml.* = false, an operator role row for the MLRO, and a review-queue
+     table over finance.aml_signals with no writer. Counsel's sign-off switches nothing on.
 
-ACCEPTANCE: the ruling is recorded, and PRODUCT_SPEC's marker names the prompts that will build it.
+ACCEPTANCE: the flags exist and are false, the queue has no writer, and PRODUCT_SPEC's marker names
+X2 as what builds the programme half.
 ```
 
 ---

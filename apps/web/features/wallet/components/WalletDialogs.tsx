@@ -67,6 +67,12 @@ import {
 } from "@features/payments/core/stripe-flow.ts";
 import { useStripeCardSetup } from "@features/payments/hooks/useStripeElement.ts";
 import { stageLockSentence } from "@features/payments/core/stage-funding.ts";
+import {
+	type LegalAcceptanceRequired,
+	type LegalCommitStamp,
+	readLegalAcceptanceRequired,
+} from "@projective/types/legal";
+import { CommitAcceptanceDialog } from "@features/legal/components/CommitAcceptanceDialog.tsx";
 import { ActionIcon, CategoryIcon, WalletGlyph } from "./wallet-glyphs.tsx";
 
 /** The data every wallet dialog draws from. */
@@ -279,6 +285,8 @@ function MoveDialog(
 	const problems = useSignal<Problems<"amount" | "to" | "stage">>({});
 	const outcome = useSignal<string | null>(null);
 	const handoff = useSignal<WalletCardHandoff["payment"] | null>(null);
+	/** A first funding asked for the Escrow Terms (LG3); Accept commits again carrying the version. */
+	const escrowAsk = useSignal<LegalAcceptanceRequired | null>(null);
 	const attempt = useRef("");
 	const formRef = useRef<HTMLDivElement>(null);
 
@@ -333,7 +341,7 @@ function MoveDialog(
 	};
 	const errorFor = (field: "amount" | "to" | "stage") => problems.value[field];
 
-	const send = (): Promise<Outcome> => {
+	const send = (legalAcceptance?: LegalCommitStamp): Promise<Outcome> => {
 		const display = props.query.display ?? undefined;
 		const target = { scope: source.scope, contextId: source.id, display };
 		switch (action) {
@@ -364,6 +372,7 @@ function MoveDialog(
 					stageId: stageId.value,
 					amountMinor: minor,
 					currency,
+					legalAcceptance,
 				});
 			case "withdraw":
 				return WalletService.withdraw({
@@ -385,7 +394,15 @@ function MoveDialog(
 		}
 	};
 
-	const commit = async () => {
+	const asked = (details: unknown): boolean => {
+		const ask = readLegalAcceptanceRequired(details);
+		if (!ask) return false;
+		escrowAsk.value = ask;
+		step.value = "review";
+		return true;
+	};
+
+	const commit = async (legalAcceptance?: LegalCommitStamp) => {
 		step.value = "sending";
 		if (byCard && stage) {
 			const intent = await PaymentsService.escrowLockIntent({
@@ -394,17 +411,20 @@ function MoveDialog(
 				expectedAmountMinor: minor,
 				currency,
 				idempotencyKey: attempt.current,
+				legalAcceptance,
 			}).catch(() => null);
 			if (intent?.ok && intent.data) {
 				handoff.value = intent.data;
 				step.value = "card";
 				return;
 			}
+			if (asked(intent?.details)) return;
 			outcome.value = intent?.message ?? "The card payment couldn't be started.";
 			step.value = "error";
 			return;
 		}
-		const res = await send().catch(() => null);
+		const res = await send(legalAcceptance).catch(() => null);
+		if (!res?.ok && asked(res?.details)) return;
 		if (res?.ok && action === "top_up" && res.data?.result?.payment) {
 			// Nothing has been charged yet: the card is entered in Stripe's Element next.
 			handoff.value = res.data.result.payment;
@@ -727,6 +747,9 @@ function MoveDialog(
 			)}
 
 			{step.value === "done" && <Done amount={figure} message={outcome.value} />}
+			{action === "fund_escrow" && (
+				<CommitAcceptanceDialog request={escrowAsk} onAccept={(stamp) => void commit(stamp)} />
+			)}
 		</Frame>
 	);
 }

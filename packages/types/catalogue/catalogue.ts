@@ -588,6 +588,8 @@ export function resolveListingPricing(
 		currency?: string;
 		/** A Pipeline sold at tiered intensity (`PipelineOffer.allowTieredIntensity`); absent = fixed. */
 		tieredIntensity?: boolean;
+		/** A session listing sold by the hour (`SessionOffer.pricingUnit`, SC10); absent = per session. */
+		perHour?: boolean;
 	},
 ): z.infer<typeof EntityPricingSchema> {
 	const { kind, serviceType, pricing } = input;
@@ -605,10 +607,18 @@ export function resolveListingPricing(
 		};
 	}
 	if (kind === "service" && serviceType === "Session" && pricing.sessionPrice) {
-		return { mode: "session", display: money(pricing.sessionPrice, currency), caption: "per session" };
+		return {
+			mode: "session",
+			display: money(pricing.sessionPrice, currency),
+			caption: input.perHour ? "per hour" : "per session",
+		};
 	}
 	if (kind === "service" && serviceType === "Group Session" && pricing.sessionPrice) {
-		return { mode: "session", display: money(pricing.sessionPrice, currency), caption: "per seat" };
+		return {
+			mode: "session",
+			display: money(pricing.sessionPrice, currency),
+			caption: input.perHour ? "per seat, per hour" : "per seat",
+		};
 	}
 	if (pricing.amount > 0) return { mode: "fixed", display: money(pricing.amount, currency) };
 	return { mode: "quote", display: "Set a price" };

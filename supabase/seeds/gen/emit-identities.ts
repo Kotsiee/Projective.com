@@ -5,7 +5,10 @@
 
 import { isDisplayCurrency } from "@projective/types/finance";
 import {
-	currentLegalVersions,
+	type AcceptedLegalSlug,
+	COMMIT_LEGAL_DOCUMENTS,
+	COMMIT_LEGAL_SLUGS,
+	currentLegalVersion,
 	LEGAL_VERSIONS,
 	legalAcceptanceKind,
 	SIGNUP_LEGAL_SLUGS,
@@ -183,28 +186,33 @@ export function emitIdentities(world: World): string {
 	);
 
 	// Every persona accepted the sign-up documents in effect when this seed was generated (Decision #446),
-	// so no seeded login meets the re-accept gate. Dated at sign-up, or at the version's effective date
-	// when that came later.
-	const legal = currentLegalVersions();
+	// so no seeded login meets the re-accept gate; and, unless it is `firstCommit`, the IP Transfer Deed
+	// and the Escrow Terms (LG3), so its next claim or funding asks nothing. Dated at sign-up, or at the
+	// version's effective date when that came later.
+	const accepted = (slug: AcceptedLegalSlug, surface: string, p: (typeof personas)[number]) => {
+		const version = currentLegalVersion(slug);
+		const effective = LEGAL_VERSIONS[slug].find((v) => v.version === version)?.effectiveDate ??
+			"1970-01-01";
+		return [
+			id(uuidFor("legal-acceptance", `${p.handle}:${slug}:${version}`)),
+			id(p.userId),
+			q(slug),
+			q(version),
+			q(legalAcceptanceKind(slug)),
+			q(surface),
+			`GREATEST(${ago(p.joinedDaysAgo)}, TIMESTAMPTZ ${q(`${effective} 00:00:00+00`)})`,
+		];
+	};
 	out.push(
 		insert(
 			"org.legal_acceptances",
 			["id", "user_id", "document_slug", "version", "kind", "surface", "accepted_at"],
-			personas.flatMap((p) =>
-				SIGNUP_LEGAL_SLUGS.map((slug) => {
-					const effective = LEGAL_VERSIONS[slug].find((v) => v.version === legal[slug])
-						?.effectiveDate ?? "1970-01-01";
-					return [
-						id(uuidFor("legal-acceptance", `${p.handle}:${slug}:${legal[slug]}`)),
-						id(p.userId),
-						q(slug),
-						q(legal[slug]),
-						q(legalAcceptanceKind(slug)),
-						"'join'",
-						`GREATEST(${ago(p.joinedDaysAgo)}, TIMESTAMPTZ ${q(`${effective} 00:00:00+00`)})`,
-					];
-				})
-			),
+			personas.flatMap((p) => [
+				...SIGNUP_LEGAL_SLUGS.map((slug) => accepted(slug, "join", p)),
+				...(p.firstCommit ? [] : COMMIT_LEGAL_SLUGS.map((slug) =>
+					accepted(slug, COMMIT_LEGAL_DOCUMENTS[slug].surface, p)
+				)),
+			]),
 		),
 	);
 

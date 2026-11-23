@@ -340,6 +340,8 @@ BEGIN
                     'value', COALESCE(b.rating_average, 0), 'count', COALESCE(b.rating_count, 0)
                 )
             ),
+            -- Decision #486 (B): the Client Trust Score, NULL below 3 freelancer reviews.
+            'client_trust', reviews.fn_client_trust_shown('business', b.id),
             'verified', b.kyb_status = 'verified'::finance.kyc_status,
             'verification_stamp', CASE WHEN b.kyb_status = 'verified'::finance.kyc_status
                 THEN 'corporate_verified' ELSE 'none' END,
@@ -596,7 +598,9 @@ $$;
 -- side so the app can filter by stance. The engagement title is disclosed only when that project is
 -- itself public — a review may be public while the work it was about is confidential. The listing
 -- the engagement was bought from is public by definition and always named. Only visible reviews are
--- read (Decision #487): a withdrawn or hidden one leaves the profile with its reply.
+-- read (Decision #487): a withdrawn or hidden one leaves the profile with its reply, and an engagement
+-- review stays off it until it is revealed (Decision #486). `reciprocal` says the other side's review
+-- of the author shows too.
 CREATE OR REPLACE FUNCTION org.get_profile_reviews(p_handle text, p_limit integer DEFAULT 60)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -633,7 +637,10 @@ BEGIN
                 rv.reply_comment,
                 rv.replied_at,
                 rv.reply_edited_at,
-                rv.edited_at
+                rv.edited_at,
+                -- Both sides of the engagement reviewed each other, and both reviews show (#486).
+                EXISTS (SELECT 1 FROM reviews.entity_reviews o
+                         WHERE o.id = reviews.fn_counterpart (rv.id) AND o.is_visible) AS reciprocal
             FROM reviews.entity_reviews rv
             JOIN org.users_public up ON up.user_id = rv.reviewer_user_id
             LEFT JOIN projects.projects p ON p.id = rv.project_id

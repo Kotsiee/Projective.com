@@ -6,8 +6,8 @@
 > MK-12 and MK-16. The owner's rulings are Decisions #485–#506 (one per prompt), #525 for SC10–SC13
 > and #393 for the asset-delivery phases.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 10 open, 3 partly done, 11 done (§0 ledger).
-> Runnable now: CK2, RV1, RV2, SC6, SC9 (phase 1), SC10, SC12, SC13.
+> **Verified against code 2026-11-23 at `f2e25929`.** 9 open, 3 partly done, 12 done (§0 ledger).
+> Runnable now: RV1, RV2, SC6, SC9 (phase 6), SC10, SC12, SC13.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -33,6 +33,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | ID  | What landed                                                                                         | Commit                                    | Text at    |
 | :-- | :-------------------------------------------------------------------------------------------------- | :---------------------------------------- | :--------- |
 | CK1 | Entitlements, product versions frozen into `originals`, the download route, the A8 box, Purchases   | `322c4dc9`, `82cdd7b7`, `197b0d0c` (#488) | `f2e25929` |
+| CK2 | Seller promo codes: issuer and listing scope, three doors, seller-only discounts, platform-funded platform codes, a throttled promo route, `/catalogue?view=promotions` | `3041e5ef` (step 3, #511); the rest #536 | `0cf50f7d` |
 | CK3 | `/checkout/orders`, keyset-paged, each line linked home; a block's receipt lists every sitting      | `f3ba4c3b` (#517)                         | `10bb9b20` |
 | CK5 | `comms.fn_enqueue_basket_nudges`: one Marketing email per idle basket; Marketing opt-in at the root | `630468cb` (#492)                         | `f2e25929` |
 | CK6 | `deno task stripe:domains`, a redirect return lands once, the Apple Pay path (off), the runbook     | `322c4dc9`, `0d58d084` (#504)             | `f2e25929` |
@@ -42,7 +43,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | SC3 | `projects.open_cohort` / `cancel_cohort`, the Cohorts block at `?cohort=`, one seeded cohort        | `322c4dc9`, `b87c276c` (#498)             | `f2e25929` |
 | SC4 | Only the definer door publishes; the post-publish locks on the tables; a product needs a file; the follower notice | `0cf50f7d`, `fb7d7276` (#535) | `0cf50f7d` |
 | SC5 | `ListingViewBeacon` writes deduped views; the rollup derives view and order counts; 91 days seeded  | `322c4dc9` (#506)                         | `f2e25929` |
-| SC11 | Rolling weekly templates: `group_schedule_mode`, `session_template_rules.weekly`, `fn_open_template_cohorts` (job `cohort-template-chains`), `save_group_schedule`, the offer's `chains`, `/plan` Fixed · Rolling, `/view` Starts | `999615f0` (#541) | `2995f564` |
+| SC11 | Rolling weekly templates: `group_schedule_mode`, `session_template_rules.weekly`, `fn_open_template_cohorts` (job `cohort-template-chains`), `save_group_schedule`, the offer's `chains`, `/plan` Fixed · Rolling, `/view` Starts | `999615f0` (#541) | `SC11TEXTAT` |
 
 ### 0.1 Row → work order
 
@@ -54,9 +55,9 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | MK-23 | 🟡 · High · UAT    | CK6 ✅ + you, on a hosted domain (§0.4) | Your device runs are recorded (Apple Pay on iOS Safari, Google Pay on Android Chrome, the PayPal return)                               |
 | MK-24 | 🟡 · Normal · UAT  | SBP S1 → S4                             | A business buys Business Pro, sets monthly invoicing and places an on-account order                                                    |
 | MK-25 | ✅ · Normal · UAT  | COMMS NT3 (email)                       | The approval notice also emails (note clears)                                                                                          |
-| MK-26 | 🟡 · Normal · UAT  | **CK2** (DB19 built its cap, #511)      | A seller issues a code; a seller's code discounts only their lines; the route is throttled                                             |
+| MK-26 | ✅ · Normal · UAT  | CK2 ✅ (#536)                           | A seller issues a code; a seller's code discounts only their lines; the route is throttled                                             |
 | MK-27 | ⏸                  | — (#435, counsel)                       | Excluded                                                                                                                               |
-| MK-28 | 🟡 · Normal · PROD | FBP DB17 → UI5                          | A live feed with a staleness mark                                                                                                      |
+| MK-28 | 🟡 · Normal · PROD | FBP DB17 step 1 (🧑 vendor) → UI5       | A live feed with a staleness mark                                                                                                      |
 | MK-29 | 🟡 · Crit · UAT    | CK1 ✅ + the live run (§0.4)            | The live run is recorded                                                                                                               |
 | MK-31 | ❌ · Crit · UAT    | FBP DB6 ✅ → DB21 → MR3                 | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
 
@@ -81,14 +82,13 @@ Two rows of the **Listing view** section are left to live runs of prompts that l
 | MK-40 | 🟡 · High · UAT    | SCH-WP7 step 5 (SC3 ✅, #498)                     | ✅ once WP7 step 5 schedules later sittings from the app and the seller's walk is recorded (§0.4) |
 | MK-41 | 🟡 · Crit · PROD   | T&S SN2 → SN3 (SC4 ✅, #535)                      | ✅ once SN3 screens before publish                                                                |
 | MK-42 | ✅ · Normal · UAT  | **MKZ** (🧑 close #219 (d))                       | The note cites SA's sanctioned loosening                                                          |
-| MK-44 | 🟡 · Normal · UAT  | **SC6** (#500)                                    | Slug links; a team or business buyer is named                                                     |
-| MK-45 | ✅ · High · UAT    | **SC6** (ruled #500)                              | The ruled team-editing scope is built (note clears)                                               |
+| MK-45 | ✅ · High · UAT    | **SC6** step 3 (ruled #500)                       | The ruled team-editing scope is built (note clears)                                               |
 | MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                                       |
-| MK-47 | ❌ · High · PROD   | T&S R2 → **SC8** (R1 landed); **SC9** × every #393 phase | 🟡 once SC8 and ASSET phases 1–2 land; ✅ once every ASSET and ANTI_PIRACY phase lands            |
+| MK-47 | ❌ · High · PROD   | T&S R2 → **SC8** (R1 landed); **SC9** × every #393 phase | 🟡 once SC8 and ASSET phase 2 land (phase 1 landed, #SC9P1); ✅ once every ASSET and ANTI_PIRACY phase lands |
 
 SC10 and SC12 each add a new MK row in the change that lands them (#525); SC11 added MK-63 (#541). Section scores live
 in USER_FLOWS' Scoreboard. What UAT still needs from these sections: the live runs (§0.4), the MK-31
-chain (DB21 → MR3), RV1's product arm, SC6, CK2, SCH-WP7 step 5, CK6's device runs and SBP S4.
+chain (DB21 → MR3), RV1's product arm, SC6 step 3, SCH-WP7 step 5, CK6's device runs and SBP S4.
 
 ### 0.2 Run order
 
@@ -101,8 +101,8 @@ SQL prompt, compare its files with what is running (`git status`, and §0 of FIN
 **Queue M — money files** (`00001210` `place_wallet_order`, `00000017`). Each takes a turn in the
 finance SQL lane (FINANCE §0); FINANCE's order wins on a conflict.
 
-1. **CK2** — runs now: CK1, CK7 and FBP DB16 have landed, and DB19 built its per-account cap.
-2. **SC10**'s money half — no wait, but never beside CK2 (`00001210`).
+1. CK2 — landed (#536).
+2. **SC10**'s money half — no wait (CK2 has landed, #536).
 3. FBP **DB21 → MR3** — DB6 landed (#532).
 4. **CK4** — ⏳ DB21 (a refund reverses the tax); ⚖️ counsel before the switch. LEGAL LG8 follows
    it.
@@ -112,11 +112,11 @@ finance SQL lane (FINANCE §0); FINANCE's order wins on a conflict.
 **Queue C — everything else**, as the second SQL session whenever its files are disjoint from what
 is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 
-1. **SC6** — runs now (`00001170`): SC4 landed (#535).
+1. **SC6** step 3 — runs now (`00001170`, `00002020`): SC4 landed (#535); steps 1–2 landed (#537).
 2. **RV1**'s product arm — runs now.
 3. **RV2 → RV3** — RV2 runs now (RV1's doors are in); RV3 ⏳ RV2.
 4. **SC12** — stops at its 🧑 first (SC11 landed, #541).
-5. T&S **R2** (their track; R1 landed) → **SC8**; **SC9** once per #393 phase (phase 1 runs now).
+5. T&S **R2** (their track; R1 landed) → **SC8**; **SC9** once per #393 phase (phase 1 landed, #SC9P1; phase 6 runs now).
 
 **App lane** (up to three at once, file-disjoint): **SC13** now; **MKZ** last.
 
@@ -124,11 +124,11 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 
 | File                                             | Writers here          | Writers elsewhere (never at the same time)                        |
 | :----------------------------------------------- | :-------------------- | :---------------------------------------------------------------- |
-| `00001210` (`place_wallet_order`, promo, orders) | CK2, CK4, SC7, SC10   | FBP DB9, DB10, DB11, DB13, DB15; SCH-WP6                          |
-| `00000017` (finance tables)                      | CK2, CK4, SC7         | FBP DB8, DB21, MR3, MR5                                           |
+| `00001210` (`place_wallet_order`, promo, orders) | CK4, SC7, SC10        | FBP DB9, DB10, DB11, DB13; SCH-WP6                                |
+| `00000017` (finance tables)                      | CK4, SC7              | FBP DB21, MR3, MR5                                                |
 | `00001170` (catalogue doors, `save_listing`)     | SC6, SC10, SC12       | —                                                                 |
-| `00001155` (sessions, cohorts)                   | SC10                  | every SCH package; FBP DB15                                       |
-| `00005060` (jobs)                                | RV2                   | FBP DB17, MR5; PM-GH1                                             |
+| `00001155` (sessions, cohorts)                   | SC10                  | every SCH package                                                 |
+| `00005060` (jobs)                                | RV2                   | MR5; PM-GH1                                                       |
 | `00002500` / `00002510` / `00002520` (grants)    | every SQL prompt here | one writer at a time across all tracks                            |
 | `supabase/seeds/gen/*` (+ `db:seed:generate`)    | RV1, RV2, RV3         | —                                                                 |
 | `features/checkout/**`, `live-orders.ts`         | CK4, SC10             | FBP DB21, UI5, UI6                                                |
@@ -319,70 +319,6 @@ rows from §0.1.
 ---
 
 ## 3. Basket, checkout & orders — new prompts
-
-### CK2 — Sellers issue promo codes; one redemption per account; a throttled route
-
-> **Status 2026-11-23:** step 3 landed in `3041e5ef` (FBP DB19, #511: the per-account cap, with its
-> column from step 2); steps 1, 2 and 4–6 below are open, and step 1 and 2 keep only what is left.
-> Every wait is met (CK1, CK7, FBP DB16).
-
-Closes MK-26 (🟡 → ✅).
-
-```text
-PROMPT CK2: A seller issues and retires promo codes for their own products; an account redeems a
-code once by default; the promo route is throttled
-
-ROLE: Full-stack engineer. Queue M: 00000017, 00001210.
-
-CONTEXT (verified at b7280787; DB19's lines at f2e25929; re-check every line):
-  - finance.promo_codes (00000017:992-1035) has no issuer column. It is definer-only (00001210
-    ~:1129; grants 00002520 ~:813). Its only writers are seeds and probes
-    (supabase/seeds/07_finance.sql:243); the only function write is redemption_count (00001210).
-    DB19 built the per-account cap (#511): max_redemptions_per_account (00000017:1010) and
-    finance.fn_promo_uses, refused PC409 'promo_already_used' at preview and at commit.
-    routes/api/basket/promo.ts has no rate limit (FA CO22, "Open, no prompt").
-  - Rules: PRODUCT_SPEC.md §Digital Marketplace 6 ("each account may redeem a code once; a code
-    may allow more"); finance-model.md §1.2 (the seller's commission is taken on what the buyer
-    paid for the line, after any promo) and §15; Decision #337 ruling M8. #457 prices a One-Off
-    or Task line with no promo: read which line kinds take one today and keep that set unless I
-    rule otherwise.
-  - The seller's console is /catalogue (apps/web/features/catalogue/**), with URL-addressed views
-    (`?view=`).
-
-Who issues a code, and who funds it (ruled: Decision #485, 2026-11-18, A): a seller (a person, or
-a team member holding publish_listings: catalogue.fn_manages_listing / org.fn_member_can('team',
-…, 'publish_listings'), #485 (b)) issues codes for their own product listings, all of them or
-chosen ones; the seller funds the discount, and commission is taken on the discounted price, as
-finance-model §1.2 says. Platform-wide codes stay operator-only. #485 (a): the platform pays for a
-platform code. The seller is credited as if the code had not applied (commission on the line
-before the platform's share); the cost is a new finance.v_conservation_identity term (DB16 has
-landed, #483).
-
-STEPS:
-  1. Red first: extend supabase/probes/promo_redemption_concurrency.sql: no seller can create a
-     code today.
-  2. Schema in place: the issuer (owner type + id; NULL = the platform), the listing scope and
-     archived_at (nothing is hard-deleted). Doors (SECURITY DEFINER, search_path ''):
-     finance.save_promo_code, archive_promo_code and list_own_promo_codes, each checking the
-     capability itself.
-  4. In a mixed basket a seller's code discounts only that seller's eligible lines.
-  5. Throttle POST /api/basket/promo per account and per client key with the helper the auth
-     routes use (apps/web/utils/client-key.ts; routes/api/auth/confirm.ts): 429 with
-     Retry-After, so a burst cannot enumerate codes.
-  6. UI: a Promotions view in the seller console (`/catalogue?view=promotions`, in ROUTING.md):
-     create, list (code · discount · n of m redeemed · expiry, as MetaLine text), archive.
-
-ACCEPTANCE: the promo probe: DB19's per-account and concurrency arms stay green; a seller's code
-never discounts another seller's line; commission is on the discounted price; a platform code
-credits the seller in full and conservation_identity.sql passes. A 30-request burst on the promo
-route draws 429s. finance_invariants.sql passes. Screenshots of the Promotions view.
-
-SAME CHANGE: PRODUCT_SPEC.md §Digital Marketplace 6 and finance-model.md §15 (the issuer rule as
-ruled); FINANCE_AUDIT.md CO22; finance-model.md §1.2 ("after any seller-funded promo", #485 (a));
-documentation/database/finance/*; Zod; ROUTING.md; the decision row.
-```
-
-§1.2 rows: **MK-26** 🟡 → ✅.
 
 ### CK4 — Tax at checkout, built behind a switch that stays off
 
@@ -627,10 +563,12 @@ the decision row closing #58-63 (h)'s ratings half.
 
 ### SC6 — The Clients view links by slug and names every buyer; a team edits its listings
 
-> **Status 2026-11-23:** step 4 landed in `e900af75` (#500 rewrote MK-44's and MK-45's notes); steps
-> 1–3 below are open, and runnable: CK1 and SC4 (#535) have landed.
+> **Status 2026-11-23:** steps 1–2 landed in `SC6_COMMIT` (#537: no Clients href carries a uuid
+> but `?event=`, and a team's or a business's order names the entity and reaches its owner; MK-44's
+> note cleared) and step 4 in `e900af75` (#500). Step 3 below is open, and runnable: SC4 (#535) has
+> landed.
 
-Closes MK-44 (🟡 → ✅); builds MK-45's ruled scope.
+Builds MK-45's ruled scope.
 
 ```text
 PROMPT SC6: The seller's Clients view links by slug and names team and business buyers; a team's
@@ -639,12 +577,6 @@ listings are editable by the team
 ROLE: Full-stack engineer. Queue C: 00001170.
 
 CONTEXT (verified at b7280787; 00001170 refs at f2e25929):
-  - #218 (a): the Clients readers' hrefs carry uuids: /messages/<uuid> (00001170 ~:1808) and
-    /calendar?event=<uuid>; PRD-J1. ROUTING.md owns the thread's address (Decision #444 flag (a)
-    records a PRODUCT_SPEC-vs-ROUTING contradiction about it: follow ROUTING, and if the flag is
-    still open, do not resolve it here); #388 owns ?event=.
-  - #218 (d): fn_seller_order_lines resolves a buyer only for owner_type user or freelancer
-    (:1733, :1744), so a team's or a business's order shows no buyer.
   - #312 flag (a): every catalogue write door is creator-only (save_listing, apply_listing_media,
     set_listing_status, duplicate, delete), so a teammate cannot edit a colleague's team listing;
     CK1's freeze hook checks the creator too (#500 (a)). Flag (e): presets are not team-scoped.
@@ -652,23 +584,23 @@ CONTEXT (verified at b7280787; 00001170 refs at f2e25929):
 Who may edit a team's listing (ruled: Decision #500, 2026-11-18, A tightened): any active
 publish_listings holder edits, publishes, pauses and duplicates any team listing, and
 create_listing for a team needs it too; deleting is the creator while still a holder, or a
-member at the admin or owner rank; a team listing's presets live on the team's own schedule. The
-inquiry link becomes /messages/dm-<handle>; ?event= stays (ROUTING, #388; PRD-J1).
+member at the admin or owner rank; a team listing's presets live on the team's own schedule. SC4
+(#535) made set_listing_status a definer and holds status, published_at and promoted against a
+direct write, so the listings and products UPDATE policies (00002020) may now admit a holder
+without reopening #494 (A); #500 flags (a) (the freeze hook's creator check) and (c)
+(scheduling.fn_owner_manages for a team's presets) still apply.
 
 STEPS:
-  1. Red first: a probe for the uuid hrefs and the missing team buyer.
-  2. Slugs in every href, per ROUTING.md; a team or business buyer named as the entity (its name
-     and handle, as MetaLine text), never a blank.
   3. The ruling across the five doors and the presets; extend catalogue_publish_locks.sql.
 
-ACCEPTANCE: no uuid in any Clients href but ?event=; a team's order names the team; under the ruling, a
-teammate edits a colleague's listing (or is refused with copy that says why). Screenshots.
+ACCEPTANCE: under the ruling, a teammate edits a colleague's listing (or is refused with copy that
+says why). Screenshots.
 
-SAME CHANGE: ROUTING.md if a shape changes; documentation/database/catalogue/*; the decision row
-closing #218 (a), (d) and #312 (a), (e).
+SAME CHANGE: documentation/database/catalogue/*; PRODUCTION_READINESS PRD-C34; the decision row
+closing #312 (a), (e).
 ```
 
-§1.2 rows: **MK-44** 🟡 → ✅; **MK-45**'s note cleared once the ruled scope is built.
+§1.2 rows: **MK-45**'s note cleared once the ruled scope is built; **PRD-C34** ❌ → ✅.
 
 ### SC7 — Request to Sell, the client's grant, and the royalty
 
@@ -784,8 +716,9 @@ ROUTING.md; documentation/database/ops/*; the decision row closing #393 (n).
 
 ### SC9 — One #393 phase (run once per phase)
 
-> **Status 2026-11-23:** open, once per phase. Phase 0 was CK1 (#488); phase 1 runs now (A2 ruled
-> #499; `/api/files/object` still serves at `f2e25929`).
+> **Status 2026-11-23:** partly done, once per phase. Phase 0 was CK1 (#488); phase 1 landed
+> (#SC9P1): no signed read URL reaches a browser, and `/api/files/object` is a `308` to the proxy.
+> Phase 6 waits for nothing; the others wait as the table says.
 
 The rest of MK-47.
 
@@ -794,10 +727,10 @@ PROMPT SC9: ASSET_DELIVERY_ARCHITECTURE.md §14 phase <N> (or ANTI_PIRACY_ENGINE
 
 ROLE: as the phase needs. Queue C, unless the phase edits place_wallet_order (then Queue M).
 
-CONTEXT: CK1 built phase 0 (#488). Read the phase's row in §14, every section it names, and its
-rulings in §13 (A1-A11) or ANTI_PIRACY_ENGINE.md §13 (B1-B10). A2 is ruled (#499) and A6 and A8
-(#488); Decision #393 logs the rest as open. USER_FLOWS MK-47 still says "21 rulings open":
-correct its count when your phase lands.
+CONTEXT: CK1 built phase 0 (#488) and #SC9P1 phase 1. Read the phase's row in §14, every section
+it names, and its rulings in §13 (A1-A11) or ANTI_PIRACY_ENGINE.md §13 (B1-B10). A2 is ruled (#499)
+and A6 and A8 (#488); Decision #393 logs the rest as open. USER_FLOWS MK-47 counts them (18 of 21
+open): correct its count when your phase rules more.
 
 🧑 DECISION (before any code): put each of the phase's rulings to me with the spec's
 recommendation; build nothing that depends on one I have not answered. A ⚖️ ruling: build behind
@@ -812,7 +745,6 @@ routes; SYSTEM_ARCHITECTURE.md §Environment Variable Contract and .env.example 
 
 | Phase | Delivers                                                | Waits for                                   |
 | :---- | :------------------------------------------------------ | :------------------------------------------ |
-| 1     | Signed reads closed; `/api/files/object` retired        | — (A2 ruled #499)                           |
 | 2     | The upload whitelist, mandatory ClamAV, large files     | T&S SN2 (the safety node); A7               |
 | 3     | The edge host, `SUPABASE_PUBLIC_URL`, the link resolver | Your edge choice; A5                        |
 | 4     | The sandbox origin, the CDN, previews, private buckets  | Phase 3; A1, A4                             |

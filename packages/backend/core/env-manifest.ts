@@ -276,6 +276,10 @@ export const ENV_MANIFEST: readonly EnvEntry[] = [
 	planned("FILES_CRON_SECRET", "app", "secret", "T&S SN1"),
 	planned("AUTH_SSO_ENABLED", "app", "gate", "SSO1"),
 	planned("TWILIO_AUTH_TOKEN", "app", "secret", "COMMS NT5"),
+	// The daily FX feed's provider (Decision #471): live once the owner picks the vendor and its adapter
+	// lands in services/finance/fx-feed.ts (configuredFxFeed).
+	planned("FX_FEED_URL", "app", "url", "FINANCE DB17"),
+	planned("FX_FEED_API_KEY", "app", "secret", "FINANCE DB17"),
 ];
 // #endregion
 

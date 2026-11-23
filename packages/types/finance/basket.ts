@@ -50,13 +50,10 @@ export const destinationEmail = z.string().trim().regex(
 /**
  * The five principals whose money a basket, a saved card or a checkout may spend.
  *
- * This is {@link WalletOwnerType} **minus `system`**, and the narrowing is load-bearing rather than
- * stylistic: `finance.baskets.owner_type` and `finance.saved_cards.owner_type` both carry
- * `CHECK (owner_type IN ('user','freelancer','business','team','enterprise'))`, so a schema that
- * accepted `system` would validate a write payload the database then refuses — a payload passing
- * validation and failing at INSERT is exactly the drift this package exists to prevent. The hidden
- * system wallets (Escrow Pool, Fee Collection, Dispute Lockbox) hold platform money and are never
- * issued a basket or a card.
+ * The same five as {@link WalletOwnerType}: `finance.wallets`, `finance.baskets` and
+ * `finance.saved_cards` all carry `CHECK (owner_type IN ('user','freelancer','business','team','enterprise'))`.
+ * The platform's own accounts (Escrow Pool, Fee Collection, Dispute Lockbox) are not wallets
+ * (Decision #337, ruling M2) and are never issued a basket or a card.
  *
  * The `satisfies` clause makes this a **compile-time subset proof**: widening the wallet axis without
  * widening this one is fine, but adding a member here that the wallet axis does not have is a type
@@ -70,7 +67,7 @@ const PURCHASE_OWNER_TYPES = [
 	"enterprise",
 ] as const satisfies readonly WalletOwnerType[];
 
-/** Whose money a purchase spends — {@link WalletOwnerType} without the platform's `system` wallets. */
+/** Whose money a purchase spends — a {@link WalletOwnerType}. */
 export const PurchaseOwnerType = z.enum(PURCHASE_OWNER_TYPES);
 export type PurchaseOwnerType = z.infer<typeof PurchaseOwnerType>;
 // #endregion
@@ -587,4 +584,86 @@ export const AppliedPromoSchema = z.object({
 	message: z.string().max(200).nullable(),
 });
 export type AppliedPromo = z.infer<typeof AppliedPromoSchema>;
+
+/** A promo code's discount kind (`finance.promo_codes.kind`). */
+export const PromoKind = z.enum(["percent", "flat"]);
+export type PromoKind = z.infer<typeof PromoKind>;
+
+/** The shape a seller's code takes: 4 to 40 letters, digits or hyphens, upper-cased. */
+export const PROMO_CODE_PATTERN = /^[A-Z0-9][A-Z0-9-]{3,39}$/;
+
+/**
+ * A promo code as its seller reads it (`finance.list_own_promo_codes`, Decision #485): a seller issues
+ * codes over their own product listings and funds the discount. Mirrors `finance.promo_codes` field for
+ * field; `listings` are listing slugs (Decision #88), `null` meaning every product listing of theirs.
+ */
+export const SellerPromoCodeSchema = z.object({
+	id: reference,
+	code: z.string().max(40),
+	label: z.string().max(120),
+	kind: PromoKind,
+	/** Basis points off, for a percentage code (`value_bp`); `null` for a fixed one. */
+	valueBp: z.number().int().min(1).max(10_000).nullable(),
+	/** The fixed saving (`value_minor` in `currency`); `null` for a percentage code. */
+	value: MoneyViewSchema.nullable(),
+	startsAt: timestamp.nullable(),
+	expiresAt: timestamp.nullable(),
+	/** Redemptions across every account (`max_redemptions`); `null` is no cap. */
+	maxRedemptions: z.number().int().positive().nullable(),
+	/** Redemptions per account (`max_redemptions_per_account`, ruling M8); `null` is no limit. */
+	maxRedemptionsPerAccount: z.number().int().positive().nullable(),
+	redemptionCount: z.number().int().min(0),
+	listings: z.array(z.string().max(40)).max(100).nullable(),
+	/** When the seller archived it (`deactivated_at`); `null` while live. */
+	archivedAt: timestamp.nullable(),
+	createdAt: timestamp,
+});
+export type SellerPromoCode = z.infer<typeof SellerPromoCodeSchema>;
+
+/** One of the seller's product listings a code may be scoped to. */
+export const PromoListingOptionSchema = z.object({
+	slug: z.string().max(40),
+	title: z.string().max(200),
+});
+export type PromoListingOption = z.infer<typeof PromoListingOptionSchema>;
+
+/** The Promotions view's read: the seller's codes and the product listings a code may cover. */
+export const SellerPromotionsSchema = z.object({
+	codes: z.array(SellerPromoCodeSchema),
+	listings: z.array(PromoListingOptionSchema),
+});
+export type SellerPromotions = z.infer<typeof SellerPromotionsSchema>;
+
+/**
+ * Issue a code (`finance.save_promo_code`). A percentage code carries `percent` (1–100); a fixed one
+ * `amountMinor` and its `currency`. `listings` (slugs) narrows it to some product listings; omitted or
+ * empty is every one. `perAccount` `null` lifts the per-account limit; omitted is one each.
+ */
+export const SavePromoCodeSchema = z.object({
+	code: z.string().trim().toUpperCase().regex(
+		PROMO_CODE_PATTERN,
+		"Use 4 to 40 letters, digits or hyphens.",
+	),
+	label: z.string().trim().min(1, "Name the code.").max(120),
+	kind: PromoKind,
+	percent: z.number().int().min(1).max(100).optional(),
+	amountMinor: z.number().int().min(1).max(100_000_000).optional(),
+	currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+	listings: z.array(z.string().max(40)).max(100).optional(),
+	expiresAt: timestamp.nullable().optional(),
+	maxRedemptions: z.number().int().min(1).max(1_000_000).nullable().optional(),
+	perAccount: z.number().int().min(1).max(1_000).nullable().optional(),
+}).superRefine((v, ctx) => {
+	if (v.kind === "percent" && v.percent === undefined) {
+		ctx.addIssue({ code: "custom", path: ["percent"], message: "Give the percentage off." });
+	}
+	if (v.kind === "flat" && (v.amountMinor === undefined || v.currency === undefined)) {
+		ctx.addIssue({ code: "custom", path: ["amountMinor"], message: "Give the amount off." });
+	}
+});
+export type SavePromoCode = z.infer<typeof SavePromoCodeSchema>;
+
+/** Archive one of the seller's codes (`finance.archive_promo_code`). */
+export const ArchivePromoCodeSchema = z.object({ id: reference });
+export type ArchivePromoCode = z.infer<typeof ArchivePromoCodeSchema>;
 // #endregion

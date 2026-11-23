@@ -8,7 +8,7 @@
  *   2. Opens a quick tunnel to it; its URL becomes `APP_URL` (links, callbacks, share URLs).
  *   3. When the Supabase API answers, opens a second tunnel to a storage-only proxy; its URL becomes
  *      `SUPABASE_PUBLIC_URL`. Islands never call Supabase (root CLAUDE.md §2): the only Supabase URLs a
- *      browser is handed are storage objects — public reads, signed reads, signed uploads
+ *      browser is handed are storage objects — public reads and signed uploads
  *      (packages/backend/core/storage-url.ts, storage-signed.ts). Kong itself is never exposed: it
  *      also routes /rest, /auth and /pg, and the local stack's service-role key is a published default.
  *   4. Everything server-side — `SUPABASE_URL`, the service-role key, every secret — still comes from
@@ -33,7 +33,6 @@ export function tunnelUrl(log: string): string | null {
 /** The only Supabase routes a browser is sent to, and the methods it uses on each. */
 const STORAGE_ROUTES: readonly [prefix: string, methods: readonly string[]][] = [
 	["/storage/v1/object/public/", ["GET", "HEAD"]],
-	["/storage/v1/object/sign/", ["GET", "HEAD"]],
 	["/storage/v1/object/upload/sign/", ["PUT"]],
 ];
 

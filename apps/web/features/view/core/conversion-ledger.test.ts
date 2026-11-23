@@ -102,6 +102,18 @@ Deno.test("seatLedger multiplies a per-seat price by the seats", () => {
 	assertEquals(ledger.lines[0].key, "sittings");
 });
 
+Deno.test("a listing sold by the hour totals its sittings' own prices (SC10)", () => {
+	const hourly = { ...GBP_60, unit: "hour" };
+	const one = sessionLedger(hourly, ["Tue 14 Nov · 10:00–11:30"], 1, [9000]);
+	assertEquals(one.total?.amount.minor, 9000);
+	assertEquals(one.lines.find((l) => l.key === "rate")?.label, "Per hour");
+	const block = sessionLedger(hourly, [], 3, [10501, 2917, 7001]);
+	assertEquals([block.total?.label, block.total?.amount.minor], ["Block total", 20419]);
+	const seats = seatLedger({ ...GBP_60, unit: "hour per seat" }, 2, null, [4500, 3000]);
+	assertEquals(seats.lines.find((l) => l.key === "seat")?.amount?.minor, 7500);
+	assertEquals(seats.total?.amount.minor, 15000);
+});
+
 Deno.test("applyLedger names the stage without its index and prices the chosen role", () => {
 	const s: ProjectStage = {
 		...stage(2, 100, 300),

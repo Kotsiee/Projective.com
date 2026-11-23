@@ -352,3 +352,100 @@ export const UNREVIEWED_ENGAGEMENTS: Array<
 > = [
 	{ listing: "sv-landing-page-in-a-week", client: "noor", completedDaysAgo: 2 },
 ];
+
+// #region Providers review their clients (Decision #486)
+/**
+ * What a provider says of a client it worked for, `[rating, title, comment]`. Every seeded engagement
+ * review is answered by its provider with one of these, a client never seeing the same one twice, so
+ * the double-blind pair is revealed (the later of the two submits) and the client track has a corpus.
+ */
+export type ClientReview = [number, string, string];
+
+export const PROVIDER_REVIEWS_OF_CLIENTS: ClientReview[] = [
+	[
+		5,
+		"A brief we could build from on day one",
+		"The scope arrived with references, constraints and a named decision-maker, and every stage was signed off inside two working days. Payment released the moment the work was accepted.",
+	],
+	[
+		4.8,
+		"Decisive, generous with context",
+		"Feedback came as one consolidated round per stage rather than a drip of messages, and when something was out of scope they said so early and funded the extra stage without fuss.",
+	],
+	[
+		5,
+		"The kind of client you hope for",
+		"They knew what they wanted and why, trusted us with the how, and turned around approvals quickly. Calls started on time and ended with a written summary of what had been agreed.",
+	],
+	[
+		4.6,
+		"Clear goals, a few late changes",
+		"The goals never moved, though two requests landed after a stage was locked. They accepted that those belonged in a revision round and paid for it. Otherwise a smooth, respectful engagement.",
+	],
+	[
+		4.9,
+		"Organised and quick to approve",
+		"Assets, logins and brand files were ready before kickoff, which saved us a week. Approvals were fast and specific, and every submission got a real answer rather than a thumbs-up.",
+	],
+	[
+		4.7,
+		"Fair, responsive, good to work for",
+		"They answered questions within the day and kept the review circle small. One stage needed an extra round of internal sign-off on their side, which they flagged before it slipped.",
+	],
+];
+// #endregion
+
+// #region A warned client (Decision #486 (C))
+/**
+ * Atlas Labs' past engagements, each completed long enough ago that its window has closed and its
+ * provider's review is public. Five low ratings put its Client Trust Score under 3.00, so its open
+ * brief (`loop-mobile`) is demoted in Explore and a freelancer applying to it meets the warning first.
+ * `[provider persona, brief title, completed days ago, rating, title, comment]`.
+ */
+export const WARNED_CLIENT = {
+	business: "atlas",
+	owner: "daniel",
+	engagements: [
+		[
+			"maris",
+			"Atlas analytics — dashboard redesign",
+			46,
+			1.5,
+			"Scope grew every week",
+			"Three new screens appeared after the stage was locked, each described as a small tweak. When we raised a revision round the reply was that it should already have been included. Payment came late.",
+		],
+		[
+			"juno",
+			"Atlas marketing site — frontend build",
+			58,
+			2,
+			"Hard to get a decision",
+			"Approvals sat for days with no reply, then arrived as a list of changes from people who had not been on the kickoff call. The build shipped, but nearly a month later than planned through no fault of the plan.",
+		],
+		[
+			"ren",
+			"Atlas product teaser — motion pass",
+			73,
+			1,
+			"Signed-off work reopened at the end",
+			"The storyboard and the animatic were both signed off in writing, then the final cut was called off-brief and the earlier approvals were set aside. Acceptance took three more weeks of back and forth.",
+		],
+		[
+			"lena",
+			"Atlas onboarding — illustration set",
+			96,
+			1.5,
+			"Feedback without a brief",
+			"There was no written brief, only a call, and each round of feedback contradicted the one before it. We delivered a full set twice. Communication was polite, but nothing was decided until the last week.",
+		],
+		[
+			"tomasz",
+			"Atlas data pipeline — ingestion service",
+			121,
+			2,
+			"Unclear ownership on their side",
+			"Three different people asked for different priorities and nobody could settle them. The work was accepted in the end, but only after we escalated twice and wrote the acceptance criteria ourselves.",
+		],
+	] as Array<[string, string, number, number, string, string]>,
+};
+// #endregion

@@ -40,7 +40,13 @@ $$;
 
 -- Recompute the composite from the stored inputs, persist the rung, and record the transition.
 -- The weights are TUNABLE DIALS, deliberately surfaced in `components` so the profile can explain the
--- rung and so the magnitudes can be re-fitted against analytics.
+-- rung and so the magnitudes can be re-fitted against analytics (finance-model §16.3).
+--
+-- Decision #489: `reviews` reads the client track alone, scaled to its full 20 points
+-- (`client_rating_avg / 5 × 20`). The average is the Bayesian mean org.fn_refresh_standing_reviews
+-- writes, and 0 until the subject's first client review (flag (a)); `peer_rating_avg` is reserved and
+-- never read. `dispute_free` is 0 until the subject's first escrow (flag (b)), so a newcomer is not
+-- credited with a record it does not have. Pinned to an empty search_path; every name is qualified.
 CREATE OR REPLACE FUNCTION org.fn_recompute_standing(
     p_subject_type org.standing_subject,
     p_subject_id uuid
@@ -48,13 +54,14 @@ CREATE OR REPLACE FUNCTION org.fn_recompute_standing(
 RETURNS smallint
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = org, security, analytics, public
+SET search_path = ''
 AS $$
 DECLARE
     v_row org.entity_standing%ROWTYPE;
     v_components jsonb;
     v_score numeric(5, 2);
     v_level smallint;
+    v_has_escrow boolean;
 BEGIN
     SELECT * INTO v_row FROM org.entity_standing s
     WHERE s.subject_type = p_subject_type AND s.subject_id = p_subject_id;
@@ -68,14 +75,19 @@ BEGIN
         WHERE s.subject_type = p_subject_type AND s.subject_id = p_subject_id;
     END IF;
 
-    v_components := jsonb_build_object(
-        'completion',   round(v_row.completion_rate * 25, 2),
-        'on_time',      round(v_row.on_time_rate * 25, 2),
-        'reviews',      round(((v_row.client_rating_avg + v_row.peer_rating_avg) / 10.0) * 20, 2),
-        'dispute_free', round((1 - v_row.dispute_rate) * 15, 2),
-        'workload',     round(v_row.workload_reliability * 10, 2),
-        'tenure',       round(LEAST(v_row.tenure_days / 365.0, 1.0) * 5, 2),
-        'penalty',      round(-1 * LEAST(v_row.penalty_severity, 100), 2)
+    v_has_escrow := EXISTS (
+        SELECT 1 FROM finance.escrows e
+         WHERE e.payee_type::text = p_subject_type::text AND e.payee_id = p_subject_id
+    );
+
+    v_components := pg_catalog.jsonb_build_object(
+        'completion',   pg_catalog.round(v_row.completion_rate * 25, 2),
+        'on_time',      pg_catalog.round(v_row.on_time_rate * 25, 2),
+        'reviews',      pg_catalog.round((v_row.client_rating_avg / 5.0) * 20, 2),
+        'dispute_free', CASE WHEN v_has_escrow THEN pg_catalog.round((1 - v_row.dispute_rate) * 15, 2) ELSE 0 END,
+        'workload',     pg_catalog.round(v_row.workload_reliability * 10, 2),
+        'tenure',       pg_catalog.round(LEAST(v_row.tenure_days / 365.0, 1.0) * 5, 2),
+        'penalty',      pg_catalog.round(-1 * LEAST(v_row.penalty_severity, 100), 2)
     );
 
     v_score := GREATEST(0, LEAST(100,
@@ -94,8 +106,8 @@ BEGIN
     SET score = v_score,
         level = v_level,
         components = v_components,
-        level_changed_at = CASE WHEN v_level IS DISTINCT FROM v_row.level THEN now() ELSE s.level_changed_at END,
-        computed_at = now()
+        level_changed_at = CASE WHEN v_level IS DISTINCT FROM v_row.level THEN pg_catalog.now() ELSE s.level_changed_at END,
+        computed_at = pg_catalog.now()
     WHERE s.subject_type = p_subject_type AND s.subject_id = p_subject_id;
 
     INSERT INTO org.standing_events (subject_type, subject_id, event_type, from_level, to_level, score, components)
@@ -111,14 +123,14 @@ BEGIN
 
     PERFORM analytics.fn_emit (
         'standing.recomputed', p_subject_type::text::analytics.subject_kind, p_subject_id,
-        jsonb_build_object('score', v_score, 'level', v_level, 'components', v_components),
+        pg_catalog.jsonb_build_object('score', v_score, 'level', v_level, 'components', v_components),
         v_score, NULL, 'standing'
     );
 
     IF v_level IS DISTINCT FROM v_row.level THEN
         PERFORM analytics.fn_emit (
             'standing.level_changed', p_subject_type::text::analytics.subject_kind, p_subject_id,
-            jsonb_build_object(
+            pg_catalog.jsonb_build_object(
                 'from_level', v_row.level,
                 'to_level', v_level,
                 'direction', CASE WHEN v_level > v_row.level THEN 'up' ELSE 'down' END,
@@ -134,6 +146,49 @@ BEGIN
     END IF;
 
     RETURN v_level;
+END;
+$$;
+
+-- Standing's review input for one provider (Decision #489): the Bayesian mean of the subject's
+-- revealed, visible reviews from clients (`reviews.entity_reviews` targeting this freelancer, or this
+-- team: a team's and its members' reviews stay apart, flag (c)), with finance-model §16.7's cold-start
+-- prior of 5 reviews at the delivery track's corpus mean; 0 until the first one. It writes
+-- `client_rating_avg` and recomputes the subject. A review write calls it for the reviewed subject
+-- only (reviews.fn_after_review_change, 00001670), so a review never runs Standing math for anyone
+-- else and no money door runs it at all (#58 (e), narrowed for reviews). `peer_rating_avg` is
+-- reserved and never written.
+CREATE OR REPLACE FUNCTION org.fn_refresh_standing_reviews(
+    p_subject_type org.standing_subject,
+    p_subject_id uuid
+)
+RETURNS smallint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_target reviews.review_target_type :=
+        CASE p_subject_type WHEN 'team' THEN 'team' ELSE 'freelancer' END::reviews.review_target_type;
+    v_m numeric;
+    v_n integer;
+    v_sum numeric;
+    v_avg numeric(3, 2) := 0;
+BEGIN
+    SELECT pg_catalog.count(*), COALESCE(pg_catalog.sum(r.rating), 0) INTO v_n, v_sum
+      FROM reviews.entity_reviews r
+     WHERE r.is_visible AND r.target_entity_type = v_target AND r.target_entity_id = p_subject_id;
+    IF v_n > 0 THEN
+        SELECT pg_catalog.avg(r.rating) INTO v_m
+          FROM reviews.entity_reviews r
+         WHERE r.is_visible AND r.target_entity_type IN ('freelancer', 'team');
+        v_avg := pg_catalog.round((5 * v_m + v_sum) / (5 + v_n), 2);
+    END IF;
+
+    INSERT INTO org.entity_standing AS s (subject_type, subject_id, client_rating_avg)
+    VALUES (p_subject_type, p_subject_id, v_avg)
+    ON CONFLICT (subject_type, subject_id) DO UPDATE SET client_rating_avg = EXCLUDED.client_rating_avg;
+
+    RETURN org.fn_recompute_standing(p_subject_type, p_subject_id);
 END;
 $$;
 

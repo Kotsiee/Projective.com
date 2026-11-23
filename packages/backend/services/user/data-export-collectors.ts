@@ -20,7 +20,7 @@ import {
 	type DataExportSecurity,
 	type DataExportWallet,
 } from "@projective/types/org";
-import { fileInspectHref, fileObjectHref } from "@projective/types/files";
+import { fileInspectHref, mediaProxyHref } from "@projective/types/files";
 
 /**
  * data-export-collectors — the pure half of the personal data export (Decision #450): one mapper per
@@ -102,7 +102,7 @@ export function collectFiles(raw: unknown, ctx: CollectorContext): DataExportFil
 		records(raw).map((row) => ({
 			...row,
 			open_url: absolute(ctx.origin, fileInspectHref(text(row.id))),
-			download_url: absolute(ctx.origin, fileObjectHref(text(row.id), { download: true })),
+			download_url: absolute(ctx.origin, mediaProxyHref(text(row.id), { download: true })),
 		})),
 	);
 }

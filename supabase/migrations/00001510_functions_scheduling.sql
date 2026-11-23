@@ -4891,7 +4891,9 @@ $$;
 -- Overlapping bands on the same weekday are refused rather than merged: the mirror never makes one,
 -- so receiving one means the request did not come from it. Bands that touch stay apart where their
 -- prices differ. `call` is optional; absent leaves the call settings as they are.
--- Errors are SQLSTATE 22023 with `<field>: <reason>` messages, like org.save_profile.
+-- Errors are SQLSTATE 22023 with `<field>: <reason>` messages, like org.save_profile. Switching paid calls
+-- on for a host who cannot be paid is refused PK403 by the call_settings trigger (§9b, Decision #337,
+-- ruling M4).
 CREATE OR REPLACE FUNCTION scheduling.save_owner_availability (
     p_owner_type scheduling.owner_type,
     p_owner_id uuid,
@@ -5026,6 +5028,47 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object('ok', true, 'schedule_id', v_schedule);
+END;
+$$;
+-- #endregion
+
+-- #region 9b. Paid calls need a payout-ready host (Decision #337, ruling M4)
+-- Switching paid calls on (`paid_enabled` false → true, or a new row born with it on) needs the
+-- schedule's owner to pass finance.fn_assert_payout_ready: a person's schedule (`user`, `freelancer`)
+-- for that person, a team's for every shareholder. A business or enterprise schedule names no earner
+-- here; where its paid calls' money lands is SCH-WP6's. On the table rather than in
+-- scheduling.save_owner_availability, because the "Manage call settings" policy lets the owner write the
+-- row directly too. Keeping paid calls on, or switching them off, is never refused. An
+-- `INSERT … ON CONFLICT DO UPDATE` (the editor's upsert) fires the BEFORE INSERT for the proposed row
+-- first, so a row whose paid calls are already on passes there and is judged as the UPDATE it becomes.
+-- PK403 `payout_not_ready:` with HINT `self` (the owner) or `team`.
+CREATE OR REPLACE FUNCTION scheduling.trg_call_settings_paid_gate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_schedule scheduling.schedules;
+BEGIN
+    IF NOT NEW.paid_enabled THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP = 'UPDATE' AND OLD.paid_enabled THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP = 'INSERT' AND EXISTS (
+        SELECT 1 FROM scheduling.call_settings c WHERE c.schedule_id = NEW.schedule_id AND c.paid_enabled
+    ) THEN
+        RETURN NEW;
+    END IF;
+    SELECT * INTO v_schedule FROM scheduling.schedules WHERE id = NEW.schedule_id;
+    IF v_schedule.owner_type IN ('user'::scheduling.owner_type, 'freelancer'::scheduling.owner_type) THEN
+        PERFORM finance.fn_assert_payout_ready('freelancer', v_schedule.owner_id);
+    ELSIF v_schedule.owner_type = 'team'::scheduling.owner_type THEN
+        PERFORM finance.fn_assert_payout_ready('team', v_schedule.owner_id);
+    END IF;
+    RETURN NEW;
 END;
 $$;
 -- #endregion

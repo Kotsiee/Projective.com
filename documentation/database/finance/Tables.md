@@ -16,6 +16,12 @@ governance, statements, and idempotency.
   the currency it was entered in and settled in that exact currency. **GBP** is the internal
   accounting/bridging base (`security.platform_params.base_currency`). Display conversion is
   read-time only (see `finance-model.md` §Multi-Currency & FX) and never mutates stored amounts.
+- **Every currency column is an ISO-4217 code** (FA C14, FINANCE DB8). Each `currency`, `*_currency`,
+  `fx_base` and `fx_rates.base` / `quote` column, in this schema and in `org`, `projects`,
+  `scheduling` and `security`, carries `CHECK (<column> ~ '^[A-Z]{3}$')`, so `usd`, `US` and `EURO`
+  are refused (23514; `EURO` into a `char(3)` column fails first, 22001, too long). A nullable one
+  admits NULL. `char(3)` columns keep their type. `supabase/probes/currency_integrity.sql` fails on
+  any currency column without the CHECK.
 - **Materialised balance (⚠️ not derived double-entry).** `finance.wallets.balance_cents` is the
   live Available balance, kept in step by `finance.fn_wallet_credit`/`fn_wallet_debit`, which also
   append a `finance.transactions` line carrying `balance_after_cents`. This is a **per-wallet
@@ -57,15 +63,16 @@ The tiered vault. One row per `(owner_type, owner_id, currency)`.
 | Column          | Type   | Notes                                                                    |
 | :-------------- | :----- | :----------------------------------------------------------------------- |
 | `id`            | uuid   | PK.                                                                      |
-| `owner_type`    | text   | `user` / `freelancer` / `business` / `team` / `enterprise` / `system`. |
+| `owner_type`    | text   | CHECK `user` / `freelancer` / `business` / `team` / `enterprise` (`WalletOwnerType`; FCA N24). |
 | `owner_id`      | uuid   | The owning entity.                                                       |
-| `currency`      | text   | ISO-4217 origin currency.                                                |
+| `currency`      | text   | ISO-4217 origin currency, CHECK `^[A-Z]{3}$`.                            |
 | `balance_cents` | bigint | **Materialised** Available balance (`CHECK >= 0`).                       |
 | `approval_threshold_cents` | bigint | This vault's own spend-approval threshold; `NULL` = no local override (the platform `vault_approval_threshold_cents` applies). |
 | UNIQUE          | —      | `(owner_type, owner_id, currency)`.                                      |
 
 > **Hidden system wallets** (Escrow Pool, Fee Collection, Dispute Lockbox — `finance-model.md` §6)
-> are the canonical model but are **not yet materialised** as `owner_type='system'` rows: the engine
+> are the canonical model but are **not materialised** as wallet rows (Decision #337, ruling M2; the
+> `owner_type` CHECK refuses `system`): the engine
 > tracks held capital via `finance.escrows` and the platform fee via `escrows.platform_fee_cents`
 > rather than crediting system wallet rows. Materialising them is a future additive step.
 
@@ -83,13 +90,13 @@ compensating row through `fn_wallet_credit` / `fn_wallet_debit`, never by an edi
 | `wallet_id`           | uuid        | FK → `finance.wallets` (**RESTRICT**: a wallet with ledger history is never deleted). |
 | `direction`           | text        | `credit` / `debit`.                                                             |
 | `amount_cents`        | bigint      | `CHECK > 0`.                                                                    |
-| `currency`            | text        | Origin currency.                                                                |
-| `reason`              | text        | Canonical code (see below).                                                     |
+| `currency`            | text        | Origin currency, CHECK `^[A-Z]{3}$`.                                            |
+| `reason`              | text        | CHECK: one of the canonical codes below, and nothing else (FCA N24, N36).       |
 | `ref_table`,`ref_id`  | text,uuid   | Nullable source pointer (usually `escrows`).                                    |
 | `balance_after_cents` | bigint      | Running balance after this line.                                                |
-| `fund_state`          | `finance.fund_state` | Meant to name the pot of capital the amount belongs to; default `available`. **No writer sets it today**, so every row reads `available` (FDD X22 / N13), and the ledger reader's `fundState` filter (`wallet-ledger.ts`) matches only that. The fund states are projected from escrows, `pending_releases` and wallets instead (above). |
+| `fund_state`          | `finance.fund_state` | Meant to name the pot of capital the amount belongs to; default `available`. **No function writes it**, so every row a door writes reads `available` (FDD X22 / N13); only the generated seed stamps its `escrow_hold` rows `locked`. The ledger reader's `fundState` filter (`wallet-ledger.ts`) therefore matches real rows only on `available`. The fund states are projected from escrows, `pending_releases` and wallets instead (above). |
 | `fx_rate`             | numeric     | The FX snapshot of a row a conversion wrote (Decision #435), `NULL` on every other row: one `fx_base` bought `fx_rate` units of the pair's other currency at mid-market. Stamped identically on both legs of a conversion and on the refund of escrow it funded, by `fn_wallet_credit_fx` / `fn_wallet_debit_fx`. |
-| `fx_base`             | char(3)     | The currency the payer paid in; keeps its platform-base default (`GBP`) on a row with no rate. |
+| `fx_base`             | char(3)     | The currency the payer paid in, CHECK `^[A-Z]{3}$`; keeps its platform-base default (`GBP`, the seeded `base_currency`, pinned with `PLATFORM_BASE_CURRENCY` by `ledger-reasons.contract.test.ts`) on a row with no rate. |
 | `fx_as_of`            | timestamptz | The `finance.fx_rates.as_of` of the older of the two rates the quote read.     |
 
 **Canonical `reason` codes:** `topup` (money in — a card payment settled by the Stripe webhook writes
@@ -103,7 +110,14 @@ amounts (see `finance.chargebacks` for the dispute case they reference). A team 
 `fx_conversion` twice, the principal debited from the source wallet and the target amount credited
 to the target wallet, and `fx_spread` for the margin debited beside the principal, all with
 `ref_table = 'fx_conversions'`. Both debit reasons are voluntary in `fn_wallet_debit_fx`, so a
-conversion never reaches earmarked money; statements count `fx_spread` as a fee.
+conversion never reaches earmarked money; statements count `fx_spread` as a fee. The rest of the
+list: `order_payment` and `invoice_payment` (spends), `on_account_credit` (credit drawn for an order
+bought on account), `transfer_in` / `transfer_out` and `team_distribution` (both sides), `payout` and
+`payout_reversal`, `product_sale`, and the simulator's six `simulated_*` codes
+(`finance.simulate_wallet_transaction`). The CHECK holds all 29 (FINANCE DB8). `fn_wallet_debit`'s
+voluntary and involuntary lists and `fn_is_income_reason` classify them and may name nothing outside
+it (`supabase/probes/currency_integrity.sql`); `LEDGER_KIND_REASONS` files every non-simulated code
+in one ledger family (`ledger-reasons.contract.test.ts`).
 
 > **`demo_opening_credit` is retired** (2026-09-28). A business wallet used to be credited
 > 2,500,000 minor units, in whatever currency it was opened in, by the `trg_seed_business_wallet`
@@ -113,8 +127,9 @@ conversion never reaches earmarked money; statements count `fx_spread` as a fee.
 
 ### `finance.escrows`
 
-Capital locked against a stage/ticket. Text `status`, values used by the engine: `held` (on hold) →
-`released` / `refunded`; `disputed` (Dispute Lockbox); table default `funded` (rarely persisted).
+Capital locked against a stage/ticket. Text `status`, CHECKed to the values the engine writes: `held`
+(on hold, the default) → `released` / `refunded`; `disputed` (Dispute Lockbox); `reserved` (a prepaid
+later stage). Nothing wrote the old default `funded`, so it is gone (FCA N24).
 
 | Column                         | Type                 | Notes                                             |
 | :----------------------------- | :------------------- | :------------------------------------------------ |
@@ -130,13 +145,13 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 | `amount_cents`                 | bigint               | Principal (`CHECK > 0`).                          |
 | `platform_fee_cents`           | bigint               | Fee applied at release (0 while held).            |
 | `deadline_bonus_cents`         | bigint               | `NOT NULL DEFAULT 0`. **Refused unless 0** (`ck_escrows_bonus_unfunded`) until a bonus is held with its escrow; see below. |
-| `currency`                     | text                 | Origin currency.                                  |
-| `status`                       | text                 | `held`/`reserved`/`released`/`refunded`/`disputed`/`funded` (`EscrowStatus`; no value CHECK). `reserved` (Decision #430) is a later ticket stage prepaid: debited, unbound, no `expires_at` (`ck_escrows_reserved_shape`), turned `held` by `finance.fn_activate_ticket_reservation` when the ticket reaches the stage, else `refunded` by `finance.fn_refund_ticket_reservations`. |
+| `currency`                     | text                 | Origin currency, CHECK `^[A-Z]{3}$`.              |
+| `status`                       | text                 | `NOT NULL DEFAULT 'held'`, CHECK `held`/`reserved`/`released`/`refunded`/`disputed` (`EscrowStatus`, pinned by `ledger-reasons.contract.test.ts`). `reserved` (Decision #430) is a later ticket stage prepaid: debited, unbound, no `expires_at` (`ck_escrows_reserved_shape`), turned `held` by `finance.fn_activate_ticket_reservation` when the ticket reaches the stage, else `refunded` by `finance.fn_refund_ticket_reservations`. |
 | `created_at`                   | timestamptz          | `NOT NULL DEFAULT now()`.                         |
 | `released_at`                  | timestamptz          | When it was released to the payee: what a consolidated invoice selects its period by. |
 | `expires_at`                   | timestamptz          | Nullable. When an unclaimed PREPAID escrow is refunded to its payer (Decision #428): stamped by `finance.fn_hold_ticket_escrow` on an unbound hold (`now()` + `prepaid_service_ttl_hours` 120 for a productised service, `prepaid_project_ttl_hours` 168 for a client project — `finance.fn_prepaid_escrow_ttl_hours`), cleared by `finance.fn_bind_ticket_escrow` at the claim, swept by `finance.fn_sweep_expired_prepaid_escrows`. `ck_escrows_expiry_unbound`: never set on a bound escrow. Kept on a refunded row as the deadline it met. |
 | `auto_funded`                  | boolean              | `NOT NULL DEFAULT false`. Held by the From-wallet auto-fund queue (`finance.fn_auto_fund_drain`) rather than by a person. |
-| `fx_rate`,`fx_base`,`fx_as_of` | numeric,char(3),timestamptz | The snapshot of the conversion that funded this escrow (Decision #435): one `fx_base` (the payer's currency) bought `fx_rate` of this escrow's currency at mid-market, observed `fx_as_of`. `NULL` on an escrow held from a balance already in its currency. |
+| `fx_rate`,`fx_base`,`fx_as_of` | numeric,char(3),timestamptz | The snapshot of the conversion that funded this escrow (Decision #435): one `fx_base` (the payer's currency) bought `fx_rate` of this escrow's currency at mid-market, observed `fx_as_of`. Written by a converted purchase (Decision #435, `finance.fn_stamp_escrow_fx`), so no longer reserved (Decision #337, ruling Q0.2 (d), FA C7); `fx_rate`/`fx_as_of` are `NULL` on an escrow held from a balance already in its currency, and `fx_base` keeps its `GBP` default there. `fx_base` CHECK `^[A-Z]{3}$`. |
 | `fx_conversion_id`             | uuid                 | FK → `finance.fx_conversions` (RESTRICT). The purchase conversion that funded it. |
 | `fx_source_minor`              | bigint               | `CHECK >= 0`. What the escrow cost in `fx_base`, margin included: its largest-remainder share of the conversion's charge, so the shares of one conversion sum to exactly what was charged. A refund returns it pro rata (`finance.fn_refund_escrow_to_payer`). |
 
@@ -231,12 +246,19 @@ reproduces the exact rate used at commit.
 **Seeded floor (`00005050_seed_reference_data.sql`).** A baseline observation for every supported
 display currency ships as reference data (`provider = 'seed'`, a FIXED `as_of`, never `now()`, so a
 reset is reproducible) — a from-scratch database can resolve any display currency immediately
-instead of silently rendering unconverted origin amounts. **Both directions of every pair are seeded
-explicitly**, never derived: a reader that divides by the forward rate and a reader that multiplies
-by the inverse disagree in the last minor unit, and a figure that changes with which direction the
-caller asked in is worse than one that is merely stale. `FxService`
-(`@server/services/finance/FxService.ts`) is the only reader — it caches per base for 15 minutes and
-reports `provider`/`asOf` so a seeded or stale rate is always distinguishable from a live one.
+instead of silently rendering unconverted origin amounts. Its GBP-based rows also name the currencies
+the daily feed must quote (`finance.fn_fx_feed_currencies`).
+
+**The daily feed (FBP DB17).** `finance.record_fx_rates` (service role, the `finance-fx-daily` job)
+appends all 12 GBP-based rates at the provider's `as_of`, or none (Functions.md §The daily rate feed);
+the newest `as_of` wins over the floor.
+
+**Readers use the GBP-based rows only.** `FxService` (`@server/services/finance/FxService.ts`) reads
+`base = 'GBP'`, caches per base for 15 minutes, derives a QUOTE → GBP multiplier as 1 / rate
+(`resolveRate`) and reports `provider`/`asOf`, so a seeded or stale rate is always distinguishable from
+a live one; `finance.quote_fx_conversion` pivots every pair through GBP. The seed's inverse rows
+(QUOTE → GBP) are read by no conversion: `org.fn_supported_display_currency` only checks that a
+sign-up's currency hint has a row both ways.
 
 > The FX **snapshot columns** on `finance.transactions` and `finance.escrows` are listed with those
 > tables above. `fx_base` carries `DEFAULT 'GBP'` so a stamped `fx_rate` is never orphaned from the
@@ -340,7 +362,7 @@ fragments (`brand`, `last4`).
 | `finance.deposit_rules`    | Recurring deposit / standing instruction: `wallet_id`, `source_method_id`, `amount_cents`+`currency`, `interval` (weekly/monthly/below_floor), `next_run_at`, `active`, `failure_count`, `last_error`, `created_by` (who authorised the charge), `archived_at` (set once by `update_deposit_rule(p_archive)`; CHECK an archived rule is inactive). Never deleted. Wallet, currency, card and interval never change (`trg_deposit_rules_immutable`). |
 | `finance.payout_schedules` | A standing withdrawal per owner and currency (`(owner, currency)` UNIQUE): `owner_type`/`owner_id`, `mode` (manual/scheduled_weekly/scheduled_monthly/threshold; CHECK a threshold schedule has `threshold_cents`), `threshold_cents`, `destination_method_id`, `next_run_at` (the next Monday or 1st, 00:00 UTC; NULL for manual and threshold), `active`, `created_by` (the author every run withdraws as; re-stamped on each save), `last_run_at`, `last_error`, `failure_count` (refusals in a row; the third sets `active` false). `instant` is reserved: Instant Payouts are **Planned** (Decision #337, ruling P3) and the door refuses it. Written only by `finance.save_payout_schedule` and the scheduler (`fn_claim_due_payout_schedules`); never deleted (manual is the off switch). |
 | `finance.income_smoothing` | AI "Income Smoother" enrolment: `user_id`, `enrolled`, `target_monthly_cents`, `fee_bp` (~0.5%), `eligibility_met`. `(user, currency)` UNIQUE. Eligibility numbers in `finance-model.md` §Money-Movement Rules.                                                                 |
-| `finance.wallet_pots`      | An **earmark** inside a wallet (Decision #337, ruling M6): `wallet_id`, `purpose` (tax/savings/goal/general), `name`, `balance_cents` (the part of the wallet's balance it earmarks), `currency` (the wallet's), `auto_allocate_bp` (the share of each matured income credit it earmarks — the tax-pot auto-set-aside; Σ over a wallet's active pots ≤ 10000, `finance.save_wallet_pot`), `goal_cents` (optional target, `> 0`; never a cap), `active` + `archived_at` (archived once, only empty: `ck_wallet_pots_archived`, `ck_wallet_pots_archived_empty`), `created_at` (`clock_timestamp()`: a recovery shrinks pots newest first). Never deleted. Written only by the pot doors (`00001240` §9) and `fn_wallet_debit`'s recovery. |
+| `finance.wallet_pots`      | An **earmark** inside a wallet (Decision #337, ruling M6): `wallet_id`, `purpose` (tax/savings/goal/general), `name` (CHECK ≤ 120 characters, as `WalletPotSchema` says; FA Z5), `balance_cents` (the part of the wallet's balance it earmarks), `currency` (the wallet's), `auto_allocate_bp` (the share of each matured income credit it earmarks — the tax-pot auto-set-aside; Σ over a wallet's active pots ≤ 10000, `finance.save_wallet_pot`), `goal_cents` (optional target, `> 0`; never a cap), `active` + `archived_at` (archived once, only empty: `ck_wallet_pots_archived`, `ck_wallet_pots_archived_empty`), `created_at` (`clock_timestamp()`: a recovery shrinks pots newest first). Never deleted. Written only by the pot doors (`00001240` §9) and `fn_wallet_debit`'s recovery. |
 | `finance.pot_movements`    | A pot's **append-only ledger** (`trg_pot_movements_append_only` / `_no_truncate`, `PL403`): `pot_id`, `wallet_id`, `direction` (`in`/`out`), `amount_cents` (> 0), `currency`, `reason` (`allocation` · `move_in` · `move_out` · `recovery`; `ck_pot_movements_direction` ties each to its direction), `ref_table`/`ref_id` (`transactions` + the matured credit for an allocation, the chargeback or refund debit for a recovery — `ck_pot_movements_ref`), `balance_after_cents` (the pot's balance after the row), `actor_user_id` (who moved it; `NULL` for the engine's rows; `ON DELETE RESTRICT`), `created_at` (`clock_timestamp()`). Σ in − Σ out = the pot's balance (`finance_invariants.sql` §4). `uq_pot_movements_allocation (pot_id, ref_id) WHERE reason = 'allocation'`: one earmark per pot per credit. Clients read it with the wallet (`fn_can_view_wallet`) and never write it. |
 
 ---
@@ -351,7 +373,7 @@ fragments (`brand`, `last4`).
 | :-------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `finance.vault_permissions` | Capability **grants** (not a single role) on a shared wallet: `wallet_id`, `member_user_id`, `capabilities finance.vault_capability[]` (view/add_funds/spend/distribute/withdraw/manage_members/manage_billing/**approve_spend**). `(wallet, member)` UNIQUE. **A PROJECTION since 2026-09-28**, not a hand-maintained authority: written only by `org.fn_sync_vault_permissions` — called explicitly on every membership, role and override change and on every team/business wallet insert, and **backstopped by triggers** on `org.team_members` / `org.business_members` (role, status, overrides) and `org.team_roles` / `org.business_roles` (capabilities, base preset), so a write path that forgets the call cannot leave a stale grant (Decision #226 (e)) (the mapping is in [`../org/Functions.md` §7](../org/Functions.md#-the-workspace-console-00001020)). A non-member's row is kept, projected to `'{}'`. This resolves the former overlap flag with the retired `org.business_permission` / `org.team_permission` enums. |
 | `finance.split_rules`       | Team smart-split **ruleset template**: `team_id`, `rule_type` (co_op/finders_fee/benevolent_dictator), `vault_bp` (Team Vault cut, taken first), `finder_user_id`+`finder_bp`. Resolves into the per-member `finance.contribution_agreements`. Deterministic remainder rounding: leftover minor unit → Team Vault. **One ACTIVE rule per team** — `uq_split_rules_team_active` (unique, `WHERE active`; was a plain index), because `finance.fn_team_split_plan` reads "the" rule. No active rule = co-op with no vault cut. Written only by `finance.save_split_rule` ([Functions.md](Functions.md)), which retires the active row (`active = false`, kept) and inserts the new one; benevolent_dictator stores `vault_bp = 10000`. No client write grant. |
-| `finance.spend_approvals`   | Over-cap / over-threshold second-approver queue: `wallet_id`, `requested_by`, `amount_cents`+`currency` (what it was filed for), `reason`, `ref_table`/`ref_id` **NOT NULL** (CHECK `ref_table` ∈ `baskets` · `tickets` · `project_stages` · `revisions` · `invoices` · `transfers` — `transfers` names the destination wallet), `status` (pending/approved/rejected/expired/withdrawn — `withdrawn` is the requester taking it back, Decision #246), `approver_user_id`, `decided_at` (when it left `pending` by somebody's act: a decision, or the requester's withdrawal; a lapse stamps nothing), `expires_at`, `consumed_at` + `consumed_ref_table`/`consumed_ref_id` (stamped once, by `finance.fn_redeem_spend_approval`, in the spending transaction; CHECK: all three set together and only on an `approved` row). Filed by `finance.request_spend_approval` (currency = the wallet's, `expires_at = now() + 7 days`), decided by `finance.decide_spend_approval` (needs `approve_spend`), withdrawn by its requester through `finance.withdraw_spend_approval` (CHECK `spend_approvals_withdrawn_check`: a `withdrawn` row names no approver and carries `decided_at`), spent by the spend gate. Indexes: `uq_spend_approvals_pending_ref` (one `pending` row per `(wallet_id, ref_table, ref_id)`), `idx_spend_approvals_redeemable` (approved and unconsumed). No client INSERT — see [Policies.md](Policies.md). |
+| `finance.spend_approvals`   | Over-cap / over-threshold second-approver queue: `wallet_id`, `requested_by`, `amount_cents`+`currency` (what it was filed for), `reason` (CHECK ≤ 2000 characters, as `SpendApprovalSchema` says; FA Z5), `ref_table`/`ref_id` **NOT NULL** (CHECK `ref_table` ∈ `baskets` · `tickets` · `project_stages` · `revisions` · `invoices` · `transfers` — `transfers` names the destination wallet), `status` (pending/approved/rejected/expired/withdrawn — `withdrawn` is the requester taking it back, Decision #246), `approver_user_id`, `decided_at` (when it left `pending` by somebody's act: a decision, or the requester's withdrawal; a lapse stamps nothing), `expires_at`, `consumed_at` + `consumed_ref_table`/`consumed_ref_id` (stamped once, by `finance.fn_redeem_spend_approval`, in the spending transaction; CHECK: all three set together and only on an `approved` row). Filed by `finance.request_spend_approval` (currency = the wallet's, `expires_at = now() + 7 days`), decided by `finance.decide_spend_approval` (needs `approve_spend`), withdrawn by its requester through `finance.withdraw_spend_approval` (CHECK `spend_approvals_withdrawn_check`: a `withdrawn` row names no approver and carries `decided_at`), spent by the spend gate. Indexes: `uq_spend_approvals_pending_ref` (one `pending` row per `(wallet_id, ref_table, ref_id)`), `idx_spend_approvals_redeemable` (approved and unconsumed). No client INSERT — see [Policies.md](Policies.md). |
 | `finance.ledger_audit`      | Immutable who/when/amount trail for vault money moves: `wallet_id`, `actor_user_id`, `action finance.vault_action` (add_funds/spend/distribute/withdraw/transfer), `amount_cents`+`currency`, `metadata`. ⚠️ overlaps `security.audit_logs` (general) — kept separate for the amount-typed wallet-scoped read; reconcile (root `CLAUDE.md` §8). |
 
 ---
@@ -706,14 +728,27 @@ redemption back, and a person's `user` and `freelancer` owners count as one acco
 commit (`place_wallet_order`, PC409 `promo_already_used`) and at preview (`resolve_promo_code` with the
 basket's owner). Partial index `idx_orders_owner_promo` (`owner_id, promo_code`, `00004005`).
 
+**Who issued a code (Decision #485; MARKETPLACE CK2, #536).** `finance.promo_codes.issuer_type`
+(`text`, NULL, `'user' | 'team'`) and `issuer_id` (`uuid`, NULL) name the seller who issued and funds
+the code: a person (their own non-team listings) or a team. Both NULL is a platform code, which the
+platform funds (`promo_code_issuer_pair`: both or neither). `listing_ids` (`uuid[]`, NULL, 1–100 ids)
+narrows a seller's code to some of their product listings; NULL is every one, and only a seller's
+code may carry it (`promo_code_scope_needs_issuer`). Not foreign keys; `finance.save_promo_code`
+admits only product listings the issuer manages. `deactivated_at` is the archive a seller's
+`archive_promo_code` writes (nothing is hard-deleted). Written only by the three seller doors and,
+for a platform code, by seeds and probes. Read as `SellerPromoCodeSchema` (projection-only).
+
 **The fee on each line (Decision #337, ruling M1).** `finance.order_lines` records what was taken on
 a line when it was bought: `platform_fee_minor` (`bigint`, NOT NULL `DEFAULT 0`, `≥ 0`) and its rate
 `platform_fee_bp` (`integer`, NULL, `0..10000`), beside `promo_discount_minor` (`bigint`, NOT NULL
-`DEFAULT 0`, `≥ 0`), the line's share of the order's promo. A `digital_product` line pays its
+`DEFAULT 0`, `≥ 0`), the line's share of the order's promo, and `promo_funded_by` (`text`, NULL,
+`'seller' | 'platform'`; NULL exactly when the share is 0, `ck_order_lines_promo_funder`; Decision #485),
+who paid for that share. A `digital_product` line pays its
 **seller's** marketplace commission — `finance.fn_effective_commission_bp` for the product's owning
 team, else its owning person: a negotiated rate, else their Standing rung's tier rate (8% → 6.5%) —
-truncated, on what the buyer paid for it, `line_total_minor − promo_discount_minor`
-(`line_total_minor` stays the price before the promo). An escrow line (a ticket, a paid revision, a
+truncated, on what the buyer paid for it, `line_total_minor − promo_discount_minor`, when the
+seller funded the share; on `line_total_minor` when the platform did, whose share is then its cost
+(`v_conservation_identity.losses_promos_minor`) (`line_total_minor` stays the price before the promo). An escrow line (a ticket, a paid revision, a
 seat, a session) records `0` and no rate: its fee is the payer's rate, charged at release
 (`finance.escrows.platform_fee_cents`). On the order, `platform_fee_minor` is the lines' sum and
 `platform_fee_bp` the **payer's** rate at placement (`fn_effective_platform_fee_bp`, Decision #187),
@@ -922,3 +957,21 @@ freelancer's `payout_ready` is recomputed from the payout account, never set by 
   once, so money in flight cannot be spent twice); a failed payout keeps it and is balanced by a
   `payout_reversal` credit. `paid` means the Stripe Transfer exists (the money left Projective for the
   owner's Connect account, which pays the bank on Stripe's schedule).
+
+## 🆕 LEGAL LG7 — AML monitoring signals (Decision #529; #336 ruling I1 ⚖️)
+
+- **`finance.aml_signals`** (new) — one row per pattern a money door saw, the data half of the
+  AML-ready posture (PRODUCT_SPEC §Identity, Taxes & Compliance 3): `kind` (`round_trip` · `rapid_churn`
+  · `safety_hold`), `subject_user_id` (FK → `auth.users`, RESTRICT: the person on both sides, or the one
+  withdrawing), `wallet_id` · `escrow_id` · `payout_id` (FKs, RESTRICT, each nullable),
+  `amount_minor` (≥ 0), `currency` (`char(3)`, upper-case), `facts` (jsonb: ids and integer minor units
+  only, no name, address, IP or user agent, Decision #446), `created_at` (`clock_timestamp()`).
+  `ck_aml_signals_round_trip_escrow` (a round trip names its escrow) and
+  `ck_aml_signals_withdrawal_wallet` (a churn or a hold names its wallet). Append-only
+  (`trg_aml_signals_append_only` / `_no_truncate`, `PL403`), RLS on with no policy and no grant to
+  `anon`, `authenticated` or `service_role`, so the subject never sees a row; written only by
+  `finance.begin_payout` and the escrow trigger, read only through `finance.read_aml_signals`. Kept for
+  the AML period (finance-model §17) and HOLD under erasure. Indexes `idx_aml_signals_subject`
+  (subject, kind, newest) and `idx_aml_signals_created`; `idx_inbound_payments_settled_by` serves the
+  churn and hold reads of a person's settled card payments. Row schema: `AmlSignalSchema`
+  (`@projective/types/finance`).

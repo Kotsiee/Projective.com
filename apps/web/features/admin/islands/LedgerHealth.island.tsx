@@ -1,6 +1,8 @@
 import type { JSX } from "preact";
 import "../styles/ledger-health.css";
 import type {
+	AmlSignalsRead,
+	AmlSignalView,
 	ConservationCurrency,
 	ConservationNight,
 	ConversionDrift,
@@ -18,6 +20,9 @@ import {
 	alertChannelLabel,
 	alertGroup,
 	alertStatus,
+	AML_KIND_LABEL,
+	amlFactsText,
+	amlSubject,
 	conservationGroups,
 	conservationStatus,
 	daysText,
@@ -295,6 +300,35 @@ const ESCROW_AGE_COLUMNS: readonly DataColumn<EscrowAgeRow>[] = [
 	overColumn(1, 60, 2),
 	overColumn(2, 90, 1),
 ];
+
+const AML_COLUMNS: readonly DataColumn<AmlSignalView>[] = [
+	{
+		id: "kind",
+		header: "Signal",
+		type: "text",
+		fill: true,
+		minWidth: 240,
+		value: (r) => AML_KIND_LABEL[r.kind],
+		secondary: (r) => amlFactsText(r),
+	},
+	{
+		id: "subject",
+		header: "Person",
+		type: "custom",
+		width: 160,
+		render: (r) => <span class="ledger__id" title={r.subjectUserId}>{amlSubject(r)}</span>,
+	},
+	money("amount", "Amount", (r) => ({ minor: r.amountMinor, currency: r.currency })),
+	{
+		id: "seen",
+		header: "Seen",
+		type: "date",
+		format: "datetime",
+		width: 168,
+		priority: 2,
+		value: (r) => r.createdAt,
+	},
+];
 // #endregion
 
 // #region Sections
@@ -498,6 +532,41 @@ function AlertsSection({ data }: { data: AlertsRead }): JSX.Element {
 	);
 }
 
+function AmlSignalsSection({ data }: { data: AmlSignalsRead }): JSX.Element {
+	return (
+		<>
+			<MetaLine
+				items={[
+					{ text: plural(data.counts.round_trip, "round trip", "round trips"), tabular: true },
+					{ text: plural(data.counts.rapid_churn, "rapid churn", "rapid churns"), tabular: true },
+					{
+						text: plural(data.counts.safety_hold, "held withdrawal", "held withdrawals"),
+						tabular: true,
+					},
+					{
+						text: data.holdEnabled
+							? "Safety Hold on"
+							: "Safety Hold off: signals are recorded, no withdrawal is held",
+					},
+				]}
+			/>
+			{data.signals.length === 0
+				? <p class="ledger-section__empty">No signal has been recorded.</p>
+				: (
+					<DataTable
+						rows={data.signals}
+						rowKey={(r) => r.id}
+						columns={AML_COLUMNS}
+						aria-label="The newest AML monitoring signals and their facts"
+						virtualize={false}
+						columnChooser={false}
+						reorderable={false}
+					/>
+				)}
+		</>
+	);
+}
+
 function SectionBody({ section }: { section: LedgerSectionResult }): JSX.Element {
 	if (!section.ok) {
 		return <Message severity="danger" variant="subtle" size="sm">{section.message}</Message>;
@@ -511,6 +580,8 @@ function SectionBody({ section }: { section: LedgerSectionResult }): JSX.Element
 			return <EscrowAgeSection data={section.data} />;
 		case "alerts":
 			return <AlertsSection data={section.data} />;
+		case "aml_signals":
+			return <AmlSignalsSection data={section.data} />;
 	}
 }
 // #endregion
@@ -518,8 +589,9 @@ function SectionBody({ section }: { section: LedgerSectionResult }): JSX.Element
 /**
  * LedgerHealth — `/admin/ledger`, the operator's read-only view of the ledger (FBP DB16; Decision
  * #337, ruling M2 (A)): Conservation (the identity per currency and its last 30 nightly checks),
- * Wallet drift (what disagrees with its ledger now), Escrow age (MR7, Decision #473) and Alerts (MR4,
- * Decision #461: what was raised, and whether it was sent). A list of
+ * Wallet drift (what disagrees with its ledger now), Escrow age (MR7, Decision #473), Alerts (MR4,
+ * Decision #461: what was raised, and whether it was sent) and AML signals (LG7, Decision #529: what
+ * the money doors recorded, with no action to take). A list of
  * sections, each filled by one `LedgerHealthService` read in the controller; a section whose read
  * failed says so in place and the rest still render. Every figure is exact in its own currency
  * (`MoneyView exact`) and `tabular-nums`; kinds and terms are inline meta text, statuses one Tag. It

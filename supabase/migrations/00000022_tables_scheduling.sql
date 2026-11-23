@@ -538,7 +538,7 @@ CREATE TABLE scheduling.call_settings (
         paid_duration_minutes BETWEEN 5 AND 480
     ),
     fee_amount_minor bigint CHECK (fee_amount_minor >= 0),
-    fee_currency char(3),
+    fee_currency char(3) CHECK (fee_currency ~ '^[A-Z]{3}$'),
     buffer_before_minutes integer NOT NULL DEFAULT 0 CHECK (
         buffer_before_minutes BETWEEN 0 AND 240
     ),
@@ -609,7 +609,7 @@ CREATE TABLE scheduling.discovery_calls (
     meeting_external_id text,
     event_id uuid REFERENCES scheduling.events (id) ON DELETE SET NULL,
     fee_amount_minor bigint CHECK (fee_amount_minor >= 0),
-    fee_currency char(3),
+    fee_currency char(3) CHECK (fee_currency ~ '^[A-Z]{3}$'),
     payment_ref text,
     escrow_id uuid REFERENCES finance.escrows (id) ON DELETE SET NULL,
     refund_amount_minor bigint CHECK (refund_amount_minor >= 0),

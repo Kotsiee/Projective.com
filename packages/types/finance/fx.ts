@@ -406,6 +406,94 @@ export function pinnedRefundMinor(
 }
 // #endregion
 
+// #region The daily rate feed (Decision #337, ruling M5 (f); Decision #471; FBP DB17)
+/**
+ * How old a rate may be, in hours, before a figure converted on it is disclosed as stale (FxService)
+ * and a conversion quote refuses it (`fx_rate_stale`). The database's `fx_rate_max_age_hours`
+ * (`00005001`) holds the same value; `fx-feed.contract.test.ts` fails when the two differ.
+ */
+export const FX_RATE_MAX_AGE_HOURS = 24;
+
+/**
+ * A rate exactly as `finance.fx_rates.rate` (`numeric(20, 10)`) stores it: a plain decimal of at most
+ * ten integer and ten fractional digits, no sign and no exponent. The pattern `finance.record_fx_rates`
+ * applies, so what the provider quoted is what is stored.
+ */
+export const FX_RATE_LITERAL = /^\d{1,10}(?:\.\d{1,10})?$/;
+
+/** A provider slug as `finance.record_fx_rates` accepts it (never `seed`, which marks the floor). */
+export const FX_PROVIDER_SLUG = /^[a-z0-9][a-z0-9_.-]{0,59}$/;
+
+/**
+ * One feed observation, as a provider adapter hands it to `FxService.refreshRates`: every rate
+ * against {@link PLATFORM_BASE_CURRENCY} as the provider's own decimal text, never a float.
+ */
+export const FxFeedSnapshotSchema = z.object({
+	/** The provider slug written to `finance.fx_rates.provider`. */
+	provider: z.string().regex(FX_PROVIDER_SLUG),
+	/** The base every rate is quoted against: the platform base. */
+	base: currency,
+	/** The provider's observation instant (ISO 8601), which becomes each row's `as_of`. */
+	asOf: timestamp,
+	/** `quote code → rate`, `amount_quote = amount_base × rate`, as decimal text. */
+	rates: z.record(z.string(), z.string()),
+});
+export type FxFeedSnapshot = z.infer<typeof FxFeedSnapshotSchema>;
+
+/**
+ * Why a feed recorded nothing, as `finance.record_fx_rates` and `FxService.refreshRates` name it. The
+ * first five describe a fetch that failed (an adapter's own code may be any snake_case word).
+ */
+export const FX_FEED_REFUSALS = [
+	"feed_not_configured",
+	"feed_unavailable",
+	"fetch_failed",
+	"http_error",
+	"body_invalid",
+	"provider_invalid",
+	"base_invalid",
+	"as_of_missing",
+	"as_of_in_future",
+	"rates_invalid",
+	"currencies_unknown",
+	"currency_missing",
+	"currency_unexpected",
+	"rate_invalid",
+] as const;
+export type FxFeedRefusal = typeof FX_FEED_REFUSALS[number];
+
+/** `finance.record_fx_rates`'s answer (the mapper in `fx-feed.ts` reads it through this). */
+export const FxRecordAnswerSchema = z.object({
+	recorded: z.number().int().min(0),
+	quotes: z.number().int().min(0).optional(),
+	provider: z.string(),
+	as_of: timestamp.nullable(),
+	replay: z.boolean().optional(),
+	/** Present when the feed was refused: a snake_case code, one of {@link FX_FEED_REFUSALS} or an adapter's. */
+	refused: z.string().optional(),
+	/** The currencies a refusal names (missing, unexpected or invalid). */
+	currencies: z.array(z.string()).optional(),
+});
+export type FxRecordAnswer = z.infer<typeof FxRecordAnswerSchema>;
+
+/** What one run of the feed did: the cron route's `data`. */
+export const FxRefreshResultSchema = z.object({
+	/** Rows written to `finance.fx_rates` (0 on a replay or a refusal). */
+	recorded: z.number().int().min(0),
+	/** The provider slug, or `none` when no feed is configured. */
+	provider: z.string(),
+	/** The observation instant recorded or refused, when the feed got that far. */
+	asOf: timestamp.nullable(),
+	/** `recorded`: new rates · `replay`: nothing new at that instant · `refused`: nothing recorded. */
+	outcome: z.enum(["recorded", "replay", "refused"]),
+	/** Why nothing was recorded, when `outcome` is `refused`. */
+	reason: z.string().nullable(),
+	/** The currencies a refusal names. */
+	currencies: z.array(z.string()),
+});
+export type FxRefreshResult = z.infer<typeof FxRefreshResultSchema>;
+// #endregion
+
 // #region Dev override (Decision #436)
 /**
  * The Dev Context Switcher's paying-in-one's-own-currency position (`fxCheckout`): `on` or `off` in

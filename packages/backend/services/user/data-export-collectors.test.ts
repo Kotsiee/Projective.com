@@ -210,7 +210,7 @@ Deno.test("files: a manifest with sign-in links, never a storage path, share slu
 		share_slug: "shr-secret",
 	}], CTX);
 	assertEquals(entry.open_url, "https://projective.test/inspect/f1");
-	assertEquals(entry.download_url, "https://projective.test/api/files/object/f1?download=1");
+	assertEquals(entry.download_url, "https://projective.test/api/media/proxy/f1?download=1");
 	assertFalse(keys(entry).includes("storage_path"));
 	assertFalse(keys(entry).includes("share_slug"));
 	assertFalse(JSON.stringify(entry).includes("token="));

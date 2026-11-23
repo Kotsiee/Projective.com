@@ -51,7 +51,9 @@
 - **Who pays it** (Decision #337, ruling M1): the **seller**, on every product sale, at their
   Standing rung's rate. Decision #187's payer-rate rule (§16.4) is scoped to escrow fees, so a
   product sale is charged this commission, never the 5% service fee, and the buyer's own rate or
-  contract never changes it. It is taken on what the buyer paid for the line (after any promo),
+  contract never changes it. It is taken on what the buyer paid for the line (after any
+  seller-funded promo; a platform-funded promo is the platform's cost, so the commission is on the
+  line before it, Decision #485 (a)),
   truncated (§16.4), and deducted from the seller's credit; each order line records the rate and the
   amount. A basket holding two sellers' products charges each their own rate. An Agency may hold a
   contract commission instead of its rung's rate (§16.4). The seller's wallet shows the rate their
@@ -185,6 +187,14 @@ through a ticket-level Fair Exit door. Today either act pays the freelancer 100%
 
 ### Session-Based (Educate/Advise)
 
+- **A sitting priced per hour** (SC10, Decision #__SC10_DEC__): a listing sold by the hour charges
+  ⌊rate × minutes ÷ 60⌋ minor units for each sitting, **floored per sitting**, never once per
+  booking. A block is the sum of its sittings and holds each one's own price in escrow, so cancelling
+  or refunding one sitting moves exactly what it held. A per-hour Group Session seat is the sum over
+  the listing's sittings, one escrow per seat. The rule is one function in each layer
+  (`projects.fn_sitting_price`, `sittingPriceMinor`). The buyer never pays above the stated rate,
+  and the seller gives up less than one minor unit a sitting. A rate too low to price a sitting
+  above zero is refused at booking (PS501).
 - **Client cancels inside the notice** (`session_cancel_notice_hours`, **24 h**): the sitting's
   money is **forfeit to the freelancer in full** (100%) — as built (`cancel_cohort_membership`,
   Decision #171) and ruled (Decision #343, ruling C2 (a)). The freelancer may refund a forfeit
@@ -416,7 +426,7 @@ the **concrete gate**. Schema: `finance.verification_cases` + the `org.freelance
 
 | Actor                                      | Gate                                                                                              | Enforced before                                                 |
 | :----------------------------------------- | :------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------- |
-| **Freelancer (earner)**                    | Government-ID verification (Stripe Identity) **AND** a payout-ready wallet (Connect account set). | Applying, being seated or assigned, claiming, creating or joining a team (`fn_assert_payout_ready`, Decision #196). A team payee: every shareholder. Withdrawing earnings from a `user`/`team` wallet. **Not built yet** (Decision #337, ruling M4): publishing a listing, taking a session or cohort-seat booking, and enabling paid calls — a team's every shareholder; a team invite shows the invitee's readiness on the roster, and the refusal stays at accept. |
+| **Freelancer (earner)**                    | Government-ID verification (Stripe Identity) **AND** a payout-ready wallet (Connect account set). | Applying, being seated or assigned, claiming, creating or joining a team (`fn_assert_payout_ready`, Decision #196). A team payee: every shareholder. Publishing a product or session listing (`catalogue.trg_listings_publish_payout_gate`; a Pipeline, one-off or direct-deliverable service binds no seller), taking a session or cohort-seat booking (`fn_assert_seller_payout_ready`, HINT `seller`) and switching on paid calls (`scheduling.trg_call_settings_paid_gate`), Decision #337, ruling M4. Withdrawing from a `user`/`team` wallet that has received earned money by any route (`fn_wallet_holds_earnings`: a pending-window or 0-day earned credit, a team distribution, a transfer from a wallet that earned; FCA N14). **Not built yet** (ruling M4): a team invite shows the invitee's readiness on the roster (FBP SV7); the refusal stays at accept. |
 | **Client (individual buyer)**              | **None.** Tap-and-pay via Stripe (optional save-card for reuse). No ID, no wallet required.       | —                                                               |
 | **Business** (verified by a holder of its billing right — the owner, or an admin they named) | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Spending the pooled Business Wallet — every door through `finance.fn_assert_business_spend` (§14) — paying an invoice (`finance.pay_invoice`, Decision #247 (h)) and withdrawing (`finance.begin_payout`). Never adding money: top-ups, deposits and transfers in need no KYB (an archived Business takes none, Decision #248 (k)). |
 | **Enterprise**                             | KYB, as for a Business (`org.enterprises.verification_level = 'verified'`).                       | Paying from its wallet at checkout (`finance.place_wallet_order`), the spend gate (`finance.fn_assert_business_spend`), transfers out (`finance.transfer_funds`) and withdrawals (`finance.begin_payout`) — every door asks one predicate, `finance.fn_kyb_missing`, for a business and an enterprise alike (FINANCE_AUDIT K4). Never adding money. |
@@ -454,18 +464,27 @@ The abstract intent ("price and be paid in your own currency; see prices in your
   country at sign-up, for the person to confirm, and choose a guest's display currency; they never
   set an entity's currency.
 - **Base currency = GBP** (`security.platform_params.base_currency`) for system accounts, fees, and
-  cross-currency bridging.
-- **Snapshot-at-commit.** At escrow lock / release / checkout the FX rate(s) used are captured onto
-  the row (`fx_rate`, `fx_base`, `fx_as_of` on `finance.transactions`/`escrows`), sourced from
-  `finance.fx_rates`. Settlement is therefore deterministic and reproducible — it never drifts with
-  the market. Every leg of a conversion (below) writes them, and so does every escrow a conversion
-  funds, together with `fx_conversion_id` and `fx_source_minor`, what the escrow cost the payer in
-  their own currency (Decision #435).
+  cross-currency bridging. `PLATFORM_BASE_CURRENCY` (`packages/types/finance/fx.ts`) mirrors it, pinned
+  by a contract test (FA C16).
+- **Every stored currency is an ISO-4217 code**: each currency column carries a `^[A-Z]{3}$` CHECK,
+  and an amount in a sentence is printed with its code's ISO decimals (`finance.fn_currency_exponent`:
+  JPY and ISK none, KWD three), never a hard-coded list (FA C10, C14; FINANCE DB8).
+- **Snapshot-at-commit, on a conversion.** A row moved through a conversion captures the rate it used
+  (`fx_rate`, `fx_base`, `fx_as_of` on `finance.transactions`/`escrows`), sourced from
+  `finance.fx_rates`, so a statement reprints the rate applied, never today's. Every leg of a
+  conversion (below) writes them, and so does every escrow a converted purchase funds, together with
+  `fx_conversion_id` and `fx_source_minor`, what the escrow cost the payer in their own currency
+  (Decision #435). The escrow columns are therefore written, no longer reserved (Decision #337, ruling
+  Q0.2 (d), FA C7). A row in its own currency carries no rate.
 - **Display conversion is read-time only.** Balances/prices are shown in the viewer's
   `org.user_preferences.preferred_display_currency` using the latest `finance.fx_rates` row; this
-  **never** mutates stored amounts or affects settlement. Rates come from a **daily FX feed**, and
-  every converted figure carries a **staleness mark** naming its rate's date (ruling M5 (f)) — **Not
-  built yet**: every converted figure today uses a seed rate dated 2026-08-01.
+  **never** mutates stored amounts or affects settlement. Rates come from a **daily FX feed** (ruling
+  M5 (f); Decision #471): the `finance-fx-daily` job records the 12 display currencies against GBP all
+  or none, and a refused or failed feed records nothing, so the last rates stand. Which provider, and
+  its plan, is still the owner's pick; until its adapter is added, every converted figure uses the seed
+  rate dated 2026-08-01. Every converted figure carries a **staleness mark** naming its rate's date
+  once that rate is older than `fx_rate_max_age_hours` (24), the age at which a conversion quote
+  refuses it (ruling M5 (f)) — **Not built yet** (Decision #337, ruling M5 (f); FBP UI5).
 - **Paying in one's own currency** (rulings M5 (c), (d); Decision #435) — **built, switched off**
   (`fx_checkout_enabled` = false until counsel and a live feed). A purchase priced in another
   currency (a checkout, or since Decision #436 funding a stage or a paid revision round from its
@@ -568,6 +587,30 @@ stored — only an opaque Stripe reference + safe display fragments (`brand`, `l
   **Not built yet**: until the bonus is held, a non-zero bonus is refused (a CHECK). Today release
   pays `amount + deadline_bonus_cents − fee`, nothing funds the bonus, and only a pipeline's form
   offers it.
+
+### 13.1 AML monitoring and the Safety Hold (Decision #529; #336 ruling I1 ⚖️, pending counsel)
+
+The rules are `PRODUCT_SPEC.md` §Identity, Taxes & Compliance 3; these are the owner's starting dials,
+each a `security.platform_params` row.
+
+| Dial                       | Starting value                                                                                                                                                                                               | What it decides                                                                                                                                                                                |
+| :------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aml_churn_min_minor`      | roughly £1,000 per currency: GBP · USD · EUR · CHF 1,000.00; CAD · SGD 1,500.00; AUD 2,000.00; JPY ¥200,000; INR ₹100,000; ZAR R20,000; NGN ₦2,000,000; AED 4,500.00; any other currency 100,000 minor units | A withdrawal of at least this, after at least this much settled card money (top-ups and card-funded escrow) the person put in, or that came into the wallet, inside the window, is rapid churn |
+| `aml_churn_window_hours`   | **72**                                                                                                                                                                                                       | How far back that card money is counted                                                                                                                                                        |
+| `aml_new_account_days`     | **30**                                                                                                                                                                                                       | An account younger than this is new                                                                                                                                                            |
+| `aml_safety_hold_hours`    | **72**                                                                                                                                                                                                       | How long each trigger holds, from its own event                                                                                                                                                |
+| `aml_safety_hold_triggers` | `sign_in_change`, `rapid_churn`, `round_trip`, `new_account`                                                                                                                                                 | Which events start a hold                                                                                                                                                                      |
+| `aml_safety_hold_enabled`  | **false** ⚖️                                                                                                                                                                                                 | The switch. Off, nothing about money changes and only the signals are recorded. The owner turns it on, per environment, after counsel                                                          |
+
+**The hold** (`finance.begin_payout`): with the switch on, a withdrawal is refused until the latest
+end among its triggers. A sign-in change holds for 72 hours from the change; rapid churn from the
+newest card payment behind it; a round trip from the signal; a new account from its newest card
+payment, whatever its size. A held withdrawal moves nothing: no payout, no debit, no attempt key. The
+person is told when they can withdraw, and retrying after then withdraws. A held scheduled run is
+skipped, never counted against the schedule. The hold never touches `pending_release_days` or a
+release's clock, so it neither shortens nor lengthens the escrow holding period (PRD-F15). Released
+earnings already wait 7 days before they are Available, so in practice the hold bites only money
+that is Available at once: top-ups, refunds and transfers in.
 
 ---
 
@@ -700,6 +743,15 @@ Governs shared wallets (Business / Team / Enterprise).
   a code once, configurable per code (`max_redemptions_per_account`; none means no limit). Every
   order of the account counts, refunded or not, so a refund gives no redemption back; the basket
   refuses the code before checkout does. **Built** (FBP DB19).
+- **Who issues a code, and who pays for it** (Decision #485): a **seller's** code (`promo_codes.issuer_*`:
+  a person, or a team through a `publish_listings` holder) discounts only that seller's product lines,
+  narrowed to the listings it names (`listing_ids`), and the seller funds it: the line's commission
+  base is what the buyer paid (§1.2). A **platform** code (no issuer; operator-only, no door yet)
+  discounts every product line and the platform funds it: each seller is credited and charged
+  commission as if it had not applied, and the share, recorded on the line
+  (`order_lines.promo_funded_by = 'platform'`), is the platform's cost, a `losses_promos` term of
+  `finance.v_conservation_identity`. That cost may exceed the line's commission. No code discounts an
+  escrow line. **Built** (MARKETPLACE CK2, Decision #536).
 - **Reconciliation:** internal self-consistency via `finance.v_wallet_reconciliation` (materialised
   balance vs ledger sum → `drift_cents` must be 0), checked nightly with the running balance by
   `finance.fn_reconcile_wallets`, which reports drift to ops and never corrects it; the ledger
@@ -1008,6 +1060,7 @@ and `personalise.ts`.
 | Discovery Boost          | Joined ≤ 90 days **or** still on L1 · nothing claimed against the cap · no active penalty · no rating below 4.0 |
 | Standing multiplier      | The rung's discovery weight, §16.3 (1.00× – 1.20×); never applied to a penalty |
 | Trust penalty            | Active `discovery_rank` severity, at full strength from 10                  |
+| Client trust warning     | `client_trust` 2.50 (scope `opportunity`, the `penalty` term's): subtracted from a warned client's project opening, unscaled by Standing (Decision #486 (C)) |
 | Trending                 | 7-day window · views count 1, saves 2 · at least 3 distinct people per item |
 | New on Projective        | Published in the last 30 days                                               |
 | Personal rails           | 3 items to show, 12 at most · "Because you viewed" anchors on the last 3 views |
@@ -1022,6 +1075,19 @@ and `personalise.ts`.
 any plan or payment. Paid visibility is the labelled "Promoted" slot (§1.4), never rank, and never a
 mark on a listing's organic card. Pro's former `discovery_boost` entitlement is retired, unread
 (Decision #454).
+
+**Client Trust Score v1** (Decision #486 (B); PRODUCT_SPEC §Reputation 3). One score per client
+party, a person or a business, kept in `reviews.client_trust_scores`.
+
+| Dial            | Value                                                                                                    |
+| :-------------- | :------------------------------------------------------------------------------------------------------- |
+| Base            | (k·m + Σ ratings) / (k + n): n the party's revealed, visible provider reviews, m the client track's corpus mean, k = 5 |
+| Lost disputes   | −0.25 for each dispute the party opened and lost (`resolved_release`) in the trailing 12 months, capped at −1.00; a split or refund costs nothing |
+| Ghosting        | −0.10 per submission approved by the 14-day ghosting auto-approve, capped at −0.50; dormant (0) until #337 P3 builds it |
+| Floor           | 1.00                                                                                                     |
+| Shown           | From 3 reviews; below that the score is hidden                                                           |
+| Warning         | A shown score below 3.00: the `client_trust` demotion above, and the Informed Consent before a proposal or a hire |
+| Recomputed      | On every reveal, edit, withdrawal or hiding of a revealed review, every dispute ruling, and daily        |
 
 ### 16.8 Asset protection (Decision #393)
 
@@ -1072,12 +1138,13 @@ override, never a constant. **Not built yet.**
 | :------------------------------------------------------------------------------------------- | :------------------------------------------------------------------ | :----------------------------------------------------------------------------- |
 | Ledger, escrow, payouts, invoices, orders, fees                                              | 7 years after the end of the financial year                         | UK statutory 6 years, plus a buffer; stricter where required (DE/FR: 10 years) |
 | Legal-hold identity set (legal name, DoB, country, Stripe/KYC references)                    | 5 years after the relationship ends, or the ledger period if longer | MLR 2017 reg. 40 (AML-ready)                                                   |
+| AML monitoring signals (`finance.aml_signals`, Decision #529; append-only, HOLD under erasure) | 5 years after the relationship ends, or the ledger period if longer. Recorded; no deletion job yet | MLR 2017 reg. 40 (AML-ready): the monitoring half of the transaction record     |
 | Seller tax-reporting data (platform reporting)                                               | 6 years (UK), 10 years (EU sellers, DAC7)                           | Digital-platform reporting rules                                               |
 | Dispute record and its evidence (Evidence Vault, the messages attached to it, presence data) | 6 years after the dispute closes                                    | UK limitation period for contract claims                                       |
 | Presence with no dispute (a room's join and leave records)                                   | 13 months, `presence_retention_days` (Decision #383, ruling R8). Built: `scheduling-presence-retention` | Proof of attendance if a payment is disputed late                              |
 | Unmatched room participants (no Projective account behind them)                              | 30 days, `presence_unmatched_retention_days`. Built, same job       | Minimisation                                                                   |
 | Webhook delivery ledger                                                                      | 90 days                                                             | Replay protection only                                                         |
-| Consent and terms-acceptance records (sign-up acceptances: `org.legal_acceptances`, Decision #446; append-only, never cascaded with the person) | Life of the account, plus 6 years                                   | Proof of lawful basis                                                          |
+| Consent and terms-acceptance records (sign-up acceptances, and the IP Transfer Deed and Escrow Terms accepted at a first claim or funding: `org.legal_acceptances`, Decisions #446, #534; append-only, never cascaded with the person) | Life of the account, plus 6 years                                   | Proof of lawful basis                                                          |
 | Security and auth logs                                                                       | 12 months                                                           | Incident investigation                                                         |
 | Messages, files and profiles not under a hold                                                | Erased with the account                                             | No obligation                                                                  |
 | Search query logs and embeddings                                                             | 90 days, and erased with the account. Query logs: `retention_search_query_log_days`. Built: `search-query-log-retention` (OPS4) | Minimisation                                                                   |

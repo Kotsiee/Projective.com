@@ -2,6 +2,7 @@ import { computed, signal } from "@preact/signals";
 import { signInHref } from "./view-model.ts";
 import { sentProposals } from "@features/proposals/core/allowance-state.ts";
 import { scrollToElement } from "./scroll-to.ts";
+import { ensureClientTrustConsent } from "@features/reviews/core/client-trust.ts";
 import type { ExploreItem } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 
@@ -40,15 +41,31 @@ export const projectApplied = computed(() => {
 /**
  * Open the apply modal. Guests bounce to sign-in (returning to this item). With a pending proposal
  * already sent, the same modal is where it is managed — and withdrawn — so the control never toggles
- * an application on a single press. Returns whether the modal opened.
+ * an application on a single press. A warned client's project asks for the Informed Consent first
+ * ({@link openApplyWithConsent}). Returns whether the viewer stays on the page to apply.
  */
 export function applyToProject(item: ExploreItem, authed: boolean, ctx: HrefContext): boolean {
 	if (!authed) {
 		globalThis.location.href = signInHref(item, ctx);
 		return false;
 	}
-	applyOpen.value = true;
+	openApplyWithConsent(applyProjectSlug.value);
 	return true;
+}
+
+/**
+ * Open the apply modal once the freelancer may apply: at once when the project's client is not warned
+ * or the warning was acknowledged before, else after they acknowledge it in the ClientTrustDialog
+ * (Decision #486 (C)). The proposal door refuses without it, so this is the dialog's half of the rule.
+ */
+export function openApplyWithConsent(projectSlug: string | null): void {
+	if (!projectSlug) {
+		applyOpen.value = true;
+		return;
+	}
+	void ensureClientTrustConsent(projectSlug).then((ok) => {
+		if (ok) applyOpen.value = true;
+	});
 }
 // #endregion
 

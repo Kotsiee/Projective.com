@@ -13,8 +13,10 @@
 --   2. A mixed basket charges each seller their own rate; the order's fee is the lines' sum.
 --   3. An escrow line beside a product takes no fee at purchase and records no rate; the order keeps
 --      the payer's rate, which the escrow is charged at release.
---   4. A promo is shared across the lines, each share recorded, and each fee is charged on what was
---      paid after its share.
+--   4. A platform promo is shared across the lines, each share recorded as the platform's
+--      (`promo_funded_by`), and each fee is charged on the line before its share, so each seller is
+--      credited as if the code had not applied (Decision #485 (a)). A seller's own code, whose fee is
+--      on the discounted price, is promo_redemption_concurrency.sql's arm 6.
 --   5. finance.get_seller_commission, called as `authenticated`, tells the seller the rate their next
 --      sale is charged (the rate that sale then records) and what their recorded sales paid, per
 --      currency, with the next rung's price of the same lines; a team's members read the team's;
@@ -371,10 +373,11 @@ BEGIN
 END $$;
 -- #endregion
 
--- #region 4. A promo: each line's share recorded, each fee on what was paid after it
+-- #region 4. A platform promo: each line's share recorded, each fee on the line before it
 -- 10% of 3,055 is 306 (the promo rounds half up, as it always has). Shares are pro rata with the
--- remainder on the last line: ⌊306 × 1,055 / 3,055⌋ = 105, then 201. Paid: 950 and 1,799.
--- Fees: ⌊950 × 800 / 10000⌋ = 76 and ⌊1,799 × 650 / 10000⌋ = 116 (116.935).
+-- remainder on the last line: ⌊306 × 1,055 / 3,055⌋ = 105, then 201. Paid: 950 and 1,799. The
+-- platform funds the code, so fees are on 1,055 and 2,000: ⌊1,055 × 800 / 10000⌋ = 84 and
+-- ⌊2,000 × 650 / 10000⌋ = 130, and the sellers are credited 971 and 1,870.
 DO $$
 DECLARE
     v_seller uuid := pg_temp.s('seller')::uuid;
@@ -399,20 +402,23 @@ BEGIN
             v_a.promo_discount_minor, v_t.promo_discount_minor, (pg_temp.order_of(v_order)).promo_discount_minor));
     PERFORM pg_temp.ok(v_a.line_total_minor = 1055 AND v_t.line_total_minor = 2000,
         format('4 a line total stays the price before the promo (got %s, %s)', v_a.line_total_minor, v_t.line_total_minor));
-    PERFORM pg_temp.ok(v_a.platform_fee_minor = 76 AND v_t.platform_fee_minor = 116,
-        format('4 the fees are charged on what was paid, 76 and 116 (got %s and %s)', v_a.platform_fee_minor, v_t.platform_fee_minor));
-    PERFORM pg_temp.ok((pg_temp.order_of(v_order)).platform_fee_minor = 192,
-        format('4 the order''s fee is 192 (got %s)', (pg_temp.order_of(v_order)).platform_fee_minor));
-    PERFORM pg_temp.ok(pg_temp.credited(v_order, v_seller) = 874 AND pg_temp.credited(v_order, v_team) = 1683,
-        format('4 the person is credited 874 and the team 1,683 (got %s and %s)',
+    PERFORM pg_temp.ok(v_a.promo_funded_by = 'platform' AND v_t.promo_funded_by = 'platform',
+        format('4 both shares are the platform''s (got %s, %s)', v_a.promo_funded_by, v_t.promo_funded_by));
+    PERFORM pg_temp.ok(v_a.platform_fee_minor = 84 AND v_t.platform_fee_minor = 130,
+        format('4 the fees are charged on the lines before the platform''s share, 84 and 130 (got %s and %s)', v_a.platform_fee_minor, v_t.platform_fee_minor));
+    PERFORM pg_temp.ok((pg_temp.order_of(v_order)).platform_fee_minor = 214,
+        format('4 the order''s fee is 214 (got %s)', (pg_temp.order_of(v_order)).platform_fee_minor));
+    PERFORM pg_temp.ok(pg_temp.credited(v_order, v_seller) = 971 AND pg_temp.credited(v_order, v_team) = 1870,
+        format('4 the person is credited 971 and the team 1,870 (got %s and %s)',
             pg_temp.credited(v_order, v_seller), pg_temp.credited(v_order, v_team)));
 END $$;
 -- #endregion
 
 -- #region 5. The seller's read: the rate a sale is charged, and what recorded sales paid
--- The person's six lines paid 1,055 × 5 + 950 = 6,225 and carried 84 + 68 + 84 + 84 + 76 + 79 = 475
--- in commission; at L4's 700 bp, truncated per line, they would carry 73 × 5 + 66 = 431. The team's
--- two lines paid 2,000 + 1,799 = 3,799 and carried 130 + 116 = 246; L5 has no rung above it.
+-- The person's six sales were worth 1,055 × 6 = 6,330 (arm 4's platform code takes nothing from the
+-- seller) and carried 84 + 68 + 84 + 84 + 84 + 79 = 483 in commission; at L4's 700 bp, truncated per
+-- line, they would carry 73 × 6 = 438. The team's two were worth 2,000 + 2,000 = 4,000 and carried
+-- 130 + 130 = 260; L5 has no rung above it.
 DO $$
 DECLARE
     v_seller uuid := pg_temp.s('seller')::uuid;
@@ -453,22 +459,22 @@ BEGIN
     PERFORM pg_temp.act(v_seller);
     v_now := pg_temp.window_of(finance.get_seller_commission('freelancer', v_seller), v_cur);
     PERFORM pg_temp.ok((v_now ->> 'lines')::bigint - (v_base ->> 'lines')::bigint = 6
-            AND (v_now ->> 'paid_minor')::bigint - (v_base ->> 'paid_minor')::bigint = 6225,
-        format('5 the person''s read counts the six lines and the 6,225 their buyers paid (got +%s, +%s)',
+            AND (v_now ->> 'paid_minor')::bigint - (v_base ->> 'paid_minor')::bigint = 6330,
+        format('5 the person''s read counts the six lines and the 6,330 they were worth (got +%s, +%s)',
             (v_now ->> 'lines')::bigint - (v_base ->> 'lines')::bigint,
             (v_now ->> 'paid_minor')::bigint - (v_base ->> 'paid_minor')::bigint));
-    PERFORM pg_temp.ok((v_now ->> 'fee_minor')::bigint - (v_base ->> 'fee_minor')::bigint = 475,
-        format('5 commission paid is the recorded line fees, 475 (got +%s)',
+    PERFORM pg_temp.ok((v_now ->> 'fee_minor')::bigint - (v_base ->> 'fee_minor')::bigint = 483,
+        format('5 commission paid is the recorded line fees, 483 (got +%s)',
             (v_now ->> 'fee_minor')::bigint - (v_base ->> 'fee_minor')::bigint));
-    PERFORM pg_temp.ok((v_now ->> 'at_next_minor')::bigint - (v_base ->> 'at_next_minor')::bigint = 431,
-        format('5 the same lines at the next rung''s 700 bp, truncated per line, are 431 (got +%s)',
+    PERFORM pg_temp.ok((v_now ->> 'at_next_minor')::bigint - (v_base ->> 'at_next_minor')::bigint = 438,
+        format('5 the same lines at the next rung''s 700 bp, truncated per line, are 438 (got +%s)',
             (v_now ->> 'at_next_minor')::bigint - (v_base ->> 'at_next_minor')::bigint));
 
     PERFORM pg_temp.act(pg_temp.s('member')::uuid);
     v_now := pg_temp.window_of(finance.get_seller_commission('team', v_team), v_cur);
-    PERFORM pg_temp.ok((v_now ->> 'fee_minor')::bigint - (v_base_team ->> 'fee_minor')::bigint = 246
-            AND (v_now ->> 'paid_minor')::bigint - (v_base_team ->> 'paid_minor')::bigint = 3799,
-        format('5 a team member reads the team''s 246 on 3,799 (got +%s on +%s)',
+    PERFORM pg_temp.ok((v_now ->> 'fee_minor')::bigint - (v_base_team ->> 'fee_minor')::bigint = 260
+            AND (v_now ->> 'paid_minor')::bigint - (v_base_team ->> 'paid_minor')::bigint = 4000,
+        format('5 a team member reads the team''s 260 on 4,000 (got +%s on +%s)',
             (v_now ->> 'fee_minor')::bigint - (v_base_team ->> 'fee_minor')::bigint,
             (v_now ->> 'paid_minor')::bigint - (v_base_team ->> 'paid_minor')::bigint));
     PERFORM pg_temp.ok(v_now -> 'at_next_minor' = 'null'::jsonb,

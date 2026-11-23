@@ -23,6 +23,7 @@ import {
 } from "./vault.ts";
 import { InvoiceStatus, StatementStatus } from "./billing.ts";
 import { CardBrand } from "./card-art.ts";
+import { LegalCommitStampSchema } from "../legal/acceptance.ts";
 
 /**
  * finance wallet — the READ + WRITE projection SSOT for the context-scoped Wallet & Finance surface
@@ -271,9 +272,13 @@ export const LedgerKind = z.enum([
 export type LedgerKind = z.infer<typeof LedgerKind>;
 
 /**
- * The `finance.transactions.reason` codes each {@link LedgerKind} stands for. `other` names no code: it
- * is whatever no family claims, and so cannot be filtered on. A currency conversion between one
- * account's own wallets is a transfer, and its disclosed margin a platform fee (Decision #435).
+ * The `finance.transactions.reason` codes each {@link LedgerKind} stands for: every code the
+ * `transactions.reason` CHECK admits except the simulator's `simulated_*`, each in one family, pinned by
+ * `ledger-reasons.contract.test.ts` (FCA N36). `other` names no code: it is whatever no family claims,
+ * and so cannot be filtered on. A currency conversion between one account's own wallets is a transfer,
+ * and its disclosed margin a platform fee (Decision #435). An on-account credit and the invoice that
+ * settles it are parts of an order bought on account. `service_sale` names no code: a sold service is
+ * paid out as an escrow release.
  */
 export const LEDGER_KIND_REASONS: Readonly<Record<LedgerKind, readonly string[]>> = {
 	escrow_release: [
@@ -285,10 +290,10 @@ export const LEDGER_KIND_REASONS: Readonly<Record<LedgerKind, readonly string[]>
 		"team_finder_fee",
 	],
 	escrow_hold: ["escrow_hold"],
-	service_sale: ["service_sale", "service_sale_vault_retention"],
-	product_sale: ["product_sale", "product_sale_vault_retention"],
-	order_payment: ["order_payment"],
-	platform_fee: ["platform_fee", "instant_payout_fee", "fx_spread"],
+	service_sale: [],
+	product_sale: ["product_sale"],
+	order_payment: ["order_payment", "on_account_credit", "invoice_payment"],
+	platform_fee: ["fx_spread"],
 	topup: ["topup"],
 	payout: ["payout", "payout_reversal"],
 	transfer: ["transfer_in", "transfer_out", "team_distribution", "fx_conversion"],
@@ -1363,6 +1368,8 @@ export const FundEscrowInputSchema = z.object({
 	 * stay the stage's own requirement.
 	 */
 	fxQuoteId: uuid.nullable().optional(),
+	/** The Escrow Terms version the acceptance dialog showed (LG3). */
+	legalAcceptance: LegalCommitStampSchema.optional(),
 });
 export type FundEscrowInput = z.infer<typeof FundEscrowInputSchema>;
 

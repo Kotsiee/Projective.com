@@ -53,6 +53,7 @@ import {
 	DEV_PROJECT_TYPES,
 	DEV_PROMO_DISMISSALS,
 	DEV_PROPOSAL_ALLOWANCES,
+	DEV_CLIENT_TRUST,
 	DEV_REVIEW_STATES,
 	DEV_REVISION_ALLOTMENTS,
 	DEV_ROLES,
@@ -455,6 +456,20 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 							patchDevContext({ reviewState });
 							reloadProjectPage();
 						}}
+					/>
+				</Field>
+
+				{
+					/* The Client Trust Score warning (Decision #486 (C)): Apply and Accept request open the
+				    Informed Consent dialog first. Client-side via `data-dev-client-trust`. */
+				}
+				<Field label="Client trust" hint="Apply · Accept request">
+					<Segment
+						name="Client trust"
+						options={DEV_CLIENT_TRUST}
+						value={o.clientTrust}
+						disabled={!o.enabled}
+						onChange={(clientTrust) => patchDevContext({ clientTrust })}
 					/>
 				</Field>
 

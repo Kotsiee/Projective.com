@@ -30,6 +30,22 @@
 	opacity: var(--fld-loading-alpha);
 }
 
+/* The Variable session lengths row (SC10): label and switch on one line, as Pricing's switch rows. */
+.cat-plan__switchrow {
+	max-inline-size: var(--measure-narrow);
+}
+
+.cat-plan__switchrow .cat-sec__labelrow {
+	align-items: center;
+	justify-content: space-between;
+}
+
+/* A sitting's own length, beside its title. */
+.cat-plan__minutes {
+	flex: none;
+	inline-size: 7.5rem;
+}
+
 .cat-plan__head {
 	display: flex;
 	align-items: center;

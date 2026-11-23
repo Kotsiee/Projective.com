@@ -13,9 +13,9 @@
 
 CREATE TABLE finance.wallets (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    owner_type text NOT NULL,
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'team', 'business', 'enterprise')),
     owner_id uuid NOT NULL,
-    currency text NOT NULL,
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     balance_cents bigint NOT NULL DEFAULT 0 CHECK (balance_cents >= 0),
     -- The spend above which a member's purchase needs an approver, for THIS vault only. NULL is a
     -- real and common state, not an unset field: it means "no local override", and the resolver
@@ -47,22 +47,33 @@ CREATE TABLE finance.transactions (
         direction IN ('credit', 'debit')
     ),
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
-    currency text NOT NULL,
-    reason text NOT NULL,
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+    -- Every code a finance function writes, and nothing else (FCA N24, N36). finance.fn_wallet_debit's
+    -- voluntary and involuntary lists (00001200) and finance.fn_is_income_reason (00001240) classify
+    -- them and name nothing outside this list (supabase/probes/currency_integrity.sql);
+    -- LEDGER_KIND_REASONS (@projective/types/finance) is pinned to it by ledger-reasons.contract.test.ts.
+    reason text NOT NULL CHECK (reason IN (
+        -- debits: the voluntary spends, then the involuntary recoveries (team_distribution and
+        -- fx_conversion also credit the other side)
+        'escrow_hold', 'order_payment', 'invoice_payment', 'transfer_out', 'team_distribution', 'payout',
+        'fx_conversion', 'fx_spread', 'chargeback', 'refund',
+        -- earned credits, through the pending window
+        'escrow_release', 'escrow_release_vault_retention', 'fair_exit_release',
+        'fair_exit_release_vault_retention', 'team_split', 'team_finder_fee', 'product_sale',
+        -- money in, and the payer's own money back
+        'topup', 'transfer_in', 'escrow_refund', 'fair_exit_refund', 'payout_reversal', 'on_account_credit',
+        -- the developer simulator (finance.simulate_wallet_transaction), never a real movement
+        'simulated_escrow_lock', 'simulated_escrow_release', 'simulated_platform_fee',
+        'simulated_split_payout', 'simulated_top_up', 'simulated_refund'
+    )),
     ref_table text NULL,
     ref_id uuid NULL,
     balance_after_cents bigint NOT NULL,
-    -- Which pot of capital this row's amount belongs to, stored rather than derived.
-    --
-    -- The ledger both FILTERS and ORDERS BY this, and the derivation is a three-way join across
-    -- finance.pending_releases, finance.escrows and finance.disputes — an expression no index can
-    -- serve, so a sorted, paged ledger would degrade to a full scan per page. Reuses the existing
-    -- finance.fund_state enum (00000004) rather than declaring a parallel vocabulary, so a row here
-    -- and a finance.pending_releases row speak the same four words.
-    --
-    -- DEFAULT 'available': the overwhelming majority of movements are settled cash at the moment
-    -- they are written, and the two states that are not ('locked' while in escrow, 'pending' inside
-    -- the 7-day release window) are always written by a function that knows which one applies.
+    -- Meant to name the pot of capital the row's amount belongs to, in finance.fund_state's four words
+    -- (00000004, the vocabulary finance.pending_releases.state speaks). No function writes it: every row a
+    -- door writes takes the DEFAULT 'available' (FCA N13, FDD X22). The fund states are projected from
+    -- finance.escrows, finance.pending_releases and the wallets instead; only the generated seed stamps
+    -- its escrow holds 'locked'.
     fund_state finance.fund_state NOT NULL DEFAULT 'available',
     -- clock_timestamp(), not now(): several movements are often written in ONE transaction (a card
     -- settlement credits then holds escrow; a lost dispute refunds then claws back), and now() gives
@@ -75,7 +86,7 @@ CREATE TABLE finance.transactions (
     -- currency at mid-market, observed `fx_as_of`. Immutable with the row, so a statement or invoice
     -- reprints the rate that was applied, never today's. `fx_base` keeps the platform-base default.
     fx_rate numeric(20, 10),
-    fx_base char(3) DEFAULT 'GBP',
+    fx_base char(3) DEFAULT 'GBP' CHECK (fx_base ~ '^[A-Z]{3}$'),
     fx_as_of timestamptz
 );
 
@@ -197,13 +208,14 @@ CREATE TABLE finance.escrows (
     -- amount + bonus − fee, and nothing funds the bonus (FCA N4).
     deadline_bonus_cents bigint NOT NULL DEFAULT 0
         CONSTRAINT ck_escrows_bonus_unfunded CHECK (deadline_bonus_cents = 0),
-    currency text NOT NULL,
-    -- held · released · refunded · disputed (`funded` is the unused default), and `reserved` (Decision
-    -- #430): a later ticket stage paid for ahead — debited from the payer's wallet, bound to nobody, with
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+    -- The values the doors write, and nothing else (FCA N24): `held` (every hold, the DEFAULT) ·
+    -- `released` · `refunded` · `disputed`, and `reserved` (Decision #430): a later ticket stage paid for ahead — debited from the payer's wallet, bound to nobody, with
     -- no refund clock, held by finance.fn_activate_ticket_reservation when the ticket reaches that stage
     -- and refunded by finance.fn_refund_ticket_reservations if it never does. Every door that releases,
     -- binds, sweeps or settles reads `held` only, so a reservation waits untouched beside the stage at work.
-    status text NOT NULL DEFAULT 'funded',
+    status text NOT NULL DEFAULT 'held'
+        CHECK (status IN ('held', 'reserved', 'released', 'refunded', 'disputed')),
     created_at timestamptz NOT NULL DEFAULT now(),
     -- When it was released to the payee — what a consolidated invoice selects its period by.
     released_at timestamptz,
@@ -220,7 +232,7 @@ CREATE TABLE finance.escrows (
     -- which a refund returns pro rata (finance.fn_refund_escrow_to_payer). Written once, by
     -- finance.fn_stamp_escrow_fx.
     fx_rate numeric(20, 10),
-    fx_base char(3) DEFAULT 'GBP',
+    fx_base char(3) DEFAULT 'GBP' CHECK (fx_base ~ '^[A-Z]{3}$'),
     fx_as_of timestamptz,
     fx_conversion_id uuid REFERENCES finance.fx_conversions (id) ON DELETE RESTRICT,
     fx_source_minor bigint CHECK (fx_source_minor IS NULL OR fx_source_minor >= 0),
@@ -283,7 +295,7 @@ CREATE TABLE finance.invoices (
     platform_fee_cents bigint NOT NULL DEFAULT 0,
     tax_cents bigint NOT NULL DEFAULT 0,
     total_cents bigint NOT NULL DEFAULT 0,
-    currency text NOT NULL,
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'issued', 'paid', 'overdue', 'void')),
     due_date timestamptz,
     paid_at timestamptz,
@@ -381,7 +393,7 @@ CREATE TABLE finance.plans (
     audience finance.plan_audience NOT NULL,
     tier finance.plan_tier NOT NULL,
     price_cents bigint CHECK (price_cents IS NULL OR price_cents >= 0),
-    currency char(3) NOT NULL DEFAULT 'GBP',
+    currency char(3) NOT NULL DEFAULT 'GBP' CHECK (currency ~ '^[A-Z]{3}$'),
     billing_interval finance.billing_interval NOT NULL DEFAULT 'monthly',
     is_custom_priced boolean NOT NULL DEFAULT false,
     per_seat_cents bigint CHECK (per_seat_cents IS NULL OR per_seat_cents >= 0),
@@ -414,7 +426,7 @@ CREATE TABLE finance.subscriptions (
     trial_ends_at timestamptz,
     seats integer CHECK (seats IS NULL OR seats > 0),
     price_cents bigint CHECK (price_cents IS NULL OR price_cents >= 0),
-    currency char(3),
+    currency char(3) CHECK (currency ~ '^[A-Z]{3}$'),
     provider text NOT NULL DEFAULT 'stripe',
     provider_ref text,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -447,7 +459,7 @@ CREATE TABLE finance.invoice_line_items (
     ref_id uuid,
     description text NOT NULL,
     amount_cents bigint NOT NULL,
-    currency text NOT NULL,
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     -- A line paid through an FX conversion (Decision #435) is stated in the invoice's currency at its
     -- pinned figure, beside what it was priced at: `origin_minor` of `origin_currency`, one unit of the
     -- invoice's currency buying `fx_rate` of it at mid-market, observed `fx_as_of`. All NULL otherwise.
@@ -476,15 +488,15 @@ CREATE TABLE finance.payout_splits (
     escrow_id uuid NOT NULL REFERENCES finance.escrows (id) ON DELETE CASCADE,
     member_user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
     amount_cents bigint NOT NULL,
-    currency text NOT NULL,
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- #region Multi-currency FX (20260723090000_finance_currency_fx.sql)
 CREATE TABLE finance.fx_rates (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    base char(3) NOT NULL,           -- ISO-4217, e.g. 'GBP'
-    quote char(3) NOT NULL,          -- ISO-4217, e.g. 'USD'
+    base char(3) NOT NULL CHECK (base ~ '^[A-Z]{3}$'),   -- ISO-4217, e.g. 'GBP'
+    quote char(3) NOT NULL CHECK (quote ~ '^[A-Z]{3}$'), -- ISO-4217, e.g. 'USD'
     rate numeric(20, 10) NOT NULL CHECK (rate > 0),
     as_of timestamptz NOT NULL,      -- the observation instant this rate is valid as-of
     provider text NOT NULL DEFAULT 'manual',  -- rate source (Stripe FX / ECB / provider slug); XXXX-XXXX in docs
@@ -532,7 +544,7 @@ CREATE TABLE finance.deposit_rules (
     wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE CASCADE,
     source_method_id uuid REFERENCES finance.payment_methods (id) ON DELETE SET NULL,
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     interval finance.deposit_interval NOT NULL,
     next_run_at timestamptz NOT NULL,
     active boolean NOT NULL DEFAULT true,
@@ -558,7 +570,7 @@ CREATE TABLE finance.payout_schedules (
     mode finance.payout_mode NOT NULL DEFAULT 'manual',
     destination_method_id uuid REFERENCES finance.payment_methods (id) ON DELETE SET NULL,
     threshold_cents bigint CHECK (threshold_cents IS NULL OR threshold_cents > 0),  -- for mode='threshold'
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     -- The next calendar slot a weekly / monthly schedule runs at (UTC); NULL for manual and threshold.
     next_run_at timestamptz,
     -- Reserved: Instant Payouts are Planned (Decision #337, ruling P3) and the door refuses `true`.
@@ -579,7 +591,7 @@ CREATE TABLE finance.income_smoothing (
     user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
     enrolled boolean NOT NULL DEFAULT false,
     target_monthly_cents bigint CHECK (target_monthly_cents IS NULL OR target_monthly_cents >= 0),
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     fee_bp integer NOT NULL DEFAULT 50 CHECK (fee_bp >= 0),   -- ~0.5% micro-fee
     eligibility_met boolean NOT NULL DEFAULT false,           -- ≥ min-months history + min volume (see params)
     enrolled_at timestamptz,
@@ -597,9 +609,9 @@ CREATE TABLE finance.wallet_pots (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE CASCADE,
     purpose finance.pot_purpose NOT NULL DEFAULT 'general',
-    name text NOT NULL,
+    name text NOT NULL CHECK (char_length(name) <= 120),
     balance_cents bigint NOT NULL DEFAULT 0 CHECK (balance_cents >= 0),
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     -- The share of each matured income credit earmarked into the pot (the tax-pot auto-set-aside); a
     -- wallet's active pots together take at most 10000 (finance.save_wallet_pot).
     auto_allocate_bp integer NOT NULL DEFAULT 0 CHECK (auto_allocate_bp BETWEEN 0 AND 10000),
@@ -676,8 +688,8 @@ CREATE TABLE finance.spend_approvals (
     wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE CASCADE,
     requested_by uuid NOT NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
-    currency char(3) NOT NULL,
-    reason text NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+    reason text NOT NULL CHECK (char_length(reason) <= 2000),
     ref_table text NOT NULL,
     ref_id uuid NOT NULL,
     status finance.approval_status NOT NULL DEFAULT 'pending',
@@ -710,7 +722,7 @@ CREATE TABLE finance.ledger_audit (
     actor_user_id uuid REFERENCES auth.users (id) ON DELETE SET NULL,
     action finance.vault_action NOT NULL,
     amount_cents bigint NOT NULL,
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     ref_table text,
     ref_id uuid,
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -737,7 +749,7 @@ CREATE TABLE finance.payouts (
     -- Which rule produced this run; NULL for a manual withdrawal, which is the common case.
     schedule_id uuid REFERENCES finance.payout_schedules (id) ON DELETE SET NULL,
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     status finance.payout_status NOT NULL DEFAULT 'pending',
     instant boolean NOT NULL DEFAULT false,   -- the buyer opted into the Instant Payout fee
     provider text NOT NULL DEFAULT 'stripe',
@@ -805,7 +817,7 @@ CREATE TABLE finance.statements (
     owner_id uuid NOT NULL,
     period_start timestamptz NOT NULL,
     period_end timestamptz NOT NULL,
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     opening_balance_cents bigint NOT NULL DEFAULT 0,
     closing_balance_cents bigint NOT NULL DEFAULT 0,
     total_in_cents bigint NOT NULL DEFAULT 0,
@@ -825,7 +837,7 @@ CREATE TABLE finance.chargebacks (
     escrow_id uuid REFERENCES finance.escrows (id) ON DELETE SET NULL,
     provider_ref text,                            -- Stripe dispute id (placeholder XXXX-XXXX in docs)
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     status finance.chargeback_status NOT NULL DEFAULT 'opened',
     reason text,
     opened_at timestamptz NOT NULL DEFAULT now(),
@@ -889,7 +901,7 @@ CREATE TABLE finance.subscription_events (
     from_plan_id uuid REFERENCES finance.plans (id) ON DELETE SET NULL,
     to_plan_id uuid REFERENCES finance.plans (id) ON DELETE SET NULL,
     amount_cents bigint,
-    currency char(3),
+    currency char(3) CHECK (currency ~ '^[A-Z]{3}$'),
     provider_ref text,
     reason text,
     created_at timestamptz NOT NULL DEFAULT now()
@@ -927,7 +939,7 @@ CREATE TABLE finance.negotiated_rates (
     platform_fee_bp integer NOT NULL CHECK (platform_fee_bp BETWEEN 0 AND 10000),
     marketplace_commission_bp integer CHECK (marketplace_commission_bp IS NULL OR marketplace_commission_bp BETWEEN 0 AND 10000),
     minimum_volume_cents bigint CHECK (minimum_volume_cents IS NULL OR minimum_volume_cents >= 0),
-    currency char(3),
+    currency char(3) CHECK (currency ~ '^[A-Z]{3}$'),
     contract_ref text,
     approved_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
     starts_at timestamptz NOT NULL DEFAULT now(),
@@ -998,7 +1010,7 @@ CREATE TABLE finance.promo_codes (
     kind text NOT NULL CHECK (kind IN ('percent', 'flat')),
     value_bp integer CHECK (value_bp IS NULL OR value_bp BETWEEN 0 AND 10000),
     value_minor bigint CHECK (value_minor IS NULL OR value_minor >= 0),
-    currency char(3),
+    currency char(3) CHECK (currency ~ '^[A-Z]{3}$'),
     -- An unbounded window at either end is a real configuration ('starts now', 'never expires'),
     -- so both are nullable rather than defaulted to arbitrary far-past / far-future instants.
     starts_at timestamptz,
@@ -1012,10 +1024,22 @@ CREATE TABLE finance.promo_codes (
     redemption_count integer NOT NULL DEFAULT 0 CHECK (redemption_count >= 0),
     -- Withdrawing a code is a soft state with a useful instant, not a boolean: knowing WHEN a code
     -- was pulled is what makes a later "why was my code refused" answerable. NULL = still live.
-    -- Distinct from expires_at, which is the schedule; this is the manual kill switch.
+    -- Distinct from expires_at, which is the schedule; this is the manual kill switch, and the archive
+    -- a seller's finance.archive_promo_code writes (nothing is hard-deleted).
     deactivated_at timestamptz,
+    -- Who issued the code and pays for its discount (Decision #485). NULL is the platform: an operator's
+    -- code over every product line, funded by the platform (#485 (a)). A seller's code ('user' a
+    -- person's own listings, 'team' a team's) discounts only that seller's product lines, and the
+    -- seller funds it: their commission is taken on the discounted price (finance-model §1.2).
+    issuer_type text CHECK (issuer_type IN ('user', 'team')),
+    issuer_id uuid,
+    -- The issuer's product listings the code covers; NULL is all of them. An array, not foreign keys:
+    -- finance.save_promo_code admits only product listings the issuer manages.
+    listing_ids uuid[] CHECK (listing_ids IS NULL OR cardinality(listing_ids) BETWEEN 1 AND 100),
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_promo_code UNIQUE (code),
+    CONSTRAINT promo_code_issuer_pair CHECK ((issuer_type IS NULL) = (issuer_id IS NULL)),
+    CONSTRAINT promo_code_scope_needs_issuer CHECK (listing_ids IS NULL OR issuer_type IS NOT NULL),
     CONSTRAINT promo_code_value_matches_kind CHECK (
         (kind = 'percent' AND value_bp IS NOT NULL AND value_minor IS NULL AND currency IS NULL)
         OR (kind = 'flat' AND value_minor IS NOT NULL AND currency IS NOT NULL AND value_bp IS NULL)
@@ -1031,7 +1055,9 @@ redemption_count is deliberately NOT constrained against max_redemptions: concur
 race, the cap is enforced by the redeeming function under a row lock, and lowering a cap later must
 not retroactively invalidate rows that were legitimately issued under the old one.
 max_redemptions_per_account caps one account''s uses, counted from its orders in every status under
-the same lock (FBP DB19).';
+the same lock (FBP DB19). issuer_type / issuer_id name the seller who issued and funds the code (NULL:
+the platform, which funds it); listing_ids narrows a seller''s code to some of their product listings
+(Decision #485).';
 
 -- A named collection of purchasable intents. A "wishlist" is not a separate table or a separate
 -- kind — it is simply a non-default basket with its own name ('3D Asset Wishlist'), which is why
@@ -1097,7 +1123,7 @@ CREATE TABLE finance.basket_items (
     -- would let a seller's later price change rewrite the saving a buyer was already shown.
     -- Nullable - most lines carry no discount, and NULL is "no RRP", not "an RRP of zero".
     original_price_minor bigint CHECK (original_price_minor IS NULL OR original_price_minor >= 0),
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     -- Bounded at both ends. The upper bound mirrors the Zod SSOT (`BasketItemSchema.quantity` is
     -- `.min(1).max(999)`), so a quantity that validates is always storable and a quantity that is
     -- stored always parses; it also keeps `unit_price_minor * quantity` in the discount CHECK below
@@ -1297,9 +1323,13 @@ CREATE TABLE finance.order_lines (
     line_total_minor bigint NOT NULL CHECK (line_total_minor >= 0),
     currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     -- The line's share of the order's basket-wide promo (finance.orders.promo_discount_minor is their
-    -- sum). What the buyer paid for the line is `line_total_minor - promo_discount_minor`, and that is
-    -- the base its fee is charged on.
+    -- sum). What the buyer paid for the line is `line_total_minor - promo_discount_minor`.
     promo_discount_minor bigint NOT NULL DEFAULT 0 CHECK (promo_discount_minor >= 0),
+    -- Who paid for that share (Decision #485): 'seller', whose own code it was, so the fee is charged on
+    -- what the buyer paid; or 'platform', for an operator's code, so the fee is charged on the line
+    -- before the share and the share is the platform's cost (finance.v_conservation_identity's
+    -- losses_promos). NULL when the line carries no share.
+    promo_funded_by text CHECK (promo_funded_by IN ('seller', 'platform')),
     -- The fee taken on this line when it was bought, and its rate, stamped like the order's
     -- (Decision #337, ruling M1). A digital product pays its SELLER's marketplace commission
     -- (finance.fn_effective_commission_bp for the owning team, else the owning person), truncated,
@@ -1356,6 +1386,7 @@ CREATE TABLE finance.order_lines (
 
     position integer NOT NULL DEFAULT 0 CHECK (position >= 0),
     created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_order_lines_promo_funder CHECK ((promo_funded_by IS NULL) = (promo_discount_minor = 0)),
     CONSTRAINT ck_order_lines_refund_within_charge
         CHECK (refunded_minor <= GREATEST(line_total_minor - promo_discount_minor, 0)),
     CONSTRAINT ck_order_lines_refunded_at CHECK ((refunded_minor = 0) = (refunded_at IS NULL)),
@@ -1445,7 +1476,7 @@ CREATE TABLE finance.pending_releases (
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
     -- Taken back by a lost chargeback against this wallet before the row matured; the sweep credits the rest.
     recovered_cents bigint NOT NULL DEFAULT 0,
-    currency char(3) NOT NULL,
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     released_at timestamptz NOT NULL DEFAULT now(),
     available_at timestamptz NOT NULL,           -- released_at + pending_release_days
     state finance.fund_state NOT NULL DEFAULT 'pending',
@@ -1642,4 +1673,41 @@ CREATE TABLE finance.processor_customers (
     CONSTRAINT uq_processor_customers_owner UNIQUE (provider, owner_type, owner_id),
     CONSTRAINT uq_processor_customers_ref UNIQUE (provider, customer_ref)
 );
+-- #endregion
+
+-- #region AML monitoring signals (Decision #529; #336 ruling I1, the data half of "AML-ready")
+-- One row per pattern a money door saw: `round_trip` (one person on both sides of an escrow, at its
+-- hold or its release), `rapid_churn` (a withdrawal of at least `aml_churn_min_minor` after at least as
+-- much card money came in inside `aml_churn_window_hours`) and `safety_hold` (a withdrawal the 72-hour
+-- Safety Hold refused). A signal is a fact for an operator, never a finding about a person: nothing
+-- reads it to decide anything except the Safety Hold, which is off (`aml_safety_hold_enabled`).
+--
+-- Columns are what the readers filter on (subject, kind, time) and what ties a row to the money it
+-- describes (wallet, escrow, payout, amount); everything else a reviewer needs is `facts`, ids and
+-- integer minor units only. No name, address, IP or user agent (Decision #446): a signal is built from
+-- rows the platform already holds. Append-only (trg_aml_signals_append_only, 00001830); RLS on with no
+-- policy and no client grant, so the subject never sees it; written only by the definers on the money
+-- paths and read only through finance.read_aml_signals (operators). Kept for the AML period
+-- (finance-model.md §17) and HOLD under erasure: RESTRICT on every reference, so a person, an escrow or
+-- a payout with a signal behind it is never hard-deleted.
+CREATE TABLE finance.aml_signals (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    kind text NOT NULL CHECK (kind IN ('round_trip', 'rapid_churn', 'safety_hold')),
+    -- The person the pattern is about: the one on both sides, or the one withdrawing.
+    subject_user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
+    wallet_id uuid REFERENCES finance.wallets (id) ON DELETE RESTRICT,
+    escrow_id uuid REFERENCES finance.escrows (id) ON DELETE RESTRICT,
+    payout_id uuid REFERENCES finance.payouts (id) ON DELETE RESTRICT,
+    amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+    facts jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT ck_aml_signals_round_trip_escrow CHECK (kind <> 'round_trip' OR escrow_id IS NOT NULL),
+    CONSTRAINT ck_aml_signals_withdrawal_wallet CHECK (kind = 'round_trip' OR wallet_id IS NOT NULL)
+);
+
+COMMENT ON TABLE finance.aml_signals IS
+'AML monitoring signals (Decision #529): round_trip, rapid_churn and safety_hold facts recorded by the
+money-path definers. Append-only, never visible to the subject, read by operators through
+finance.read_aml_signals. Kept for the AML period; HOLD under erasure.';
 -- #endregion

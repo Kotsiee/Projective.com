@@ -290,11 +290,17 @@ export function offerEditorFor(
 	return { archetype, withTeam: archetype === "one_off" && hasTeamRoles(serviceType) };
 }
 
-/** Each licence in one sentence, under the licence choice. */
+/**
+ * Each licence in one sentence, under the licence choice: the buyer's terms (`licenceTerms`,
+ * `@projective/types/explore`) in a seller's words, so a seller is never told a licence grants more
+ * than the buyer is shown (Decision #540 (A)).
+ */
 export const LICENCE_SUMMARY: Readonly<Record<ListingLicence, string>> = {
-	personal: "For the buyer's own projects. Not for client work or anything sold on.",
-	commercial: "For work the buyer is paid for, including client projects. Not for resale as is.",
-	extended: "Commercial use, plus products the buyer sells that include this file.",
+	personal: "For the buyer's own non-commercial projects. Not for paid work, client work or resale.",
+	commercial:
+		"For the buyer's own commercial projects. Not for work delivered to clients, redistribution or resale.",
+	extended:
+		"Commercial use, including work delivered to clients and products the buyer sells. Never redistributed or resold as it is.",
 };
 
 /** The start-trigger choices a stage after the first offers, in the order they read. */

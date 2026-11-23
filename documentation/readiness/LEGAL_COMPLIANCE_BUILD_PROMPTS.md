@@ -6,8 +6,9 @@
 > PRD-A4. The rulings it builds on are the legal library's (#270), the AML posture (#336 I1) and
 > checkout tax (#490).
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 6 open, 1 partly done, 3 done (§0 ledger).
-> Runnable now: LG7 (its commit also closes LG1).
+> **Verified against code 2026-11-23 at `f2e25929`.** 4 open, 2 partly done, 4 done (§0 ledger).
+> Runnable now: LG4 (DB6, LG2 and LG3 have landed); LG7's page check (§3); LG7's commit also
+> closes LG1.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -33,22 +34,24 @@ agent turns one on, and no agent sets `reviewedAt`.
 
 A landed prompt gets its row here.
 
-| ID  | What landed | Commit | Text at |
-| :-- | :---------- | :----- | :------ |
+| ID  | What landed                                                                                | Commit     | Text at    |
+| :-- | :----------------------------------------------------------------------------------------- | :--------- | :--------- |
+| LG0 | The unbuilt IP workspace's three addresses answer 404 (owner ruling 2026-11-23), PRD-A4 ✅ | `d4dd7749` | `6621eeeb` |
 | LG2 | The counsel brief: FOUNDER_QUESTIONNAIRE Part E with the sign-off runbook (#528); E.1.7 filled from LG1's drift table (#531) | `b3148e47`, `9325e5df` | `dea66769` |
 | LG6 | Stripe first (#527): the operator seller tax-report CSV over the ledger, a private residence certificate shown to one client, finance-model §9 corrected | `6e7487ea` | `a3a1ace4` |
-| LG0 | The unbuilt IP workspace's three addresses answer 404 (owner ruling 2026-11-23), PRD-A4 ✅ | `d4dd7749` | `6621eeeb` |
+| LG3 | The first paid claim asks for the IP Transfer Deed and the first funding (every client door, card included) for the Escrow Terms, once per version (#534): `org.fn_require_legal_acceptance`, surfaces `claim` and `fund`, `CommitAcceptanceDialog` in four hosts; new PRD-M10 (checkout and an owner's assignment) | LG3_COMMIT | LG3_TEXT_AT |
 
 ### 0.1 Row → work order
 
 | Row    | Gate | Crit     | Work order                           | The row flips when                                                                                                                                                           |
 | :----- | :--- | :------- | :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | PRD-M1 | PROD | Critical | LG1 (step 6's rest, LG7) → ⚖️ counsel → you | ✅ only when a human sets `reviewedAt` on every current version after counsel signs off, and the reconstructed 1.0 baselines are gone (#270 (b)). No agent sets `reviewedAt` |
-| PRD-M2 | PROD | Critical | — (✅, AU1 #446)                     | — (LG3 extends it to two more documents if you choose A)                                                                                                                     |
+| PRD-M2 | PROD | Critical | — (✅, AU1 #446; LG3 landed, §0.0)   | — (LG3 extended it to the IP Transfer Deed and the Escrow Terms at first commit, #534; the gaps it found are PRD-M10)                                                     |
 | PRD-M3 | PROD | Normal   | OPS7 (OPERATIONS)                    | ✅ when `account-data-exports` returns a 2xx from the hosted scheduler                                                                                                       |
-| PRD-M4 | PROD | High     | (LG3) → **LG4** → **LG5**            | 🟡 on LG4 (a signed transfer record on each final release) · ✅ on LG5 (audit packs)                                                                                         |
+| PRD-M4 | PROD | High     | LG3 (landed) → **LG4** → **LG5**     | 🟡 on LG4 (a signed transfer record on each final release) · ✅ on LG5 (audit packs)                                                                                         |
 | PRD-M5 | PROD | High     | CK4 + LG6 (landed, §0.0)            | 🟡 when CK4 lands with its switch off · ✅ when counsel confirms the obligations and its switch is on in the target environment                                       |
-| PRD-M6 | PROD | Normal   | **LG7** + X2                         | ✅ when the signals record on every money movement they cover, an operator can read them, and the Safety Hold is built behind its switch · 🟡 if only the signals land       |
+| PRD-M6 | PROD | Normal   | LG7 (built; its page check is left, §3) + X2 | 🟡 now (LG7 built, #529) · ✅ once LG7's page check runs: an operator reads the signals on `/admin/ledger` and a member gets 404 |
+| PRD-M9 | PROD | Normal   | — (🧑 #529 (d))                      | ✅ when a card and payout-bank fingerprint is captured and a second-account round trip records a signal; needs its own decision row first                                    |
 | PRD-M7 | PROD | High     | **LG8** (⏳ CK4)                     | 🟡 when built behind `platform_fee_tax_enabled` (off) · ✅ when counsel confirms and the switch is on                                                                        |
 | PRD-A4 | UAT  | Normal   | LG0 (landed, §0.0)                   | ✅ when no placeholder is reachable. It stays ✅ when LG4 and LG5 open the pages again                                                                                       |
 
@@ -60,24 +63,24 @@ A landed prompt gets its row here.
 | MW-55 | Normal   | ❌ → 🟡 on LG4 (the workspace and its transfers page) · ✅ on LG5                                              |
 | MW-56 | High     | ❌ → 🟡 on LG4 · ✅ once the IP Transfer Deed's text is counsel-reviewed (PRD-M1)                              |
 | MW-57 | High     | ❌ → 🟡 when CK4 lands with its switch off (LG6 landed) · ✅ when the switch is on                         |
-| MW-58 | Normal   | ❌ → ✅ on LG7 (signals recorded and readable by an operator; the reporting programme stays dormant by ruling) |
+| MW-58 | Normal   | ❌ → 🟡 on LG7 (built, #529) · ✅ once LG7's page check runs (the reporting programme stays dormant by ruling) |
 
 ### 0.2 Findings the prompts rely on (checked 2026-11-19, still true at `f2e25929`)
 
 These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 
-1. **Two documents are linked but never accepted on their own.** `org.legal_document_versions`
-   allows only `terms`, `acceptable-use` and `privacy` (`00000011_tables_org.sql`, the slug CHECK),
-   and the only acceptance surfaces are `join`, `join_oauth`, `join_enterprise` and `reaccept`
-   (`00000003_enums_core.sql:97`). The Terms link the Escrow Terms and the IP Transfer Deed
-   (`features/legal/core/content/terms.ts:42-44, 172-183`). Nothing records that a payer accepted
-   the Escrow Terms, or that a maker accepted the deed, when they commit money or work.
+1. **The Escrow Terms and the deed are accepted at first commit (LG3, #534).** The Terms link both
+   (`features/legal/core/content/terms.ts:42-44, 172-183`). `org.legal_document_versions` allows them
+   beside the sign-up documents and `org.legal_acceptance_surface` has `claim` and `fund`: a maker's
+   first paid claim and a payer's first funding record one row each, once per version
+   (`org.fn_require_legal_acceptance`). Checkout and an owner's assignment are not asked (PRD-M10).
 2. **A copyright assignment needs the assignor's signature.** In the UK an assignment is effective
    only "in writing signed by or on behalf of the assignor" (CDPA 1988 s.90(3)); future copyright
    can be assigned in advance (s.91). The US rule is the same (17 U.S.C. §204(a)). PRODUCT_SPEC
    §Identity, Taxes & Compliance 4 has **Projective** sign the deed, while §18 and over (rule 1) has
    the adult party "sign IP transfer deeds". Whether the sign-up acceptance of the Terms is that
-   signature is for counsel (FOUNDER_QUESTIONNAIRE Part E2.16; LG3).
+   signature is for counsel (FOUNDER_QUESTIONNAIRE Part E2.16). LG3 records the maker's own
+   acceptance of the deed at the first paid claim (#534).
 3. **"Deed" is a legal term of art.** In English law a deed has execution formalities (LP(MP)A 1989
    s.1) that a click cannot meet. An assignment needs only a signed writing. Counsel may prefer
    another name. Code keeps "deed" (the spec's word) until counsel rules, and the UI label follows
@@ -109,17 +112,15 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 
 | Wave | Content / docs lane | SQL lane (serial)                                                                        | App lane                 | Waits for                                                                                       |
 | :--- | :------------------ | :--------------------------------------------------------------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------- |
-| 1    | **LG1** (step 6's rest) | —                                                                                        | —                        | LG7's commit (the Privacy Policy's monitoring clause)                   |
-| 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                                           | (LG4/LG5's UI halves)    | LG4 builds once LG2's brief is sent and LG3 and FINANCE DB6 land (#530 (g)); counsel rules text |
-| 3    | —                   | **LG7** takes a turn in [the finance SQL lane](../architecture/FINANCE_BUILD_PROMPTS.md) | — (LG6 landed, §0.0)     | LG7: never beside MR8a/MR8b                                          |
+| 1    | — (LG1 done once LG7's commit lands) | —                                                                                        | —                        | Step 4 landed (#540); step 6's rest lands with LG7's commit (#529) |
+| 2    | —                   | LG3 (landed, §0.0) → **LG4** → **LG5**                                                   | (LG4/LG5's UI halves)    | LG4 builds once LG2's brief is sent and LG3 and FINANCE DB6 land (#530 (g)); counsel rules text |
+| 3    | —                   | LG7 (built, #529; its page check is left, §3)                                            | — (LG6 landed, §0.0)     | LG7's page check: a dev server and a seeded DB                                                  |
 | 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (which waits for DB21)                                                                      |
 | Last | **LG9**             | —                                                                                        | —                        | Everything above that can land                                                                  |
 
-**Hot files.** LG3 edits `00001120` (`claim_ticket`) and `00001150` (`fund_stage`, `fund_ticket`).
-PM-GH1, DB13 and DB14 write `00001150`, so LG3 never runs beside them. LG4, LG5 and LG7 each edit
+**Hot files.** LG4 and LG5 each edit
 `00002510` (one writer across all tracks) and `00005060` (jobs: one writer). LG4 adds one enqueue
-line to `00001240` and LG7 edits its withdrawal path, so both take the finance SQL lane
-(FINANCE_BUILD_PROMPTS.md §0).
+line to `00001240`, so it takes the finance SQL lane (FINANCE_BUILD_PROMPTS.md §0).
 
 **§M score projection** (weights: Critical 3 · High 2 · Normal 1; total 14):
 
@@ -146,10 +147,10 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
 3. **LG1 (🖊 yours alone):** the data controller's identity: legal name, company number,
    registered address, ICO registration number and the data-protection contact. No agent invents
    them.
-4. **LG3 (⚖️):** does the maker accept the IP Transfer Deed, and the payer the Escrow Terms, when
-   each first commits? Recommended **A**: once per version, at the first paid claim or the first
-   funding, so friction stays low. **B** (rely on the Terms' links) is valid only if counsel says
-   so. On B, skip LG3.
+4. **LG3 (⚖️):** ruled A (owner, 2026-11-23, #534): the maker accepts the IP Transfer Deed and the
+   payer the Escrow Terms once per version, at the first paid claim or the first funding. Landed
+   (§0.0). Counsel may still say the Terms' links are enough (E2.16), which makes the ask
+   unnecessary, not wrong.
 5. **LG4:** ruled (#530), every recommendation taken:
    - (a) a record issues at maturity, one per ticket escrow, and never for money that went back;
    - (b) no record on a Fair Exit; what happens to its IP is counsel's (⚖️, E2.18);
@@ -164,8 +165,9 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
    audited door.
 7. **LG6:** ruled (#527 (D)): A, Stripe first, and landed (§0.0). It has no switch: an operator
    read and a seller's own upload change no legal posture. The US framing is #527 (A), for counsel.
-8. **LG7:** answer Identity X2's stop (who builds what; A recommended), and set the signal
-   thresholds as dials. The Safety Hold ships switched off.
+8. **LG7:** ruled (#529): (a) A, Identity X2 builds only the dormant programme; (b) the dials as
+   proposed (finance-model §13.1); (c) the Safety Hold ships switched off; (d) A, nothing new is
+   captured and the second-account gap is PRD-M9. Built; its page check is left (§3).
 9. **LG8:** is the 5% fee VAT-inclusive (**A**, recommended: "flat 5%" stays true and payout maths
    is unchanged) or is VAT added on top (**B**: it changes finance-model, every payout preview and
    the landing's claims)?
@@ -294,7 +296,7 @@ said nothing new, and X2's went to IDENTITY. Nothing is left here.
 
 > **Status 2026-11-23:** partly done. Steps 1–3 and 5 landed in `9325e5df` (Decision #531), step 4
 > in `23d6adb9` (Decision #540: the Copyright & Notice Policy and the Marketplace Licence Terms).
-> Step 6 landed except the monitoring-signals clause, which LG7 brings. Stop (b) is yours to supply. Contradictions waiting on you: #531 (A) card
+> Step 6 landed, its monitoring-signals clause with LG7 (LG7_COMMIT, #529); once that commit lands, LG1 moves to §0.0. Stop (b) is yours to supply. Contradictions waiting on you: #531 (A) card
 > processing costs and (B) stage-work disputes; #540 (A) what a commercial licence covers.
 
 Prepares PRD-M1. Nothing flips to ✅.
@@ -324,67 +326,6 @@ SAME CHANGE: FOUNDER_QUESTIONNAIRE E.1.7.
 ```
 
 Readiness rows (§1.1): **PRD-M1** stays ❌. Step 6's rest closes E.1.7's monitoring row.
-
-### LG3 — The maker accepts the deed and the payer the Escrow Terms, once per version (conditional)
-
-> **Status 2026-11-23:** open; runs only on A at §0.4 item 4, after LG2's brief is sent.
-
-Runs only if you choose **A** at §0.4 item 4. It strengthens the evidence LG4 references.
-
-```text
-PROMPT LG3: The first paid claim records the maker's acceptance of the IP Transfer Deed, and the
-first funding records the payer's acceptance of the Escrow Terms, once per version
-
-ROLE: Full-stack engineer (Postgres + Deno + one dialog). SQL lane. You hold 00002510 while you
-run. Never beside PM-GH1, MR1, MR2, DB13 or DB14 (00001150).
-
-CONTEXT (verified at 197b0d0c; re-check every line):
-  - org.legal_document_versions allows slug IN ('terms','acceptable-use','privacy')
-    (00000011_tables_org.sql); org.legal_acceptance_surface is ('join','join_oauth',
-    'join_enterprise','reaccept') (00000003_enums_core.sql:97); LEGAL_VERSIONS mirrors the seed
-    (packages/types/legal/manifest.ts:57, with a unit test); acceptances are append-only, with
-    no IP address and no user agent (#446).
-  - The Terms link the Escrow Terms and the IP Transfer Deed (terms.ts:42-44, 172-183), and
-    nothing records acceptance of either one by itself.
-  - The commit points: projects.claim_ticket (00001120:687); projects.fund_stage (00001150:935),
-    fund_ticket (:1100) and fund_paid_revision (:625); finance.fund_with_conversion
-    (00001240:2400). A bought service funds through checkout (Queue M): only its claim is in
-    scope here, not the checkout.
-  - #446's pattern: the client sends the versions it showed, the door re-checks them against
-    the database, and a forged or stale version is refused. A restricted (13–17) account
-    records nothing.
-
-⚖️ Counsel decides whether this is needed (LG2 E.3). You chose A, so build it. The text being a
-draft does not block it: #446 also recorded drafts.
-
-STEPS:
-  1. Red: probes that (a) a first paid claim without the current deed version is refused, and
-     the same claim carrying it records one acceptance row; (b) a second claim at the same
-     version records nothing and asks nothing; (c) funding behaves the same way for
-     escrow-terms; (d) a forged version is refused.
-  2. Schema, edited in place: the two slugs added to the CHECK; surfaces `claim` and `fund`;
-     the 1.0 rows seeded in 00005050; LEGAL_VERSIONS and its test.
-  3. One guard, org.fn_require_legal_acceptance(p_slug, p_versions jsonb): it returns if the
-     caller has accepted the current version, records the acceptance if the given version is
-     current, and otherwise raises a coded error the services map to 409
-     `legal_acceptance_required`. Each commit door calls it with one PERFORM line. Grant it in
-     00002510.
-  4. UI: when a claim or a funding door answers `legal_acceptance_required`, show a Dialog with
-     an unticked box ("I accept the IP Transfer Deed v1.0" with a link, or the Escrow Terms)
-     and retry the action with the version. One dialog component, used in both places.
-  5. ERA classification: these rows are HOLD (contract evidence; ERA1's
-     account_erasure_scope.sql, if it has landed; otherwise say so for ERA1).
-
-ACCEPTANCE: the probes are green; a seeded freelancer's first claim shows the dialog once and
-never again for that version; a client's first funding the same. test:probes, check, lint and
-test:unit are green; screenshots at 1440 and 390 px.
-SAME CHANGE: documentation/database/org/*; Zod; SYSTEM_ARCHITECTURE's legal acceptance
-paragraph; PRODUCT_SPEC §Identity, Taxes & Compliance 4 (when the maker accepts); the decision
-row.
-```
-
-Readiness rows (§1.1): **PRD-M2**'s evidence gains "the Escrow Terms and the deed at first commit
-(LG3)". It stays ✅. No score changes.
 
 ### LG4 — A signed transfer record on each final release
 
@@ -547,68 +488,28 @@ Readiness rows (§1.1): **PRD-M4** → ✅; **MW-55** → ✅.
 
 ### LG7 — AML signals and the Safety Hold
 
-> **Status 2026-11-23:** open; runs now, to its stops (IDENTITY X2's included).
+> **Status 2026-11-23:** partly done. Steps 1–5 landed in LG7_COMMIT (Decision #529; stops ruled:
+> (a) A, so X2 builds only the dormant programme; (b) the dials as proposed, finance-model §13.1;
+> (c) the switch ships off; (d) A, no new capture, the second-account gap is PRD-M9). Probe
+> `aml_signals.sql`, `finance_invariants.sql` and `conservation_identity.sql` are green. Left: the
+> acceptance's page check, which could not run because every dev server ran out of memory under the
+> concurrent sessions.
 
-PRD-M6 → ✅, MW-58 → ✅. Carries Identity X2's stop.
+PRD-M6 and MW-58 stay 🟡 until it runs.
 
 ```text
-PROMPT LG7: Record the monitoring signals the AML-ready posture needs from day one, let an
-operator read them, and build the 72-hour Safety Hold behind a switch that stays off
+PROMPT LG7 (the rest): See /admin/ledger's AML signals section render for an operator and 404 for
+a member
 
-ROLE: Postgres engineer (money). SQL lane: a turn in the finance SQL lane (FINANCE_BUILD_PROMPTS.md
-§0; 00001240 withdrawal path, 00005001 params, 00002510). Never beside MR8a or MR8b.
+ROLE: Any. No code unless the check finds a defect.
 
-CONTEXT (verified at 197b0d0c; re-check every line):
-  - Ruled, pending counsel (#336 I1; PRODUCT_SPEC §Identity, Taxes & Compliance 3 "Posture"):
-    Projective is not AML-obliged but AML-ready. The data half (CDD and KYC references, the
-    monitoring signals, retention for the AML period) runs from day one. The programme half
-    (MLRO, review queue, registration, exports) is dormant behind flags.
-  - The spec promises round-tripping flags (hiring yourself through a second account), rapid
-    churn (a large deposit and then an immediate withdrawal) and a 72-hour Safety Hold before
-    withdrawal for new or high-risk accounts. None of it exists: grep finds no signal, hold or
-    sanctions code.
-  - #446 ruled that no IP address or user agent is stored. Signals use only data the platform
-    already holds lawfully.
-  - The Safety Hold sits next to PRD-F15's holding-period question (FOUNDER_QUESTIONNAIRE Part
-    D). Don't let it pre-empt that ruling.
-
-🧑 STOPS (before step 2):
-  (a) Identity X2: A (recommended), this prompt builds the signals, their reader and the hold,
-      and X2 builds the dormant programme; or B, this prompt builds both.
-  (b) The thresholds (the churn amount and window; what makes an account "new"; which signals
-      start a hold) as platform-param dials, with the starting values I set.
-  (c) The hold switch ships off. Turning it on is mine, after counsel.
-
-STEPS:
-  1. Inventory first: list which candidate signals the data already supports (the same
-     verified-identity or Stripe account reference on both sides of a ticket; one person on
-     both sides through a team or business seat; a payment-method or bank-account fingerprint,
-     only if it is already stored; a top-up followed by a withdrawal inside the window). Report
-     anything a signal would need that is not stored, and capture nothing new without a
-     decision row.
-  2. Red: probes that a seeded self-hire (the same person on both sides of a ticket) records a
-     round-tripping signal on funding or release; a top-up followed by a withdrawal above the
-     dial records a churn signal; with the switch on, a flagged account's withdrawal is held
-     and refused until the hold passes, and with it off, nothing about money changes.
-  3. An append-only signals table (the schema you justify; its retention follows the I1 table,
-     and ERA classifies it HOLD), written only by definers on the money paths, and never
-     visible to the subject.
-  4. An operator-only reader (on the admin surface the house uses; a section beside
-     /admin/ledger is fine) that lists signals with their facts. No action buttons: the review
-     queue is X2's and dormant (root §3.11).
-  5. The Safety Hold: a check in the withdrawal door, behind `aml_safety_hold_enabled` (a
-     platform param, off), with the hold's end shown to the person in plain words when it
-     applies.
-
-ACCEPTANCE: the probes are green; finance_invariants.sql and conservation_identity.sql pass
-(the hold moves no money; it only refuses a withdrawal for a while). The reader renders for an
-operator and 404s for a member. check, lint and test:unit are green.
-SAME CHANGE: PRODUCT_SPEC §3 ("Not built yet" narrowed to the programme half); the Privacy
-Policy's monitoring clause (LG1's convention; it stays a draft); finance-model (the hold and its
-dials); documentation/database/*; X2's status in IDENTITY_BUILD_PROMPTS; the decision row.
+ACCEPTANCE: deno task dev on a freshly reset DB; run supabase/probes/aml_signals.sql's fixtures
+with COMMIT, or insert a few rows into finance.aml_signals as postgres; sign in as rosalindqvist
+(the operator) and capture the section at 1440 and 390 px; sign in as a member and see /admin/ledger
+answer 404. Then PRD-M6 and MW-58 → ✅ and this prompt leaves the file.
 ```
 
-Readiness rows (§1.1): **PRD-M6** → ✅ (🟡 if step 5 is deferred); **MW-58** → ✅.
+Readiness rows (§1.1): **PRD-M6** → ✅; **MW-58** → ✅.
 
 ### LG8 — Tax on the platform's own fees
 

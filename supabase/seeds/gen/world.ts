@@ -88,6 +88,12 @@ export interface Persona {
 	 * change what that persona demonstrates everywhere else.
 	 */
 	platformOperator?: boolean;
+	/**
+	 * Has accepted neither the IP Transfer Deed nor the Escrow Terms (LG3), so the persona's next paid
+	 * claim or funding shows the acceptance dialog. Every other persona accepted both when it first
+	 * committed. Kept on one freelancer who can claim and one client who can fund.
+	 */
+	firstCommit?: boolean;
 }
 
 export const PERSONAS: Persona[] = [
@@ -114,6 +120,7 @@ export const PERSONAS: Persona[] = [
 		kyc: "verified",
 		payoutReady: true,
 		plan: "individual_pro",
+		firstCommit: true,
 		education: [{
 			school: "Central Saint Martins",
 			credential: "BA (Hons)",
@@ -233,6 +240,7 @@ export const PERSONAS: Persona[] = [
 		banner: "banner_5.jpg",
 		displayCurrency: "AED",
 		joinedDaysAgo: 300,
+		firstCommit: true,
 	},
 	{
 		key: "theo",
@@ -2096,7 +2104,7 @@ export const BASKETS: Array<{ owner: string; buyer?: string; promo?: string; lin
 	{
 		owner: "noor",
 		lines: [
-			{ kind: "digital_product", item: "pr-motion-primitives" },
+			{ kind: "digital_product", item: "pr-3d-product-scenes" },
 			{ kind: "service_session", item: "sv-portfolio-review-session", at: [1, 1, "15:00"] },
 			{ kind: "one_off_service", item: "sv-landing-page-in-a-week", saved: true },
 		],

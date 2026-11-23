@@ -17,7 +17,6 @@ import type {
 	DownloadGuard,
 	DownloadHistoryPage,
 	DownloadVia,
-	FileObjectTier,
 	InspectAsset,
 	LinkAttach,
 	CopyAssets,
@@ -69,7 +68,6 @@ import {
 	starAsset,
 } from "./live-library-writes.ts";
 import { completeUpload, initUpload } from "./live-uploads.ts";
-import { objectUrlFor } from "./live-objects.ts";
 import { childNodesOf, listElsewhere } from "./live-locations.ts";
 import { inspectAssetFor } from "./live-inspect.ts";
 import { readAccessTargets, readItemAccess, saveItemAccess } from "./live-access.ts";
@@ -401,22 +399,6 @@ export class FilesBackendService {
 		actor: ReadActor,
 	): Promise<Result<DownloadHistoryPage>> {
 		return signedIn("history", actor, async (a) => ok(await readHistory(a, params)));
-	}
-
-	/**
-	 * Where to send a caller asking for an asset's bytes — a public object's stable address or a fresh
-	 * short-lived signed URL — when they may read it. The private-object route's one decision; every
-	 * refusal is the same 404, so the route cannot be used to learn that a file exists.
-	 */
-	static objectUrl(
-		id: string,
-		opts: { tier?: FileObjectTier | null; share?: string | null; download?: boolean },
-		actor: ReadActor,
-	): Promise<Result<{ url: string; private: boolean }>> {
-		return anyone("object", async () => {
-			const target = await objectUrlFor(actor, id, opts);
-			return target ? ok(target) : fail(404, { message: "Not found." }) as Result<{ url: string; private: boolean }>;
-		});
 	}
 
 	// #endregion

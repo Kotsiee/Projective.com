@@ -38,6 +38,7 @@ import {
 } from "@projective/types/catalogue";
 import type { ImagePlaceholder, MediaRef } from "@projective/types/files";
 import { toMajorUnits } from "@projective/types/finance";
+import { CLIENT_TRUST_WARN_BELOW, isClientTrustWarned } from "@projective/types/reviews";
 import { type VerificationStamp, VerificationStampSchema } from "@projective/types/org";
 import { fetchPublicMedia } from "../files/public-media.ts";
 import {
@@ -222,6 +223,8 @@ export interface BlueprintRow {
 	session_count: number | null;
 	session_plan: unknown;
 	session_rolling: boolean | null;
+	/** `per_session` or `per_hour` (SC10); optional for a row read before the column. */
+	pricing_unit?: string | null;
 	/** A Pipeline sold at tiered intensity (Decision #417); optional for a row read before the column. */
 	allow_tiered_intensity?: boolean | null;
 	rating_average: number | string | null;
@@ -355,6 +358,13 @@ export interface CatalogPlacement {
 export interface PenaltyRow {
 	entity_id: string;
 	discovery_penalty: number | string;
+}
+
+/** A shown Client Trust Score (`reviews.client_trust_scores`, from 3 reviews, Decision #486). */
+export interface ClientTrustRow {
+	subject_id: string;
+	score: number | string;
+	review_count: number;
 }
 
 // #endregion
@@ -661,7 +671,7 @@ const OPEN_SEAT_COLUMNS =
  */
 const LISTING_COLUMNS = DISCOVERY_LISTING_COLUMNS;
 const BLUEPRINT_COLUMNS =
-	"id, slug, owner_type, owner_team_id, freelancer_profile_id, delivery_model, price_cents, ticket_price_cents, session_price_cents, currency, free_revisions, extra_revision_price_cents, max_seats_per_cohort, intake_fields, stage_template, team_roles, deliverables, session_minutes, session_count, session_plan, session_rolling, allow_tiered_intensity, rating_average, rating_count";
+	"id, slug, owner_type, owner_team_id, freelancer_profile_id, delivery_model, price_cents, ticket_price_cents, session_price_cents, currency, free_revisions, extra_revision_price_cents, max_seats_per_cohort, intake_fields, stage_template, team_roles, deliverables, session_minutes, session_count, session_plan, session_rolling, pricing_unit, allow_tiered_intensity, rating_average, rating_count";
 const PRODUCT_COLUMNS =
 	"id, slug, owner_user_id, owner_team_id, format, category, price_cents, currency, licence, attribution_required, file_manifest, compatibility, specs, span, rating_average, rating_count";
 const FILE_COLUMNS = "id, bucket_id, storage_path, metadata";
@@ -775,6 +785,7 @@ async function readCatalog(): Promise<Catalog> {
 		placementRows,
 		skillRows,
 		penalties,
+		clientTrust,
 		weightsRes,
 		trendingRes,
 	] = await Promise
@@ -828,6 +839,15 @@ async function readCatalog(): Promise<Catalog> {
 				() =>
 					db.schema("search").from("profiles_index").select("entity_id, discovery_penalty")
 						.gt("discovery_penalty", 0),
+			),
+			// Shown scores only (from 3 reviews, the table's policy); a warned one demotes the client's
+			// openings (Decision #486 (C)).
+			readTable<ClientTrustRow>(
+				"reviews.client_trust_scores",
+				"subject_id",
+				() =>
+					db.schema("reviews").from("client_trust_scores").select("subject_id, score, review_count")
+						.lt("score", CLIENT_TRUST_WARN_BELOW),
 			),
 			db.schema("search").rpc("ranking_weights"),
 			db.schema("search").rpc("trending_entities", {
@@ -959,6 +979,7 @@ async function readCatalog(): Promise<Catalog> {
 		skillRows,
 		placements,
 		penalties,
+		clientTrust,
 		weights: weightRows,
 		trending: (trendingRes.data ?? []) as TrendingEntityRow[],
 	});
@@ -1299,6 +1320,8 @@ interface Inputs {
 	placements: PlacementRow[];
 	/** Penalised entities; absent = nobody is penalised. */
 	penalties?: PenaltyRow[];
+	/** Client parties' shown trust scores; absent = no client is warned. */
+	clientTrust?: ClientTrustRow[];
 	/** `search.ranking_weights()`; absent = every factor off, so every item scores 0. */
 	weights?: RankingWeightRow[];
 	/** `search.trending_entities()`, most active first; absent = no activity. */
@@ -1424,6 +1447,7 @@ export function assemble(input: Inputs): Catalog {
 					},
 					metrics: { avgRating: num(bp.rating_average), ratingCount: bp.rating_count ?? 0 },
 					tieredIntensity: bp.allow_tiered_intensity === true,
+					perHour: bp.pricing_unit === "per_hour",
 				} satisfies ListingCardSource,
 			);
 			if (item.type !== "services") continue;
@@ -1692,6 +1716,11 @@ export function assemble(input: Inputs): Catalog {
 		profileById,
 		projectBySlug,
 		penalties: input.penalties ?? [],
+		warnedClients: new Set(
+			(input.clientTrust ?? [])
+				.filter((t) => isClientTrustWarned(num(t.score), t.review_count))
+				.map((t) => t.subject_id),
+		),
 		weights,
 		now: Date.now(),
 	});
@@ -1742,7 +1771,8 @@ const STANDING_TYPES = new Set<ExploreItem["type"]>([
  * Score every item (`./ranking.ts`) from its own reviews and its owner's directory row: the seller's
  * workload against their cap, Standing rung and multiplier, tenure, and active discovery-rank
  * penalty. A project speaks with its CLIENT's reviews and carries the worse of its poster's and its
- * client business's penalty — "their project posts are de-ranked" (§Reputation & Discovery 3).
+ * client business's penalty, and a warned client's opening loses `client_trust` (Decision #486 (C)) —
+ * "their project posts are de-ranked" (§Reputation & Discovery 3).
  */
 function scoreCatalog(
 	items: readonly ExploreItem[],
@@ -1751,6 +1781,8 @@ function scoreCatalog(
 		profileById: Map<string, ProfileRow>;
 		projectBySlug: Catalog["projectBySlug"];
 		penalties: readonly PenaltyRow[];
+		/** Client parties whose Client Trust Score warns, by person or business id. */
+		warnedClients: ReadonlySet<string>;
 		weights: RankingWeights;
 		now: number;
 	},
@@ -1788,6 +1820,8 @@ function scoreCatalog(
 				standingLevel: seller ? owner?.standing_level ?? undefined : undefined,
 				standingWeightBp: seller ? owner?.discovery_weight_bp ?? undefined : undefined,
 				penalty: Math.max(penaltyOf(owner), item.type === "projects" ? penaltyOf(client) : 0),
+				clientWarned: item.type === "projects" && !!client &&
+					context.warnedClients.has(client.entity_id),
 				tenureDays: Number.isFinite(joined)
 					? Math.max(0, Math.floor((context.now - joined) / DAY_MS))
 					: Number.POSITIVE_INFINITY,

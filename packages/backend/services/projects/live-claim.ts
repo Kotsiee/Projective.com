@@ -1,5 +1,6 @@
 import type { ClaimTicket } from "@projective/types/projects";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
+import { legalAcceptanceRefusal } from "../../core/legal-gate.ts";
 import { isPayoutNotReady, payoutNotReadyRefusal } from "../../core/payout-gate.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { projectsDb, UUID_RE } from "./live-support.ts";
@@ -46,7 +47,8 @@ export const CLAIM_REFUSAL = {
 
 /**
  * Map a `projects.claim_ticket` failure onto a refusal the board can show as it stands: the earning
- * gate (with its fix link in `details`), the age gate, the concurrency caps, a lost race, an
+ * gate (with its fix link in `details`), the IP Transfer Deed not yet accepted at the version in effect
+ * (409 `legal_acceptance_required`, LG3), the age gate, the concurrency caps, a lost race, an
  * undescribed ticket and a stage that does not open-pull. Anything else falls through to
  * {@link refusalFrom}.
  */
@@ -60,6 +62,8 @@ export function claimRefusal(error: ClaimDbError): WriteRefusal {
 			details: refusal.details,
 		};
 	}
+	const legal = legalAcceptanceRefusal(error);
+	if (legal) return { ...legal, errors: { ticket: legal.details.reason } };
 	if (isAgeRestricted(error)) {
 		return {
 			status: AGE_RESTRICTED.status,
@@ -92,6 +96,7 @@ export async function claimTicketRow(
 	const { data, error } = await projectsDb(actor).rpc("claim_ticket", {
 		p_ticket_id: input.ticketId,
 		p_assignee_id: actor.userId,
+		p_legal: input.legalAcceptance ?? null,
 	});
 	if (error) {
 		if (error.code === "P0002") return null;

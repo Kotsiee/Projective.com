@@ -170,6 +170,28 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Minutes a withdrawal may sit pending (its transfer''s answer lost) before the stale-payout sweep reconciles it with Stripe (finance.fn_claim_stale_payouts); also the lease between two sweeps of one payout. finance-model.md §13.')
 ON CONFLICT (key) DO NOTHING;
 
+-- #region AML monitoring and the Safety Hold (Decision #529; #336 ruling I1 ⚖️, pending counsel)
+-- The owner's starting dials. The churn amount is per currency like min_withdrawal_minor (each roughly
+-- £1,000). ⚖️ The Safety Hold ships OFF: while `aml_safety_hold_enabled` is false nothing about money
+-- changes and only the signals are recorded. No build turns it on; the owner does, per environment,
+-- after counsel.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('aml_churn_min_minor',
+        '{"default": 100000, "GBP": 100000, "USD": 100000, "EUR": 100000, "CHF": 100000, "CAD": 150000, "AUD": 200000, "SGD": 150000, "JPY": 200000, "INR": 10000000, "ZAR": 2000000, "NGN": 200000000, "AED": 450000}'::jsonb,
+        'Rapid churn (finance.begin_payout, Decision #529): a withdrawal of at least this much, after at least this much settled card money came in inside aml_churn_window_hours, records a rapid_churn signal. Per currency in its minor units, shaped like min_withdrawal_minor. finance-model.md §13.1.'),
+    ('aml_churn_window_hours', '72'::jsonb,
+        'How far back the withdrawal door looks for the card money that makes a withdrawal rapid churn (Decision #529). finance-model.md §13.1.'),
+    ('aml_new_account_days', '30'::jsonb,
+        'An account younger than this many days is new: with the new_account trigger on, its withdrawals wait aml_safety_hold_hours after its last settled card payment (Decision #529). finance-model.md §13.1.'),
+    ('aml_safety_hold_hours', '72'::jsonb,
+        'How long the Safety Hold refuses a withdrawal after the event that started it (PRODUCT_SPEC §Identity, Taxes & Compliance 3; Decision #529). finance-model.md §13.1.'),
+    ('aml_safety_hold_triggers', '["sign_in_change", "rapid_churn", "round_trip", "new_account"]'::jsonb,
+        'Which events start a Safety Hold (Decision #529): sign_in_change (Decision #451 (c)), rapid_churn, round_trip and new_account. Read only while aml_safety_hold_enabled is true. finance-model.md §13.1.'),
+    ('aml_safety_hold_enabled', 'false'::jsonb,
+        '⚖️ The Safety Hold switch (Decision #529). Off: withdrawals are never held and only the signals are recorded. On: finance.begin_payout refuses a withdrawal until its hold ends. Ships off; the owner turns it on per environment after counsel.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
 -- Stripe fiat rails (Decision #125)
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('identity_sessions_per_day', '5'::jsonb,

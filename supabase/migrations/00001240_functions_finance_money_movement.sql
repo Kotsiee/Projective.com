@@ -326,20 +326,18 @@ AS $$
     ), 0);
 $$;
 
--- A minor-unit amount in major units for a refusal sentence ("10.00", or "1500" for a zero-decimal
--- currency — Stripe's list). Internal.
+-- A minor-unit amount in major units for a refusal sentence, grouped, with its currency's ISO 4217
+-- decimals from finance.fn_currency_exponent (00001200): "1,234.56", JPY "1,234", KWD "1.234". Internal.
 CREATE OR REPLACE FUNCTION finance.fn_minor_units_text(p_amount bigint, p_currency text)
 RETURNS text
 LANGUAGE sql
 IMMUTABLE
 SET search_path = ''
 AS $$
-    SELECT CASE
-        WHEN pg_catalog.upper(p_currency) IN (
-            'BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'
-        ) THEN p_amount::text
-        ELSE pg_catalog.to_char(p_amount / 100.0, 'FM999999999990.00')
-    END;
+    SELECT pg_catalog.to_char(
+               p_amount / pg_catalog.power(10::numeric, x.e),
+               'FM9,999,999,999,999,999,990' || CASE WHEN x.e > 0 THEN '.' || pg_catalog.repeat('0', x.e) ELSE '' END)
+      FROM (SELECT finance.fn_currency_exponent(p_currency) AS e) x;
 $$;
 
 -- The destination a wallet pays out to: its owner's VERIFIED Stripe Connect account (a person's own
@@ -379,6 +377,12 @@ $$;
 -- key binds the destination too.
 -- An Instant payout is recorded (`instant`) but carries no fee here: the Instant Payout fee magnitude
 -- is still undecided platform-wide (Decision #55(c)), and a fee nobody set must not be charged.
+--
+-- AML (Decision #529): a withdrawal that is rapid churn (finance.fn_aml_churn) records a `rapid_churn`
+-- signal beside its payout. With the ⚖️ Safety Hold on (`aml_safety_hold_enabled`, off by default) a
+-- held withdrawal moves nothing: no payout, no debit, no attempt key, one `safety_hold` signal, and the
+-- answer `{held: true, held_until}` rather than an error, so the record of the attempt is kept. Retrying
+-- the same key after `held_until` withdraws.
 CREATE OR REPLACE FUNCTION finance.begin_payout(
     p_wallet_id uuid,
     p_amount bigint,
@@ -405,6 +409,10 @@ DECLARE
     v_min bigint;
     v_payout finance.payouts;
     v_tx uuid;
+    v_churn record;
+    v_churn_facts jsonb;
+    v_held_until timestamptz;
+    v_hold_triggers text[];
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'auth: sign in to withdraw' USING ERRCODE = '42501';
@@ -503,6 +511,29 @@ BEGIN
         RAISE EXCEPTION 'amountMinor: that is more than this wallet holds' USING ERRCODE = 'PF402';
     END IF;
 
+    SELECT * INTO v_churn FROM finance.fn_aml_churn(v_uid, v_wallet.id, p_amount, v_currency, pg_catalog.now());
+    IF FOUND THEN
+        v_churn_facts := pg_catalog.jsonb_build_object(
+            'in_minor', v_churn.in_minor, 'payments', v_churn.payments, 'last_in_at', v_churn.last_in_at,
+            'min_minor', v_churn.min_minor, 'window_hours', v_churn.window_hours
+        );
+    END IF;
+    SELECT h.held_until, h.triggers INTO v_held_until, v_hold_triggers
+      FROM finance.fn_safety_hold(v_uid, v_wallet.id, p_amount, v_currency, pg_catalog.now()) h;
+    IF v_held_until IS NOT NULL THEN
+        INSERT INTO finance.aml_signals (kind, subject_user_id, wallet_id, amount_minor, currency, facts)
+        VALUES ('safety_hold', v_uid, v_wallet.id, p_amount, v_currency, pg_catalog.jsonb_strip_nulls(
+            pg_catalog.jsonb_build_object(
+                'held_until', v_held_until, 'triggers', pg_catalog.to_jsonb(v_hold_triggers),
+                'instant', COALESCE(p_instant, false), 'churn', v_churn_facts
+            )
+        ));
+        RETURN pg_catalog.jsonb_build_object(
+            'held', true, 'held_until', v_held_until, 'wallet_id', v_wallet.id,
+            'amount_cents', p_amount, 'currency', v_currency, 'replayed', false
+        );
+    END IF;
+
     INSERT INTO finance.payouts (
         wallet_id, destination_method_id, amount_cents, currency, status, instant, provider, destination_account
     ) VALUES (
@@ -526,6 +557,11 @@ BEGIN
         pg_catalog.jsonb_build_object('payout_id', v_payout.id),
         pg_catalog.now() + interval '7 days'
     );
+
+    IF v_churn_facts IS NOT NULL THEN
+        INSERT INTO finance.aml_signals (kind, subject_user_id, wallet_id, payout_id, amount_minor, currency, facts)
+        VALUES ('rapid_churn', v_uid, v_wallet.id, v_payout.id, p_amount, v_currency, v_churn_facts);
+    END IF;
 
     RETURN pg_catalog.to_jsonb(v_payout)
         || pg_catalog.jsonb_build_object('destination', v_destination, 'replayed', false);
@@ -1230,6 +1266,15 @@ BEGIN
             PERFORM pg_catalog.set_config('request.jwt.claim.sub', s.created_by::text, true);
             v_begun := finance.begin_payout(v_wallet.id, v_available, s.currency, false, v_key, s.destination_method_id);
             PERFORM pg_catalog.set_config('request.jwt.claim.sub', COALESCE(v_prev_sub, ''), true);
+            -- A Safety Hold (Decision #529) moved nothing and is no refusal of the schedule: the run is
+            -- skipped, never struck, and the next slot tries again.
+            IF COALESCE((v_begun ->> 'held')::boolean, false) THEN
+                v_out := v_out || pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+                    'schedule_id', s.id, 'run_at', v_run_at, 'outcome', 'skipped', 'detail', 'safety_hold',
+                    'amount_cents', v_available, 'currency', s.currency
+                ));
+                CONTINUE;
+            END IF;
             UPDATE finance.payouts SET schedule_id = s.id WHERE id = (v_begun ->> 'id')::uuid;
             UPDATE finance.payout_schedules SET failure_count = 0, last_error = NULL WHERE id = s.id;
             v_out := v_out || pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
@@ -2465,14 +2510,17 @@ $$;
 -- currency. The caller's own `funding` quote must price exactly what that door will hold, by the same
 -- definitions begin_card_payment reads; the spend gate counts what leaves the paying wallet, the quote
 -- converts it, and the door holds from the result in the same transaction, so a refused hold takes the
--- conversion back with it. The escrows held are stamped with the conversion. Returns the door's answer
--- with the conversion and the charge.
+-- conversion back with it. The escrows held are stamped with the conversion. Last it asks for the
+-- Escrow Terms, as every client funding door does (LG3, #534; `p_legal` carries the version the dialog
+-- showed), so an unaccepted version unwinds the conversion and the hold whole. Returns the door's
+-- answer with the conversion and the charge.
 CREATE OR REPLACE FUNCTION finance.fund_with_conversion(
     p_fx_quote_id uuid,
     p_project_id uuid,
     p_stage_id uuid,
     p_ticket_id uuid DEFAULT NULL,
-    p_revision_id uuid DEFAULT NULL
+    p_revision_id uuid DEFAULT NULL,
+    p_legal jsonb DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -2564,6 +2612,7 @@ BEGIN
     END IF;
     PERFORM finance.fn_stamp_escrow_fx(c.id, v_escrows);
     PERFORM finance.fn_close_spend_cover(c.to_wallet_id);
+    PERFORM org.fn_require_legal_acceptance('escrow-terms', p_legal);
     RETURN COALESCE(v_result, '{}'::jsonb) || pg_catalog.jsonb_build_object(
         'fx_conversion_id', c.id, 'charge_minor', c.from_minor, 'charge_currency', c.from_currency);
 END;
@@ -3070,4 +3119,323 @@ BEGIN
         USING ERRCODE = 'PL403';
 END;
 $$;
+-- #endregion
+-- #region AML monitoring signals and the Safety Hold (Decision #529; #336 ruling I1 ⚖️, pending counsel)
+-- The data half of "AML-ready" (PRODUCT_SPEC §Identity, Taxes & Compliance 3): the money doors record
+-- what they saw in finance.aml_signals, and an operator reads it (finance.read_aml_signals). Nothing here
+-- decides anything about a person. The one consumer is the Safety Hold in finance.begin_payout, which
+-- refuses a withdrawal for a while and moves no money, and which stays off until the owner turns
+-- `aml_safety_hold_enabled` on after counsel. Every dial is a security.platform_params row (00005001).
+
+-- A whole-number dial (hours or days), never below 0; the fallback when it is unset or not a number.
+-- Internal.
+CREATE OR REPLACE FUNCTION finance.fn_aml_dial_int(p_key text, p_fallback integer)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT GREATEST(0, COALESCE(
+        (SELECT CASE WHEN pg_catalog.jsonb_typeof(pp.value) = 'number' THEN (pp.value #>> '{}')::numeric::integer END
+           FROM security.platform_params pp WHERE pp.key = p_key),
+        p_fallback
+    ));
+$$;
+
+-- Whether the Safety Hold is on (`aml_safety_hold_enabled`). Anything but a JSON true is off. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_safety_hold_enabled()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT pp.value = 'true'::jsonb FROM security.platform_params pp WHERE pp.key = 'aml_safety_hold_enabled'),
+        false
+    );
+$$;
+
+-- Who is on both sides of an escrow, and how: the payer side is the paying person, or the paying
+-- business's owner and active members; the payee side is the paid freelancer, or the paid team's owner
+-- and active members. A person on both sides is one row: `same_account` (the paying person is the paid
+-- freelancer), `business_seat` (the paid freelancer holds a seat on the paying business), `team_seat`
+-- (the paying person holds a seat on the paid team) or `business_and_team_seat`. No rows when nobody is.
+-- shortcut: an enterprise seat over the paying business is not followed; follow it when enterprise
+-- members can spend a business's wallet. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_aml_round_trip_people(p_escrow finance.escrows)
+RETURNS TABLE (person uuid, relation text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH payer AS (
+        SELECT p_escrow.payer_user_id AS person WHERE p_escrow.payer_user_id IS NOT NULL
+        UNION
+        SELECT b.owner_user_id FROM org.business_profiles b WHERE b.id = p_escrow.payer_business_id
+        UNION
+        SELECT bm.user_id FROM org.business_members bm
+         WHERE bm.business_id = p_escrow.payer_business_id AND bm.status = 'active'
+    ), payee AS (
+        SELECT p_escrow.payee_id AS person WHERE p_escrow.payee_type = 'freelancer'
+        UNION
+        SELECT t.owner_user_id FROM org.teams t
+         WHERE p_escrow.payee_type = 'team' AND t.id = p_escrow.payee_id
+        UNION
+        SELECT tm.user_id FROM org.team_members tm
+         WHERE p_escrow.payee_type = 'team' AND tm.team_id = p_escrow.payee_id AND tm.status = 'active'
+    )
+    SELECT payer.person,
+           CASE
+               WHEN p_escrow.payer_user_id IS NOT NULL AND p_escrow.payee_type = 'freelancer' THEN 'same_account'
+               WHEN p_escrow.payer_user_id IS NOT NULL THEN 'team_seat'
+               WHEN p_escrow.payee_type = 'freelancer' THEN 'business_seat'
+               ELSE 'business_and_team_seat'
+           END
+      FROM payer
+      JOIN payee ON payee.person = payer.person
+     WHERE payer.person IS NOT NULL;
+$$;
+
+-- The round-trip signal (trg_escrows_aml_round_trip_*, 00001830): when an escrow is held for a named
+-- payee (funding) or released (release), each person on both sides of it gets one `round_trip` row. A
+-- trigger, so every door that holds or releases money (tickets, seats, revisions, the Chain Reaction,
+-- Fair Exit, a dispute ruling) records it without one of them being able to forget. A DEFINER, so the
+-- write never depends on who the escrow statement ran as. Moves no money.
+CREATE OR REPLACE FUNCTION finance.fn_aml_record_round_trip()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_event text;
+BEGIN
+    IF NEW.payee_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+    IF NEW.status = 'released' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'released') THEN
+        v_event := 'release';
+    ELSIF NEW.status = 'held'
+          AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'held' OR OLD.payee_id IS NULL) THEN
+        v_event := 'funding';
+    ELSE
+        RETURN NULL;
+    END IF;
+    INSERT INTO finance.aml_signals (kind, subject_user_id, escrow_id, amount_minor, currency, facts)
+    SELECT 'round_trip', r.person, NEW.id, NEW.amount_cents, pg_catalog.upper(NEW.currency),
+           pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
+               'event', v_event,
+               'relation', r.relation,
+               'payer_user_id', NEW.payer_user_id,
+               'payer_business_id', NEW.payer_business_id,
+               'payee_type', NEW.payee_type,
+               'payee_id', NEW.payee_id,
+               'project_stage_id', NEW.project_stage_id,
+               'ticket_id', NEW.ticket_id,
+               'cohort_membership_id', NEW.cohort_membership_id,
+               'revision_id', NEW.revision_id
+           ))
+      FROM finance.fn_aml_round_trip_people(NEW) r;
+    RETURN NULL;
+END;
+$$;
+
+-- The card money that makes a withdrawal of p_amount rapid churn, judged at p_now: the settled card
+-- payments (top-ups and card-funded escrow locks) the person made, or that came into the wallet, inside
+-- `aml_churn_window_hours`, in the withdrawal's currency. One row when the withdrawal and that money
+-- both reach `aml_churn_min_minor` in that currency, none otherwise (an unset dial reads as no churn).
+-- The money can leave only in the currency it came in: no own-wallet conversion exists (FBP DB18).
+-- Internal.
+CREATE OR REPLACE FUNCTION finance.fn_aml_churn(
+    p_user uuid,
+    p_wallet uuid,
+    p_amount bigint,
+    p_currency text,
+    p_now timestamptz
+)
+RETURNS TABLE (in_minor bigint, payments integer, last_in_at timestamptz, min_minor bigint, window_hours integer)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH dial AS (
+        SELECT finance.fn_param_minor('aml_churn_min_minor', p_currency) AS min_minor,
+               finance.fn_aml_dial_int('aml_churn_window_hours', 72) AS hours
+    ), card AS (
+        SELECT COALESCE(SUM(ip.amount_received_cents), 0)::bigint AS in_minor,
+               COUNT(*)::integer AS payments,
+               MAX(ip.succeeded_at) AS last_in_at
+          FROM finance.inbound_payments ip, dial
+         WHERE (ip.created_by = p_user OR ip.wallet_id = p_wallet)
+           AND ip.succeeded_at > p_now - pg_catalog.make_interval(hours => dial.hours)
+           AND ip.currency = pg_catalog.upper(pg_catalog.btrim(p_currency))
+    )
+    SELECT card.in_minor, card.payments, card.last_in_at, dial.min_minor, dial.hours
+      FROM card, dial
+     WHERE dial.min_minor > 0
+       AND p_amount >= dial.min_minor
+       AND card.in_minor >= dial.min_minor;
+$$;
+
+-- When the Safety Hold lets p_user withdraw p_amount from p_wallet again, judged at p_now, and which
+-- triggers hold it (PRODUCT_SPEC §Identity, Taxes & Compliance 3; Decision #529). NULL and no triggers
+-- while `aml_safety_hold_enabled` is off, or when nothing holds it. Each trigger listed in
+-- `aml_safety_hold_triggers` holds for `aml_safety_hold_hours` after its own event, and the latest end
+-- wins:
+--   sign_in_change  the person moved their sign-in (Decision #451 (c)): from the `user.sign_in_changed`
+--                   audit row
+--   rapid_churn     this withdrawal is rapid churn (finance.fn_aml_churn): from the newest card payment
+--   round_trip      a round_trip signal names the person: from the signal
+--   new_account     the account is younger than `aml_new_account_days` and card money came in: from
+--                   the newest card payment, whatever its size
+-- It reads only; it never touches pending_releases or their clock, so it cannot shorten or lengthen the
+-- escrow holding period (PRD-F15). Internal; probes call it with a later p_now to prove the hold ends.
+CREATE OR REPLACE FUNCTION finance.fn_safety_hold(
+    p_user uuid,
+    p_wallet uuid,
+    p_amount bigint,
+    p_currency text,
+    p_now timestamptz,
+    OUT held_until timestamptz,
+    OUT triggers text[]
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_on jsonb;
+    v_hold interval;
+    v_at timestamptz;
+BEGIN
+    triggers := ARRAY[]::text[];
+    IF NOT finance.fn_safety_hold_enabled() THEN
+        RETURN;
+    END IF;
+    SELECT pp.value INTO v_on FROM security.platform_params pp WHERE pp.key = 'aml_safety_hold_triggers';
+    IF v_on IS NULL OR pg_catalog.jsonb_typeof(v_on) <> 'array' THEN
+        RETURN;
+    END IF;
+    v_hold := pg_catalog.make_interval(hours => finance.fn_aml_dial_int('aml_safety_hold_hours', 72));
+
+    IF v_on ? 'sign_in_change' THEN
+        SELECT MAX(a.created_at) INTO v_at
+          FROM security.audit_logs a
+         WHERE a.user_id = p_user AND a.action = 'user.sign_in_changed'
+           AND a.created_at > p_now - v_hold;
+        IF v_at IS NOT NULL THEN
+            held_until := GREATEST(held_until, v_at + v_hold);
+            triggers := triggers || 'sign_in_change'::text;
+        END IF;
+    END IF;
+
+    IF v_on ? 'rapid_churn' THEN
+        SELECT c.last_in_at INTO v_at FROM finance.fn_aml_churn(p_user, p_wallet, p_amount, p_currency, p_now) c;
+        IF v_at IS NOT NULL AND v_at + v_hold > p_now THEN
+            held_until := GREATEST(held_until, v_at + v_hold);
+            triggers := triggers || 'rapid_churn'::text;
+        END IF;
+    END IF;
+
+    IF v_on ? 'round_trip' THEN
+        SELECT MAX(s.created_at) INTO v_at
+          FROM finance.aml_signals s
+         WHERE s.subject_user_id = p_user AND s.kind = 'round_trip'
+           AND s.created_at > p_now - v_hold;
+        IF v_at IS NOT NULL THEN
+            held_until := GREATEST(held_until, v_at + v_hold);
+            triggers := triggers || 'round_trip'::text;
+        END IF;
+    END IF;
+
+    IF v_on ? 'new_account' AND EXISTS (
+        SELECT 1 FROM auth.users u
+         WHERE u.id = p_user
+           AND u.created_at > p_now - pg_catalog.make_interval(days => finance.fn_aml_dial_int('aml_new_account_days', 30))
+    ) THEN
+        SELECT MAX(ip.succeeded_at) INTO v_at
+          FROM finance.inbound_payments ip
+         WHERE (ip.created_by = p_user OR ip.wallet_id = p_wallet)
+           AND ip.succeeded_at > p_now - v_hold;
+        IF v_at IS NOT NULL THEN
+            held_until := GREATEST(held_until, v_at + v_hold);
+            triggers := triggers || 'new_account'::text;
+        END IF;
+    END IF;
+END;
+$$;
+
+-- finance.aml_signals is a record of what the money doors saw: never rewritten or removed, by any role.
+CREATE OR REPLACE FUNCTION finance.fn_aml_signals_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    RAISE EXCEPTION 'aml: finance.aml_signals is append-only — % refused', TG_OP
+        USING ERRCODE = 'PL403';
+END;
+$$;
+
+-- The operator door (`/admin/ledger`'s AML signals section): security.is_admin() only. Anyone else gets
+-- 42501, which the page answers with a 404, as /admin/disputes does (Decision #212). The newest
+-- p_limit signals (1–500, default 200) with their facts and the subject's handle, the count of every
+-- kind, and whether the Safety Hold is on. Reads only: there is no review queue to act from (Identity
+-- X2's, dormant, Decision #529 (a)).
+CREATE OR REPLACE FUNCTION finance.read_aml_signals(p_limit integer DEFAULT 200)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid() IS NULL OR NOT security.is_admin() THEN
+        RAISE EXCEPTION 'Only a platform operator can read AML signals' USING ERRCODE = '42501';
+    END IF;
+    RETURN pg_catalog.jsonb_build_object(
+        'as_of', pg_catalog.now(),
+        'hold_enabled', finance.fn_safety_hold_enabled(),
+        'counts', (
+            SELECT pg_catalog.jsonb_build_object(
+                'round_trip', COUNT(*) FILTER (WHERE s.kind = 'round_trip'),
+                'rapid_churn', COUNT(*) FILTER (WHERE s.kind = 'rapid_churn'),
+                'safety_hold', COUNT(*) FILTER (WHERE s.kind = 'safety_hold')
+            )
+              FROM finance.aml_signals s
+        ),
+        'signals', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                'id', s.id,
+                'kind', s.kind,
+                'subject_user_id', s.subject_user_id,
+                'subject_username', u.username,
+                'wallet_id', s.wallet_id,
+                'escrow_id', s.escrow_id,
+                'payout_id', s.payout_id,
+                'amount_minor', s.amount_minor,
+                'currency', s.currency,
+                'facts', s.facts,
+                'created_at', s.created_at
+            ) ORDER BY s.created_at DESC, s.id)
+              FROM (
+                  SELECT * FROM finance.aml_signals
+                   ORDER BY created_at DESC, id
+                   LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 200), 500))
+              ) s
+              LEFT JOIN org.users_public u ON u.user_id = s.subject_user_id
+        ), '[]'::jsonb)
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION finance.read_aml_signals(integer) IS
+'The operator read of the AML monitoring signals (Decision #529): the newest signals with their facts,
+each kind''s count and whether the Safety Hold is on. security.is_admin() only (42501 otherwise). Reads
+only; acts on nothing.';
 -- #endregion

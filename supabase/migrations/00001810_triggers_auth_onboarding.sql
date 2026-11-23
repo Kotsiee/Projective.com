@@ -38,6 +38,12 @@ CREATE TRIGGER trg_listings_publish_age_gate
     BEFORE INSERT OR UPDATE OF status ON catalogue.listings
     FOR EACH ROW EXECUTE FUNCTION catalogue.trg_listings_publish_age_gate();
 
+-- A listing that earns without a ticket needs a payable seller to go on sale (Decision #337, ruling
+-- M4). Fires after the age gate (trigger names sort), so an under-18 seller hears that first.
+CREATE TRIGGER trg_listings_publish_payout_gate
+    BEFORE INSERT OR UPDATE OF status ON catalogue.listings
+    FOR EACH ROW EXECUTE FUNCTION catalogue.trg_listings_publish_payout_gate();
+
 CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON org.team_members
     FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('user_id');
 CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON org.business_members

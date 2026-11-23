@@ -8,7 +8,6 @@ import {
 	CLOSED_STATUSES,
 } from "@projective/types/catalogue";
 import { PLATFORM_BASE_CURRENCY } from "@projective/types/finance";
-import { conversationPath, dmConversationId } from "@projective/types/messaging";
 import {
 	type ListingWaitlist,
 	type ListingWaitlistEntry,
@@ -41,7 +40,7 @@ import {
  *
  * One call to `catalogue.get_client_pipeline` (INVOKER, so every arm answers under RLS, orders through
  * its narrow definer — Decision #218), mapped by the pure `client-pipeline`. The buyer's public
- * identity comes from the profile directory, the inline thread from the pair's one DM thread, and
+ * identity (a person, or a team or business and its owner) comes from the profile directory, the inline thread from the pair's one DM thread, and
  * open reschedule rounds from the calendar's own coordination read.
  */
 
@@ -86,47 +85,6 @@ interface Loaded {
 	truncated: boolean;
 }
 
-/** How many thread ids one address read names, so the request line stays short. */
-const THREAD_ID_CHUNK = 100;
-
-/**
- * `catalogue.get_client_pipeline` links an inquiry at `/messages/<thread uuid>`, which does not route
- * (Decision #88; #339 ruling N1). Each inquiry row is re-pointed at its thread's `cht-` address, read
- * in one request per hundred threads under the caller's own RLS; one whose thread does not come back
- * opens the pair's `dm-<handle>` instead, which answers with the same thread.
- */
-async function withThreadAddresses(
-	db: SupabaseClient,
-	rows: Array<Record<string, unknown>>,
-): Promise<Array<Record<string, unknown>>> {
-	const ids = [
-		...new Set(
-			rows.filter((r) => r.engagement_kind === "inquiry").map((r) => String(r.engagement_id)),
-		),
-	];
-	if (ids.length === 0) return rows;
-	const refs = new Map<string, string>();
-	for (let i = 0; i < ids.length; i += THREAD_ID_CHUNK) {
-		const read = await db.schema("comms").from("dm_threads").select("id, ref")
-			.in("id", ids.slice(i, i + THREAD_ID_CHUNK));
-		if (read.error) throw new Error(`comms.dm_threads read failed: ${read.error.message}`);
-		for (const row of (read.data ?? []) as Array<{ id: string; ref: string }>) {
-			refs.set(row.id, row.ref);
-		}
-	}
-	return rows.map((r) => {
-		if (r.engagement_kind !== "inquiry") return r;
-		const ref = refs.get(String(r.engagement_id));
-		const handle = typeof r.buyer_handle === "string" ? r.buyer_handle : "";
-		const href = ref
-			? conversationPath(ref)
-			: handle
-			? conversationPath(dmConversationId(handle))
-			: "/messages";
-		return { ...r, href };
-	});
-}
-
 /** The scope's engagements, or `null` when it names a listing the caller does not manage. */
 async function loadEngagements(
 	db: SupabaseClient,
@@ -149,14 +107,16 @@ async function loadEngagements(
 		p_limit: RPC_LIMIT,
 	});
 	if (error) throw new Error(`catalogue.get_client_pipeline failed: ${error.message}`);
-	const rows = await withThreadAddresses(db, (data ?? []) as Array<Record<string, unknown>>);
+	const rows = (data ?? []) as Array<Record<string, unknown>>;
 	const byId = new Map<string, PipelineListing>(
 		listings.map((l) => [l.id, { slug: l.slug, title: l.title }]),
 	);
-	const handles = rows.flatMap((r) => {
-		const key = toClientKey(r.buyer_handle as string | null);
-		return key ? [key] : [];
-	});
+	const handles = rows.flatMap((r) =>
+		[r.buyer_handle, r.buyer_contact_handle].flatMap((raw) => {
+			const key = toClientKey(raw as string | null);
+			return key ? [key] : [];
+		})
+	);
 	return {
 		engagements: toEngagements(rows, byId, await identitiesFor(handles)),
 		rows: rows as Loaded["rows"],

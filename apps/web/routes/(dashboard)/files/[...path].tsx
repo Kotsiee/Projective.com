@@ -10,6 +10,15 @@ import FilesHub from "@web/features/files/islands/FilesHub.island.tsx";
 import PurchasesView from "@web/features/files/islands/PurchasesView.island.tsx";
 import { EntitlementSlug } from "@projective/types/catalogue";
 import { DeliveryBackendService } from "@server/services/catalogue/DeliveryBackendService.ts";
+import ReviewDialog from "@features/reviews/islands/ReviewDialog.island.tsx";
+import {
+	applyReviewStateSim,
+	parseReviewStateSim,
+	REVIEW_STATE_SIM_COOKIE,
+} from "@features/reviews/core/review-state-sim.ts";
+import { ReviewsBackendService } from "@server/services/reviews/ReviewsBackendService.ts";
+import { isDevelopmentEnv } from "@web/utils/app-env.ts";
+import { readCookies } from "@web/utils/auth-cookies.ts";
 
 /**
  * `/files/…` — the personal/entity asset library, at any depth.
@@ -69,14 +78,30 @@ export const handler = define.handlers({
 	async GET(ctx) {
 		// What the acting account bought (Decision #488): a page state of `/files`, not a folder.
 		if (isPurchasesView(ctx.url)) {
-			const result = await DeliveryBackendService.purchases(readActor(ctx));
+			const actor = readActor(ctx);
 			const focus = EntitlementSlug.safeParse(ctx.url.searchParams.get("entitlement")).data ?? null;
+			// `&review=ent-…` opens the review dialog on that purchase (Decision #487 RV1, ROUTING.md).
+			const reviewSlug = EntitlementSlug.safeParse(ctx.url.searchParams.get("review")).data ?? null;
+			const [result, reviewables] = await Promise.all([
+				DeliveryBackendService.purchases(actor),
+				reviewSlug ? ReviewsBackendService.reviewables(reviewSlug, actor) : null,
+			]);
+			// The Dev Context Switcher's review state, honoured in development only (review-state-sim.ts).
+			const reviewSim = isDevelopmentEnv()
+				? parseReviewStateSim(readCookies(ctx.req)[REVIEW_STATE_SIM_COOKIE])
+				: null;
 			ctx.state.title = "Purchases · Files · Projective";
 			return page({
 				kind: "purchases" as const,
 				purchases: result.data?.purchases ?? [],
 				error: result.ok ? null : result.message ?? "We couldn't load your purchases just now.",
 				focus,
+				review: reviewSlug && reviewables?.ok
+					? {
+						slug: reviewSlug,
+						items: applyReviewStateSim(reviewables.data ?? [], reviewSim),
+					}
+					: null,
 			}, { status: result.ok ? 200 : result.status });
 		}
 
@@ -106,7 +131,14 @@ export const handler = define.handlers({
 
 export default define.page<typeof handler>(function FilesHubPage({ data }) {
 	if (data.kind === "purchases") {
-		return <PurchasesView purchases={data.purchases} error={data.error} focus={data.focus} />;
+		return (
+			<>
+				<PurchasesView purchases={data.purchases} error={data.error} focus={data.focus} />
+				{data.review && data.review.items.length > 0 && (
+					<ReviewDialog slug={data.review.slug} items={data.review.items} initialOpen />
+				)}
+			</>
+		);
 	}
 	return (
 		<FilesHub

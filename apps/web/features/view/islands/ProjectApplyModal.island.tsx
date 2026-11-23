@@ -33,7 +33,8 @@ import { OfferLedger } from "../components/OfferLedger.tsx";
 import { applyLedger } from "../core/conversion-ledger.ts";
 import type { OfferSummary } from "../core/offer-summary.ts";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
-import { applyOpen, applyProjectSlug } from "../core/view-state.ts";
+import { applyOpen, applyProjectSlug, openApplyWithConsent } from "../core/view-state.ts";
+import { ClientTrustDialog } from "@features/reviews/components/ClientTrustDialog.tsx";
 import {
 	APPLY_AS_SELF as SELF,
 	applyAsDefault,
@@ -231,6 +232,13 @@ export default function ProjectApplyModal(
 			if (eligibility) {
 				refusal.value = eligibility;
 				void readApplicant();
+				return false;
+			}
+			// The client is warned and the consent was never logged (Decision #486 (C)): close this
+			// modal, ask, and come back to it, so only one dialog shows.
+			if (res.errors?.stageId === "client_trust_consent") {
+				open.value = false;
+				openApplyWithConsent(projectSlug);
 				return false;
 			}
 			error.value = res.message ?? "That application couldn't be sent.";
@@ -473,6 +481,7 @@ export default function ProjectApplyModal(
 				class="sbk-split pam"
 			/>
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{announcement.value}</p>
+			<ClientTrustDialog />
 		</>
 	);
 }

@@ -9,6 +9,7 @@ import {
 	LIBRARY_VIDEO_MAX_BYTES,
 	type LibraryAsset,
 	libraryLocation,
+	mediaProxyHref,
 	quarantineLocation,
 	type LibraryListParams,
 	type LibraryPage,
@@ -28,7 +29,6 @@ import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import {
 	downloadObject,
 	removeObjects,
-	signedReadUrls,
 	signedUploadUrl,
 	uploadObject,
 } from "../../core/storage-signed.ts";
@@ -208,47 +208,49 @@ function videoEnvelope(poster: ImageJobResult, durationMs: number): AssetMetadat
 
 // #region URLs
 
+/** One stored object of a library row: the original, or one of its tiers. */
+interface LibraryObject {
+	bucket: string;
+	path: string;
+	itemId: string;
+	tier?: VariantTier;
+}
+
 /**
- * Resolve the URLs of many rows at once: public objects by their stable URL, private ones by ONE
- * signing call per bucket. Returns a lookup from `bucket/path` to URL.
+ * Resolve the URLs of many rows at once, as a lookup from `bucket/path`: a public object by its stable
+ * URL, a private one through the media proxy, which re-checks the read under the viewer's session. No
+ * signed URL reaches the browser (`ASSET_DELIVERY_ARCHITECTURE.md` §5.3).
  */
-async function urlsFor(objects: ReadonlyArray<{ bucket: string; path: string }>): Promise<Map<string, string>> {
+function urlsFor(objects: readonly LibraryObject[]): Map<string, string> {
 	const out = new Map<string, string>();
-	const privateByBucket = new Map<string, string[]>();
 	for (const o of objects) {
 		if (!o.path) continue;
-		if (isPublicBucket(o.bucket)) {
-			const url = publicObjectUrl(o.bucket, o.path);
-			if (url) out.set(`${o.bucket}/${o.path}`, url);
-		} else {
-			const list = privateByBucket.get(o.bucket) ?? [];
-			list.push(o.path);
-			privateByBucket.set(o.bucket, list);
-		}
+		const url = isPublicBucket(o.bucket)
+			? publicObjectUrl(o.bucket, o.path)
+			: mediaProxyHref(o.itemId, o.tier ? { tier: o.tier } : {});
+		if (url) out.set(`${o.bucket}/${o.path}`, url);
 	}
-	await Promise.all([...privateByBucket].map(async ([bucket, paths]) => {
-		const signed = await signedReadUrls(bucket, paths);
-		for (const [path, url] of signed) out.set(`${bucket}/${path}`, url);
-	}));
 	return out;
 }
 
 /** Map rows + their tiers onto library assets (skipping rows whose size is unknown). */
-async function toAssets(rows: readonly ItemRow[], variants: readonly VariantRow[]): Promise<LibraryAsset[]> {
+function toAssets(rows: readonly ItemRow[], variants: readonly VariantRow[]): LibraryAsset[] {
 	const tiersOf = new Map<string, Partial<Record<VariantTier, VariantRow>>>();
 	for (const v of variants) {
 		const entry = tiersOf.get(v.item_id) ?? {};
 		entry[v.tier] = v;
 		tiersOf.set(v.item_id, entry);
 	}
-	const objects: Array<{ bucket: string; path: string }> = [];
+	const objects: LibraryObject[] = [];
 	for (const row of rows) {
-		objects.push({ bucket: row.bucket_id, path: row.storage_path });
+		objects.push({ bucket: row.bucket_id, path: row.storage_path, itemId: row.id });
 		for (const v of Object.values(tiersOf.get(row.id) ?? {})) {
-			if (v) objects.push({ bucket: v.bucket_id, path: v.storage_path });
+			if (v) {
+				objects.push({ bucket: v.bucket_id, path: v.storage_path, itemId: row.id, tier: v.tier });
+			}
 		}
 	}
-	const urls = await urlsFor(objects);
+	const urls = urlsFor(objects);
 	const url = (bucket: string, path: string) => urls.get(`${bucket}/${path}`) ?? "";
 
 	const out: LibraryAsset[] = [];
@@ -343,7 +345,7 @@ export async function listLibrary(
 		if (error) return fail(503, { message: UNAVAILABLE });
 		const rows = (data ?? []) as ItemRow[];
 		const page = rows.slice(0, params.limit);
-		const items = await toAssets(page, await variantsOf(db, page.map((r) => r.id)));
+		const items = toAssets(page, await variantsOf(db, page.map((r) => r.id)));
 		const last = page[page.length - 1];
 		return ok({ items, nextCursor: rows.length > params.limit && last ? encodeCursor(last) : null });
 	} catch {
@@ -366,7 +368,7 @@ export async function readLibraryAsset(actor: ReadActor, id: string): Promise<Li
 		.is("deleted_at", null)
 		.maybeSingle();
 	if (error || !data) return null;
-	const [asset] = await toAssets([data as ItemRow], await variantsOf(db, [id]));
+	const [asset] = toAssets([data as ItemRow], await variantsOf(db, [id]));
 	return asset ?? null;
 }
 

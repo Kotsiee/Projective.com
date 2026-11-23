@@ -19,6 +19,7 @@ const SECTIONS: ReadonlyArray<
 	{ id: "drift", read: LedgerHealthService.drift },
 	{ id: "escrow_age", read: LedgerHealthService.escrowAge },
 	{ id: "alerts", read: LedgerHealthService.alerts },
+	{ id: "aml_signals", read: LedgerHealthService.amlSignals },
 ];
 
 /** A refusal or a missing database: there is no ledger page here for this caller. */

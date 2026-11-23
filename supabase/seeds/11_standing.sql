@@ -18,10 +18,10 @@
 --   on_time_rate          delivered tickets whose accepted delivery arrived by the due date ÷ delivered
 --                         (a ticket with no due date cannot be late; the client's later approval is
 --                         not the freelancer's delay)
---   client_rating_avg     the average rating the subject was reviewed at (the platform's own cached
---                         `rating_average`, maintained from `reviews.entity_reviews`)
---   peer_rating_avg       peer reviews — the platform records none yet, so 0; the formula averages the
---                         two tracks, which a one-track record honestly halves
+--   client_rating_avg     the Bayesian mean of the subject's revealed client reviews, written by the
+--                         platform's own writer (org.fn_refresh_standing_reviews, Decision #489) at the
+--                         end of this file, not here: 0 until the subject's first review
+--   peer_rating_avg       reserved and never written (Decision #489); Standing does not read it
 --   dispute_rate          disputed escrows ÷ escrows the subject was the payee of
 --   workload_reliability  held tickets with no workload report ÷ held tickets
 --   tenure_days           days since the account (or the team) was created
@@ -35,12 +35,11 @@
 WITH subjects AS (
     SELECT 'freelancer'::org.standing_subject AS subject_type,
            fp.user_id AS subject_id,
-           up.created_at AS since,
-           COALESCE(fp.rating_average, 0)::numeric AS rating
+           up.created_at AS since
     FROM org.freelancer_profiles fp
     JOIN org.users_public up ON up.user_id = fp.user_id
     UNION ALL
-    SELECT 'team'::org.standing_subject, t.id, t.created_at, COALESCE(t.rating_average, 0)::numeric
+    SELECT 'team'::org.standing_subject, t.id, t.created_at
     FROM org.teams t
 ),
 -- The tickets a subject has held: its own claims, or — for a team — work in a stage assigned to it.
@@ -76,7 +75,6 @@ record AS (
     SELECT
         s.subject_type,
         s.subject_id,
-        s.rating,
         GREATEST(0, (now()::date - s.since::date))::integer AS tenure_days,
         (SELECT count(*) FROM projects.stage_assignments sa
           WHERE sa.status = 'completed'
@@ -104,7 +102,7 @@ record AS (
 )
 INSERT INTO org.entity_standing (
     subject_type, subject_id, stages_completed, completion_rate, on_time_rate,
-    client_rating_avg, peer_rating_avg, dispute_rate, workload_reliability, tenure_days, penalty_severity
+    dispute_rate, workload_reliability, tenure_days, penalty_severity
 )
 SELECT
     r.subject_type,
@@ -112,8 +110,6 @@ SELECT
     r.stages_completed,
     CASE WHEN r.delivered_n + r.reported_n > 0 THEN round(r.delivered_n / (r.delivered_n + r.reported_n), 4) ELSE 0 END,
     CASE WHEN r.delivered_n > 0 THEN round(r.on_time_n / r.delivered_n, 4) ELSE 0 END,
-    LEAST(5, GREATEST(0, round(r.rating, 2))),
-    0,
     CASE WHEN r.escrows_n > 0 THEN round(r.disputed_n / r.escrows_n, 4) ELSE 0 END,
     CASE WHEN r.held_n > 0 THEN round((r.held_n - r.reported_n) / r.held_n, 4) ELSE 0 END,
     r.tenure_days,
@@ -123,14 +119,14 @@ ON CONFLICT (subject_type, subject_id) DO UPDATE SET
     stages_completed = EXCLUDED.stages_completed,
     completion_rate = EXCLUDED.completion_rate,
     on_time_rate = EXCLUDED.on_time_rate,
-    client_rating_avg = EXCLUDED.client_rating_avg,
-    peer_rating_avg = EXCLUDED.peer_rating_avg,
     dispute_rate = EXCLUDED.dispute_rate,
     workload_reliability = EXCLUDED.workload_reliability,
     tenure_days = EXCLUDED.tenure_days,
     penalty_severity = EXCLUDED.penalty_severity;
 
--- The score, the components and the rung are the platform's to compute, not this file's.
-SELECT org.fn_recompute_standing(es.subject_type, es.subject_id)
+-- The review input, the score, the components and the rung are the platform's to compute, not this
+-- file's: the same writer a review calls (Decision #489) writes the Bayesian review average from the
+-- seeded reviews and recomputes each subject.
+SELECT org.fn_refresh_standing_reviews(es.subject_type, es.subject_id)
 FROM org.entity_standing es
 ORDER BY es.subject_type, es.subject_id;

@@ -60,6 +60,12 @@ export const ENGAGEMENT_LABELS: Readonly<Record<EngagementKind, string>> = {
 	pipeline_project: "Project",
 };
 
+/** A team or business buyer's kind, as the meta text that names it beside the entity's name. */
+export const ENTITY_KIND_LABELS: Readonly<Record<"team" | "business", string>> = {
+	team: "Team",
+	business: "Business",
+};
+
 /** Where an engagement's deep link hands off to, as its link text. */
 export const HANDOFF_LABELS: Readonly<Record<EngagementKind, string>> = {
 	inquiry: "Open thread",
@@ -107,13 +113,17 @@ export function primaryReason(summary: ClientSummary): ActionReason | null {
 }
 
 /**
- * A row's middot meta: the lead engagement's kind, and in console scope the listing it concerns
- * (the workspace is one listing already), plus `+n more` when the buyer has several.
+ * A row's middot meta: a team or business buyer's kind, the lead engagement's kind, and in console
+ * scope the listing it concerns (the workspace is one listing already), plus `+n more` when the buyer
+ * has several.
  */
 export function rowMeta(summary: ClientSummary, consoleScope: boolean): string[] {
 	const lead = summary.engagements[0];
 	if (!lead) return [];
-	const parts = [ENGAGEMENT_LABELS[lead.kind]];
+	const kind = summary.client.entityKind;
+	const parts = kind
+		? [ENTITY_KIND_LABELS[kind], ENGAGEMENT_LABELS[lead.kind]]
+		: [ENGAGEMENT_LABELS[lead.kind]];
 	if (consoleScope && lead.listingTitle) parts.push(lead.listingTitle);
 	if (summary.engagements.length > 1) parts.push(`+${summary.engagements.length - 1} more`);
 	return parts;

@@ -104,7 +104,7 @@ projects).
 | `created_at` / `updated_at` | timestamptz | `NOT NULL DEFAULT now()`.                                                                                                 |
 | `plan`             | text                 | Subscription tier (default: `free`).                                                                                      |
 | `billing_email`    | text                 | Primary contact for invoices.                                                                                             |
-| `default_currency` | text                 | Origin currency for the pooled fund (default `USD`).                                                                      |
+| `default_currency` | text                 | Origin currency for the pooled fund (default `USD`), CHECK `^[A-Z]{3}$` (FINANCE DB8).                                    |
 | `kyb_status`       | `finance.kyc_status` | **Additive (`20260723091000`).** `unverified` (default) → `verified`. **Required to spend from, pay invoices from or withdraw from the pooled Business Wallet** (`finance.fn_assert_business_spend`, `place_wallet_order`, `pay_invoice`, `place_on_account_order`, `begin_payout`; monthly invoicing terms too) — never to add money to it (Decision #248 (k)). |
 | `kyb_verified_at`  | timestamptz          | **Additive.** When KYB was granted.                                                                                       |
 | `kyb_provider_ref` | text                 | **Additive.** Stripe Connect account id (placeholder; **no PII**).                                                        |
@@ -247,8 +247,10 @@ forward to now. Zod: `DataExportRequestRowSchema` (`@projective/types/org`, zero
 
 ### `org.legal_document_versions`
 
-The versions of the three documents sign-up records (Decision #446): reference data seeded in
-`00005050`, the database's copy of `LEGAL_VERSIONS` in `@projective/types/legal` (held equal by
+The versions of the documents a person accepts: the three sign-up records (Decision #446), and the IP
+Transfer Deed and the Escrow Terms a first paid claim and a first funding ask for (Decision #534,
+LG3). Reference data seeded in `00005050`, the database's copy of `LEGAL_VERSIONS` in
+`@projective/types/legal` (held equal by
 `packages/types/legal/manifest.contract.test.ts`; the manifest is held equal to the `/legal` content
 modules by `features/legal/core/manifest.test.ts`). Publishing a version adds a row to all three.
 Read by anyone (`anon` + `authenticated` `SELECT`); only the seed writes it. Zod:
@@ -256,23 +258,25 @@ Read by anyone (`anon` + `authenticated` `SELECT`); only the seed writes it. Zod
 
 | Column           | Type    | Notes                                                                                                                                                       |
 | :--------------- | :------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `slug`           | text    | PK with `version`. `CHECK IN ('terms','acceptable-use','privacy')`.                                                                                         |
+| `slug`           | text    | PK with `version`. `CHECK IN ('terms','acceptable-use','privacy','ip-transfer-deed','escrow-terms')`; the last two are the commit documents (`org.fn_legal_commit_surface`), which the sign-up recorder and the re-accept gate ignore. |
 | `version`        | text    | `MAJOR.MINOR` (`legal_document_versions_version_check`); ordered numerically by `org.fn_legal_version_key`.                                                 |
 | `effective_date` | date    | The day it governs from. `org.fn_current_legal_version` picks the newest one in effect (UTC), else the oldest, as `/legal` does.                            |
-| `material`       | boolean | `NOT NULL DEFAULT false`. A material version in effect makes everyone who accepted only an older one due again (`org.fn_needs_reacceptance`); any other relies on the Terms' continued-use clause. |
+| `material`       | boolean | `NOT NULL DEFAULT false`. A material sign-up version in effect makes everyone who accepted only an older one due again (`org.fn_needs_reacceptance`); any other relies on the Terms' continued-use clause. A commit document is asked for again at every new version, material or not. |
 
 ### `org.legal_acceptances`
 
-Which version of each sign-up document a person **accepted** (the Terms, the Acceptable Use Policy) or
-was **shown** (the Privacy Policy, whose lawful basis is not consent), where, and for an enterprise
-owner the enterprise they accepted for (Decision #446). Written only inside the door that creates the
-profile (`handle_new_user`, `complete_onboarding`, `create_enterprise`) or by
-`public.accept_current_terms`, through `org.fn_record_legal_acceptance`, at versions the database
-re-checks. **Append-only** (`trg_legal_acceptances_append_only` refuses `UPDATE`/`DELETE` for every
+Which version of each document a person **accepted** (the Terms, the Acceptable Use Policy, the IP
+Transfer Deed, the Escrow Terms) or was **shown** (the Privacy Policy, whose lawful basis is not
+consent), where, and for an enterprise owner the enterprise they accepted for (Decisions #446, #534).
+Written only inside the door that creates the profile (`handle_new_user`, `complete_onboarding`,
+`create_enterprise`) or by `public.accept_current_terms`, through `org.fn_record_legal_acceptance`;
+or, for the deed and the Escrow Terms, by `org.fn_require_legal_acceptance` inside a client claim or
+funding door; always at versions the database re-checks. **Append-only** (`trg_legal_acceptances_append_only` refuses `UPDATE`/`DELETE` for every
 role, `55000`); read-own (`SELECT` owner or admin, no client write grant). No IP address and no user
 agent (data minimisation). **Retention:** contract evidence — "consent and terms-acceptance records",
 the life of the account plus 6 years (`finance-model.md` §17), so the person FK is `RESTRICT`, never
-`CASCADE`; ERA1 must classify it as retained. Zod: `LegalAcceptanceRowSchema`.
+`CASCADE`; ERA1 must classify it as retained (HOLD), the `claim` and `fund` rows included. Zod:
+`LegalAcceptanceRowSchema`.
 
 | Column          | Type                           | Notes                                                                                                   |
 | :-------------- | :----------------------------- | :------------------------------------------------------------------------------------------------------ |
@@ -281,7 +285,7 @@ the life of the account plus 6 years (`finance-model.md` §17), so the person FK
 | `document_slug` | text                           | FK (`document_slug`, `version`) → `org.legal_document_versions` `ON DELETE RESTRICT`.                   |
 | `version`       | text                           | The version in effect when it was recorded.                                                             |
 | `kind`          | `org.legal_acceptance_kind`    | `accepted` · `shown`; `legal_acceptances_kind_check`: `shown` exactly for `privacy`.                     |
-| `surface`       | `org.legal_acceptance_surface` | `join` (email) · `join_oauth` · `join_enterprise` (an enterprise sign-up, or a profile-less owner finishing step 1.6) · `reaccept`. |
+| `surface`       | `org.legal_acceptance_surface` | `join` (email) · `join_oauth` · `join_enterprise` (an enterprise sign-up, or a profile-less owner finishing step 1.6) · `reaccept` · `claim` (the deed, at a first paid claim) · `fund` (the Escrow Terms, at a first funding). |
 | `enterprise_id` | uuid                           | FK → `org.enterprises` `ON DELETE RESTRICT`; set exactly when `surface = 'join_enterprise'`.           |
 | `accepted_at`   | timestamptz                    | `NOT NULL DEFAULT now()`. Indexed with the person (`idx_legal_acceptances_user_document`).              |
 
@@ -774,7 +778,7 @@ column, because a user can belong to several enterprises.
 | `verification_level`  | `org.enterprise_verification_level` | `unverified` (default) → `email_verified` → `kyb_pending` → `verified`. KYB deferred. |
 | `logo_file_id`        | uuid                                  | FK → `files.items.id` (ON DELETE SET NULL).                                           |
 | `billing_email`       | text                                  | Invoicing contact.                                                                    |
-| `default_currency`    | text                                  | Default `USD`.                                                                        |
+| `default_currency`    | text                                  | Default `USD`, CHECK `^[A-Z]{3}$` (FINANCE DB8).                                      |
 | `created_at` / `updated_at` | timestamptz                     | `NOT NULL DEFAULT now()`.                                                             |
 
 ### `org.enterprise_members`

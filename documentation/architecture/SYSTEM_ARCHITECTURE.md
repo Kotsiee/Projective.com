@@ -1571,9 +1571,9 @@ server doors feed it, and they keep the two halves of the rule above apart:
   `GET /api/files/inspect?id=&share=` (`FilesService.inspect`, `null` on a `404`; Decision #162).
 - **The bytes — `MediaBackendService.streamAsset(actor, fileId, request)`**, behind
   `GET|HEAD /api/media/proxy/[fileId]` (a one-line delegate to `services/media/stream.ts`
-  `streamAssetFor`; transport `core/storage-stream.ts` `fetchStoredObject`). Same gate as
-  `/api/files/object/[id]` (`objectFor`, unchanged), but the response is STREAMED from storage's
-  internal origin instead of a `302` to a signed URL, so the page never sees a storage host, bucket,
+  `streamAssetFor`; transport `core/storage-stream.ts` `fetchStoredObject`). Gate:
+  `objectFor` (`live-objects.ts`); the response is STREAMED from storage's internal origin, never a
+  redirect to a signed URL (none is minted since ASSET phase 1, Decision #SC9P1), so the page never sees a storage host, bucket,
   path or signed URL. Range / conditional requests pass through (206 · 304 · 416), headers are built
   from an allowlist with a never-`text/html` type policy and a sandbox CSP on anything not
   inline-safe, a share read is `no-store`, and a read never counts a download. A top-level
@@ -1610,8 +1610,9 @@ public buckets included), `projects/live-files.ts`, `messaging/live-workspace.ts
 as `mediaProxyHref(assetId, { tier: "md" })` (`projects/message-attachments.ts`). Project and
 conversation rows read the stored upload metadata too (`withMediaFacts`: width, height, BlurHash).
 Fixtures, web links and connector files keep their own URLs. The browser never sees a storage
-host, bucket, path or signed URL in a listing; `/api/files/object/[id]` remains for the library
-picker (`media-pick.ts`) and the share-folder listing (`live-library.ts`). The client resolver is
+host, bucket, path or signed URL in a listing; since ASSET phase 1 (#SC9P1) the library
+picker (`media-pick.ts`, `media/library.ts`) and the share-folder listing (`live-library.ts`) read
+through the proxy too, and `/api/files/object/[id]` is a `308` to it. The client resolver is
 `apps/web/features/files/core/asset-media.ts` (`assetMediaSrc` · `assetMediaSrcset` ·
 `assetPlaceholder`), a pure module that falls back to the row's own URL when there is no stored
 uuid. Cost, flagged: each thumbnail is a proxied read holding a request worker and counting against
@@ -2629,6 +2630,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `finance-sweep-stale-payouts`       | every 10 min                      | `POST /api/finance/cron/payouts?limit=50` · `FINANCE_CRON_SECRET`        | Finance — `PaymentBackendService.sweepStalePayouts`               | Each payout is leased once per window (`finance.fn_claim_stale_payouts`, `SKIP LOCKED`); every transfer carries its payout's Stripe idempotency key. Seeded only where the claim function exists (Decision #202).                                                                                                                                                                                                                                                                                      |
 | `finance-recurring-deposits`        | hourly :15                        | `POST /api/finance/cron/deposits?limit=50` · `FINANCE_CRON_SECRET`       | Finance — `PaymentBackendService.processDueDeposits`              | A period is claimed once (`finance.claim_due_deposit_rules`) and each charge carries a Stripe idempotency key; a run left unbound by a transient failure is re-sent by the next sweep under the same key (≤ 23 h).                                                                                                                                                                                                                                                                                     |
 | `finance-payout-schedules`          | :03 / :18 / :33 / :48             | `POST /api/finance/cron/payout-schedules?limit=50` · `FINANCE_CRON_SECRET` | Finance — `PaymentBackendService.runPayoutSchedules`              | Each due schedule is claimed once (`finance.fn_claim_due_payout_schedules`, `SKIP LOCKED`) and debited as its author through `begin_payout` in the claim's transaction; the Transfer carries its payout's Stripe idempotency key, and a lost answer is the stale-payout sweep's. Seeded only where the claim function exists (Decision #337, ruling M6).                                                                                                                                               |
+| `finance-fx-daily`                  | daily 16:23                       | `POST /api/finance/cron/fx` · `FINANCE_CRON_SECRET`                      | Finance — `FxService.refreshRates` (ruling M5 (f), #471, FBP DB17) | A feed is recorded whole or not at all (`finance.record_fx_rates`); a re-run at the same `as_of` records nothing (`uq_fx_rate_observation`), and a refused or failed run records nothing, logs a `finance.fx` error and leaves the last rates standing. Seeded only where the door exists. Until the owner picks the vendor (#471) each run logs `feed_not_configured`.                                                                                                                                  |
 | `scheduling-availability-horizon`   | daily 03:05                       | `POST /api/scheduling/cron/horizon?limit=200` · `SCHEDULING_CRON_SECRET` | Scheduling — `ScheduleBackendService.extendHorizons` (#217)       | Recompiles each live preset not compiled, or compiled through an earlier date than today + 90 d, over today → today + 120 d; a recompile replaces the window it covers (`replace_preset_occurrences`), so a re-run rewrites the same spans. A failed preset is logged and retried next run.                                                                                                                                                                                                            |
 | `scheduling-guest-mail`             | every minute                      | `POST /api/scheduling/cron/guest-mail?limit=25` · `SCHEDULING_CRON_SECRET` | Scheduling — `GuestBackendService.sendDue` (#391)       |
 | `scheduling-forget-guest-addresses` | daily 04:25                       | `SELECT scheduling.fn_forget_guest_addresses()`                          | Scheduling — blanks a guest's address 30 days on (#391) |
@@ -2665,6 +2667,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `scheduling-presence-retention`     | daily 04:41                       | `scheduling.fn_prune_presence()`                                         | Scheduling — `finance-model.md` §17                               | Deletes room attendance records past their period, keeping whatever a dispute or a held payment still needs; repeat-safe. |
 | `search-query-log-retention`        | daily 04:36                       | `SELECT search.fn_prune_query_logs();`                                   | Search — `finance-model.md` §17 (`00001060` §7, OPS4)             | Deletes `search.query_logs` rows older than `retention_search_query_log_days` (seeded 90 days), oldest first, in `SKIP LOCKED` batches of 5000 re-checked under the lock, at most 20 a run, so a re-run or an overlapping run deletes nothing twice. An invalid dial keeps 90 days, and a run that stops at its cap with rows due carries on next run; each writes a `warn` row (`scope = 'search.retention'`). Registered only where the function exists. |
 | `reviews-reminders`                 | daily 09:21                       | `reviews.fn_send_review_reminders()`                                     | Reviews — Decision #487 ruling 6                  | Asks each client party and attendee once per completed engagement or session seat to review it (`review.reminder` → `/projects/<slug>?review=<slug>`), three days after it opened and inside its 30-day window, recorded in `reviews.review_reminders`; never writes a sitting's `review_asked_at`. Repeat-safe. |
+| `reviews-reveal`                    | hourly :44                        | `reviews.fn_reveal_due()`                                                | Reviews — Decision #486 (A), (B)                  | Reveals each double-blind engagement review whose 30-day window closed unanswered (`review.received` at reveal), then recomputes every Client Trust Score older than a day, so a lost dispute leaves it as it passes 12 months. Repeat-safe. |
 | `ops-prune-job-history`             | daily 04:53                       | `ops.fn_prune_job_history()`                                             | Ops — the registry itself                                         | Deletes pg_cron run history that ended more than 7 days ago; repeat-safe.                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 `finance-reconcile-wallets`, `finance-conservation-check` and `finance-mature-pending-releases` are
@@ -3094,6 +3097,16 @@ cryptographic tasks.
   a non-deletable audit log.
 - **Edge Monitoring:** Webhooks and Edge Functions log their execution status and integrity checks
   to a centralized monitoring service.
+- **Legal acceptance (Decisions #446, #534):** `org.legal_acceptances` is append-only contract
+  evidence, read-own, with no IP address or user agent. Sign-up records the Terms, the Acceptable Use
+  Policy and the Privacy Policy at versions the server stamps (`currentLegalVersions()`) and the
+  database re-checks. A first paid claim records the IP Transfer Deed, and a first funding the Escrow
+  Terms, once per version: every client claim and funding door ends with
+  `org.fn_require_legal_acceptance`, which answers `PN409` `legal_acceptance_required` with
+  `{document, version}` until the caller accepts. The services map it to a 409, the shared
+  `CommitAcceptanceDialog` names that version beside an unticked box, and the retry carries it as
+  `legalAcceptance` (`LegalCommitStampSchema`). The database records only the version in effect, inside
+  the commit it guards. Checkout and card settlement call the internal doors and are never asked.
 
 ### Authentication & Identity
 
@@ -3907,6 +3920,7 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
 | Recurring deposits | the wallet's `new_recurring` action; `pause_recurring` · `resume_recurring` · `edit_recurring` · `archive_recurring` on an existing rule, each through `update_deposit_rule` · `POST /api/finance/cron/deposits` (bearer `FINANCE_CRON_SECRET`, 404 otherwise) | `processDueDeposits` → `chargeScheduledDeposit` (`scheduled-deposits.ts`). A transient Stripe / network failure leaves the run unbound; the next sweep re-offers the SAME run (`retry`) under the same idempotency key `scheduled_deposit:<payment id>` for up to 23 h (then it is failed with an ops row, never re-sent past the key's life), so a period is neither lost nor charged twice. Only a declined card / required authentication counts against the rule | `create_deposit_rule` · `update_deposit_rule` (user) · `claim_due_deposit_rules` · `bind_scheduled_payment` (service role) |
 | Stale payouts | `POST /api/finance/cron/payouts` (bearer `FINANCE_CRON_SECRET`, 404 otherwise; R2 job `finance-sweep-stale-payouts`) | `sweepStalePayouts` | `fn_claim_stale_payouts` · `complete_payout` · `fail_payout` (service role) |
 | Payout schedules | the wallet's `set_payout` action (`finance.save_payout_schedule`) · `POST /api/finance/cron/payout-schedules` (bearer `FINANCE_CRON_SECRET`, 404 otherwise; the `finance-payout-schedules` job, every 15 minutes) | `WalletBackendService.setPayout` · `runPayoutSchedules` → `sendScheduledRun` (`payout-schedules.ts`); each begun run's Transfer goes through the same send as a manual withdrawal (`payout_transfer:<payout id>`) | `save_payout_schedule` (user) · `fn_claim_due_payout_schedules` · `complete_payout` · `fail_payout` (service role) |
+| Daily FX feed (ruling M5 (f), Decision #471, FBP DB17) | `POST /api/finance/cron/fx` (bearer `FINANCE_CRON_SECRET`, 404 otherwise; the `finance-fx-daily` job, 16:23 UTC) | `FxService.refreshRates` — the provider adapter's rates (`fx-feed.ts`, exact decimal text, never a float) are checked (`checkFxFeed`: every display currency, every rate a positive `numeric(20, 10)` literal, the base at 1, an `as_of` not in the future) and recorded all or none; a refused or failed feed logs a `finance.fx` error, which alerts, and the last rates stand. The vendor's adapter waits on the owner's pick (`configuredFxFeed` is `null`) | `record_fx_rates` (service role) |
 | Unsettled card payments (N1 recovery) | `POST /api/finance/cron/card-payments` (bearer `FINANCE_CRON_SECRET`, 404 otherwise; the `finance-sweep-card-payments` job, every 15 minutes) | `sweepUnsettledCardPayments` — each leased payment is looked up at Stripe by its intent or `metadata.projective_payment_id`; a succeeded intent is settled under the claim `evt_sweep_<intent>` | `claim_unsettled_card_payments` · `settle_card_payment(…, p_payment_id)` (service role) |
 | Income Smoother enrolment | the wallet's `enrol_smoother` action | `WalletBackendService.enrolSmoother` | `set_income_smoother` (user) |
 | Verification console (`/settings/verification`) | `GET /api/finance/verify/status` · `POST /api/finance/verify/kyc` · `POST /api/finance/verify/kyb` | `verificationStatus` · `createIdentitySession` · `startKybOnboarding` | `my_verification_status` · the §1.1 identity + Connect doors |
@@ -4568,9 +4582,16 @@ STRIPE_PAYMENT_METHOD_DOMAINS=XXXX-XXXX
 # needs none. Not a secret. Absent or placeholder → the path answers 404.
 STRIPE_APPLE_PAY_DOMAIN_ASSOCIATION=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/finance/cron/deposits,
-# POST /api/finance/cron/payouts and POST /api/finance/cron/payout-schedules; anything else —
-# including an unset secret — gets a 404, so the endpoints do not advertise that they exist.
+# POST /api/finance/cron/payouts, POST /api/finance/cron/payout-schedules and
+# POST /api/finance/cron/fx (the daily FX feed); anything else — including an unset secret — gets a
+# 404, so the endpoints do not advertise that they exist.
 FINANCE_CRON_SECRET=XXXX-XXXX
+# The daily FX feed's provider (Decision #471; FBP DB17): one commercial reference-rate API quoting
+# the 12 display currencies against GBP, licensed for display and pricing use. PLANNED: read only once
+# the owner picks the vendor and its adapter lands in services/finance/fx-feed.ts (configuredFxFeed);
+# until then each run records nothing and logs `feed_not_configured`. The key is server-only.
+FX_FEED_URL=XXXX-XXXX
+FX_FEED_API_KEY=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/user/cron/erasures, which runs the
 # account and freelancer-profile erasures that have come due (Decision #156); 404 otherwise.
 ACCOUNT_CRON_SECRET=XXXX-XXXX

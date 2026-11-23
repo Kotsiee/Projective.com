@@ -891,7 +891,7 @@ export function settlementOf(
 		const escrow = facts.escrows.get(row.ref_id);
 		if (escrow?.disputed) return "disputed";
 		if (facts.clearing.has(`${row.ref_id}:${row.wallet_id}`)) return "pending";
-		if (escrow && (escrow.status === "held" || escrow.status === "funded" || escrow.status === "reserved")) {
+		if (escrow && (escrow.status === "held" || escrow.status === "reserved")) {
 			return "pending";
 		}
 		if (escrow) return "cleared";

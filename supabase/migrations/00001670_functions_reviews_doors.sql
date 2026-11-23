@@ -1,6 +1,6 @@
 -- =============================================================================================
 -- 00001670_functions_reviews_doors.sql — the doors a review is written through (Category 1;
--- Decision #487, RV1; PRODUCT_SPEC §Reputation 3).
+-- Decisions #487 (RV1) and #486 (RV2); PRODUCT_SPEC §Reputation 3).
 --
 -- `reviews.entity_reviews` grants no client role a write privilege (00002500 / 00002520), so these
 -- definers are the only writers. Eligibility lives here, once:
@@ -9,9 +9,18 @@
 --            (or the provider of the listing it was bought from); the client party of an engagement
 --            still running reviews a provider whose seat was released after work began; the attendee
 --            of a completed sitting, or of a completed cohort membership, reviews the session's
---            provider. A business client is one party. Nobody reviews themselves, their own team or
---            their own business, and a 13–17 account never writes one. A product review waits for
---            CK1's delivery record (ruling 5).
+--            provider. Each provider who worked on an engagement reviews its client party back on the
+--            same anchor (#486). A business client is one party, and so is a team provider. Nobody
+--            reviews themselves, their own team or their own business, and a 13–17 account never
+--            writes one. A product review waits for CK1's delivery record (ruling 5).
+--   reveal   double-blind on an engagement: each side's review is its author's alone until the other
+--            side's arrives (the second submit reveals the pair) or the window closes (the
+--            `reviews-reveal` job); a session review reveals on submit. `review.received` fires at
+--            reveal.
+--   trust    the Client Trust Score v1 of a client party, recomputed on reveal, on the edit,
+--            withdrawal or hiding of a revealed review, when a dispute resolves, and daily; below
+--            3.00 from 3 reviews it warns, and a proposal or a hire acceptance needs the
+--            freelancer's acknowledgement first.
 --   when     30 days from the anchor's completion; the author edits until then or until the target
 --            replies, whichever comes first; the author withdraws at any time (kept, hidden).
 --   reply    one public reply by the target's owner or a member holding its profile or listing
@@ -30,8 +39,11 @@
 --   PT409  a review by this party of this target on this anchor exists; an edit after the reply; a
 --          second reply
 --   PT501  a product review, until CK1 records a delivery
+--   PT428  a proposal to, or acceptance of a hire on, a warned client's project before the
+--          freelancer acknowledged the warning (reviews.fn_assert_client_trust_consent)
 --
--- Grants by name in 00002510; the reminder job in 00005060; the seat clock trigger in 00001850.
+-- Grants by name in 00002510; the reminder and reveal jobs in 00005060; the seat clock trigger in
+-- 00001850; the dispute trigger in 00001800. Probes: reviews_writer.sql, reviews_reciprocal.sql.
 -- =============================================================================================
 
 -- #region Windows
@@ -249,6 +261,91 @@ BEGIN
 END;
 $$;
 
+/**
+ * The client party `p_user` may review on project `p_project` as a provider who worked on it
+ * (Decision #486): its business, or its client person, with the instant the review opened and, when a
+ * released seat opened it, that seat. A seat counts as for the client's own review of the provider
+ * (fn_engagement_targets): an accepted, completed or released seat on a completed engagement, the
+ * listing's provider of one, or on a running engagement a seat released after its holder submitted
+ * work. A team's seat is the team's, and whoever may answer for the team writes for it (`team_id`;
+ * the person's own seat comes first). Empty when `p_user` worked on none of it.
+ */
+CREATE OR REPLACE FUNCTION reviews.fn_client_targets(p_project uuid, p_user uuid)
+RETURNS TABLE (
+    target_type reviews.review_target_type,
+    target_id uuid,
+    stage_assignment_id uuid,
+    opened_at timestamptz,
+    team_id uuid
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_p projects.projects;
+    v_completed timestamptz;
+BEGIN
+    SELECT * INTO v_p FROM projects.projects p WHERE p.id = p_project;
+    IF NOT FOUND OR p_user IS NULL OR v_p.status = 'draft'::public.project_status THEN
+        RETURN;
+    END IF;
+    IF v_p.status = 'completed'::public.project_status THEN
+        SELECT pg_catalog.max(h.created_at) INTO v_completed
+          FROM projects.project_status_history h
+         WHERE h.project_id = p_project AND h.to_status = 'completed'::public.project_status;
+    END IF;
+
+    RETURN QUERY
+    WITH mine AS (
+        SELECT sa.id AS seat_id, sa.status, sa.ended_at, sa.project_stage_id,
+               CASE WHEN sa.assignee_type::text = 'team' THEN sa.team_id END AS t_team,
+               CASE WHEN sa.assignee_type::text = 'team' THEN NULL ELSE sa.freelancer_profile_id END AS t_person
+          FROM projects.stage_assignments sa
+          JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+         WHERE ps.project_id = p_project
+           AND ((sa.assignee_type::text <> 'team' AND sa.freelancer_profile_id = p_user)
+                OR (sa.assignee_type::text = 'team' AND reviews.fn_can_answer('team', sa.team_id, p_user)))
+    ),
+    listing_owner AS (
+        SELECT CASE WHEN b.owner_type = 'team' THEN b.owner_team_id END AS t_team
+          FROM marketplace.service_blueprints b
+         WHERE b.id = v_p.source_blueprint_id
+           AND ((b.owner_type <> 'team' AND b.freelancer_profile_id = p_user)
+                OR (b.owner_type = 'team' AND reviews.fn_can_answer('team', b.owner_team_id, p_user)))
+    ),
+    opened AS (
+        SELECT m.t_team, NULL::uuid AS seat_id, v_completed AS at
+          FROM mine m
+         WHERE v_completed IS NOT NULL AND m.status IN ('accepted', 'completed', 'released')
+        UNION ALL
+        SELECT l.t_team, NULL::uuid, v_completed
+          FROM listing_owner l
+         WHERE v_completed IS NOT NULL
+        UNION ALL
+        SELECT m.t_team, m.seat_id, m.ended_at
+          FROM mine m
+         WHERE v_completed IS NULL
+           AND m.status = 'released'
+           AND m.ended_at IS NOT NULL
+           AND EXISTS (
+               SELECT 1 FROM projects.stage_submissions sub
+                WHERE sub.project_stage_id = m.project_stage_id
+                  AND (sub.submitted_by = m.t_person
+                       OR (m.t_team IS NOT NULL AND EXISTS (
+                           SELECT 1 FROM org.team_members tm
+                            WHERE tm.team_id = m.t_team AND tm.user_id = sub.submitted_by))))
+    )
+    SELECT DISTINCT ON (o.t_team)
+           CASE WHEN v_p.client_business_id IS NOT NULL THEN 'business' ELSE 'user' END::reviews.review_target_type,
+           COALESCE(v_p.client_business_id, v_p.client_user_id, v_p.owner_user_id),
+           o.seat_id, o.at, o.t_team
+      FROM opened o
+     ORDER BY o.t_team NULLS FIRST, o.at DESC;
+END;
+$$;
+
 /** Whether `p_user` IS the target, or belongs to it: a review of it would be a self-review. */
 CREATE OR REPLACE FUNCTION reviews.fn_is_own_target(
     p_target_type reviews.review_target_type,
@@ -461,9 +558,10 @@ $$;
 
 -- #region submit_review
 /**
- * Writes the caller's review of a target on an anchor and tells the target. `p_anchor_kind` is
- * `project` (an engagement), `cohort_membership` (a session) or `order_line` (a product — PT501 until
- * CK1). Returns the review's id.
+ * Writes the caller's review of a target on an anchor. `p_anchor_kind` is `project` (an engagement:
+ * the client reviews a provider, or a provider the client), `cohort_membership` (a session) or
+ * `order_line` (a product — PT501 until CK1). A session review is public and its target told at once;
+ * an engagement review waits for its counterpart (fn_reveal). Returns the review's id.
  */
 CREATE OR REPLACE FUNCTION reviews.submit_review(
     p_anchor_kind text,
@@ -491,6 +589,9 @@ DECLARE
     v_id uuid;
     v_p projects.projects;
     v_cm projects.cohort_memberships;
+    v_is_client boolean;
+    v_team uuid;
+    v_pair uuid;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'review refused: not signed in' USING ERRCODE = '42501';
@@ -511,24 +612,32 @@ BEGIN
         IF NOT FOUND THEN
             RAISE EXCEPTION 'review refused: no such engagement' USING ERRCODE = 'PT404';
         END IF;
-        IF NOT (v_uid = COALESCE(v_p.client_user_id, v_p.owner_user_id)
+        v_is_client := v_uid = COALESCE(v_p.client_user_id, v_p.owner_user_id)
                 OR (v_p.client_business_id IS NOT NULL
                     AND 'hire'::org.workspace_capability
-                        = ANY (org.fn_member_capabilities('business', v_p.client_business_id, v_uid)))) THEN
-            RAISE EXCEPTION 'review refused: only the client reviews this engagement' USING ERRCODE = 'PT403';
+                        = ANY (org.fn_member_capabilities('business', v_p.client_business_id, v_uid)));
+        IF NOT v_is_client AND NOT EXISTS (SELECT 1 FROM reviews.fn_client_targets(v_p.id, v_uid)) THEN
+            RAISE EXCEPTION 'review refused: only the client, or a provider who worked on it, reviews this engagement'
+                USING ERRCODE = 'PT403';
         END IF;
         IF reviews.fn_is_own_target(p_target_type, p_target_id, v_uid) THEN
             RAISE EXCEPTION 'review refused: a review of yourself or your own workspace' USING ERRCODE = 'PT422';
         END IF;
-        SELECT t.stage_assignment_id, t.opened_at, t.business_id INTO v_seat, v_opened, v_business
-          FROM reviews.fn_engagement_targets(v_p.id, v_uid) t
-         WHERE t.target_type = p_target_type AND t.target_id = p_target_id;
+        IF v_is_client THEN
+            SELECT t.stage_assignment_id, t.opened_at, t.business_id INTO v_seat, v_opened, v_business
+              FROM reviews.fn_engagement_targets(v_p.id, v_uid) t
+             WHERE t.target_type = p_target_type AND t.target_id = p_target_id;
+        ELSE
+            SELECT t.stage_assignment_id, t.opened_at, t.team_id INTO v_seat, v_opened, v_team
+              FROM reviews.fn_client_targets(v_p.id, v_uid) t
+             WHERE t.target_type = p_target_type AND t.target_id = p_target_id;
+        END IF;
         IF NOT FOUND OR v_opened IS NULL THEN
-            RAISE EXCEPTION 'review refused: nothing on this engagement is complete for that provider'
+            RAISE EXCEPTION 'review refused: nothing on this engagement is complete for that party'
                 USING ERRCODE = 'PT404';
         END IF;
         v_project := v_p.id;
-        v_listing := v_p.source_blueprint_id;
+        v_listing := CASE WHEN v_is_client THEN v_p.source_blueprint_id END;
     ELSIF p_anchor_kind = 'cohort_membership' THEN
         SELECT * INTO v_cm FROM projects.cohort_memberships cm WHERE cm.id = p_anchor_id;
         IF NOT FOUND THEN
@@ -556,23 +665,38 @@ BEGIN
             USING ERRCODE = 'PT410';
     END IF;
 
+    IF v_project IS NOT NULL THEN
+        -- Two sides submitting at once each find the other: the second waits for the first.
+        PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('reviews.pair:' || v_project::text, 0));
+    END IF;
     BEGIN
         INSERT INTO reviews.entity_reviews (
-            target_entity_id, target_entity_type, reviewer_user_id, reviewer_business_id,
+            target_entity_id, target_entity_type, reviewer_user_id, reviewer_business_id, reviewer_team_id,
             project_id, stage_assignment_id, cohort_membership_id, session_event_id,
-            service_blueprint_id, window_closes_at, rating, title, comment
+            service_blueprint_id, window_closes_at, rating, title, comment, revealed_at
         ) VALUES (
-            p_target_id, p_target_type, v_uid, v_business,
+            p_target_id, p_target_type, v_uid, v_business, v_team,
             v_project, v_seat, v_membership, v_sitting,
             v_listing, v_opened + reviews.fn_review_window(), p_rating,
-            NULLIF(pg_catalog.btrim(p_title), ''), pg_catalog.btrim(p_comment)
+            NULLIF(pg_catalog.btrim(p_title), ''), pg_catalog.btrim(p_comment),
+            -- An engagement is reviewed both ways, so its reviews wait for each other (#486 (A)).
+            CASE WHEN v_project IS NULL THEN pg_catalog.now() END
         ) RETURNING id INTO v_id;
     EXCEPTION WHEN unique_violation THEN
-        RAISE EXCEPTION 'review refused: this engagement already has your review of that provider'
+        RAISE EXCEPTION 'review refused: this engagement already has your review of that party'
             USING ERRCODE = 'PT409';
     END;
 
-    PERFORM reviews.fn_notify_received(v_id);
+    IF v_project IS NULL THEN
+        PERFORM reviews.fn_after_review_change(p_target_type, p_target_id);
+        PERFORM reviews.fn_notify_received(v_id);
+    ELSE
+        v_pair := reviews.fn_counterpart(v_id);
+        IF v_pair IS NOT NULL THEN
+            PERFORM reviews.fn_reveal(v_pair);
+            PERFORM reviews.fn_reveal(v_id);
+        END IF;
+    END IF;
     RETURN v_id;
 END;
 $$;
@@ -613,7 +737,7 @@ AS $$
 DECLARE
     r reviews.entity_reviews := reviews.fn_authored(p_review);
 BEGIN
-    IF NOT r.is_visible THEN
+    IF r.withdrawn_at IS NOT NULL OR r.hidden_at IS NOT NULL THEN
         RAISE EXCEPTION 'review refused: the review was withdrawn or hidden' USING ERRCODE = 'PT404';
     END IF;
     IF r.replied_at IS NOT NULL THEN
@@ -627,6 +751,9 @@ BEGIN
        SET rating = p_rating, title = NULLIF(pg_catalog.btrim(p_title), ''), comment = pg_catalog.btrim(p_comment),
            edited_at = pg_catalog.now(), updated_at = pg_catalog.now()
      WHERE id = r.id;
+    IF r.revealed_at IS NOT NULL THEN
+        PERFORM reviews.fn_after_review_change(r.target_entity_type, r.target_entity_id);
+    END IF;
 END;
 $$;
 
@@ -646,6 +773,9 @@ BEGIN
     UPDATE reviews.entity_reviews
        SET withdrawn_at = pg_catalog.now(), updated_at = pg_catalog.now()
      WHERE id = r.id;
+    IF r.revealed_at IS NOT NULL THEN
+        PERFORM reviews.fn_after_review_change(r.target_entity_type, r.target_entity_id);
+    END IF;
 END;
 $$;
 -- #endregion
@@ -742,6 +872,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+DECLARE
+    r reviews.entity_reviews;
 BEGIN
     IF NOT security.is_admin() THEN
         RAISE EXCEPTION 'hide refused: operators only' USING ERRCODE = '42501';
@@ -752,9 +884,13 @@ BEGIN
     UPDATE reviews.entity_reviews
        SET hidden_at = pg_catalog.now(), hidden_reason = pg_catalog.btrim(p_reason), hidden_by = auth.uid(),
            updated_at = pg_catalog.now()
-     WHERE id = p_review AND hidden_at IS NULL;
+     WHERE id = p_review AND hidden_at IS NULL
+    RETURNING * INTO r;
     IF NOT FOUND AND NOT EXISTS (SELECT 1 FROM reviews.entity_reviews er WHERE er.id = p_review) THEN
         RAISE EXCEPTION 'hide refused: no such review' USING ERRCODE = 'PT404';
+    END IF;
+    IF r.revealed_at IS NOT NULL THEN
+        PERFORM reviews.fn_after_review_change(r.target_entity_type, r.target_entity_id);
     END IF;
 END;
 $$;
@@ -788,10 +924,11 @@ AS $$
 $$;
 
 /**
- * What the caller may review on one project (`/projects/:slug?review=:slug`): each provider of the
- * engagement and, on a session, the provider of each of the caller's seats, with the window and the
- * party's review if one exists. NULL for a project that does not exist; `[]` for a 13–17 account and
- * for anyone who is not its client party or attendee.
+ * What the caller may review on one project (`/projects/:slug?review=:slug`): as its client party,
+ * each provider of the engagement; as a provider who worked on it, its client party (Decision #486);
+ * on a session, the provider of each of the caller's seats. Each with the window and the party's
+ * review if one exists (`revealed` false while it waits for the other side's). NULL for a project
+ * that does not exist; `[]` for a 13–17 account and for anyone who is none of those.
  */
 CREATE OR REPLACE FUNCTION reviews.get_reviewables(p_project_slug text)
 RETURNS jsonb
@@ -818,11 +955,15 @@ BEGIN
 
     WITH items AS (
         SELECT 'project'::text AS anchor_kind, v_project AS anchor_id, t.target_type, t.target_id,
-               t.opened_at, t.business_id
+               t.opened_at, COALESCE(t.business_id, v_uid) AS party
           FROM reviews.fn_engagement_targets(v_project, v_uid) t
          WHERE NOT reviews.fn_is_own_target(t.target_type, t.target_id, v_uid)
         UNION ALL
-        SELECT 'cohort_membership', cm.id, t.target_type, t.target_id, t.opened_at, NULL::uuid
+        SELECT 'project', v_project, t.target_type, t.target_id, t.opened_at, COALESCE(t.team_id, v_uid)
+          FROM reviews.fn_client_targets(v_project, v_uid) t
+         WHERE NOT reviews.fn_is_own_target(t.target_type, t.target_id, v_uid)
+        UNION ALL
+        SELECT 'cohort_membership', cm.id, t.target_type, t.target_id, t.opened_at, v_uid
           FROM projects.cohort_memberships cm
           JOIN projects.cohorts c ON c.id = cm.cohort_id AND c.project_id = v_project
           CROSS JOIN LATERAL reviews.fn_session_targets(cm.id, v_uid) t
@@ -846,11 +987,13 @@ BEGIN
                        'reply', r.reply_comment, 'replied_at', r.replied_at,
                        'window_closes_at', r.window_closes_at,
                        'mine', r.reviewer_user_id = v_uid,
-                       'editable', r.reviewer_user_id = v_uid AND r.is_visible AND r.replied_at IS NULL
+                       'revealed', r.revealed_at IS NOT NULL,
+                       'editable', r.reviewer_user_id = v_uid AND r.withdrawn_at IS NULL AND r.hidden_at IS NULL
+                                   AND r.replied_at IS NULL
                                    AND pg_catalog.now() < r.window_closes_at)
                      FROM reviews.entity_reviews r
                     WHERE r.target_entity_type = i.target_type AND r.target_entity_id = i.target_id
-                      AND COALESCE(r.reviewer_business_id, r.reviewer_user_id) = COALESCE(i.business_id, v_uid)
+                      AND COALESCE(r.reviewer_business_id, r.reviewer_team_id, r.reviewer_user_id) = i.party
                       AND COALESCE(r.project_id, r.cohort_membership_id) = i.anchor_id
                     LIMIT 1)
            ) ORDER BY i.opened_at DESC, i.target_id), '[]'::jsonb)
@@ -896,7 +1039,9 @@ BEGIN
                              WHERE cm.id = r.cohort_membership_id))) END)
                 ORDER BY r.created_at DESC)
           FROM reviews.entity_reviews r
-         WHERE r.id = ANY (p_ids) AND r.is_visible
+         WHERE r.id = ANY (p_ids)
+           AND (r.is_visible
+                OR (r.reviewer_user_id = v_uid AND r.withdrawn_at IS NULL AND r.hidden_at IS NULL))
     ), '[]'::jsonb);
 END;
 $$;
@@ -904,7 +1049,9 @@ $$;
 
 -- #region The reminder
 /**
- * Asks each client party, and each attendee, once per anchor to review it: the first run at least
+ * Asks each client party, each provider who worked on an engagement (Decision #486; a team's seat is
+ * answered by its members through the dialog, so only a person's own seat is asked), and each attendee,
+ * once per anchor to review it: the first run at least
  * `fn_reminder_lead()` after the anchor opened and before its window closes, while something on it is
  * still unreviewed by that party. The ask is recorded in `reviews.review_reminders` (ruling 6). Returns
  * how many were asked. The daily job `reviews-reminders` (00005060).
@@ -933,6 +1080,20 @@ BEGIN
                                 WHERE ps.project_id = p.id AND sa.status = 'released'
                                   AND sa.ended_at > p_now - reviews.fn_review_window()))
             UNION ALL
+            -- The providers who worked on it, asked to review the client back.
+            SELECT DISTINCT p.id, NULL::uuid, sa.freelancer_profile_id, p.slug, p.title
+              FROM projects.projects p
+              JOIN projects.project_stages ps ON ps.project_id = p.id
+              JOIN projects.stage_assignments sa ON sa.project_stage_id = ps.id
+             WHERE p.status <> 'draft'::public.project_status
+               AND sa.assignee_type::text <> 'team'
+               AND sa.freelancer_profile_id IS NOT NULL
+               AND ((sa.status IN ('accepted', 'completed', 'released')
+                     AND EXISTS (SELECT 1 FROM projects.project_status_history h
+                                  WHERE h.project_id = p.id AND h.to_status = 'completed'::public.project_status
+                                    AND h.created_at > p_now - reviews.fn_review_window()))
+                    OR (sa.status = 'released' AND sa.ended_at > p_now - reviews.fn_review_window()))
+            UNION ALL
             SELECT c.project_id, cm.id, cm.user_id, p.slug, p.title
               FROM projects.cohort_memberships cm
               JOIN projects.cohorts c ON c.id = cm.cohort_id
@@ -943,7 +1104,7 @@ BEGIN
                               AND se.status = 'completed'::projects.session_event_status
                               AND se.end_time > p_now - reviews.fn_review_window())
         )
-        SELECT a.*
+        SELECT DISTINCT a.*
           FROM anchors a
          WHERE a.user_id IS NOT NULL
            AND NOT org.fn_is_minor(a.user_id)
@@ -957,6 +1118,10 @@ BEGIN
               FROM (
                 SELECT t.target_type, t.target_id, t.opened_at, COALESCE(t.business_id, r.user_id) AS party
                   FROM reviews.fn_engagement_targets(r.project_id, r.user_id) t
+                 WHERE r.membership_id IS NULL
+                UNION ALL
+                SELECT t.target_type, t.target_id, t.opened_at, COALESCE(t.team_id, r.user_id)
+                  FROM reviews.fn_client_targets(r.project_id, r.user_id) t
                  WHERE r.membership_id IS NULL
                 UNION ALL
                 SELECT t.target_type, t.target_id, t.opened_at, r.user_id
@@ -977,7 +1142,11 @@ BEGIN
 
         PERFORM comms.fn_notify(
             r.user_id, 'review.reminder', 'How did it go?',
-            pg_catalog.format('"%s" is complete. Your review helps the next client choose.', r.title),
+            pg_catalog.format(CASE WHEN EXISTS (SELECT 1 FROM reviews.fn_engagement_targets(r.project_id, r.user_id))
+                                        OR r.membership_id IS NOT NULL
+                                   THEN '"%s" is complete. Your review helps the next client choose.'
+                                   ELSE '"%s" is complete. Your review of the client helps the next freelancer decide.' END,
+                              r.title),
             CASE WHEN r.membership_id IS NULL THEN 'projects.projects' ELSE 'projects.cohort_memberships' END,
             COALESCE(r.membership_id, r.project_id), '{}'::jsonb, NULL, 'project', r.project_id, NULL,
             '/projects/' || r.slug || '?review=' || r.slug);
@@ -986,6 +1155,350 @@ BEGIN
         v_asked := v_asked + 1;
     END LOOP;
     RETURN v_asked;
+END;
+$$;
+-- #endregion
+
+-- #region The reveal (Decision #486 (A))
+/**
+ * The other side's review on the same engagement: the review of this review's author, by this
+ * review's target. NULL when it has not been written. A session or product review has none.
+ */
+CREATE OR REPLACE FUNCTION reviews.fn_counterpart(p_review uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT o.id
+      FROM reviews.entity_reviews r
+      JOIN reviews.entity_reviews o
+        ON o.project_id = r.project_id
+       AND o.id <> r.id
+       AND o.target_entity_id = COALESCE(r.reviewer_business_id, r.reviewer_team_id, r.reviewer_user_id)
+       AND COALESCE(o.reviewer_business_id, o.reviewer_team_id, o.reviewer_user_id) = r.target_entity_id
+       AND (o.target_entity_type IN ('user', 'business')) <> (r.target_entity_type IN ('user', 'business'))
+     WHERE r.id = p_review
+     LIMIT 1;
+$$;
+
+/**
+ * What a change to a revealed review recomputes beyond the rating trigger, for the subject it rates
+ * only: a client party's Client Trust Score.
+ */
+CREATE OR REPLACE FUNCTION reviews.fn_after_review_change(p_target_type reviews.review_target_type, p_target_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF p_target_type IN ('user', 'business') THEN
+        PERFORM reviews.fn_recompute_client_trust(p_target_type, p_target_id);
+    END IF;
+END;
+$$;
+
+/**
+ * Makes a blind review public: it joins every reader and average (`is_visible`, the rating trigger),
+ * its target is told (`review.received`), and the scores that read it are recomputed. A second call,
+ * or a call on a review already public, does nothing.
+ */
+CREATE OR REPLACE FUNCTION reviews.fn_reveal(p_review uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    r reviews.entity_reviews;
+BEGIN
+    UPDATE reviews.entity_reviews
+       SET revealed_at = pg_catalog.now()
+     WHERE id = p_review AND revealed_at IS NULL
+    RETURNING * INTO r;
+    IF NOT FOUND OR NOT r.is_visible THEN
+        RETURN;
+    END IF;
+    PERFORM reviews.fn_notify_received(r.id);
+    PERFORM reviews.fn_after_review_change(r.target_entity_type, r.target_entity_id);
+END;
+$$;
+
+/**
+ * The `reviews-reveal` job (00005060): reveals every blind review whose window closed with no
+ * counterpart, then recomputes each Client Trust Score not computed in the day before `p_now`, so a
+ * lost dispute leaves a score as it passes 12 months and the corpus mean stays current. Returns how
+ * many reviews it revealed.
+ */
+CREATE OR REPLACE FUNCTION reviews.fn_reveal_due(p_now timestamptz DEFAULT pg_catalog.now())
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_id uuid;
+    v_n integer := 0;
+    t record;
+BEGIN
+    FOR v_id IN
+        SELECT r.id FROM reviews.entity_reviews r
+         WHERE r.revealed_at IS NULL AND r.window_closes_at <= p_now
+         ORDER BY r.window_closes_at, r.id
+    LOOP
+        PERFORM reviews.fn_reveal(v_id);
+        v_n := v_n + 1;
+    END LOOP;
+    FOR t IN
+        SELECT s.subject_type, s.subject_id FROM reviews.client_trust_scores s
+         WHERE s.computed_at < p_now - interval '1 day'
+    LOOP
+        PERFORM reviews.fn_recompute_client_trust(t.subject_type, t.subject_id, p_now);
+    END LOOP;
+    RETURN v_n;
+END;
+$$;
+-- #endregion
+
+-- #region Client Trust Score v1 (Decision #486 (B))
+/**
+ * Recomputes one client party's Client Trust Score into reviews.client_trust_scores.
+ *
+ *   n     the party's revealed, visible reviews by providers
+ *   m     the client track's corpus mean: every revealed, visible review of a person or a business
+ *         as a client (finance-model §16.7 keeps the delivery and client tracks apart)
+ *   base  (5·m + Σ ratings) / (5 + n), to two decimals: §16.7's cold-start prior of 5 pseudo-reviews
+ *   less  0.25 for each dispute the party opened and lost (`resolved_release`) in the 12 months before
+ *         `p_now`, capped at 1.00; a split or refund costs nothing. A business's dispute is the one its
+ *         escrow was funded from, opened by one of its members (#486 (f)). Ghosting (−0.10 each,
+ *         capped at 0.50) reads 0 until Decision #337 P3's auto-approve records one.
+ *   score max(1.00, base − deduction)
+ *
+ * Writes nothing while the corpus is empty.
+ */
+CREATE OR REPLACE FUNCTION reviews.fn_recompute_client_trust(
+    p_type reviews.review_target_type,
+    p_id uuid,
+    p_now timestamptz DEFAULT pg_catalog.now()
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_m numeric;
+    v_n integer;
+    v_sum numeric;
+    v_lost integer;
+    v_base numeric(3, 2);
+    v_ded numeric(3, 2);
+BEGIN
+    IF p_id IS NULL OR p_type NOT IN ('user', 'business') THEN
+        RETURN;
+    END IF;
+    SELECT pg_catalog.avg(r.rating) INTO v_m
+      FROM reviews.entity_reviews r
+     WHERE r.is_visible AND r.target_entity_type IN ('user', 'business');
+    IF v_m IS NULL THEN
+        RETURN;
+    END IF;
+    SELECT pg_catalog.count(*), COALESCE(pg_catalog.sum(r.rating), 0) INTO v_n, v_sum
+      FROM reviews.entity_reviews r
+     WHERE r.is_visible AND r.target_entity_type = p_type AND r.target_entity_id = p_id;
+    SELECT pg_catalog.count(*) INTO v_lost
+      FROM finance.disputes d
+      JOIN finance.escrows e ON e.id = d.escrow_id
+     WHERE d.status = 'resolved_release'::public.dispute_status
+       AND d.resolved_at > p_now - interval '12 months'
+       AND d.resolved_at <= p_now
+       AND CASE WHEN p_type = 'business'
+                THEN e.payer_business_id = p_id
+                     AND EXISTS (SELECT 1 FROM org.business_members bm
+                                  WHERE bm.business_id = p_id AND bm.user_id = d.opened_by_profile)
+                ELSE e.payer_business_id IS NULL AND e.payer_user_id = p_id AND d.opened_by_profile = p_id
+           END;
+
+    v_base := pg_catalog.round((5 * v_m + v_sum) / (5 + v_n), 2);
+    v_ded := LEAST(0.25 * v_lost, 1.00);
+    INSERT INTO reviews.client_trust_scores AS s
+        (subject_type, subject_id, review_count, base, lost_disputes, deduction, score, computed_at)
+    VALUES (p_type, p_id, v_n, v_base, v_lost, v_ded, GREATEST(1.00, v_base - v_ded), p_now)
+    ON CONFLICT (subject_type, subject_id) DO UPDATE
+       SET review_count = EXCLUDED.review_count, base = EXCLUDED.base, lost_disputes = EXCLUDED.lost_disputes,
+           deduction = EXCLUDED.deduction, score = EXCLUDED.score, computed_at = EXCLUDED.computed_at;
+END;
+$$;
+
+/**
+ * A dispute ruled `resolved_release`, or moved off it, recomputes the Client Trust Score of the party
+ * that funded its escrow. Trigger `trg_disputes_client_trust` (00001800).
+ */
+CREATE OR REPLACE FUNCTION reviews.trg_dispute_client_trust()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    e finance.escrows;
+BEGIN
+    IF NEW.status IS DISTINCT FROM OLD.status
+       AND 'resolved_release'::public.dispute_status IN (NEW.status, OLD.status) THEN
+        SELECT * INTO e FROM finance.escrows x WHERE x.id = NEW.escrow_id;
+        PERFORM reviews.fn_recompute_client_trust(
+            CASE WHEN e.payer_business_id IS NOT NULL THEN 'business' ELSE 'user' END::reviews.review_target_type,
+            COALESCE(e.payer_business_id, e.payer_user_id));
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+/** A party's score as readers show it: NULL below 3 reviews; `warned` below 3.00 (#486 (B), (C)). */
+CREATE OR REPLACE FUNCTION reviews.fn_client_trust_shown(p_type reviews.review_target_type, p_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.jsonb_build_object('score', s.score, 'review_count', s.review_count, 'warned', s.score < 3.00)
+      FROM reviews.client_trust_scores s
+     WHERE s.subject_type = p_type AND s.subject_id = p_id AND s.review_count >= 3;
+$$;
+-- #endregion
+
+-- #region The warning and the Informed Consent (Decision #486 (C))
+/** A project's client party: its business, or its client person. */
+CREATE OR REPLACE FUNCTION reviews.fn_project_client(p_project uuid)
+RETURNS TABLE (subject_type reviews.review_target_type, subject_id uuid)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE WHEN p.client_business_id IS NOT NULL THEN 'business' ELSE 'user' END::reviews.review_target_type,
+           COALESCE(p.client_business_id, p.client_user_id, p.owner_user_id)
+      FROM projects.projects p
+     WHERE p.id = p_project;
+$$;
+
+/** The client party's shown score when it warns (below 3.00, from 3 reviews), else NULL. */
+CREATE OR REPLACE FUNCTION reviews.fn_project_trust_warning(p_project uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.jsonb_build_object('subject_type', c.subject_type, 'subject_id', c.subject_id,
+               'score', s.score, 'review_count', s.review_count)
+      FROM reviews.fn_project_client(p_project) c
+      JOIN reviews.client_trust_scores s ON s.subject_type = c.subject_type AND s.subject_id = c.subject_id
+     WHERE s.review_count >= 3 AND s.score < 3.00;
+$$;
+
+/**
+ * Refuses (PT428) a proposal to, or the acceptance of a hire on, a warned client's project until the
+ * freelancer has acknowledged the warning (reviews.acknowledge_client_trust). projects.apply_to_project,
+ * projects.redeem_invite_link and projects.fn_apply_invitation_decision (an acceptance) call it, each
+ * as its last gate, so an API call cannot skip what the dialog asks.
+ */
+CREATE OR REPLACE FUNCTION reviews.fn_assert_client_trust_consent(p_project uuid, p_user uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v jsonb := reviews.fn_project_trust_warning(p_project);
+BEGIN
+    IF v IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM reviews.client_trust_consents k WHERE k.user_id = p_user AND k.project_id = p_project
+    ) THEN
+        RAISE EXCEPTION 'refused: acknowledge this client''s trust score (% from % reviews) first',
+            v ->> 'score', v ->> 'review_count'
+            USING ERRCODE = 'PT428';
+    END IF;
+END;
+$$;
+
+/**
+ * What the apply and accept controls check before they act on project `p_project_slug`: `warned`, and
+ * when it is, the score, its review count, where the client's reviews are read and whether the caller
+ * has acknowledged it. NULL for a project that does not exist.
+ */
+CREATE OR REPLACE FUNCTION reviews.get_client_trust_warning(p_project_slug text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_project uuid;
+    v jsonb;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'warning refused: not signed in' USING ERRCODE = '42501';
+    END IF;
+    SELECT p.id INTO v_project FROM projects.projects p WHERE p.slug = p_project_slug;
+    IF v_project IS NULL THEN
+        RETURN NULL;
+    END IF;
+    v := reviews.fn_project_trust_warning(v_project);
+    IF v IS NULL THEN
+        RETURN pg_catalog.jsonb_build_object('warned', false);
+    END IF;
+    RETURN pg_catalog.jsonb_build_object(
+        'warned', true,
+        'score', v -> 'score',
+        'review_count', v -> 'review_count',
+        'reviews_href', CASE v ->> 'subject_type'
+            WHEN 'business' THEN (SELECT '/@' || b.slug || '/reviews' FROM org.business_profiles b
+                                   WHERE b.id = (v ->> 'subject_id')::uuid)
+            ELSE (SELECT '/@' || u.username || '/reviews' FROM org.users_public u
+                   WHERE u.user_id = (v ->> 'subject_id')::uuid)
+        END,
+        'acknowledged', EXISTS (SELECT 1 FROM reviews.client_trust_consents k
+                                 WHERE k.user_id = v_uid AND k.project_id = v_project));
+END;
+$$;
+
+/**
+ * Logs the caller's acknowledgement of a warned client's score on one project, once per (freelancer,
+ * project), with the score and count shown. A project whose client is not warned logs nothing.
+ */
+CREATE OR REPLACE FUNCTION reviews.acknowledge_client_trust(p_project_slug text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_project uuid;
+    v jsonb;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'acknowledgement refused: not signed in' USING ERRCODE = '42501';
+    END IF;
+    SELECT p.id INTO v_project FROM projects.projects p WHERE p.slug = p_project_slug;
+    IF v_project IS NULL THEN
+        RAISE EXCEPTION 'acknowledgement refused: no such project' USING ERRCODE = 'PT404';
+    END IF;
+    v := reviews.fn_project_trust_warning(v_project);
+    IF v IS NULL THEN
+        RETURN;
+    END IF;
+    INSERT INTO reviews.client_trust_consents (user_id, project_id, subject_type, subject_id, score, review_count)
+    VALUES (v_uid, v_project, (v ->> 'subject_type')::reviews.review_target_type, (v ->> 'subject_id')::uuid,
+            (v ->> 'score')::numeric, (v ->> 'review_count')::integer)
+    ON CONFLICT (user_id, project_id) DO NOTHING;
 END;
 $$;
 -- #endregion

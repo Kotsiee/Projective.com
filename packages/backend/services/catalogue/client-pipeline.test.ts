@@ -35,7 +35,9 @@ function row(
 		engagement_id: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
 		listing_id: LISTING,
 		buyer_user_id: null,
+		buyer_kind: "user",
 		buyer_handle: handle,
+		buyer_contact_handle: null,
 		status,
 		opened_at: new Date(Date.UTC(2026, 9, 1)).toISOString(),
 		last_activity_at: new Date(Date.UTC(2026, 9, 13) - hoursAgo * 3_600_000).toISOString(),
@@ -69,6 +71,39 @@ Deno.test("rows outside the scope, without a buyer, or malformed are dropped", (
 	assertEquals(kept.map((e) => [e.client.handle, e.listingId, e.client.name]), [
 		["@ada", "svc-brandpipe01", "ada"],
 	]);
+});
+
+Deno.test("a team's or business's order is the entity, reached through its owner", () => {
+	const identities = new Map([
+		["@heliafinance", { handle: "@heliafinance", name: "Helia Finance", avatar: "" }],
+		["@priyaraman", { handle: "@priyaraman", name: "Priya Raman", avatar: "" }],
+	]);
+	const [biz, team, person] = toEngagements(
+		[
+			row("heliafinance", "order", "confirmed", 1, {
+				buyer_kind: "business",
+				buyer_contact_handle: "priyaraman",
+			}),
+			row("northloop", "order", "confirmed", 2, { buyer_kind: "team", buyer_contact_handle: null }),
+			row("ada", "order", "confirmed", 3, { buyer_contact_handle: "ignored" }),
+		],
+		LISTINGS,
+		identities,
+	);
+	assertEquals(biz.client, {
+		handle: "@heliafinance",
+		name: "Helia Finance",
+		avatar: "",
+		entityKind: "business",
+		messageTo: { handle: "@priyaraman", name: "Priya Raman" },
+	});
+	assertEquals(team.client, {
+		handle: "@northloop",
+		name: "northloop",
+		avatar: "",
+		entityKind: "team",
+	});
+	assertEquals(person.client, { handle: "@ada", name: "ada", avatar: "" });
 });
 
 Deno.test("a pre-sale engagement is active once the same buyer orders the same listing", () => {

@@ -84,8 +84,13 @@ export default function ReviewDialog(
 
 	const item = items[index.value] ?? items[0];
 	const state = reviewStateOf(item);
-	const name = item.target?.name ?? "this provider";
+	const asClient = item.target_type === "user" || item.target_type === "business";
+	const name = item.target?.name ?? (asClient ? "this client" : "this provider");
 	const length = comment.value.trim().length;
+	// An engagement is reviewed both ways, double-blind (Decision #486 (A)): nobody reads a review on
+	// one until the other side's arrives or the window closes.
+	const blind = item.anchor_kind === "project";
+	const whenPublic = `once ${name} reviews you too, or on ${dateOf(item.closes_at)}`;
 
 	/** Drop `?review=` so a reload does not reopen what was just closed. */
 	const forgetAddress = () => {
@@ -252,9 +257,13 @@ export default function ReviewDialog(
 								{state === "reviewed"
 									? `You can change your review of ${name} until ${
 										dateOf(item.review?.window_closes_at)
-									}, or until they reply.`
+									}, or until they reply.${
+										item.review?.revealed ? "" : ` Nobody reads it ${whenPublic}.`
+									}`
+									: asClient
+									? `How was working with ${name} as a client? Your review counts toward their Client Trust Score and shows on their profile ${whenPublic}.`
 									: `How was working with ${name}? Your review shows on their profile${
-										item.anchor_kind === "project" ? " and on the listing you bought" : ""
+										blind ? ` and on the listing you bought ${whenPublic}` : ""
 									}.`}
 							</p>
 							<div class="rv-dialog__field" ref={focusRef}>

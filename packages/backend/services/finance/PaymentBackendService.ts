@@ -28,6 +28,7 @@ import {
 	type PayoutResult,
 	type PayoutScheduleSweep,
 	type SavedCardResult,
+	safetyHoldSentence,
 	stageSelectionRefusal,
 	type StalePayoutOutcome,
 	type StalePayoutSweep,
@@ -36,6 +37,7 @@ import {
 	type TransfersCapabilityStatus,
 	type VerificationStatus,
 } from "@projective/types/finance";
+import type { LegalCommitStamp } from "@projective/types/legal";
 import { serverEnv } from "../../core/env.ts";
 import { isBearerAuthorised } from "../../core/bearer.ts";
 import {
@@ -649,6 +651,7 @@ export class PaymentBackendService {
 			stageId: input.stageId,
 			ticketId: input.ticketId ?? null,
 			fxQuoteId: input.fxQuoteId ?? null,
+			legalAcceptance: input.legalAcceptance ?? null,
 			expectedAmountMinor: input.expectedAmountMinor,
 			currency: input.currency,
 			idempotencyKey: input.idempotencyKey,
@@ -671,6 +674,8 @@ export class PaymentBackendService {
 			idempotencyKey: string;
 			/** The payer's `escrow_lock` conversion quote for this round (Decision #435). */
 			fxQuoteId?: string | null;
+			/** The Escrow Terms version the acceptance dialog showed (LG3). */
+			legalAcceptance?: LegalCommitStamp | null;
 		},
 		actor: ReadActor,
 	): Promise<Result<CardPaymentHandoff>> {
@@ -681,6 +686,7 @@ export class PaymentBackendService {
 			stageId: input.stageId,
 			revisionId: input.revisionId,
 			fxQuoteId: input.fxQuoteId ?? null,
+			legalAcceptance: input.legalAcceptance ?? null,
 			expectedAmountMinor: input.expectedAmountMinor,
 			currency: input.currency.toUpperCase(),
 			idempotencyKey: input.idempotencyKey,
@@ -1064,6 +1070,13 @@ export class PaymentBackendService {
 
 		const begun = await beginPayout(actor.accessToken, input);
 		if (!begun.ok) return refused(begun.refusal);
+		// The Safety Hold (Decision #529): nothing moved, and the person is told when they can withdraw.
+		if (begun.value.held) {
+			return fail(423, {
+				message: safetyHoldSentence(begun.value.heldUntil),
+				details: { reason: "safety_hold", heldUntil: begun.value.heldUntil },
+			});
+		}
 		const { payout, destination, replayed } = begun.value;
 		if (payout.status !== "pending" || !destination) {
 			return ok({ payout, destination, replayed }, { status: 200 });

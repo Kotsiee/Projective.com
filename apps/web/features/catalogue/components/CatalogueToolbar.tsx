@@ -54,6 +54,8 @@ export function CatalogueToolbar(
 	});
 
 	const listings = state.view === "listings";
+	// A code covers products only, so the type filter has nothing to narrow on Promotions.
+	const typed = state.view !== "promotions";
 	const noun = scopeNoun(state.type);
 	const total = listingsPage.value?.total ?? initialTotal;
 	const announcement = listingsError.value
@@ -93,17 +95,19 @@ export function CatalogueToolbar(
 					<CatalogueFilterPopover state={state} onChange={(patch) => setConsoleUrl(patch)} />
 				</span>
 			)}
-			<Select
-				class="ui-field--bare cat-toolbar__type"
-				size="sm"
-				aria-label="Catalogue type"
-				options={TYPE_OPTIONS}
-				value={state.type}
-				onValueChange={(value) => {
-					const type = CatalogueTypeFilter.safeParse(value);
-					if (type.success && type.data !== state.type) setConsoleUrl({ type: type.data });
-				}}
-			/>
+			{typed && (
+				<Select
+					class="ui-field--bare cat-toolbar__type"
+					size="sm"
+					aria-label="Catalogue type"
+					options={TYPE_OPTIONS}
+					value={state.type}
+					onValueChange={(value) => {
+						const type = CatalogueTypeFilter.safeParse(value);
+						if (type.success && type.data !== state.type) setConsoleUrl({ type: type.data });
+					}}
+				/>
+			)}
 			<Button
 				size="sm"
 				rounded

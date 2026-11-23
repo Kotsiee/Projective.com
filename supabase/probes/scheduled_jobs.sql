@@ -75,6 +75,9 @@ BEGIN
     IF pg_catalog.to_regprocedure('finance.sweep_disputes(timestamptz)') IS NOT NULL THEN
         v_expected := v_expected || ARRAY[ARRAY['finance-dispute-sweep', '7,22,37,52 * * * *']];
     END IF;
+    IF pg_catalog.to_regprocedure('finance.record_fx_rates(text,timestamptz,jsonb,text)') IS NOT NULL THEN
+        v_expected := v_expected || ARRAY[ARRAY['finance-fx-daily', '23 16 * * *']];
+    END IF;
     FOR i IN 1 .. pg_catalog.array_length(v_by_name, 1) LOOP
         IF pg_catalog.to_regproc(v_by_name[i][1]) IS NOT NULL THEN
             v_expected := v_expected || ARRAY[ARRAY[v_by_name[i][2], v_by_name[i][3]]];

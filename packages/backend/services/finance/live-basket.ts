@@ -28,7 +28,13 @@ import {
 	STAGE_SELECTION_REFUSAL,
 } from "@projective/types/finance";
 import { stageCostCents, TicketIntensity } from "@projective/types/projects";
-import { BlueprintStageSchema, type ExploreItem, parseStoredList } from "@projective/types/explore";
+import {
+	BlueprintStageSchema,
+	type ExploreItem,
+	parseSessionPlan,
+	parseStoredList,
+} from "@projective/types/explore";
+import { sittingMinutes, sittingPricesMinor } from "@projective/types/catalogue";
 import { getUserClient } from "../../core/supabase.ts";
 import {
 	type BlueprintRow,
@@ -526,8 +532,8 @@ interface Price {
  * The price of ONE unit of a line, from the listing as it stands now.
  *
  * The same rules the discovery card and the view page price by (`explore/pricing.ts`): a Pipeline
- * ticket at the Standard ticket rate, a session at the per-session rate, a group seat at the per-seat
- * rate, everything else at its fixed engagement price. The session kinds scale by what the unit IS:
+ * ticket at the Standard ticket rate, a session at the per-session rate (per hour, each sitting at its
+ * own length, SC10), a group seat at the per-seat rate, everything else at its fixed engagement price. The session kinds scale by what the unit IS:
  * a set-session package is `session_count` sittings, and a group-session line is ONE booking of
  * `seats` seats — `seats` is a priced quantity in its own right and is not folded into `quantity`
  * (the column says so), so it scales the unit rather than the line. A One-Off or a Task is what
@@ -560,15 +566,29 @@ function unitPriceOf(
 	const b = p.blueprint;
 	if (!b) return null;
 	const session = b.session_price_cents ?? b.price_cents;
+	// Per hour (SC10), each sitting is priced at its own length, as place_wallet_order prices it; a
+	// per-hour listing with no length has nothing to price by.
+	const perHour = b.pricing_unit === "per_hour";
+	const sittings = (count: number) =>
+		sittingPricesMinor(
+			session,
+			perHour ? "per_hour" : "per_session",
+			b.session_minutes ?? 60,
+			parseSessionPlan(b.session_plan),
+			count,
+		).reduce((sum, minor) => sum + minor, 0);
+	if (perHour && b.session_minutes == null && kind !== "service_ticket") return null;
 	switch (kind) {
 		case "service_ticket":
 			return { minor: b.ticket_price_cents ?? b.price_cents, currency: b.currency };
 		case "service_session":
-			return { minor: session, currency: b.currency };
+			return { minor: sittings(1), currency: b.currency };
 		case "set_session":
-			return { minor: session * Math.max(1, b.session_count ?? 1), currency: b.currency };
-		case "course_group_session":
-			return { minor: session * Math.max(1, seats ?? 1), currency: b.currency };
+			return { minor: sittings(Math.max(1, b.session_count ?? 1)), currency: b.currency };
+		case "course_group_session": {
+			const seat = perHour ? sittings(Math.max(1, b.session_count ?? 1)) : session;
+			return { minor: seat * Math.max(1, seats ?? 1), currency: b.currency };
+		}
 		case "one_off_service":
 		case "single_service_task": {
 			const minor = scopedPriceCents(b, wholeProjectOf(meta));
@@ -1152,6 +1172,7 @@ function sittingsOf(
 	line: Pick<LineRow, "item_type" | "scheduled_at" | "timezone" | "metadata">,
 	total: number | null,
 	minutes: number | null,
+	plan: unknown,
 ): SittingSchedule | null {
 	if (line.item_type !== "set_session" || !total || total < 2 || !line.scheduled_at) return null;
 	const first = new Date(line.scheduled_at).toISOString();
@@ -1159,7 +1180,14 @@ function sittingsOf(
 	if (starts.length === 0) return null;
 	return {
 		total: Math.min(total, 52),
-		scheduled: starts.map((at) => ({ at, label: slotLabel(at, line.timezone, minutes) })),
+		scheduled: starts.map((at, i) => ({
+			at,
+			label: slotLabel(
+				at,
+				line.timezone,
+				minutes === null ? null : sittingMinutes(parseSessionPlan(plan), i, minutes),
+			),
+		})),
 	};
 }
 
@@ -1228,7 +1256,11 @@ function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketI
 		: null;
 
 	const stageLabel = stage ? stageLabelOf(stage) : null;
-	const sessionMinutes = p?.blueprint?.session_minutes ?? null;
+	const listingMinutes = p?.blueprint?.session_minutes ?? null;
+	// The first sitting's own length (SC10), which is what `scheduled_at` books.
+	const sessionMinutes = listingMinutes === null
+		? null
+		: sittingMinutes(parseSessionPlan(p?.blueprint?.session_plan), 0, listingMinutes);
 	const metadata: Record<string, unknown> = {
 		...(line.metadata ?? {}),
 		sourceType: p?.type ?? "unknown",
@@ -1283,7 +1315,12 @@ function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketI
 			? slotLabel(line.scheduled_at, line.timezone, sessionMinutes)
 			: null,
 		timezone: line.timezone,
-		sittings: sittingsOf(line, p?.blueprint?.session_count ?? null, sessionMinutes),
+		sittings: sittingsOf(
+			line,
+			p?.blueprint?.session_count ?? null,
+			listingMinutes,
+			p?.blueprint?.session_plan,
+		),
 		stageLabel,
 		seats: line.seats,
 		available: closed === null,
@@ -1529,6 +1566,10 @@ interface PromoJson {
 	value_bp?: number | null;
 	value_minor?: number | string | null;
 	currency?: string | null;
+	/** Whether the code's seller funds it (Decision #485); a platform code's is the platform's. */
+	seller_funded?: boolean;
+	/** The named products the code discounts: a seller's code only that seller's. */
+	covers?: string[] | null;
 	valid: boolean;
 	reason: string | null;
 }
@@ -1563,6 +1604,10 @@ export function promoExcludedLine(items: readonly BasketItem[]): BasketItem | nu
 /**
  * Resolve what a code is worth against a set of lines, in the display currency.
  *
+ * The database says which of the basket's products the code discounts (`covers`): a seller's code only
+ * that seller's (Decision #485), a platform code all of them. The code is valued on those lines alone,
+ * exactly as `finance.place_wallet_order` shares it at commit, so the saving shown is the one charged.
+ *
  * The raw saving is computed here; the CLAMP is the SSOT's — {@link applyDiscounts} caps a promo at
  * what is left after creator discounts, so a code worth more than the basket reduces it to zero rather
  * than minting a credit. The returned figure is the clamped one: the buyer is shown the saving they
@@ -1591,6 +1636,9 @@ async function resolvePromo(
 		p_code: code,
 		p_owner_type: session.owner.ownerType,
 		p_owner_id: session.owner.ownerId,
+		p_product_ids: items
+			.filter((item) => isCheckoutEligible(item) && item.itemType === "digital_product")
+			.map((item) => item.itemId),
 	});
 	if (error) throw new Error(`finance.resolve_promo_code failed: ${error.message}`);
 	const promo = data as PromoJson | null;
@@ -1607,7 +1655,11 @@ async function resolvePromo(
 		return refused(promo.label ?? promo.code, promo.reason ?? "This code can't be used.");
 	}
 
-	const base = applyDiscounts(items, 0).netMinor;
+	const covers = new Set(promo.covers ?? []);
+	const covered = items.filter((item) =>
+		item.itemType === "digital_product" && covers.has(item.itemId)
+	);
+	const base = applyDiscounts(covered, 0).netMinor;
 	let raw = 0;
 	if (promo.kind === "percent") {
 		raw = Math.round((base * (promo.value_bp ?? 0)) / 10_000);
@@ -1628,14 +1680,16 @@ async function resolvePromo(
 		}
 		raw = money.convertMinor(Number(promo.value_minor) || 0, promo.currency);
 	}
-	const clamped = applyDiscounts(items, raw).promoDiscountMinor;
+	const clamped = applyDiscounts(covered, raw).promoDiscountMinor;
 	return {
 		code: clip(promo.code, 40),
 		label: clip(promo.label ?? promo.code, 120),
 		valid: true,
 		amount: money.derived(clamped),
 		message: clamped < raw
-			? "This code is worth more than your basket — it's been capped at the basket total."
+			? promo.seller_funded
+				? "This code is worth more than the seller's items — it's been capped at their total."
+				: "This code is worth more than your basket — it's been capped at the basket total."
 			: null,
 	};
 }

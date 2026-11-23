@@ -61,6 +61,7 @@ function restate(item: Reviewable, state: ReviewState, now: number): Reviewable 
 			replied_at: state === "locked" ? new Date(now - DAY_MS).toISOString() : null,
 			window_closes_at: closes,
 			mine: true,
+			revealed: state !== "reviewed",
 			editable: state === "reviewed",
 		},
 	};

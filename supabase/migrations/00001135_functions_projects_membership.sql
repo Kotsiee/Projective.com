@@ -757,6 +757,9 @@ BEGIN
               DETAIL = 'state=' || v_state;
     END IF;
     PERFORM finance.fn_assert_payout_ready('freelancer', v_actor);
+    -- Asking to join a warned client's project needs the Informed Consent first (Decision #486 (C)).
+    PERFORM reviews.fn_assert_client_trust_consent(
+        (SELECT ps.project_id FROM projects.project_stages ps WHERE ps.id = v_link.project_stage_id), v_actor);
 
     SELECT * INTO v_project FROM projects.projects WHERE id = v_link.project_id;
     SELECT * INTO v_stage FROM projects.project_stages WHERE id = v_link.project_stage_id;

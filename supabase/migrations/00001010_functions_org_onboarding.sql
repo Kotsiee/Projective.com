@@ -501,6 +501,18 @@ AS $$
     SELECT (CASE WHEN p_slug = 'privacy' THEN 'shown' ELSE 'accepted' END)::org.legal_acceptance_kind;
 $$;
 
+-- The door that asks for a commit document (LG3): `claim` for the IP Transfer Deed, `fund` for the
+-- Escrow Terms; NULL for a sign-up document, which only the sign-up and re-accept doors record.
+CREATE OR REPLACE FUNCTION org.fn_legal_commit_surface(p_slug text)
+RETURNS org.legal_acceptance_surface
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT (CASE p_slug WHEN 'ip-transfer-deed' THEN 'claim' WHEN 'escrow-terms' THEN 'fund' END)
+        ::org.legal_acceptance_surface;
+$$;
+
 -- Record p_user's acceptance of every sign-up document at the versions in p_legal
 -- (`{"terms": "2.0", "acceptable-use": "1.0", "privacy": "1.0"}`), one row per document not already
 -- recorded at that version. Refused (22023) when p_legal is missing or any version is not today's, so
@@ -524,7 +536,9 @@ BEGIN
         RAISE EXCEPTION 'Accept the Terms of Service to continue' USING ERRCODE = '22023';
     END IF;
 
-    FOR v_slug IN SELECT DISTINCT v.slug FROM org.legal_document_versions v LOOP
+    FOR v_slug IN
+        SELECT DISTINCT v.slug FROM org.legal_document_versions v WHERE org.fn_legal_commit_surface(v.slug) IS NULL
+    LOOP
         IF (p_legal->>v_slug) IS DISTINCT FROM org.fn_current_legal_version(v_slug) THEN
             RAISE EXCEPTION 'The % version accepted is not the one in effect', v_slug
                 USING ERRCODE = '22023';
@@ -534,7 +548,8 @@ BEGIN
     INSERT INTO org.legal_acceptances (user_id, document_slug, version, kind, surface, enterprise_id)
     SELECT p_user, d.slug, org.fn_current_legal_version(d.slug), org.fn_legal_acceptance_kind(d.slug),
            p_surface, p_enterprise
-      FROM (SELECT DISTINCT v.slug FROM org.legal_document_versions v) d
+      FROM (SELECT DISTINCT v.slug FROM org.legal_document_versions v
+             WHERE org.fn_legal_commit_surface(v.slug) IS NULL) d
      WHERE NOT EXISTS (
         SELECT 1
           FROM org.legal_acceptances a
@@ -562,7 +577,8 @@ AS $$
     SELECT EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = p_user)
        AND EXISTS (
         SELECT 1
-          FROM (SELECT DISTINCT v.slug FROM org.legal_document_versions v) d
+          FROM (SELECT DISTINCT v.slug FROM org.legal_document_versions v
+                 WHERE org.fn_legal_commit_surface(v.slug) IS NULL) d
           CROSS JOIN LATERAL (
             SELECT pg_catalog.max(org.fn_legal_version_key(a.version)) AS accepted
               FROM org.legal_acceptances a
@@ -599,6 +615,49 @@ BEGIN
         RAISE EXCEPTION 'Finish signing up first' USING ERRCODE = '42501';
     END IF;
     RETURN org.fn_record_legal_acceptance(v_uid, p_legal, 'reaccept');
+END;
+$$;
+
+-- The first-commit gate (LG3): a maker accepts the IP Transfer Deed at their first paid claim and a
+-- payer the Escrow Terms at their first funding, once per version. Every client claim and funding door
+-- PERFORMs it once its own gates have passed, in the same transaction, so a refusal for any other reason
+-- is said first and this one unwinds the commit whole. It returns when the caller has accepted the
+-- version in effect; records
+-- that acceptance (`accepted`, surface `claim` or `fund`) when p_legal (`{"ip-transfer-deed": "1.0"}`,
+-- the version the dialog showed) names it; and otherwise refuses PN409 `legal_acceptance_required`
+-- with DETAIL `{"document", "version"}`, which the services answer as 409 and the dialog asks — a stale,
+-- unpublished or forged version included. A signed-out caller (a definer or cron path acting for
+-- nobody) and a 13–17 account record nothing and pass: the door's own gates decide them.
+CREATE OR REPLACE FUNCTION org.fn_require_legal_acceptance(p_slug text, p_legal jsonb)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_surface org.legal_acceptance_surface := org.fn_legal_commit_surface(p_slug);
+    v_current text := org.fn_current_legal_version(p_slug);
+BEGIN
+    IF v_surface IS NULL OR v_current IS NULL THEN
+        RAISE EXCEPTION '% is not a document a commit asks for', p_slug USING ERRCODE = '22023';
+    END IF;
+    IF v_uid IS NULL OR org.fn_is_minor(v_uid) THEN
+        RETURN;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM org.legal_acceptances a
+         WHERE a.user_id = v_uid AND a.document_slug = p_slug AND a.version = v_current
+    ) THEN
+        RETURN;
+    END IF;
+    IF (p_legal ->> p_slug) IS DISTINCT FROM v_current THEN
+        RAISE EXCEPTION 'legal_acceptance_required: accept the % version % to continue', p_slug, v_current
+            USING ERRCODE = 'PN409',
+                  DETAIL = pg_catalog.jsonb_build_object('document', p_slug, 'version', v_current)::text;
+    END IF;
+    INSERT INTO org.legal_acceptances (user_id, document_slug, version, kind, surface)
+    VALUES (v_uid, p_slug, v_current, 'accepted', v_surface);
 END;
 $$;
 

@@ -141,12 +141,15 @@ export function flatLedger(price: LedgerPrice, label: string): ConversionLedger 
 
 /**
  * The sessions the buyer has picked, by label, and the price. A single session totals at its own price;
- * a block states its per-session figure and leaves the total to checkout.
+ * a block states its per-session figure and leaves the total to checkout. A listing sold by the hour
+ * passes each sitting's price (`sittings`, minor units, `sittingPricesMinor` — the rule checkout
+ * prices by, SC10): the column then states the hourly rate and totals the sittings.
  */
 export function sessionLedger(
 	price: LedgerPrice,
 	picked: readonly string[],
 	sessionCount: number,
+	sittings: readonly number[] | null = null,
 ): ConversionLedger {
 	const lines: LedgerLine[] = picked.length > 0
 		? picked.map((when, i) => ({
@@ -165,6 +168,19 @@ export function sessionLedger(
 	}
 	if (!price.amount) {
 		return { lines, total: null, note: "The provider confirms the price before you pay." };
+	}
+	if (sittings) {
+		lines.push({ key: "rate", label: "Per hour", amount: price.amount, isFloor: false });
+		const minor = sittings.reduce((sum, m) => sum + m, 0);
+		return {
+			lines,
+			total: {
+				label: sessionCount > 1 ? "Block total" : "Due now",
+				amount: { minor, currency: price.amount.currency },
+				isFloor: false,
+			},
+			note: null,
+		};
 	}
 	if (sessionCount > 1) {
 		lines.push({ key: "rate", label: "Per session", amount: price.amount, isFloor: price.isFloor });
@@ -195,17 +211,38 @@ export function callLedger(
 	return { lines, total: { label: "Due on acceptance", amount: fee, isFloor: false }, note: null };
 }
 
-/** Seats on a cohort at the listing's per-seat price. */
+/**
+ * Seats on a cohort at the listing's per-seat price. A listing sold by the hour passes each sitting's
+ * price (`sittingPrices`, SC10): one seat is their sum, and the column states the hourly rate.
+ */
 export function seatLedger(
 	price: LedgerPrice,
 	seats: number,
 	sittings: string | null,
+	sittingPrices: readonly number[] | null = null,
 ): ConversionLedger {
 	const lines: LedgerLine[] = [];
 	if (sittings) lines.push({ key: "sittings", label: "Cohort", text: sittings });
 	lines.push({ key: "seats", label: "Seats", text: `× ${seats}` });
 	if (!price.amount) {
 		return { lines, total: null, note: "The provider confirms the price before you pay." };
+	}
+	if (sittingPrices) {
+		const seat = {
+			minor: sittingPrices.reduce((sum, m) => sum + m, 0),
+			currency: price.amount.currency,
+		};
+		lines.push({ key: "rate", label: "Per hour", amount: price.amount, isFloor: false });
+		lines.push({ key: "seat", label: "Per seat", amount: seat, isFloor: false });
+		return {
+			lines,
+			total: {
+				label: "Due now",
+				amount: { minor: seat.minor * seats, currency: seat.currency },
+				isFloor: false,
+			},
+			note: null,
+		};
 	}
 	const perSeat = price.unit === "seat";
 	if (perSeat) {

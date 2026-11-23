@@ -1,14 +1,12 @@
 import type { FileObjectTier } from "@projective/types/files";
 import { getAnonClient, getServiceClient, getUserClient } from "../../core/supabase.ts";
-import { signedObjectUrl } from "../../core/storage-signed.ts";
-import { isPublicBucket, publicObjectUrl } from "../../core/storage-url.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { shareTarget } from "./live-library.ts";
 
 /**
  * live-objects — may this caller have these bytes, and where are they?
  *
- * The one read decision behind the private-object route (`/api/files/object/[id]`). Three ways in, and
+ * The one read decision behind the media proxy (`/api/media/proxy/[fileId]`). Three ways in, and
  * each is the database's own rule rather than a restatement of it:
  *
  *  - a SIGNED-IN caller reads the row under their own session, so `files.fn_can_read` decides (owner,
@@ -19,8 +17,8 @@ import { shareTarget } from "./live-library.ts";
  *    it sits in. Only then is the row read with the service role, because a link-shared file is
  *    deliberately not readable by id.
  *
- * {@link objectFor} only decides; {@link objectUrlFor} turns its answer into the redirect target — a
- * public object's stable address, or a fresh short-lived signed URL.
+ * {@link objectFor} only decides; the proxy streams its answer, so no storage address or signed URL
+ * reaches the browser (`ASSET_DELIVERY_ARCHITECTURE.md` §5.3).
  */
 
 /** A readable stored object, and how it should be served. */
@@ -113,28 +111,4 @@ const INLINE_SAFE: readonly RegExp[] = [
 export function inlineSafe(mime: string): boolean {
 	const m = mime.toLowerCase().split(";")[0].trim();
 	return INLINE_SAFE.some((re) => re.test(m));
-}
-
-/** How long a minted object URL lives. The route is the stable address; this only has to outlast a load. */
-export const SIGNED_OBJECT_SECONDS = 300;
-
-/**
- * Where the object route should send this caller: a public object's stable address, or a fresh
- * short-lived signed URL — served as an attachment when asked to, or whenever the type is not safe to
- * render inline. `null` covers every refusal.
- */
-export async function objectUrlFor(
-	actor: ReadActor,
-	id: string,
-	opts: { tier?: FileObjectTier | null; share?: string | null; download?: boolean },
-): Promise<{ url: string; private: boolean } | null> {
-	const ref = await objectFor(actor, id, opts);
-	if (!ref) return null;
-	const attachment = opts.download || !inlineSafe(ref.mime);
-	if (isPublicBucket(ref.bucket) && !attachment) {
-		const url = publicObjectUrl(ref.bucket, ref.path);
-		if (url) return { url, private: false };
-	}
-	const signed = await signedObjectUrl(ref.bucket, ref.path, SIGNED_OBJECT_SECONDS, attachment ? ref.name : null);
-	return signed ? { url: signed, private: true } : null;
 }

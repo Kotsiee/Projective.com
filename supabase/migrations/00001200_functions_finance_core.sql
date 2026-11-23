@@ -436,6 +436,166 @@ END;
 $$;
 -- #endregion
 
+-- #region The daily FX feed (Decision #337, ruling M5 (f); Decision #471; FBP DB17)
+-- Two things write finance.fx_rates: the seed floor (00005050, provider `seed`, dated 2026-08-01) and
+-- finance.record_fx_rates. A feed is recorded whole or not at all: since Decision #435 these rates
+-- price conversions inside purchases, so a partial or wrong feed would mis-price a charge, not only a
+-- display. A refused or failed feed leaves one `finance.fx` error row in ops.log_entries, which the
+-- `finance.%` alert rules send (00005065), and records nothing, so the last rates stand and age into
+-- the stale mark (`fx_rate_max_age_hours`; FxService's STALE_AFTER_MS is the same 24 hours). A replay
+-- records nothing new (uq_fx_rate_observation). FxService.refreshRates calls it from the
+-- `finance-fx-daily` job (`POST /api/finance/cron/fx`).
+
+-- The currencies a feed must quote: every quote the seed floor holds against the platform base, which
+-- are the 12 display currencies (DISPLAY_CURRENCIES in @projective/types/finance;
+-- fx-feed.contract.test.ts pins that the two agree). Internal.
+CREATE OR REPLACE FUNCTION finance.fn_fx_feed_currencies()
+RETURNS text[]
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(pg_catalog.array_agg(DISTINCT r.quote::text ORDER BY r.quote::text), '{}'::text[])
+      FROM finance.fx_rates r
+     WHERE r.provider = 'seed'
+       AND r.base = COALESCE((SELECT pp.value #>> '{}' FROM security.platform_params pp
+                               WHERE pp.key = 'base_currency'), 'GBP');
+$$;
+
+-- Record one feed observation (service role). `p_rates` maps each currency of
+-- finance.fn_fx_feed_currencies() to its rate against the platform base as a JSON STRING, a plain
+-- decimal of at most ten integer and ten fractional digits (the column's numeric(20, 10), so what is
+-- stored is exactly what the provider quoted), greater than zero, and exactly 1 for the base itself.
+-- Refused, writing nothing but the ops row, with the reason as `refused`: `provider_invalid` (not a
+-- slug, or `seed`), `feed_unavailable` (no rates), `as_of_missing`, `as_of_in_future`, `rates_invalid`
+-- (not an object), `currencies_unknown` (no seed floor to measure against), `currency_missing`,
+-- `currency_unexpected` and `rate_invalid`, each naming its currencies; and whatever snake_case code
+-- `p_failure` names, a refusal the caller found first (a failed fetch, a wrong base), which wins over
+-- every check here. Otherwise every rate is inserted at `p_as_of` ON CONFLICT DO NOTHING, and a
+-- `metric` row is written. Returns `{recorded, quotes, provider, as_of, replay}`.
+CREATE OR REPLACE FUNCTION finance.record_fx_rates(
+    p_provider text,
+    p_as_of timestamptz,
+    p_rates jsonb,
+    p_failure text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_base text := COALESCE((SELECT pp.value #>> '{}' FROM security.platform_params pp
+                              WHERE pp.key = 'base_currency'), 'GBP');
+    v_provider text := pg_catalog.btrim(COALESCE(p_provider, ''));
+    v_slug boolean := pg_catalog.btrim(COALESCE(p_provider, '')) ~ '^[a-z0-9][a-z0-9_.-]{0,59}$';
+    v_label text;
+    v_expected text[] := finance.fn_fx_feed_currencies();
+    v_given text[] := '{}'::text[];
+    v_named text[] := '{}'::text[];
+    v_reason text;
+    v_recorded integer := 0;
+BEGIN
+    v_label := CASE WHEN v_slug THEN v_provider ELSE 'unknown' END;
+
+    IF NOT v_slug OR v_provider = 'seed' THEN
+        v_reason := 'provider_invalid';
+    ELSIF p_rates IS NULL THEN
+        v_reason := 'feed_unavailable';
+    ELSIF p_as_of IS NULL THEN
+        v_reason := 'as_of_missing';
+    ELSIF p_as_of > pg_catalog.now() THEN
+        v_reason := 'as_of_in_future';
+    ELSIF pg_catalog.jsonb_typeof(p_rates) IS DISTINCT FROM 'object' THEN
+        v_reason := 'rates_invalid';
+    ELSIF pg_catalog.cardinality(v_expected) = 0 THEN
+        v_reason := 'currencies_unknown';
+    ELSE
+        v_given := ARRAY(SELECT k FROM pg_catalog.jsonb_object_keys(p_rates) AS k ORDER BY k);
+        v_named := ARRAY(SELECT e FROM pg_catalog.unnest(v_expected) AS e
+                          WHERE NOT (e = ANY (v_given)) ORDER BY e);
+        IF pg_catalog.cardinality(v_named) > 0 THEN
+            v_reason := 'currency_missing';
+        ELSE
+            v_named := ARRAY(SELECT g FROM pg_catalog.unnest(v_given) AS g
+                              WHERE NOT (g = ANY (v_expected)) ORDER BY g);
+            IF pg_catalog.cardinality(v_named) > 0 THEN
+                v_reason := 'currency_unexpected';
+            ELSE
+                -- The cast sits behind the pattern inside a CASE, so a value that is not a decimal is
+                -- named here rather than raising (which would roll back the ops row).
+                v_named := ARRAY(
+                    SELECT e FROM pg_catalog.unnest(v_expected) AS e
+                     WHERE NOT COALESCE(
+                         pg_catalog.jsonb_typeof(p_rates -> e) = 'string'
+                         AND CASE WHEN (p_rates ->> e) ~ '^[0-9]{1,10}(\.[0-9]{1,10})?$'
+                                  THEN (p_rates ->> e)::numeric > 0
+                                       AND (e <> v_base OR (p_rates ->> e)::numeric = 1)
+                                  ELSE false END,
+                         false)
+                     ORDER BY e);
+                IF pg_catalog.cardinality(v_named) > 0 THEN
+                    v_reason := 'rate_invalid';
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+    -- A refusal the caller already found wins, even over a feed that would pass here; what was found
+    -- above still names the currencies.
+    IF p_failure IS NOT NULL THEN
+        v_reason := CASE WHEN p_failure ~ '^[a-z][a-z0-9_]{0,47}$' THEN p_failure ELSE 'feed_unavailable' END;
+    END IF;
+
+    IF v_reason IS NOT NULL THEN
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            pg_catalog.format('fx:%s:%s', v_label, v_reason),
+            'error',
+            pg_catalog.format(
+                'The FX feed from %s was refused (%s%s): nothing was recorded, so the last rates stand and age toward stale',
+                v_label, v_reason,
+                CASE WHEN pg_catalog.cardinality(v_named) > 0
+                     THEN ': ' || pg_catalog.array_to_string(v_named, ', ') ELSE '' END),
+            pg_catalog.now(), 'server', 'finance.fx',
+            pg_catalog.jsonb_build_object(
+                'provider', v_label, 'reason', v_reason, 'currencies', pg_catalog.to_jsonb(v_named),
+                'as_of', p_as_of, 'quotes', pg_catalog.cardinality(v_expected))
+        );
+        RETURN pg_catalog.jsonb_build_object(
+            'recorded', 0, 'refused', v_reason, 'currencies', pg_catalog.to_jsonb(v_named),
+            'provider', v_label, 'as_of', p_as_of);
+    END IF;
+
+    INSERT INTO finance.fx_rates (base, quote, rate, as_of, provider)
+    SELECT v_base, e, (p_rates ->> e)::numeric(20, 10), p_as_of, v_provider
+      FROM pg_catalog.unnest(v_expected) AS e
+    ON CONFLICT (base, quote, as_of) DO NOTHING;
+    GET DIAGNOSTICS v_recorded = ROW_COUNT;
+
+    INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+    VALUES (
+        pg_catalog.format('fx:%s:recorded', v_label),
+        'metric',
+        pg_catalog.format('The FX feed from %s recorded %s of %s rates as of %s', v_label, v_recorded,
+            pg_catalog.cardinality(v_expected), p_as_of),
+        pg_catalog.now(), 'server', 'finance.fx',
+        pg_catalog.jsonb_build_object(
+            'provider', v_label, 'recorded', v_recorded, 'quotes', pg_catalog.cardinality(v_expected),
+            'as_of', p_as_of)
+    );
+    RETURN pg_catalog.jsonb_build_object(
+        'recorded', v_recorded, 'quotes', pg_catalog.cardinality(v_expected), 'provider', v_provider,
+        'as_of', p_as_of, 'replay', v_recorded = 0);
+END;
+$$;
+
+COMMENT ON FUNCTION finance.record_fx_rates(text, timestamptz, jsonb, text) IS
+'Records one daily FX feed observation whole (every finance.fn_fx_feed_currencies() rate against the
+platform base, at p_as_of) or refuses it whole, leaving a finance.fx error row and recording nothing
+(Decision #337, ruling M5 (f); Decision #471; FBP DB17). A replay records nothing new. Service role only.';
+-- #endregion
+
 -- The team payout plan (finance-model §5) — ONE implementation read by the release
 -- (fn_split_team_payout) and the console's preview (preview_team_split), so what a team is shown it
 -- will receive is what it does receive. Integer arithmetic, floored at every cut:

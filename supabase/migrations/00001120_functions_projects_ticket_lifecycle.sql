@@ -684,13 +684,19 @@ $$;
 -- A self-claim only: the caller must be signed in, be the assignee, and have access to the ticket's
 -- project, because the claim takes an escrow hold on the client's wallet. Pinning someone else is
 -- projects.assign_ticket_manual (review authority).
-CREATE OR REPLACE FUNCTION projects.claim_ticket(p_ticket_id uuid, p_assignee_id uuid)
+--
+-- A paid claim (an escrow held, on any project but a personal one, whose owner alone works it) asks for
+-- the IP Transfer Deed at the version in effect, once per version (LG3), after every other gate has
+-- passed, so a refusal for any other reason is said first: `p_legal` carries the version the dialog
+-- showed, and an unaccepted deed unwinds the claim whole. A hold the client cannot fund asks nothing.
+CREATE OR REPLACE FUNCTION projects.claim_ticket(p_ticket_id uuid, p_assignee_id uuid, p_legal jsonb DEFAULT NULL)
 RETURNS uuid AS $$
 DECLARE
     v_actor   uuid := auth.uid();
     v_project uuid;
     v_stage   uuid;
     v_mode    projects.assignment_routing_mode;
+    v_escrow  uuid;
 BEGIN
     IF v_actor IS NULL THEN
         RAISE EXCEPTION 'Sign in to claim a ticket.' USING ERRCODE = '42501';
@@ -730,6 +736,10 @@ BEGIN
             USING ERRCODE = '42501';
     END IF;
 
-    RETURN projects.fn_assign_ticket_core(p_ticket_id, p_assignee_id, true);
+    v_escrow := projects.fn_assign_ticket_core(p_ticket_id, p_assignee_id, true);
+    IF v_escrow IS NOT NULL AND NOT projects.fn_is_personal_project(v_project) THEN
+        PERFORM org.fn_require_legal_acceptance('ip-transfer-deed', p_legal);
+    END IF;
+    RETURN v_escrow;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, security, auth;

@@ -1,6 +1,6 @@
 import { useEffect } from "preact/hooks";
 import { openBookingPanel, requestContact } from "../core/booking-state.ts";
-import { applyOpen } from "../core/view-state.ts";
+import { applyProjectSlug, openApplyWithConsent } from "../core/view-state.ts";
 import { type ViewIntent, withoutViewIntent } from "../core/view-intent.ts";
 
 /**
@@ -37,7 +37,7 @@ function act(intent: ViewIntent): void {
 			requestContact();
 			return;
 		case "apply":
-			applyOpen.value = true;
+			openApplyWithConsent(applyProjectSlug.value);
 			return;
 	}
 }

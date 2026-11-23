@@ -1628,6 +1628,8 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
 - the shared `StripeElementPanel`'s **Pay £X** confirm in payment mode — the wallet top-up's card
   step and the `/checkout/payment` card step;
 - `FundStageDialog`'s commit — _Fund €X_ from the wallet or _Continue to payment_ (Decision #197);
+- `CommitAcceptanceDialog`'s **Accept and fund** (Decision #534); its **Accept and claim** is a
+  core-workflow commit, so it stays teal `--primary`;
 - `CancelProjectDialog`'s **Settle and cancel** — only when the cancel moves money (a refund or a
   Fair Exit settlement, Decision #467); one that moves nothing is a plain `danger` confirm;
 - `PaidRevisionPayDialog`'s **Pay from wallet** (the card path's own commit is the
@@ -3618,7 +3620,7 @@ the act (§3 gate 11). Renders nothing with nothing to report and no claim.
 amount server-formatted, `tabular-nums`), `DisputeRoomLog` (time in the room as one meta line, then
 the room's frozen join and leave list, the same evidence the operator's `DisputeRulingDialog` shows,
 Decision #383 (b)), the ruling's reasons, then the
-statements (who · when · text, evidence files as links to `/api/files/object/:id`) and, while the
+statements (who · when · text, evidence files as links to `/api/media/proxy/:id`) and, while the
 case is live, the response form: `Textarea` (4,000) + `FileUpload` (advanced queue, `sm`, a secondary
 outlined **Attach evidence** in its header, `customUpload` → `uploadForProject` into the viewer's own
 library) + **Send response** / **File statement**; **Send to an auditor now** in the footer when the
@@ -3651,7 +3653,23 @@ or **Edit reply** (for whoever answers for the target; an inline composer: `Text
 counter, Cancel · **Post reply** / **Save reply**) and **Edit review** (the author's link to the
 dialog). It renders nothing for a guest on an unreplied review. Model: `core/review-client.ts` (the
 one fetch), `core/review-state-sim.ts` (the `reviewState` dev axis, `pj.dev.review-state`). Styles:
-`styles/reviews.css` (`rv-thread*`, `rv-reply*`, `rv-composer*`, `rv-dialog*`).
+`styles/reviews.css` (`rv-thread*`, `rv-reply*`, `rv-composer*`, `rv-dialog*`). Since Decision #486 a
+provider reviews the client back from the same block and dialog (the lead names the Client Trust
+Score), and a review still blind says so: "Hidden until they review you" in the block's Meta line and
+"Nobody reads it once … reviews you too, or on …" in the dialog.
+
+**`ClientTrustDialog` (`features/reviews/components/`, Decision #486 (C)).** The Informed Consent
+before a freelancer applies to, asks through an invite link to join, or accepts a hire on a warned
+client's project. A `Dialog` (32rem, a bottom sheet below `--bp-md`, `visible` the module Signal
+`clientTrustOpen`) stating the Client Trust Score in the display register (`--text-3xl`,
+`--fw-medium`, tabular, no container) with its unit, a `MetaLine` (N reviews from freelancers · Warned
+below 3.00), one lead sentence, an underlined "Read this client's reviews" link, and a note that the
+acknowledgement is recorded per project. Footer Cancel (tier 5) · **Acknowledge and continue** (the
+one fill, teal primary). Driven by `core/client-trust.ts` (`ensureClientTrustConsent(project)` →
+opens it only for a warned, unacknowledged client and resolves when it closes; the caller opens its
+own dialog only after, so one dialog shows at a time; the messaging slide-over closes first below
+1280px). Rendered by `ProjectApplyModal`, `ConversationContextPanel` and `InviteLinkLanding`. Dev
+axis `clientTrust` (`data-dev-client-trust="warned"`). Styles: `styles/reviews.css` (`ct-dialog*`).
 
 **`DisputeDesk` + `DisputeRulingDialog` (`features/admin/`, Decision #212).** The platform operator's
 dispute desk at `/admin/disputes` — rendered only for `security.is_admin()` (the controller 404s
@@ -3671,7 +3689,7 @@ danger **Overdue** `Tag` when the review SLA has passed (a required disclosure).
 (`GET /api/finance/disputes/:id`): the status `Tag` (+ **Overdue**) and an operator sentence, a `dl` of
 facts (claimant · provider · session · payment held · raised · response due · under review since ·
 ruling due), the attendance-audit line, the claim and every statement with its evidence links
-(`/api/files/object/:id`), then — while `canResolve` — the ruling form: a `SelectButton` (Pay the
+(`/api/media/proxy/:id`), then — while `canResolve` — the ruling form: a `SelectButton` (Pay the
 provider · Refund the attendee · Split) with a one-line hint, a `NumberInput` for the provider's share
 in % (0.01–99.99, sent as basis points) on a split, a `Textarea` (2,000) for the reasons both parties
 read, the form's first problem as meta text, and **Record ruling**, which opens an in-place confirm
@@ -4481,6 +4499,19 @@ bundle is one outlined `cko-order__act` link per file plus "Open in Purchases" (
 `/files?source=purchases` (`PurchasesView`) composes roster pieces only: `MetaLine` facts, a
 `Tag` for a refunded purchase's lifecycle status, `InlineNotice` while files are prepared, and
 outlined neutral Download links — rows separated by one hairline, never cards.
+
+**`CommitAcceptanceDialog` (`features/legal/components/`, Decision #534, LG3).** The first-commit
+ask: a `Dialog` (`--overlay-w-sm`) that a claim or funding host opens when its door answers 409
+`legal_acceptance_required`. It stacks over a funding dialog (the overlay stack keeps it top-most).
+Its body is one `--leading-relaxed` lead sentence and one unticked `Checkbox` whose `<label>` reads
+"I accept the {IP Transfer Deed | Escrow Terms} v{version}", the title linking `/legal/{slug}` in a
+new tab. The version is the refusal's, never the client's. The footer has a text **Cancel** and one
+fill, disabled until ticked: **Accept and claim** (teal) or **Accept and fund** (accent pill). Accept
+closes the dialog and hands the host `{ [document]: version }`, and the host runs the same commit
+again. Props: `request` (`Signal<LegalAcceptanceRequired | null>`, set back to `null` on close) and
+`onAccept(stamp)`. Hosts: `ProjectBoard`'s claim, `FundStageDialog`, the wallet's Fund escrow dialog
+and `PaidRevisionPayDialog`. It is contained only as a required disclosure (§B.11), with no fill or
+border of its own.
 
 **`StagePicker` (`features/checkout/components/`, Decision #430).** Which of a ticket's stages to pay
 for — the one list `BuyNowModal` and `TicketBasketPicker` share. Props `quote` (the server's

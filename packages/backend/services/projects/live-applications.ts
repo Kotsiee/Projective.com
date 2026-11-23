@@ -4,6 +4,7 @@ import {
 	type SentApplication,
 	SentApplicationSchema,
 } from "@projective/types/projects";
+import { CLIENT_TRUST_CONSENT_SQLSTATE } from "@projective/types/reviews";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { isPayoutNotReady, type PayoutGateError, payoutNotReadyRefusal } from "../../core/payout-gate.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -55,6 +56,14 @@ export function handshakeRefusal(
 	field: string,
 ): WriteRefusal {
 	const message = error.message.replace(/^ERROR:\s*/i, "").trim();
+	// A warned client's project: the freelancer acknowledges its trust score first (Decision #486 (C)).
+	if (error.code === CLIENT_TRUST_CONSENT_SQLSTATE) {
+		return {
+			status: 428,
+			message: "Read this client's trust score and acknowledge it first.",
+			errors: { [field]: "client_trust_consent" },
+		};
+	}
 	if (error.code === "23505") return { status: 409, message, errors: { [field]: "duplicate" } };
 	if (error.code === "23P01") return { status: 409, message, errors: { [field]: "conflict" } };
 	if (error.code === "23514" || error.code === "22023") {

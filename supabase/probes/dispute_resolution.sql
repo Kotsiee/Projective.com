@@ -131,6 +131,10 @@ BEGIN
     SELECT p.id, p.owner_user_id, s.id INTO v_project, v_host, v_stage
       FROM projects.projects p JOIN projects.project_stages s ON s.project_id = p.id
      WHERE p.owner_user_id IS NOT NULL AND p.source_blueprint_id IS NULL
+       -- A project nobody holds a seat on: this probe changes its format, which the shape lock refuses once
+       -- freelancers are onboarded (and the seed's own engagements carry seats).
+       AND NOT EXISTS (SELECT 1 FROM projects.project_stages ps JOIN projects.stage_assignments sa ON sa.project_stage_id = ps.id
+                        WHERE ps.project_id = p.id)
      ORDER BY p.id, s.id LIMIT 1;
     -- The parties are never operators (the seed carries one, rosalindqvist); the probe makes its own.
     SELECT u.user_id INTO v_a FROM org.users_public u WHERE u.user_id <> v_host

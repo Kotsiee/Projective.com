@@ -18,9 +18,9 @@ import type {
 	StorageQuota,
 } from "@projective/types/files";
 import {
-	fileObjectHref,
 	folderHref,
 	folderQueryHref,
+	mediaProxyHref,
 	MOUNT_PREFIX,
 	PLAN_STORAGE_MIB,
 } from "@projective/types/files";
@@ -967,8 +967,8 @@ function asShared(row: ItemRow, slug: string, now: number): AssetItem {
 		folderPath: [],
 		canManage: false,
 		shareSlug: null,
-		url: privately ? fileObjectHref(row.id, { share: slug }) : item.url,
-		thumbnailUrl: privately && item.kind === "image" ? fileObjectHref(row.id, { tier: "sm", share: slug }) : item.thumbnailUrl,
+		url: privately ? mediaProxyHref(row.id, { share: slug }) : item.url,
+		thumbnailUrl: privately && item.kind === "image" ? mediaProxyHref(row.id, { tier: "sm", share: slug }) : item.thumbnailUrl,
 	};
 }
 

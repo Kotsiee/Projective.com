@@ -141,6 +141,28 @@ const HOW_WE_USE: LegalClause = {
 	],
 };
 
+/** The AML monitoring use, as LG7 records it (Decision #529; `finance.aml_signals`, finance-model.md §17; the Safety Hold is off, so nothing is said of it). */
+const MONITORING_USE =
+	"To verify the identity of everyone who earns, and to detect fraud and money laundering. When money moves, we record two patterns that call for a closer look: one person paying and being paid for the same work, directly or through a business or team they belong to; and a large card payment withdrawn soon after it came in. We build them only from records we already hold — the payment, the people on each side and the time — never from your device, IP address or location. Only our staff can see them, nothing is decided about you automatically from them, and we keep them for five years after your account closes, or as long as the payment records if that is longer. Our basis is our legitimate interest in preventing fraud and money laundering.";
+
+/** {@link HOW_WE_USE} with its fraud item naming the monitoring signals (Decision #529; PRODUCT_SPEC.md §Identity, Taxes & Compliance 3), for the newest draft; 1.0 keeps {@link HOW_WE_USE} (Decision #531 (A)). */
+const HOW_WE_USE_V2: LegalClause = {
+	...HOW_WE_USE,
+	body: HOW_WE_USE.body.map((block) =>
+		block.type === "list"
+			? {
+				...block,
+				items: block.items.map((item) =>
+					typeof item === "string" &&
+						item.startsWith("To verify the identity of everyone who earns")
+						? MONITORING_USE
+						: item
+				),
+			}
+			: block
+	),
+};
+
 /** PRODUCT_SPEC.md §Age guardrails — 13–17 Restricted (high-privacy defaults, the Children's Code) · Under 13 (no retention). */
 const YOUNG_PEOPLE: LegalClause = {
 	id: "young-people",
@@ -393,7 +415,7 @@ export const PRIVACY_VERSIONS = defineLegalVersions([
 		sections: [
 			WHO_WE_ARE,
 			WHAT_WE_COLLECT,
-			HOW_WE_USE,
+			HOW_WE_USE_V2,
 			YOUNG_PEOPLE,
 			SHARING,
 			IDENTITY_DATA,

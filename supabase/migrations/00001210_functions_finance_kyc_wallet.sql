@@ -12,6 +12,10 @@
 -- assign_from_application · fn_apply_invitation_decision · fn_assign_ticket_core (claim, manual pin,
 -- round-robin, parallel stream) · org.create_workspace (team) · org.respond_to_workspace_invitation
 -- (team) · org.transfer_workspace_ownership (team successor). Withdrawing earnings from a `user` or `team` wallet needs it too (finance.begin_payout).
+-- Where a seller earns without a ticket (Decision #337, ruling M4) it bites at publishing a product or
+-- session listing (catalogue.trg_listings_publish_payout_gate), at switching paid calls on
+-- (scheduling.trg_call_settings_paid_gate) and, as finance.fn_assert_seller_payout_ready, at booking a
+-- session or seat (projects.reserve_seat · fn_confirm_seat · fn_book_session_slot).
 
 -- A freelancer may earn (land a gig / join a team) only when KYC-verified AND payout-ready.
 CREATE OR REPLACE FUNCTION finance.fn_freelancer_payout_ready(p_user uuid)
@@ -105,17 +109,69 @@ BEGIN
 END;
 $$;
 
--- A wallet holds earnings once any credit to it has gone through the pending window (Decision #191):
--- an escrow release, a team share or vault cut, a finder's fee, a fair-exit payout or a product sale.
--- A top-up, refund or transfer never does.
-CREATE OR REPLACE FUNCTION finance.fn_wallet_holds_earnings(p_wallet uuid)
-RETURNS boolean
-LANGUAGE sql
+-- The earning gate as a buyer meets it (Decision #337, ruling M4): a session or seat booked from a
+-- seller who is not payout-ready — a `team` seller, any shareholder — is refused PK403
+-- `payout_not_ready:` with HINT `seller`, because the buyer is not the one who can act. DETAIL is always
+-- empty: a buyer is never told who on the seller's side still has to verify. The booking backstop of
+-- projects.reserve_seat, fn_confirm_seat and fn_book_session_slot; publishing (the listing triggers)
+-- and switching on paid calls keep finance.fn_assert_payout_ready, where the seller is the caller.
+CREATE OR REPLACE FUNCTION finance.fn_assert_seller_payout_ready(p_payee_type text, p_payee_id uuid)
+RETURNS void
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-    SELECT EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.wallet_id = p_wallet);
+BEGIN
+    IF p_payee_type = 'team' THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM finance.fn_team_shareholders(p_payee_id) AS s(uid)
+             WHERE NOT finance.fn_freelancer_payout_ready(s.uid)
+        ) THEN
+            RETURN;
+        END IF;
+    ELSIF finance.fn_freelancer_payout_ready(p_payee_id) THEN
+        RETURN;
+    END IF;
+    RAISE EXCEPTION USING ERRCODE = 'PK403', HINT = 'seller', DETAIL = '',
+        MESSAGE = 'payout_not_ready: this seller can''t take bookings until they have verified their identity and added a payout account';
+END;
+$$;
+
+-- A wallet holds earnings once it has received earned money by any route (Decision #196 (4), FCA N14):
+-- a credit through the pending window (any finance.pending_releases row, Decision #191); an earned
+-- credit written at once, which a 0-day window does (finance.fn_is_income_reason: an escrow release, a
+-- team share or vault cut, a finder's fee, a fair-exit payout, a product sale); a team distribution;
+-- or a transfer in from a wallet that itself holds earnings, followed back through every transfer, so
+-- earnings moved through someone's other wallets or a shared vault still count. A top-up, a refund or a
+-- transfer from a wallet that never earned does not. Sticky, as #196 flag (c) says.
+CREATE OR REPLACE FUNCTION finance.fn_wallet_holds_earnings(p_wallet uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    RETURN EXISTS (
+        WITH RECURSIVE fed (wallet_id) AS (
+            SELECT p_wallet
+            UNION
+            SELECT t.ref_id
+              FROM fed
+              JOIN finance.transactions t
+                ON t.wallet_id = fed.wallet_id AND t.direction = 'credit' AND t.reason = 'transfer_in'
+               AND t.ref_table = 'wallets' AND t.ref_id IS NOT NULL
+        )
+        SELECT 1 FROM fed
+         WHERE EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.wallet_id = fed.wallet_id)
+            OR EXISTS (
+                SELECT 1 FROM finance.transactions t
+                 WHERE t.wallet_id = fed.wallet_id AND t.direction = 'credit'
+                   AND (finance.fn_is_income_reason(t.reason) OR t.reason = 'team_distribution')
+            )
+    );
+END;
 $$;
 
 -- A pooled Business Wallet may be operated (funds spent/held) only once the business is KYB-verified.
@@ -1146,34 +1202,289 @@ COMMENT ON FUNCTION finance.list_purchase_owners() IS
 or are an active member of — each in the fn_purchase_owner_json shape. Empty for an anonymous caller.';
 -- #endregion
 
--- #region 9. Promo codes — what one code is worth, for the buyer who typed it (2026-09-23)
--- `finance.promo_codes` is definer-only (RLS on, no policy, no client grant): the table is the
--- platform's whole marketing book, and a client that could SELECT it could list every code. A buyer
--- only ever needs to know about the ONE code they typed, so this is the door: it answers for exactly
--- that code and nothing else. It does not redeem — `redemption_count` is only ever moved by checkout.
+-- #region 9. Promo codes — what one code is worth, who issued it, and the seller's doors (2026-09-23; CK2)
+-- `finance.promo_codes` is definer-only (RLS on, no policy, no client grant): the table is every
+-- issuer's marketing book, and a client that could SELECT it could list every code. A buyer only ever
+-- needs to know about the ONE code they typed (finance.resolve_promo_code), and a seller about their
+-- own (finance.list_own_promo_codes). Only checkout moves `redemption_count`.
 --
--- Returns `{ found, code, label, kind, value_bp, value_minor, currency, valid, reason }`. `reason` is
--- the buyer-facing sentence for a refusal, decided here once so the basket and the checkout cannot
--- word the same refusal two ways. Given the basket's owner, it also refuses a code that account has
--- already used up (`max_redemptions_per_account`, finance.fn_promo_uses), the same count
--- place_wallet_order refuses at commit (FBP DB19), so no buyer is shown a saving checkout refuses. It
--- counts only an account the caller may see (finance.fn_owner_visible); any other owner is ignored.
+-- Who issues (Decision #485): a seller issues and archives codes over their own product listings, all
+-- of them or chosen ones: a person for their own listings, a team member holding `publish_listings`
+-- for the team's. The seller funds the discount, so their commission is taken on the discounted price.
+-- A platform code (no issuer) covers every product line and the platform funds it (#485 (a)); it stays
+-- operator-only and has no door. A code is never edited: its terms are what buyers were shown, so a
+-- seller archives it and issues another.
+
+-- May the caller issue, list and archive codes for this seller? A person for themselves; for a team, a
+-- holder of the team's `publish_listings` (org.fn_member_can, the gate catalogue.fn_manages_listing
+-- applies to the team's listings, #485 (b)). Internal.
+CREATE OR REPLACE FUNCTION finance.fn_can_issue_promo(p_issuer_type text, p_issuer_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT auth.uid () IS NOT NULL AND p_issuer_id IS NOT NULL AND CASE p_issuer_type
+        WHEN 'user' THEN p_issuer_id = auth.uid ()
+        WHEN 'team' THEN COALESCE(
+            org.fn_member_can ('team', p_issuer_id, 'publish_listings'::org.workspace_capability), false)
+        ELSE false
+    END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_can_issue_promo(text, uuid) IS
+'True when the caller may issue, list and archive codes for the seller: a person for themselves, a
+holder of publish_listings for a team (Decision #485 (b)). Internal: the gate of the three seller doors.';
+
+-- Does this code discount this product? A platform code covers every product; a seller's code the
+-- seller's own (a team's code its team's products, a person's their non-team ones), narrowed to
+-- `listing_ids` when it names some. The one rule behind the preview's `covers` and checkout's per-line
+-- shares, so the two cannot disagree. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_promo_covers(p_promo finance.promo_codes, p_product uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT p_promo.issuer_type IS NULL
+        OR EXISTS (
+            SELECT 1
+              FROM catalogue.products p
+             WHERE p.id = p_product
+               AND CASE p_promo.issuer_type
+                       WHEN 'team' THEN p.owner_team_id = p_promo.issuer_id
+                       ELSE p.owner_team_id IS NULL AND p.owner_user_id = p_promo.issuer_id
+                   END
+               AND (p_promo.listing_ids IS NULL OR EXISTS (
+                       SELECT 1 FROM catalogue.listings l
+                        WHERE l.product_id = p.id AND l.id = ANY (p_promo.listing_ids)))
+        );
+$$;
+
+COMMENT ON FUNCTION finance.fn_promo_covers(finance.promo_codes, uuid) IS
+'Whether a promo code discounts a product: a platform code every product, a seller''s code only that
+seller''s own, within its listing_ids when set (Decision #485). Internal: resolve_promo_code''s covers
+and place_wallet_order''s per-line shares.';
+
+-- One code as its seller reads it (the three doors' answer). Internal.
+CREATE OR REPLACE FUNCTION finance.fn_promo_code_json(p_row finance.promo_codes)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.jsonb_build_object(
+        'id', p_row.id, 'code', p_row.code, 'label', p_row.label, 'kind', p_row.kind,
+        'value_bp', p_row.value_bp, 'value_minor', p_row.value_minor, 'currency', p_row.currency,
+        'starts_at', p_row.starts_at, 'expires_at', p_row.expires_at,
+        'max_redemptions', p_row.max_redemptions,
+        'max_redemptions_per_account', p_row.max_redemptions_per_account,
+        'redemption_count', p_row.redemption_count, 'listing_ids', p_row.listing_ids,
+        'deactivated_at', p_row.deactivated_at, 'created_at', p_row.created_at
+    );
+$$;
+
+COMMENT ON FUNCTION finance.fn_promo_code_json(finance.promo_codes) IS
+'One promo code as its seller reads it. Internal: the answer of save_promo_code, archive_promo_code and
+list_own_promo_codes.';
+
+-- A seller issues a code (Decision #485). Checks the capability itself (fn_can_issue_promo), never a
+-- platform code (an issuer is required). The code is upper-cased, 4 to 40 letters, digits or hyphens,
+-- and unique across every issuer, because a buyer types it without saying whose it is. A percentage
+-- code takes 1 to 10,000 basis points; a fixed one an amount in minor units and its currency. The
+-- scope, when given, is product listings of this seller that the caller manages
+-- (catalogue.fn_manages_listing); none is every one of theirs. Each account redeems the code once
+-- unless `p_max_redemptions_per_account` allows more (NULL: no per-account limit; ruling M8).
+-- Refusals: 42501 not this seller's issuer · 22023 a malformed code, label, value, window, limit or
+-- scope · PC409 `promo_code_taken`.
+CREATE OR REPLACE FUNCTION finance.save_promo_code(
+    p_issuer_type text,
+    p_issuer_id uuid,
+    p_code text,
+    p_label text,
+    p_kind text,
+    p_value_bp integer DEFAULT NULL,
+    p_value_minor bigint DEFAULT NULL,
+    p_currency text DEFAULT NULL,
+    p_listing_ids uuid[] DEFAULT NULL,
+    p_starts_at timestamptz DEFAULT NULL,
+    p_expires_at timestamptz DEFAULT NULL,
+    p_max_redemptions integer DEFAULT NULL,
+    p_max_redemptions_per_account integer DEFAULT 1
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_code text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_code, '')));
+    v_label text := pg_catalog.btrim(COALESCE(p_label, ''));
+    v_listings uuid[];
+    v_row finance.promo_codes;
+BEGIN
+    IF NOT finance.fn_can_issue_promo (p_issuer_type, p_issuer_id) THEN
+        RAISE EXCEPTION 'You can''t issue codes for this seller' USING ERRCODE = '42501';
+    END IF;
+    IF v_code !~ '^[A-Z0-9][A-Z0-9-]{3,39}$' THEN
+        RAISE EXCEPTION 'A code is 4 to 40 letters, digits or hyphens' USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.length(v_label) NOT BETWEEN 1 AND 120 THEN
+        RAISE EXCEPTION 'Name the code in 1 to 120 characters' USING ERRCODE = '22023';
+    END IF;
+    IF p_kind = 'percent' THEN
+        IF p_value_bp IS NULL OR p_value_bp NOT BETWEEN 1 AND 10000
+           OR p_value_minor IS NOT NULL OR p_currency IS NOT NULL THEN
+            RAISE EXCEPTION 'A percentage code takes 0.01%% to 100%% and no amount' USING ERRCODE = '22023';
+        END IF;
+    ELSIF p_kind = 'flat' THEN
+        IF p_value_minor IS NULL OR p_value_minor < 1 OR p_value_bp IS NOT NULL
+           OR pg_catalog.upper(COALESCE(p_currency, '')) !~ '^[A-Z]{3}$' THEN
+            RAISE EXCEPTION 'A fixed-amount code takes an amount and its currency' USING ERRCODE = '22023';
+        END IF;
+    ELSE
+        RAISE EXCEPTION 'A code is a percentage or a fixed amount' USING ERRCODE = '22023';
+    END IF;
+    IF p_expires_at IS NOT NULL
+       AND (p_expires_at <= pg_catalog.now () OR (p_starts_at IS NOT NULL AND p_expires_at <= p_starts_at)) THEN
+        RAISE EXCEPTION 'A code must expire in the future, after it starts' USING ERRCODE = '22023';
+    END IF;
+    IF (p_max_redemptions IS NOT NULL AND p_max_redemptions < 1)
+       OR (p_max_redemptions_per_account IS NOT NULL AND p_max_redemptions_per_account < 1) THEN
+        RAISE EXCEPTION 'A redemption limit is at least 1' USING ERRCODE = '22023';
+    END IF;
+    IF p_listing_ids IS NOT NULL AND pg_catalog.cardinality(p_listing_ids) > 0 THEN
+        SELECT pg_catalog.array_agg(DISTINCT x) INTO v_listings FROM pg_catalog.unnest(p_listing_ids) AS x;
+        IF pg_catalog.cardinality(v_listings) > 100 OR EXISTS (
+            SELECT 1
+              FROM pg_catalog.unnest(v_listings) AS x
+             WHERE NOT EXISTS (
+                   SELECT 1
+                     FROM catalogue.listings l
+                    WHERE l.id = x
+                      AND l.kind = 'product'::catalogue.listing_kind
+                      AND CASE p_issuer_type
+                              WHEN 'team' THEN l.owner_team_id = p_issuer_id
+                              ELSE l.owner_team_id IS NULL AND l.owner_user_id = p_issuer_id
+                          END
+                      AND catalogue.fn_manages_listing (l.id))
+        ) THEN
+            RAISE EXCEPTION 'A code covers only your own product listings' USING ERRCODE = '22023';
+        END IF;
+    END IF;
+
+    BEGIN
+        INSERT INTO finance.promo_codes (
+            code, label, kind, value_bp, value_minor, currency, starts_at, expires_at, max_redemptions,
+            max_redemptions_per_account, issuer_type, issuer_id, listing_ids
+        ) VALUES (
+            v_code, v_label, p_kind,
+            CASE WHEN p_kind = 'percent' THEN p_value_bp END,
+            CASE WHEN p_kind = 'flat' THEN p_value_minor END,
+            CASE WHEN p_kind = 'flat' THEN pg_catalog.upper(p_currency) END,
+            p_starts_at, p_expires_at, p_max_redemptions, p_max_redemptions_per_account,
+            p_issuer_type, p_issuer_id, v_listings
+        )
+        RETURNING * INTO v_row;
+    EXCEPTION WHEN unique_violation THEN
+        RAISE EXCEPTION 'promo_code_taken: That code is taken — choose another' USING ERRCODE = 'PC409';
+    END;
+    RETURN finance.fn_promo_code_json (v_row);
+END;
+$$;
+
+COMMENT ON FUNCTION finance.save_promo_code(text, uuid, text, text, text, integer, bigint, text, uuid[], timestamptz, timestamptz, integer, integer) IS
+'A seller issues a promo code over their own product listings, all or the listed ones (Decision #485): a
+person for themselves, a team''s publish_listings holder for the team. Never a platform code; never an
+edit (archive and issue another). Returns the code as its seller reads it. Refusals: 42501 not this
+seller''s issuer · 22023 malformed · PC409 promo_code_taken.';
+
+-- A seller archives one of their codes: it stops applying at once, and stays listed with its archive
+-- instant and its redemptions (nothing is hard-deleted). Archiving twice answers the same row. A code
+-- the caller may not manage (another seller's, a platform code, none) is P0002, so the door does not
+-- confirm that it exists.
+CREATE OR REPLACE FUNCTION finance.archive_promo_code(p_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_row finance.promo_codes;
+BEGIN
+    SELECT * INTO v_row FROM finance.promo_codes WHERE id = p_id FOR UPDATE;
+    IF NOT FOUND OR v_row.issuer_type IS NULL
+       OR NOT finance.fn_can_issue_promo (v_row.issuer_type, v_row.issuer_id) THEN
+        RAISE EXCEPTION 'No such code' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_row.deactivated_at IS NULL THEN
+        UPDATE finance.promo_codes SET deactivated_at = pg_catalog.now () WHERE id = p_id RETURNING * INTO v_row;
+    END IF;
+    RETURN finance.fn_promo_code_json (v_row);
+END;
+$$;
+
+COMMENT ON FUNCTION finance.archive_promo_code(uuid) IS
+'A seller archives one of their promo codes (deactivated_at, Decision #485): it no longer applies and
+stays listed. Idempotent. P0002 for a code the caller may not manage.';
+
+-- A seller's codes, live first and then archived, newest first, each with its redemptions. Checks the
+-- capability itself. Refusal: 42501 not this seller's issuer.
+CREATE OR REPLACE FUNCTION finance.list_own_promo_codes(p_issuer_type text, p_issuer_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NOT finance.fn_can_issue_promo (p_issuer_type, p_issuer_id) THEN
+        RAISE EXCEPTION 'You can''t see this seller''s codes' USING ERRCODE = '42501';
+    END IF;
+    RETURN COALESCE((
+        SELECT pg_catalog.jsonb_agg(finance.fn_promo_code_json (c)
+                   ORDER BY c.deactivated_at IS NOT NULL, c.created_at DESC, c.id)
+          FROM finance.promo_codes c
+         WHERE c.issuer_type = p_issuer_type AND c.issuer_id = p_issuer_id
+    ), '[]'::jsonb);
+END;
+$$;
+
+COMMENT ON FUNCTION finance.list_own_promo_codes(text, uuid) IS
+'A seller''s own promo codes (Decision #485), live then archived, newest first, as their seller reads
+them. 42501 unless the caller may issue for the seller.';
+
+-- What ONE code is worth, for the signed-in buyer who typed it. Returns `{ found, code, label, kind,
+-- value_bp, value_minor, currency, seller_funded, covers, valid, reason }`. `reason` is the buyer-facing
+-- sentence for a refusal, decided here once so the basket and the checkout cannot word the same refusal
+-- two ways. Given the basket's owner, it also refuses a code that account has already used up
+-- (`max_redemptions_per_account`, finance.fn_promo_uses), the same count place_wallet_order refuses at
+-- commit (FBP DB19), so no buyer is shown a saving checkout refuses. It counts only an account the
+-- caller may see (finance.fn_owner_visible); any other owner is ignored. Given the basket's products,
+-- `covers` is the ones the code discounts (finance.fn_promo_covers: a seller's code only that
+-- seller's, Decision #485), and a code that covers none of them is refused; NULL when none were named.
 CREATE OR REPLACE FUNCTION finance.resolve_promo_code(
     p_code text,
     p_owner_type text DEFAULT NULL,
-    p_owner_id uuid DEFAULT NULL
+    p_owner_id uuid DEFAULT NULL,
+    p_product_ids uuid[] DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = finance, public
+SET search_path = ''
 AS $$
 DECLARE
     v_code text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_code, '')));
     v_row finance.promo_codes;
     v_reason text;
     v_used boolean := false;
+    v_covers jsonb;
 BEGIN
     IF auth.uid () IS NULL OR v_code = '' THEN
         RETURN NULL;
@@ -1191,6 +1502,11 @@ BEGIN
        AND finance.fn_owner_visible (p_owner_type, p_owner_id) THEN
         v_used := finance.fn_promo_uses (v_row.code, p_owner_type, p_owner_id) >= v_row.max_redemptions_per_account;
     END IF;
+    IF p_product_ids IS NOT NULL THEN
+        SELECT COALESCE(pg_catalog.jsonb_agg(x ORDER BY n), '[]'::jsonb) INTO v_covers
+          FROM pg_catalog.unnest(p_product_ids) WITH ORDINALITY AS t (x, n)
+         WHERE finance.fn_promo_covers (v_row, x);
+    END IF;
 
     v_reason := CASE
         WHEN v_row.deactivated_at IS NOT NULL THEN 'This code is no longer active.'
@@ -1198,6 +1514,7 @@ BEGIN
             'This code isn''t active yet.'
         WHEN v_row.expires_at IS NOT NULL AND v_row.expires_at <= pg_catalog.now () THEN
             'This code expired on ' || pg_catalog.to_char(v_row.expires_at AT TIME ZONE 'UTC', 'FMDD FMMonth YYYY') || '.'
+        WHEN v_covers = '[]'::jsonb THEN 'This code doesn''t apply to anything in your basket.'
         WHEN v_used THEN 'You''ve already used this code.'
         WHEN v_row.max_redemptions IS NOT NULL AND v_row.redemption_count >= v_row.max_redemptions THEN
             'This code has been fully redeemed.'
@@ -1212,14 +1529,17 @@ BEGIN
         'value_bp', v_row.value_bp,
         'value_minor', v_row.value_minor,
         'currency', v_row.currency,
+        'seller_funded', v_row.issuer_type IS NOT NULL,
+        'covers', v_covers,
         'valid', v_reason IS NULL,
         'reason', v_reason
     );
 END;
 $$;
 
-COMMENT ON FUNCTION finance.resolve_promo_code(text, text, uuid) IS
+COMMENT ON FUNCTION finance.resolve_promo_code(text, text, uuid, uuid[]) IS
 'What ONE promotional code is worth, for the signed-in buyer who typed it: its label, kind and value,
+which of the named products it discounts (covers; a seller''s code only that seller''s, Decision #485),
 and — when it cannot be used — the buyer-facing reason, including an account (one the caller may see)
 that has already used it up. Never lists codes and never redeems one.';
 -- #endregion
@@ -1548,7 +1868,8 @@ and KYB verification (PK403 kyb_required).';
 --   * A digital product pays its SELLER's marketplace commission (Decision #337, ruling M1):
 --     finance.fn_effective_commission_bp for the line's owning team, else its owning person — a
 --     negotiated rate, else their Standing rung's (8% → 6.5%, finance.standing_commission_tiers). It
---     is charged per line on what was actually paid for that line (after its promo share), truncated
+--     is charged per line on what was actually paid for that line (after a seller-funded promo share;
+--     a platform-funded share is the platform's cost, so the line before it, #485 (a)), truncated
 --     to the minor unit, deducted from the seller's credit, and recorded on the order line with its
 --     rate; the order's `platform_fee_minor` is their sum. The fee is retained (debited from the
 --     buyer, not credited to a seller); the platform's own Fee Collection wallet is not materialised
@@ -1572,7 +1893,9 @@ and KYB verification (PK403 kyb_required).';
 --     `promo_exhausted`. Under the same lock, an account that has used the code
 --     `max_redemptions_per_account` times already (its orders, in every status:
 --     finance.fn_promo_uses) refuses PC409 `promo_already_used` (FBP DB19). The code applied is
---     recorded on the order (`orders.promo_code`).
+--     recorded on the order (`orders.promo_code`). It discounts only the lines it covers
+--     (finance.fn_promo_covers): a seller's code that seller's own product lines, a platform code every
+--     one (Decision #485). Each discounted line records who funded its share (`promo_funded_by`).
 CREATE OR REPLACE FUNCTION finance.place_wallet_order(
     p_basket_id uuid,
     p_item_ids uuid[],
@@ -1611,6 +1934,9 @@ DECLARE
     v_fee_total bigint := 0;
     v_remaining_promo bigint;
     v_eligible_base bigint;
+    v_covered uuid[] := '{}';
+    v_covered_left integer := 0;
+    v_funder text;
     v_line record;
     v_lines jsonb := '[]'::jsonb;
     v_count integer;
@@ -2207,8 +2533,17 @@ BEGIN
             RAISE EXCEPTION 'Your promo code is no longer valid — review the total and try again'
                 USING ERRCODE = 'PC409';
         END IF;
+        -- The lines the code discounts (finance.fn_promo_covers): a seller's code only that seller's
+        -- (Decision #485), a platform code every one. Only product lines reach here: a code beside an
+        -- escrow line was refused above. The code is valued on those lines alone.
+        SELECT COALESCE(pg_catalog.array_agg((l ->> 'id')::uuid), '{}'),
+               COALESCE(pg_catalog.sum((l ->> 'gross')::bigint - (l ->> 'creator')::bigint), 0)
+          INTO v_covered, v_eligible_base
+          FROM pg_catalog.jsonb_array_elements(v_lines) AS l
+         WHERE finance.fn_promo_covers (v_promo, (l ->> 'item_id')::uuid);
+        v_covered_left := pg_catalog.cardinality(v_covered);
         IF v_promo.kind = 'percent' THEN
-            v_promo_minor := ((v_subtotal - v_creator) * v_promo.value_bp + 5000) / 10000;
+            v_promo_minor := (v_eligible_base * v_promo.value_bp + 5000) / 10000;
         ELSIF v_promo.kind = 'flat' AND pg_catalog.upper(v_promo.currency) = v_currency THEN
             v_promo_minor := v_promo.value_minor;
         ELSE
@@ -2217,7 +2552,7 @@ BEGIN
             RAISE EXCEPTION 'That code can''t be applied to items priced in %', v_currency
                 USING ERRCODE = 'PC409';
         END IF;
-        v_promo_minor := LEAST(GREATEST(v_promo_minor, 0), v_subtotal - v_creator);
+        v_promo_minor := LEAST(GREATEST(v_promo_minor, 0), v_eligible_base);
         IF v_promo_minor > 0 THEN
             -- One account, one redemption by default: counted under the code's row lock, so two of the
             -- account's orders racing for the code are decided one after the other.
@@ -2348,11 +2683,10 @@ BEGIN
             v_net - v_escrow_total, 'order_payment', 'orders', v_order_id);
     END IF;
 
-    -- Each line: its share of the promo (pro rata by what the line costs after creator discounts, the
-    -- remainder on the last line so the shares sum exactly), its seller's commission on what was
-    -- actually paid for it, and the seller's credit for the rest.
+    -- Each line: its share of the promo (the covered lines only, pro rata by what each costs after
+    -- creator discounts, the remainder on the last covered line so the shares sum exactly), its
+    -- seller's commission on the sale, and the seller's credit for the rest.
     v_remaining_promo := v_promo_minor;
-    v_eligible_base := v_subtotal - v_creator;
     FOR v_line IN SELECT value AS l, ordinality AS n FROM pg_catalog.jsonb_array_elements(v_lines) WITH ORDINALITY
     LOOP
         v_i := v_line.n;
@@ -2482,13 +2816,22 @@ BEGIN
              WHERE id = (v_line.l ->> 'id')::uuid;
             CONTINUE;
         END IF;
-        IF v_i = pg_catalog.jsonb_array_length(v_lines) OR v_eligible_base = 0 THEN
-            v_share := v_remaining_promo;
+        IF (v_line.l ->> 'id')::uuid = ANY (v_covered) THEN
+            v_covered_left := v_covered_left - 1;
+            IF v_covered_left = 0 OR v_eligible_base = 0 THEN
+                v_share := v_remaining_promo;
+            ELSE
+                v_share := (v_promo_minor * ((v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint)) / v_eligible_base;
+            END IF;
         ELSE
-            v_share := (v_promo_minor * ((v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint)) / v_eligible_base;
+            v_share := 0;
         END IF;
         v_remaining_promo := v_remaining_promo - v_share;
-        v_paid := (v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint - v_share;
+        v_funder := CASE WHEN v_share = 0 THEN NULL WHEN v_promo.issuer_type IS NULL THEN 'platform' ELSE 'seller' END;
+        -- The sale the seller is paid on: what the buyer paid, unless the platform funded the share
+        -- (#485 (a)), when it is the line before the share and the share is the platform's cost.
+        v_paid := (v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint
+                  - CASE WHEN v_funder = 'platform' THEN 0 ELSE v_share END;
 
         IF v_line.l ->> 'owner_team_id' IS NOT NULL THEN
             v_seller_type := 'team';
@@ -2526,13 +2869,13 @@ BEGIN
             CASE WHEN pg_catalog.jsonb_typeof(v_line.l -> 'manifest') = 'array' THEN v_line.l -> 'manifest' ELSE '[]'::jsonb END);
         INSERT INTO finance.order_lines (
             order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
-            currency, promo_discount_minor, platform_fee_bp, platform_fee_minor, fulfilment,
+            currency, promo_discount_minor, promo_funded_by, platform_fee_bp, platform_fee_minor, fulfilment,
             download_name, download_bytes, download_format, licence, position
         ) VALUES (
             v_order_id, (v_line.l ->> 'id')::uuid, 'digital_product', (v_line.l ->> 'item_id')::uuid,
             v_line.l ->> 'title', 'Instant download', (v_line.l ->> 'quantity')::integer,
             (v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint, v_currency,
-            v_share, v_line_bp, v_fee, 'download',
+            v_share, v_funder, v_line_bp, v_fee, 'download',
             CASE WHEN pg_catalog.jsonb_array_length(v_manifest) = 1 THEN v_manifest -> 0 ->> 'name' END,
             (SELECT pg_catalog.sum((x ->> 'bytes')::bigint)
                FROM pg_catalog.jsonb_array_elements(v_manifest) AS x
@@ -2673,10 +3016,10 @@ BEGIN
               FROM (
                 SELECT ol.currency,
                        pg_catalog.count(*) AS lines,
-                       pg_catalog.sum(GREATEST(ol.line_total_minor - ol.promo_discount_minor, 0)) AS paid_minor,
+                       pg_catalog.sum(GREATEST(ol.line_total_minor - CASE WHEN ol.promo_funded_by = 'platform' THEN 0 ELSE ol.promo_discount_minor END, 0)) AS paid_minor,
                        pg_catalog.sum(ol.platform_fee_minor) AS fee_minor,
                        CASE WHEN v_next IS NOT NULL THEN pg_catalog.sum(
-                           (GREATEST(ol.line_total_minor - ol.promo_discount_minor, 0) * v_next) / 10000)
+                           (GREATEST(ol.line_total_minor - CASE WHEN ol.promo_funded_by = 'platform' THEN 0 ELSE ol.promo_discount_minor END, 0) * v_next) / 10000)
                        END AS at_next_minor
                   FROM finance.order_lines ol
                   JOIN finance.orders o ON o.id = ol.order_id

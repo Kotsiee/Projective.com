@@ -1396,6 +1396,10 @@ BEGIN
         RAISE EXCEPTION 'You already have a pending application here.' USING ERRCODE = 'unique_violation';
     END IF;
 
+    -- Last of the gates: a warned client's project takes a proposal only after the Informed Consent
+    -- (Decision #486 (C)), so a freelancer who could not apply anyway is told why first.
+    PERFORM reviews.fn_assert_client_trust_consent(v_project.id, v_actor);
+
     IF v_message IS NOT NULL AND projects.is_protected_phase(v_project.id) THEN
         SELECT m.masked INTO v_message FROM comms.mask_pii(v_message) m;
     END IF;
@@ -2445,6 +2449,9 @@ BEGIN
         IF v_inv.role = 'freelancer' THEN
             PERFORM finance.fn_assert_payout_ready('freelancer', v_inv.target_user_id);
         END IF;
+        -- Last of the gates: accepting a hire on a warned client's project needs the invitee's Informed
+        -- Consent (Decision #486 (C)).
+        PERFORM reviews.fn_assert_client_trust_consent(v_inv.project_id, v_inv.target_user_id);
 
         UPDATE projects.project_invitations
         SET status = 'accepted', accepted_at = now()

@@ -1,5 +1,10 @@
 import { assertEquals } from "@std/assert";
-import { reviewRefusal, toReviewables, toReviewViewers } from "./reviews-model.ts";
+import {
+	reviewRefusal,
+	toClientTrustWarning,
+	toReviewables,
+	toReviewViewers,
+} from "./reviews-model.ts";
 
 // #region Refusals
 Deno.test("reviews: every door refusal maps to its own status and keeps the database's sentence", () => {
@@ -64,3 +69,30 @@ Deno.test("reviews: a reviewable with no avatar maps to a null avatar, and junk 
 	assertEquals(toReviewables(null), []);
 });
 // #endregion
+
+Deno.test("reviews-model: the trust warning maps both answers, and the missing consent is a 428", () => {
+	assertEquals(toClientTrustWarning({ warned: false }), {
+		warned: false,
+		score: null,
+		reviewCount: null,
+		reviewsHref: null,
+		acknowledged: false,
+	});
+	assertEquals(
+		toClientTrustWarning({
+			warned: true,
+			score: 2.71,
+			review_count: 5,
+			reviews_href: "/@atlaslabs/reviews",
+			acknowledged: false,
+		}),
+		{
+			warned: true,
+			score: 2.71,
+			reviewCount: 5,
+			reviewsHref: "/@atlaslabs/reviews",
+			acknowledged: false,
+		},
+	);
+	assertEquals(reviewRefusal({ code: "PT428", message: "refused: acknowledge first" }).status, 428);
+});

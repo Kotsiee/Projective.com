@@ -79,9 +79,14 @@ BEGIN
     END IF;
 
     -- The seats this probe commits stay behind, so take freelancers who already own a project or hold
-    -- a live seat first: seat_fill_concurrency, which runs after it, needs four who do neither.
+    -- a live seat first: seat_fill_concurrency, which runs after it, needs four who do neither. Only
+    -- ones who accepted the IP Transfer Deed: a first claim asks for it (LG3), and an acceptance this
+    -- probe committed could never be taken back.
     SELECT fp.user_id INTO v_fl1 FROM org.freelancer_profiles fp
      WHERE fp.user_id <> (SELECT v FROM wp1_fx WHERE k = 'owner') AND finance.fn_freelancer_payout_ready(fp.user_id)
+       AND EXISTS (SELECT 1 FROM org.legal_acceptances a
+                    WHERE a.user_id = fp.user_id AND a.document_slug = 'ip-transfer-deed'
+                      AND a.version = org.fn_current_legal_version('ip-transfer-deed'))
      ORDER BY (EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = fp.user_id)
                OR EXISTS (SELECT 1 FROM projects.stage_assignments sa
                            WHERE sa.freelancer_profile_id = fp.user_id
@@ -93,6 +98,9 @@ BEGIN
      LIMIT 1;
     SELECT fp.user_id INTO v_fl2 FROM org.freelancer_profiles fp
      WHERE fp.user_id NOT IN ((SELECT v FROM wp1_fx WHERE k = 'owner'), v_fl1) AND finance.fn_freelancer_payout_ready(fp.user_id)
+       AND EXISTS (SELECT 1 FROM org.legal_acceptances a
+                    WHERE a.user_id = fp.user_id AND a.document_slug = 'ip-transfer-deed'
+                      AND a.version = org.fn_current_legal_version('ip-transfer-deed'))
      ORDER BY (EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = fp.user_id)
                OR EXISTS (SELECT 1 FROM projects.stage_assignments sa
                            WHERE sa.freelancer_profile_id = fp.user_id

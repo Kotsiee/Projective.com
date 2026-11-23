@@ -10,6 +10,7 @@ import {
 	type Purchase,
 	type PurchaseDelivery,
 	type PurchaseList,
+	purchaseReviewLink,
 } from "@projective/types/catalogue";
 import { originalLocation } from "@projective/types/files";
 import { SlidingWindowLimiter } from "../../core/rate-limit.ts";
@@ -428,11 +429,15 @@ interface PurchaseRow {
 	product_versions: VersionGateRow & { version: number } | null;
 }
 
-/** Map one entitlement, its version and its receipt to what the purchases view draws. */
+/**
+ * Map one entitlement, its version and its receipt to what the purchases view draws. `holderType` is
+ * who the list is read as: only a person's own delivered purchase offers its review link.
+ */
 export function purchaseOf(
 	row: PurchaseRow,
 	line: { title: string; order_id: string } | undefined,
 	reference: string | undefined,
+	holderType: EntitlementHolderType = "user",
 ): Purchase | null {
 	const slug = EntitlementSlug.safeParse(row.slug);
 	const status = EntitlementStatus.safeParse(row.status);
@@ -461,6 +466,12 @@ export function purchaseOf(
 				href: live ? downloadHref(slug.data, f.fileId) : null,
 			}))
 			: [],
+		reviewHref: purchaseReviewLink({
+			slug: slug.data,
+			status: status.data,
+			firstDeliveredAt: row.first_delivered_at,
+			holderType,
+		}),
 	};
 }
 
@@ -502,7 +513,12 @@ export async function listPurchases(actor: ReadActor): Promise<ServiceResult<Pur
 
 		const purchases = rows.flatMap((row) => {
 			const line = lineById.get(row.order_line_id);
-			const purchase = purchaseOf(row, line, line ? refById.get(line.order_id) : undefined);
+			const purchase = purchaseOf(
+				row,
+				line,
+				line ? refById.get(line.order_id) : undefined,
+				holder.type,
+			);
 			return purchase ? [purchase] : [];
 		});
 		return ok({ purchases });
@@ -516,6 +532,8 @@ export async function listPurchases(actor: ReadActor): Promise<ServiceResult<Pur
 export interface LineEntitlement {
 	slug: string;
 	status: string;
+	/** When a whole file of it first reached the buyer, or `null` (the review's opening, #487). */
+	firstDeliveredAt: string | null;
 	/** How its files stand — `none` when the product froze no file. */
 	delivery: PurchaseDelivery;
 	files: ProductVersionFile[];
@@ -534,7 +552,8 @@ export async function entitlementsForLines(
 	if (orderLineIds.length === 0) return out;
 	const { data, error } = await db.schema("catalogue").from("entitlements")
 		.select(
-			"order_line_id, slug, status, product_versions!entitlements_version_fkey(manifest, ready_at)",
+			"order_line_id, slug, status, first_delivered_at, " +
+				"product_versions!entitlements_version_fkey(manifest, ready_at)",
 		)
 		.in("order_line_id", [...orderLineIds]);
 	if (error) return out;
@@ -543,12 +562,14 @@ export async function entitlementsForLines(
 			order_line_id: string;
 			slug: string;
 			status: string;
+			first_delivered_at: string | null;
 			product_versions: { manifest: unknown; ready_at: string | null } | null;
 		}[]
 	) {
 		out.set(row.order_line_id, {
 			slug: row.slug,
 			status: row.status,
+			firstDeliveredAt: row.first_delivered_at,
 			delivery: deliveryOf(row.product_versions),
 			files: row.product_versions ? versionFiles(row.product_versions.manifest) : [],
 		});

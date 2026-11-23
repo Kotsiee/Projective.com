@@ -1,7 +1,6 @@
 import { BUCKETS, dataExportLocation } from "@projective/types/files";
 import {
 	DATA_EXPORT_MANIFEST_VERSION,
-	DATA_EXPORT_POLICY,
 	type DataExportClaim,
 	DataExportClaimSchema,
 	DataExportDomain,
@@ -15,7 +14,10 @@ import {
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getServiceClient, getUserClient, isAuthBackendLive } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
-import { signedObjectUrl, uploadObject } from "../../core/storage-signed.ts";
+import { uploadObject } from "../../core/storage-signed.ts";
+import { fetchStoredObject } from "../../core/storage-stream.ts";
+import { deliveryHeaders } from "../catalogue/delivery.ts";
+import type { StreamedAsset } from "../media/stream.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { RpcError } from "./account-lifecycle-refusals.ts";
 import { dataExportFailure } from "./data-export-refusals.ts";
@@ -27,12 +29,12 @@ import { AccountLifecycleBackendService } from "./AccountLifecycleBackendService
  * DataExportBackendService — the FAT service behind "Download your data" in Settings → Account
  * (Decision #450; migration 00001061).
  *
- * The person's doors ({@link state}, {@link request}, {@link downloadLink}) run definers bound to
+ * The person's doors ({@link state}, {@link request}, {@link download}) run definers bound to
  * the caller's OWN access token, which resolve the person from `auth.uid()` and enforce every rule:
  * a sign-in in the last 10 minutes, one open request, one a day, none while an erasure is scheduled.
  * {@link sweep} is the scheduler's door: as the service role it builds each claimed request into a ZIP
- * in the private `data_exports` bucket and removes archives past their 7 days. A download link is
- * minted per read, for {@link DATA_EXPORT_POLICY.downloadLinkSeconds} seconds, and never stored.
+ * in the private `data_exports` bucket and removes archives past their 7 days. A download streams the
+ * archive through the app; no storage link is minted or stored.
  *
  * Gated on `AUTH_BACKEND_LIVE`: with no database there is nothing truthful to answer, so every method
  * refuses with a 503. A guest is a 401.
@@ -162,11 +164,15 @@ export class DataExportBackendService {
 	}
 
 	/**
-	 * A short-lived link to the caller's ready archive, minted now. The archive is found from the
+	 * The caller's ready archive, streamed through the app as an attachment, so no signed URL reaches the
+	 * browser (`ASSET_DELIVERY_ARCHITECTURE.md` invariant 2, phase 1). The archive is found from the
 	 * caller's own request (read under their JWT) at the path the completion door enforces, so no
-	 * client-supplied path is ever signed.
+	 * client-supplied path is ever read.
 	 */
-	static async downloadLink(actor: ReadActor): Promise<ServiceResult<{ url: string }>> {
+	static async download(
+		actor: ReadActor,
+		signal?: AbortSignal,
+	): Promise<ServiceResult<StreamedAsset>> {
 		const current = await DataExportBackendService.state(actor);
 		if (!current.ok || !current.data) {
 			return fail(current.status, { message: current.message, details: current.details });
@@ -177,15 +183,20 @@ export class DataExportBackendService {
 		}
 		try {
 			const { path } = dataExportLocation(actor.userId, latest.id);
-			const url = await signedObjectUrl(
-				BUCKET,
-				path,
-				DATA_EXPORT_POLICY.downloadLinkSeconds,
-				archiveName(latest.readyAt),
-			);
-			return url
-				? ok({ url })
-				: fail(404, { message: "Your copy couldn't be found. Request a new one." });
+			const upstream = await fetchStoredObject(BUCKET, path, { method: "GET", signal });
+			if (upstream.status !== 200 || !upstream.body) {
+				await upstream.body?.cancel();
+				return upstream.status >= 500
+					? unreachable(new Error(`storage answered ${upstream.status}`))
+					: fail(404, { message: "Your copy couldn't be found. Request a new one." });
+			}
+			const headers = deliveryHeaders({
+				name: archiveName(latest.readyAt),
+				mime: "application/zip",
+			});
+			const length = upstream.headers.get("content-length");
+			if (length) headers.set("content-length", length);
+			return ok({ status: 200, headers, body: upstream.body });
 		} catch (error) {
 			return unreachable(error);
 		}

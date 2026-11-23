@@ -1,6 +1,6 @@
 import { getAnonClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
-import { stagePriceSpan } from "@projective/types/catalogue";
+import { sittingMinutes, stagePriceSpan } from "@projective/types/catalogue";
 import { lowestActivePrice } from "./query.ts";
 import { resolveSkill } from "./skills.ts";
 import type { BlueprintRow, Catalog, CatalogMedia, ProfileRow } from "./live-catalog.ts";
@@ -164,18 +164,23 @@ function pricingFor(item: ExploreItem): EntityPricing {
 					max,
 				};
 			}
+			const hourly = item.sessionPricingUnit === "per_hour";
 			if (item.serviceType === "Session" && item.sessionPrice) {
 				return {
 					mode: "session",
-					display: `${displayMajor(item.sessionPrice, currency)} / session`,
-					caption: "Billed per booked session",
+					display: `${displayMajor(item.sessionPrice, currency)} / ${hourly ? "hour" : "session"}`,
+					caption: hourly
+						? "Per hour · each session priced at its length"
+						: "Billed per booked session",
 				};
 			}
 			if (item.serviceType === "Group Session" && item.sessionPrice) {
 				return {
 					mode: "session",
-					display: `${displayMajor(item.sessionPrice, currency)} / seat`,
-					caption: "Per attendee seat · booked per session",
+					display: `${displayMajor(item.sessionPrice, currency)} / ${hourly ? "hour" : "seat"}`,
+					caption: hourly
+						? "Per seat, per hour · a seat covers every session"
+						: "Per attendee seat · booked per session",
 				};
 			}
 			if (item.serviceType === "Direct Deliverable") {
@@ -387,6 +392,7 @@ export async function semanticSimilarTo(
 interface ReviewRow {
 	id: string;
 	reviewer_user_id: string;
+	reviewer_business_id: string | null;
 	project_id: string | null;
 	cohort_membership_id: string | null;
 	order_line_id: string | null;
@@ -435,6 +441,26 @@ function authorOf(row: ProfileRow | undefined): ExploreOwner {
 	};
 }
 
+/**
+ * `project:client` keys for the engagements among `rows` on which the client party was reviewed back
+ * (Decision #486), read through the same public policy, so a blind or withdrawn review counts for none.
+ */
+async function answeredClients(rows: readonly ReviewRow[]): Promise<Set<string>> {
+	const anchors = [...new Set(rows.map((r) => r.project_id).filter((id): id is string => !!id))];
+	if (!anchors.length) return new Set();
+	const { data, error } = await getAnonClient()
+		.schema("reviews")
+		.from("entity_reviews")
+		.select("project_id, target_entity_id")
+		.in("project_id", anchors)
+		.in("target_entity_type", ["user", "business"]);
+	if (error) throw new Error(`explore view: reading reviews back failed — ${error.message}`);
+	return new Set(
+		((data ?? []) as Array<{ project_id: string; target_entity_id: string }>)
+			.map((o) => `${o.project_id}:${o.target_entity_id}`),
+	);
+}
+
 async function reviewsFor(
 	catalog: Catalog,
 	item: ExploreItem,
@@ -450,7 +476,7 @@ async function reviewsFor(
 		.schema("reviews")
 		.from("entity_reviews")
 		.select(
-			"id, reviewer_user_id, project_id, cohort_membership_id, order_line_id, rating, title, comment, created_at, reply_comment, replied_at, reply_edited_at",
+			"id, reviewer_user_id, reviewer_business_id, project_id, cohort_membership_id, order_line_id, rating, title, comment, created_at, reply_comment, replied_at, reply_edited_at",
 		);
 	const scoped = subject.type === "service_blueprint"
 		? base.or(
@@ -461,6 +487,7 @@ async function reviewsFor(
 	if (error) throw new Error(`explore view: reading reviews failed — ${error.message}`);
 	const rows = (data ?? []) as ReviewRow[];
 	if (!rows.length) return empty;
+	const answered = await answeredClients(rows);
 
 	const distribution = [0, 0, 0, 0, 0];
 	let total = 0;
@@ -477,8 +504,9 @@ async function reviewsFor(
 			body: r.comment,
 			createdAt: r.created_at,
 			dateLabel: monthLabel(r.created_at),
-			// No reviews table carries the other party's rating back, so reciprocity is unknown — false.
-			reciprocal: false,
+			// The provider reviewed this client back on the same engagement, and it shows (#486).
+			reciprocal: r.project_id !== null &&
+				answered.has(`${r.project_id}:${r.reviewer_business_id ?? r.reviewer_user_id}`),
 			// Every review rests on an anchor its author completed (Decision #487).
 			verifiedEngagement: r.project_id !== null || r.cohort_membership_id !== null ||
 				r.order_line_id !== null,
@@ -513,6 +541,8 @@ interface ProfileReviewRow {
 	reply_comment?: string | null;
 	replied_at?: string | null;
 	reply_edited_at?: string | null;
+	/** Both sides reviewed each other on the engagement, and both show (Decision #486). */
+	reciprocal?: boolean;
 	edited_at?: string | null;
 }
 
@@ -568,7 +598,7 @@ async function clientReviewsFor(
 			body: r.comment,
 			createdAt: r.created_at,
 			dateLabel: monthLabel(r.created_at),
-			reciprocal: false,
+			reciprocal: r.reciprocal === true,
 			// Every review carries the anchor its author completed (`ck_entity_reviews_one_anchor`,
 			// Decision #487), so each one is a verified engagement even where the RPC withholds its title.
 			verifiedEngagement: true,
@@ -683,11 +713,15 @@ function serviceViewFor(catalog: Catalog, item: ServiceItem): ServiceViewExtra |
 		? (sessionRolling ? 1 : bp.session_count ?? 1)
 		: undefined;
 	const sessionPlan = bookable && !sessionRolling ? sessionPlanOf(bp) : undefined;
+	const lengths = (sessionPlan ?? []).map((s) => s.minutes ?? sessionMinutes ?? 60);
+	const varied = lengths.some((m) => m !== lengths[0]);
 	const bookingSummary = bookable
 		? group
 			? `${item.delivery}${seatsPerSession ? ` · up to ${seatsPerSession} seats` : ""}`
 			: sessionRolling && sessionMinutes
 			? `Ongoing · ${sessionMinutes} min sessions`
+			: varied
+			? `${lengths.length} sessions of ${Math.min(...lengths)}–${Math.max(...lengths)} min`
 			: (sessionCount ?? 1) > 1 && sessionMinutes
 			? `${sessionCount} × ${sessionMinutes} min sessions`
 			: item.delivery
@@ -712,17 +746,22 @@ function serviceViewFor(catalog: Catalog, item: ServiceItem): ServiceViewExtra |
 }
 
 /**
- * A fixed-count listing's sittings, one entry per sitting and numbered from 1. Absent for a single
- * sitting the seller did not describe, where a one-row breakdown would say nothing.
+ * A fixed-count listing's sittings, one entry per sitting and numbered from 1, each with how long it
+ * runs. Absent for a single sitting the seller did not describe on a listing sold per session, where
+ * a one-row breakdown would say nothing; a listing sold by the hour always has it, because each
+ * sitting's length is its price (SC10).
  */
 function sessionPlanOf(bp: BlueprintRow): SessionPlanItem[] | undefined {
 	const count = Math.min(52, Math.max(1, bp.session_count ?? 1));
 	const stored = parseSessionPlan(bp.session_plan).slice(0, count);
-	if (count === 1 && !stored.some((s) => s.title || s.description)) return undefined;
+	const perHour = bp.pricing_unit === "per_hour";
+	if (count === 1 && !perHour && !stored.some((s) => s.title || s.description)) return undefined;
+	const minutes = bp.session_minutes ?? 60;
 	return Array.from({ length: count }, (_, i) => ({
 		index: i + 1,
 		title: stored[i]?.title ?? "",
 		description: stored[i]?.description ?? "",
+		minutes: sittingMinutes(stored, i, minutes),
 	}));
 }
 

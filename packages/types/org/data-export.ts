@@ -18,8 +18,6 @@ export const DATA_EXPORT_POLICY = Object.freeze({
 	cooldownHours: 24,
 	/** How recent the session's sign-in must be to file a request, in minutes. */
 	recentSignInMinutes: 10,
-	/** How long one minted download link works, in seconds. */
-	downloadLinkSeconds: 60,
 	/** Build attempts before a request fails. */
 	maxAttempts: 3,
 });

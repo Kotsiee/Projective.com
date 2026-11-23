@@ -178,7 +178,10 @@ export const ReviewEntrySchema = z.object({
 	authorName: z.string(),
 	authorHandle: z.string(),
 	authorAvatar: z.string(),
-	/** Whether the author reviewed this profile as its client, or as its fellow freelancer. */
+	/**
+	 * The author's side of the engagement: `client` reviewed this profile as their provider; `freelancer`
+	 * (or a team) worked for it, so reviewed it as a client (Decision #486).
+	 */
 	role: ReviewRole,
 	/** 0–5. */
 	rating: z.number(),

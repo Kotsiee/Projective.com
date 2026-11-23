@@ -137,11 +137,13 @@ export const SCHEDULES: ScheduleSpec[] = [
 		],
 	},
 	{
+		// Free calls only: Juno's KYC is pending, and switching paid calls on needs a payout-ready host
+		// (Decision #337, ruling M4; scheduling.trg_call_settings_paid_gate).
 		owner: "juno",
 		published: true,
 		working: everyDay(MON_FRI, "08:30", "16:30"),
 		call: {
-			paid: { minutes: 30, feeMinor: 6000, currency: "EUR" },
+			courtesy: { minutes: 30, maxPerWeek: 3, cooldownDays: 30 },
 			bufferBefore: 0,
 			bufferAfter: 15,
 			noticeMinutes: 720,
@@ -293,7 +295,7 @@ export const DISCOVERY_CALLS: DiscoveryCallSpec[] = [
 		key: "noor-juno",
 		host: "juno",
 		requester: "noor",
-		type: "paid",
+		type: "courtesy",
 		status: "confirmed",
 		at: { week: 1, day: 0, time: "09:00" },
 		agenda: "Walk through the landing page brief and the analytics we need wired in.",

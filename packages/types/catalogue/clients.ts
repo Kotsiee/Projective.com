@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MessageTargetSchema } from "../explore/items.ts";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
 import { EventRescheduleSchema } from "../scheduling/coordination.ts";
 import { CalendarEventSchema } from "../scheduling/scheduling.ts";
@@ -60,12 +61,19 @@ const PRE_SALE_KINDS: readonly EngagementKind[] = ["inquiry", "quote", "discover
 // #endregion
 
 // #region Engagement
-/** The buyer behind an engagement. */
+/** The buyer behind an engagement: a person, or the team or business that owns an order. */
 export const ClientIdentitySchema = z.object({
 	handle: ClientKey,
 	name: z.string().max(120),
 	avatar: z.string().max(600),
 	avatarPlaceholder: ImagePlaceholderSchema.optional(),
+	/** Set when the buyer is a team or a business (its `handle` is the entity's); absent for a person. */
+	entityKind: z.enum(["team", "business"]).optional(),
+	/**
+	 * Who a message to an entity buyer reaches: its owner, because a message is person-to-person and
+	 * `dm-<entity>` reaches nobody (Decisions #422 (b), #500 (C)). Absent for a person.
+	 */
+	messageTo: MessageTargetSchema.optional(),
 });
 export type ClientIdentity = z.infer<typeof ClientIdentitySchema>;
 
@@ -105,8 +113,14 @@ export const ClientEngagementRowSchema = z.object({
 	engagement_kind: EngagementKind,
 	engagement_id: z.string().uuid(),
 	listing_id: z.string().uuid(),
+	/** The person buyer; `null` when an entity owns the order. */
 	buyer_user_id: z.string().uuid().nullable(),
+	/** The order owner's kind, verbatim (`finance.orders.owner_type`); `user` on every other arm. */
+	buyer_kind: z.enum(["user", "freelancer", "team", "business", "enterprise"]),
+	/** The person's username, or a team's or business's slug. */
 	buyer_handle: z.string().nullable(),
+	/** An entity buyer's owner's username, whom a message reaches; `null` for a person. */
+	buyer_contact_handle: z.string().nullable(),
 	status: z.string().max(40),
 	opened_at: z.string(),
 	last_activity_at: z.string(),

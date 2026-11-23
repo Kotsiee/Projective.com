@@ -284,7 +284,8 @@ One ZIP per `org.data_export_requests` row: `manifest.json`, `README.txt` and on
 (`@projective/types/org` `DATA_EXPORT_DOMAIN_SCHEMAS`). Written and removed only by the
 `account-data-exports` job (`DataExportBackendService.sweep`); there is no storage policy at all. The
 person downloads it through `GET /api/user/data-export/download`, which reads their own request under
-their JWT and 303s to a link minted for that one read (60 seconds), so no signed URL is ever stored.
+their JWT and streams the archive through the app as an attachment, so no signed URL is minted
+(ASSET phase 1, Decision #SC9P1).
 The job removes each archive 7 days after it is ready, or on its next run after an erasure, and keeps
 the row.
 
@@ -418,19 +419,19 @@ A row that never completes (`pending_upload`) or was refused (`quarantined` / `e
 listed, matched as a duplicate or served: every read of the hub, the tree, a share and the download
 ledger admits `status = 'uploaded'` only (a link row is written `uploaded` too).
 
-**Private bytes are served through `/api/files/object/[id]`** (`live-objects.ts`), never by a URL on
-a row: the route re-checks the caller's read (`fn_can_read`, or a live share slug passed as `?share=`),
-then answers `302` to a **300-second** signed URL — `?tier=sm|md|lg` picks an image tier,
-`?download=1` asks for an attachment. Markup and any other type a browser would execute is always
+**Private bytes are never served by a URL on a row or by a signed URL** (ASSET phase 1, Decision
+#SC9P1): `storage-signed.ts` mints upload URLs only, and the retired `/api/files/object/[id]` is a
+permanent `308` to the proxy below with the same query, reading and signing nothing. Markup and any other type a browser would execute is always
 served as a download, whatever was asked. Every refusal is a bodiless `404`, so an id that exists and
 an id that does not look the same to someone who may read neither.
 
-**The same bytes can also be STREAMED through `/api/media/proxy/[fileId]`** (Decision #161(A);
+**The bytes are STREAMED through `/api/media/proxy/[fileId]`** (Decision #161(A);
 `MediaBackendService.streamAsset` → `services/media/stream.ts`, transport
 `core/storage-stream.ts`). It is the file inspector's only byte source and, since Decision #162(A),
-the address every stored asset row carries — the redirect route above stays only for the library
-picker and the share-folder listing (`live-library.ts`). The two doors share one gate — `objectFor`, unchanged, with the same
-`?tier=` / `?download=1` / `?share=` — and differ only in delivery:
+the address every stored asset row carries; since ASSET phase 1 the library picker, the share-folder
+listing (`live-library.ts`), chat image picks, both dispute dialogs and the data export's file list
+link it too. Its one gate is `objectFor` (`live-objects.ts`: `fn_can_read`, or a live share slug
+passed as `?share=`), with `?tier=sm|md|lg` (an image tier) and `?download=1` (an attachment):
 
 - **Transport.** After the gate the app reads the object from storage's INTERNAL origin with the
   service key (`/storage/v1/object/authenticated/…`, never the public URL, never a client-supplied
@@ -560,16 +561,18 @@ WHERE sf.submission_id = :submission_id
   > `contact` matches its `files.items` row by `storage_path = name`; `verification` has no policy.
   > Every object outside `quarantine` is written by the service role, which RLS does not bound, so
   > the builders' anchors are what keep its paths readable by the right people.
-- **Signed URLs.** All private buckets (`quarantine`, `project`, `messages`, `personal`,
-  `workspace`, `invoices`, `verification`, `contact`) are downloaded via short-lived signed URLs; the
-  public buckets (`avatars`, `showcase`, `catalogue`, `public_assets`) serve directly from the edge
-  cache. A signed URL is a **bearer capability**: it is minted per request by the fat service, never cached onto a row,
-  and never persisted into a projection the client reads. The one exception to "via signed URLs" is
-  the streaming proxy `/api/media/proxy/[fileId]` (Decision #161(A), §The upload pipeline above): it
-  re-checks the same read and streams the bytes itself with the service key, so no signed URL — and
-  no storage host, bucket or path — ever reaches the inspector, the preview modal or a files listing
-  (Decision #162(A): hub rows from the public buckets go through it as well; profile avatars read
-  through `org.get_party_cards` still carry a public-bucket URL, flag (i)).
+- **No signed read URLs** (ASSET phase 1, Decision #SC9P1). The private buckets (`quarantine`,
+  `project`, `messages`, `personal`, `workspace`, `invoices`, `verification`, `contact`,
+  `data_exports`, `originals`) are read only through the app: the streaming proxy
+  `/api/media/proxy/[fileId]` (Decision #161(A), §The upload pipeline above) re-checks the read and
+  streams the bytes with the service key, `/api/downloads/*` streams a purchase, and
+  `/api/user/data-export/download` streams an archive, so no signed URL, and no private bucket's
+  host, bucket or path, ever reaches a browser (`core/signed-reads.test.ts` fails on any read
+  signer). The public buckets (`avatars`, `showcase`, `catalogue`, `public_assets`) still serve
+  from the edge cache until ASSET phase 4 (Decision #162(A): hub rows from the public buckets go
+  through the proxy as well; profile avatars read through `org.get_party_cards` still carry a
+  public-bucket URL, flag (i)). A signed UPLOAD URL is a **bearer capability**: minted per request
+  by the fat service, never cached onto a row (ruling A2, #499).
 - **Per-bucket limits.** Each bucket sets its own `file_size_limit` and `allowed_mime_types` in the
   seed rather than inheriting the global default. For `quarantine`, `project`, `messages`,
   `personal` and `workspace` that explicit value is 50 MiB with `allowed_mime_types = NULL` (any

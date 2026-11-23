@@ -57,6 +57,26 @@ Deno.test("someone else's refusal carries no link, and a lead sees the team's ha
 	assertEquals(notLead.details.members, null);
 });
 
+Deno.test("a buyer refused for the seller's readiness is told the seller has to act, with no link or names", () => {
+	const seller = payoutNotReadyRefusal({
+		code: "PK403",
+		message:
+			"payout_not_ready: this seller can't take bookings until they have verified their identity and added a payout account",
+		hint: "seller",
+		details: "",
+	});
+	assertEquals(seller.details, {
+		reason: "payout_not_ready",
+		actor: "seller",
+		href: null,
+		members: null,
+	});
+	assertEquals(
+		seller.message,
+		"This seller can't take bookings until they have verified their identity and added a payout account.",
+	);
+});
+
 Deno.test("an unknown hint never offers the fix link, and an empty message falls back", () => {
 	const refusal = payoutNotReadyRefusal({
 		code: "PK403",

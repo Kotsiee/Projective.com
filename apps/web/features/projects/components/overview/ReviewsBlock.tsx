@@ -5,7 +5,7 @@ import { Block, MetaFacts } from "../dashboard/DashboardBlocks.tsx";
 
 /**
  * ReviewsBlock — the Overview's Reviews region (Decision #487): one row per provider the viewer may
- * review on this engagement, or per session seat, each a link to the review dialog
+ * review on this engagement (or, for a provider, its client: Decision #486), or per session seat, each a link to the review dialog
  * (`?review=<slug>`, ROUTING.md), its state said in inline Meta text. Renders nothing while there is
  * nothing to review — the database decides when there is (`reviews.get_reviewables`), and before an
  * engagement completes there is not.
@@ -27,6 +27,8 @@ function stateFacts(item: Reviewable, state: ReviewState): string[] {
 			return [
 				"Reviewed",
 				`Editable until ${DATE.format(new Date(item.review?.window_closes_at ?? item.closes_at))}`,
+				// Double-blind (Decision #486 (A)): read by nobody until the other side reviews too.
+				...(item.review?.revealed === false ? ["Hidden until they review you"] : []),
 			];
 		case "locked":
 			return item.review?.reply ? ["Reviewed", "Replied"] : ["Reviewed"];

@@ -80,13 +80,21 @@ export type BlueprintTeamRole = z.infer<typeof BlueprintTeamRoleSchema>;
 export const SESSION_PLAN_MAX = 52;
 
 /**
+ * A sitting's own length, in minutes, on a listing priced per hour (SC10): 15–600, in fives. The same
+ * bounds `catalogue.save_listing` holds.
+ */
+export const SittingMinutes = z.number().int().min(15).max(600).multipleOf(5);
+
+/**
  * What one sitting of a fixed-count Session covers (`service_blueprints.session_plan`). Positional:
- * entry 0 is session 1. Either field may be blank, and a blank entry keeps the numbers of the ones
- * after it.
+ * entry 0 is session 1. Either text field may be blank, and a blank entry keeps the numbers of the ones
+ * after it. `durationMinutes` is the sitting's own length; absent, it runs the listing's
+ * `session_minutes`. Only a per-hour listing carries one (`ck_service_blueprints_session_lengths`).
  */
 export const BlueprintSessionPlanEntrySchema = z.object({
 	title: z.string().trim().max(80).default(""),
 	description: z.string().trim().max(600).default(""),
+	durationMinutes: SittingMinutes.optional(),
 });
 export type BlueprintSessionPlanEntry = z.infer<typeof BlueprintSessionPlanEntrySchema>;
 

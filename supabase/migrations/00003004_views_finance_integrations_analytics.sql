@@ -134,7 +134,9 @@ SELECT r.wallet_id, r.owner_type, r.owner_id, r.currency, r.balance_cents, r.led
 --           `amount_cents` · pending releases not yet matured, net of chargeback recoveries
 --   fees    released escrows' `platform_fee_cents` · orders' `platform_fee_minor` (the product lines'
 --           commission) · FX spreads (`spread_minor`, in the source currency)
---   losses  lost chargebacks' `unrecovered_cents` · card refunds' `refund_unrecovered_cents`
+--   losses  lost chargebacks' `unrecovered_cents` · card refunds' `refund_unrecovered_cents` · the
+--           platform-funded share of a promo code (order lines' `promo_discount_minor` where
+--           `promo_funded_by = 'platform'`, Decision #485 (a)): the seller is credited the line before it
 -- A new money flow adds its terms here in the same change (FBP §1). Read by finance.fn_check_conservation
 -- and finance.get_ledger_health; service role only.
 CREATE OR REPLACE VIEW finance.v_conservation_identity AS
@@ -197,6 +199,10 @@ WITH terms (currency, term, minor) AS (
     SELECT p.currency::text, 'losses_card_refunds', p.refund_unrecovered_cents
       FROM finance.inbound_payments p
      WHERE p.refund_unrecovered_cents > 0
+    UNION ALL
+    SELECT ol.currency, 'losses_promos', ol.promo_discount_minor
+      FROM finance.order_lines ol
+     WHERE ol.promo_funded_by = 'platform'
 ), per_currency AS (
     SELECT pg_catalog.upper(pg_catalog.btrim(t.currency)) AS currency,
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'in_cash'), 0)::bigint AS in_cash_minor,
@@ -214,7 +220,8 @@ WITH terms (currency, term, minor) AS (
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'fees_orders'), 0)::bigint AS fees_orders_minor,
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'fees_fx'), 0)::bigint AS fees_fx_minor,
            COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'losses_chargebacks'), 0)::bigint AS losses_chargebacks_minor,
-           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'losses_card_refunds'), 0)::bigint AS losses_card_refunds_minor
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'losses_card_refunds'), 0)::bigint AS losses_card_refunds_minor,
+           COALESCE(SUM(t.minor) FILTER (WHERE t.term = 'losses_promos'), 0)::bigint AS losses_promos_minor
       FROM terms t
      GROUP BY 1
 )
@@ -224,10 +231,10 @@ SELECT c.*,
             + c.out_fx_minor) AS external_minor,
        (c.held_wallets_minor + c.held_escrows_minor + c.held_pending_minor)
          + (c.fees_escrows_minor + c.fees_orders_minor + c.fees_fx_minor)
-         - (c.losses_chargebacks_minor + c.losses_card_refunds_minor) AS accounted_minor,
+         - (c.losses_chargebacks_minor + c.losses_card_refunds_minor + c.losses_promos_minor) AS accounted_minor,
        ((c.held_wallets_minor + c.held_escrows_minor + c.held_pending_minor)
          + (c.fees_escrows_minor + c.fees_orders_minor + c.fees_fx_minor)
-         - (c.losses_chargebacks_minor + c.losses_card_refunds_minor))
+         - (c.losses_chargebacks_minor + c.losses_card_refunds_minor + c.losses_promos_minor))
        - ((c.in_cash_minor + c.in_on_account_minor + c.in_fx_minor)
          - (c.out_payouts_minor + c.out_card_refunds_minor + c.out_chargebacks_minor + c.out_invoices_minor
             + c.out_fx_minor)) AS imbalance_minor

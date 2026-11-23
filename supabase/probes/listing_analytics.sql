@@ -311,6 +311,7 @@ DECLARE
     v_seller uuid := pg_temp.s('seller')::uuid;
     v_buyer uuid := pg_temp.s('buyer')::uuid;
     v_id uuid;
+    r record;
 BEGIN
     INSERT INTO comms.dm_threads (kind, created_by_user_id, subject_listing_id)
     VALUES ('service_inquiry', v_buyer, pg_temp.s('pipeline')::uuid) RETURNING id INTO v_id;
@@ -335,6 +336,35 @@ BEGIN
     INSERT INTO projects.project_participants (project_id, profile_type, profile_id, role)
     VALUES (v_id, 'freelancer', v_seller, 'freelancer');
     PERFORM pg_catalog.set_config('probe.project', v_id::text, true);
+
+    -- A team and a business each buy the product: an order owned by the entity names no person.
+    SELECT t.id, t.slug, u.username INTO r FROM org.teams t
+      JOIN org.users_public u ON u.user_id = t.owner_user_id
+     WHERE t.status = 'active' AND t.owner_user_id NOT IN (v_seller, v_buyer) ORDER BY t.slug LIMIT 1;
+    PERFORM pg_catalog.set_config('probe.team_slug', r.slug, true);
+    PERFORM pg_catalog.set_config('probe.team_contact', r.username, true);
+    INSERT INTO finance.orders (reference, status, placed_at, owner_type, owner_id, currency, subtotal_minor,
+                                platform_fee_bp, total_minor, idempotency_key)
+    VALUES ('PJ-PROBE-TEAM', 'confirmed', now(), 'team', r.id, 'GBP', 1500, 0, 1500, 'probe-sc6-team')
+    RETURNING id INTO v_id;
+    INSERT INTO finance.order_lines (order_id, item_type, item_id, title, line_total_minor, currency)
+    VALUES (v_id, 'digital_product', pg_temp.s('product_id')::uuid, 'Probe product', 1500, 'GBP')
+    RETURNING id INTO v_id;
+    PERFORM pg_catalog.set_config('probe.team_line', v_id::text, true);
+
+    SELECT b.id, b.slug, u.username INTO r FROM org.business_profiles b
+      JOIN org.users_public u ON u.user_id = b.owner_user_id
+     WHERE b.status = 'active' AND b.owner_user_id NOT IN (v_seller, v_buyer) ORDER BY b.slug LIMIT 1;
+    PERFORM pg_catalog.set_config('probe.biz_slug', r.slug, true);
+    PERFORM pg_catalog.set_config('probe.biz_contact', r.username, true);
+    INSERT INTO finance.orders (reference, status, placed_at, owner_type, owner_id, currency, subtotal_minor,
+                                platform_fee_bp, total_minor, idempotency_key)
+    VALUES ('PJ-PROBE-BIZ', 'confirmed', now(), 'business', r.id, 'GBP', 1500, 0, 1500, 'probe-sc6-biz')
+    RETURNING id INTO v_id;
+    INSERT INTO finance.order_lines (order_id, item_type, item_id, title, line_total_minor, currency)
+    VALUES (v_id, 'digital_product', pg_temp.s('product_id')::uuid, 'Probe product', 1500, 'GBP')
+    RETURNING id INTO v_id;
+    PERFORM pg_catalog.set_config('probe.biz_line', v_id::text, true);
 END $$;
 
 CREATE TEMP TABLE probe_ids (kind text, id uuid);
@@ -361,13 +391,38 @@ SELECT pg_temp.ok((SELECT action_reasons FROM probe_seen WHERE engagement_kind =
                   AND (SELECT action_reasons FROM probe_seen WHERE engagement_kind = 'quote') = ARRAY['inquiry_unanswered'],
                   'an inquiry and a quote the seller has not answered wait on them');
 SELECT pg_temp.ok((SELECT href FROM probe_seen WHERE engagement_kind = 'pipeline_project') ~ '^/projects/prj-'
-                  AND (SELECT href FROM probe_seen WHERE engagement_kind = 'inquiry') = '/messages/' || pg_temp.s('thread')
+                  AND (SELECT href FROM probe_seen WHERE engagement_kind = 'inquiry')
+                      = '/messages/dm-' || (SELECT username FROM org.users_public WHERE user_id = pg_temp.s('buyer')::uuid)
                   AND (SELECT next_event_at FROM probe_seen WHERE engagement_kind = 'discovery_call') IS NOT NULL,
                   'deep links and the next event');
 SELECT pg_temp.ok((SELECT count(*) FROM catalogue.get_client_pipeline(pg_temp.s('product')::uuid, 500)) >= 1
                   AND NOT EXISTS (SELECT 1 FROM catalogue.get_client_pipeline(pg_temp.s('product')::uuid, 500) p
                                    WHERE p.listing_id <> pg_temp.s('product')::uuid),
                   'p_listing narrows to one listing');
+SELECT pg_temp.ok(NOT EXISTS (SELECT 1 FROM catalogue.get_client_pipeline(NULL, 500) p
+                               WHERE p.href ~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
+                                 AND p.href !~ '^/calendar\?event=[0-9a-f-]{36}$'),
+                  'no Clients href carries a uuid but ?event= (#218 (a), #500 (B))');
+SELECT pg_temp.ok((SELECT buyer_handle FROM catalogue.fn_seller_order_lines(pg_temp.s('product')::uuid)
+                    WHERE order_line_id = pg_temp.s('team_line')::uuid) = pg_temp.s('team_slug')
+                  AND (SELECT buyer_handle FROM catalogue.fn_seller_order_lines(pg_temp.s('product')::uuid)
+                        WHERE order_line_id = pg_temp.s('biz_line')::uuid) = pg_temp.s('biz_slug'),
+                  'a team''s and a business''s order name the entity by its handle (#218 (d))');
+SELECT pg_temp.ok((SELECT (buyer_kind, buyer_user_id, buyer_contact_handle)
+                     IS NOT DISTINCT FROM ('team', NULL::uuid, pg_temp.s('team_contact'))
+                     FROM catalogue.get_client_pipeline(NULL, 500) WHERE engagement_id = pg_temp.s('team_line')::uuid)
+                  AND (SELECT (buyer_kind, buyer_contact_handle) = ('business', pg_temp.s('biz_contact'))
+                         FROM catalogue.get_client_pipeline(NULL, 500) WHERE engagement_id = pg_temp.s('biz_line')::uuid)
+                  AND (SELECT (buyer_kind, buyer_contact_handle IS NULL) = ('user', true) FROM probe_seen
+                        WHERE engagement_kind = 'order'),
+                  'the buyer''s kind and, for an entity only, its owner as the contact');
+SELECT pg_temp.ok((SELECT buyer_user_id FROM probe_seen WHERE engagement_kind = 'inquiry') = pg_temp.s('buyer')::uuid,
+                  'an inquiry names its buyer (its thread''s creator), not a blank from the own-row participants policy');
+SELECT pg_temp.ok((SELECT href FROM catalogue.get_client_pipeline(NULL, 500)
+                    WHERE engagement_id = pg_temp.s('team_line')::uuid) = '/messages/dm-' || pg_temp.s('team_contact')
+                  AND (SELECT href FROM catalogue.get_client_pipeline(NULL, 500)
+                        WHERE engagement_id = pg_temp.s('biz_line')::uuid) = '/messages/dm-' || pg_temp.s('biz_contact'),
+                  'an entity''s order links its contact''s conversation, never dm-<entity> (#500 (C))');
 RESET ROLE;
 
 SELECT pg_temp.act(pg_temp.s('buyer')); SET LOCAL ROLE authenticated;

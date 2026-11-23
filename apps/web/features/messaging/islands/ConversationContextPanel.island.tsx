@@ -8,6 +8,8 @@ import { RequestService } from "@web/features/projects/core/RequestService.ts";
 import { ConversationContextDrawer } from "../components/ConversationContextDrawer.tsx";
 import { MessagingService } from "../core/MessagingService.ts";
 import { moveConversation } from "../core/folder-moves.ts";
+import { ensureClientTrustConsent } from "@features/reviews/core/client-trust.ts";
+import { ClientTrustDialog } from "@features/reviews/components/ClientTrustDialog.tsx";
 import {
 	CONTEXT_PANEL_INFLOW_QUERY,
 	contextDrawerOpen,
@@ -27,7 +29,9 @@ import type {
  * Both present the same {@link ConversationContextDrawer}.
  *
  * Runs the rig's actions: answering an invitation also files the thread (Accept → Primary, Decline →
- * Archived); confirming an applicant's seat lands the client where the seat is funded. Every write
+ * Archived); accepting one on a warned client's project asks for the Informed Consent first (Decision
+ * #486 (C)), with the slide-over closed so one dialog shows; confirming an applicant's seat lands the
+ * client where the seat is funded. Every write
  * goes through the thin services; the context is re-read after an answer so the rig reflects what
  * the server now allows.
  */
@@ -79,6 +83,12 @@ export default function ConversationContextPanel(
 		try {
 			if (action.kind === "accept_invitation" || action.kind === "decline_invitation") {
 				const accept = action.kind === "accept_invitation";
+				const project = context.value?.engagements.find((e) => action.engagementIds.includes(e.id))
+					?.projectSlug;
+				if (accept && project) {
+					if (!inflow) contextDrawerOpen.value = false;
+					if (!(await ensureClientTrustConsent(project))) return;
+				}
 				const res = await RequestService.respond(action.engagementIds, accept);
 				if (!res.ok) {
 					error.value = res.message ?? "That answer didn't go through. Try again.";
@@ -146,6 +156,7 @@ export default function ConversationContextPanel(
 					{body()}
 				</Drawer>
 			)}
+			<ClientTrustDialog />
 		</>
 	);
 }

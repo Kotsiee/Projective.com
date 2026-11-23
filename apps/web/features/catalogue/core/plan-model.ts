@@ -32,6 +32,19 @@ export function canAddSession(offer: Pick<TimedOffer, "count">): boolean {
 	return offer.count < SESSION_PLAN_MAX;
 }
 
+/**
+ * The offer with its sittings given lengths of their own (SC10), each starting at the listing's length
+ * (at least 15 minutes), or back to one length for all. Lengths of their own are sold by the hour, so
+ * switching them on prices the listing per hour; switching them off leaves the unit as it was.
+ */
+export function withVariableLengths<T extends TimedOffer>(offer: T, on: boolean): T {
+	const start = Math.max(15, offer.minutes);
+	const plan = planRows(offer).map(({ durationMinutes, ...rest }) =>
+		on ? { ...rest, durationMinutes: durationMinutes ?? start } : rest
+	);
+	return on ? { ...offer, pricingUnit: "per_hour", plan } : { ...offer, plan };
+}
+
 /** The offer with one more sitting at the end, blank. */
 export function withSessionAdded<T extends TimedOffer>(offer: T): T {
 	if (!canAddSession(offer)) return offer;

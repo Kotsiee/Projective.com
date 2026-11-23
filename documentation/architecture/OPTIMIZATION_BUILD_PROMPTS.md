@@ -61,7 +61,7 @@ Fixed outside any prompt: U-09's shared scope picker (`ScopeSelect`, `21309eeb`)
 | WP7                    | F·UI5, S·S5 (and F·UI2/UI3, which edit `WalletDialogs.tsx`)                   | Open. S5 fixes `PlanBlock.tsx`; WP7 leaves it.                                        |
 | WP13                   | COMMS MS3 (the ETag long-poll)                                                | Open: MS3 is partly done (its step 2 was WP10a's version keys); the long-poll is not. |
 | WP5b, WP6              | PM-WP6 (`00001110` / `00001140` and the board files)                          | Open: PM-WP6 not started. It also owns L-03 (§0.3).                                   |
-| WP10b (FxService step) | FBP DB17 (the FX feed, #337 M5 (f)) and F·SV5, which both edit `FxService.ts` | Open. Steps 2–6 do not wait.                                                          |
+| WP10b (FxService step) | F·SV5, which edits `FxService.ts` (FBP DB17's feed landed there, #539) | Open. Steps 2–6 do not wait.                                                          |
 | Q15                    | WP2; F·UI3, F·UI4 (`wallet-home.ts`, `AnalyticsView.tsx`)                     | Open.                                                                                 |
 | WP8                    | F·UI1 (the wallet sheets, `wlt-account`)                                      | Open: F·UI1 is partly done (D6 and D11).                                              |
 | WP9, WP16              | PM-WP8 and PM-WP9, while they are open on the modal files                     | Open: PM-WP8 partly done, PM-WP9 not started.                                         |
@@ -455,7 +455,7 @@ ACCEPTANCE:
 
 ### WP10b — Each cacheable read in its Q11 tier
 
-> **Status 2026-11-23:** Open. Steps 2–6 can run now; step 1 waits on FBP DB17 and F·SV5.
+> **Status 2026-11-23:** Open. Steps 2–6 can run now; step 1 waits on F·SV5 (FBP DB17's feed landed, #539).
 
 ```text
 PROMPT WP10b: Put each cacheable read in its Q11 tier
@@ -470,8 +470,8 @@ search per request (D-17). Reference data (standing_*, plans, platform_params) i
 The reviews tab re-reads get_profile_view (D-25). Ruled: memory first, KV only for small global
 values, per the placement table (Decision #341, ruling E1 Q11); single-flight (ruling E1 Q10).
 
-WAITS: the FxService step (1) waits for FBP DB17 (the FX feed, #337 M5 (f)) and F·SV5, which both
-edit FxService.ts: check git log -- packages/backend/services/finance/FxService.ts. Steps 2–6 do
+WAITS: the FxService step (1) waits for F·SV5, which edits FxService.ts (FBP DB17's feed, #337 M5 (f),
+landed there, #539): check git log -- packages/backend/services/finance/FxService.ts. Steps 2–6 do
 not wait.
 
 FILES:

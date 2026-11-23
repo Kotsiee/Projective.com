@@ -34,7 +34,7 @@ and high-level metadata.
 | `industry_category_id`      | uuid                          | No FK — there is no categories table (see Refactor Notes).                                              |
 | `visibility`                | visibility                    | NOT NULL `DEFAULT 'public'`. Where the row sits NOW. **Server-derived**, never a client value.          |
 | `publish_visibility`        | visibility                    | NOT NULL `DEFAULT 'public'`. Where the owner wants it once published — an INTENT.                       |
-| `currency`                  | text                          | NOT NULL `DEFAULT 'USD'`.                                                                               |
+| `currency`                  | text                          | NOT NULL `DEFAULT 'USD'`, CHECK `^[A-Z]{3}$` (FINANCE DB8).                                             |
 | `budget_type`               | budget_type                   | NOT NULL `DEFAULT 'fixed_price'`. `fixed_price` or `hourly_cap`.                                        |
 | `budget_amount_cents`       | bigint                        | CHECK `NULL` or `>= 0`. Minor units. `NULL` = not set, which is not the same as zero.                  |
 | `timeline_preset`           | timeline_preset               | NOT NULL `DEFAULT 'sequential'`. `sequential`, `simultaneous`, `staggered`, `custom`.                   |
@@ -997,7 +997,7 @@ A stage's budget rule, read by `projects.get_stage_details` as the stage's `budg
 | `id`               | uuid   | PK, `DEFAULT gen_random_uuid()`.            |
 | `project_stage_id` | uuid   | NOT NULL. **No FK, no UNIQUE.**             |
 | `rule_type`        | text   | NOT NULL, no CHECK.                         |
-| `amount_currency`  | text   | NOT NULL.                                   |
+| `amount_currency`  | text   | NOT NULL, CHECK `^[A-Z]{3}$`.               |
 | `amount_cents`     | bigint | NOT NULL, CHECK `>= 0`.                     |
 | `notes`            | text   |                                             |
 
@@ -1016,7 +1016,7 @@ project-level — nothing links it to a stage.
 | `freelancer_profile_id` | uuid        | NOT NULL. FK → `org.freelancer_profiles.user_id`.    |
 | `business_profile_id`   | uuid        | NOT NULL. FK → `org.business_profiles.id`.           |
 | `amount_cents`          | bigint      | NOT NULL, CHECK `>= 0`.                              |
-| `currency`              | text        | NOT NULL.                                            |
+| `currency`              | text        | NOT NULL, CHECK `^[A-Z]{3}$`.                        |
 | `billing_interval`      | text        | NOT NULL, no CHECK.                                  |
 | `status`                | text        | NOT NULL `DEFAULT 'active'`, no CHECK.               |
 | `created_at`            | timestamptz | NOT NULL `DEFAULT now()`.                            |

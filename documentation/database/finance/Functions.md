@@ -309,14 +309,28 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   (`org.is_team_lead`), else empty. Called by `projects.apply_to_seat` · `apply_to_project` ·
   `redeem_invite_link` · `assign_from_application` · `fn_apply_invitation_decision` (freelancer
   role) · `fn_assign_ticket_core` · `org.create_workspace` (team) · `org.respond_to_workspace_invitation`
-  (team) · `org.transfer_workspace_ownership` (team successor, HINT `other`). No client grant.
+  (team) · `org.transfer_workspace_ownership` (team successor, HINT `other`) · and, where a seller
+  starts to earn without a ticket (Decision #337, ruling M4), `catalogue.trg_listings_publish_payout_gate`
+  (publishing a product or session listing) and `scheduling.trg_call_settings_paid_gate` (switching
+  paid calls on), each for the owner — a team for every shareholder. No client grant.
+- **`finance.fn_assert_seller_payout_ready(payee_type, payee_id)`** → void (`00001210` §5, Decision
+  #337 ruling M4) — the same predicate as a **buyer** meets it: the booking backstop of
+  `projects.reserve_seat`, `fn_confirm_seat` and `fn_book_session_slot`, for a host whose readiness
+  lapsed after publishing. `PK403` `payout_not_ready: …` with HINT `seller` (the buyer is not the one
+  who can act) and an always-empty DETAIL, so a buyer is never shown who on the seller's side has to
+  verify. No client grant.
 - **`finance.fn_team_shareholders(team)`** → setof uuid (`00001210` §5) — the people
   `fn_team_split_plan` would pay: active members with `percent_bp > 0` (none under
   `benevolent_dictator`) plus the `finders_fee` finder. No client grant.
-- **`finance.fn_wallet_holds_earnings(wallet)`** → boolean (`00001210` §5) — any
-  `finance.pending_releases` row for the wallet, i.e. it has received earned money (Decision #191).
-  `begin_payout` requires a payout-ready withdrawer for a `user` or `team` wallet that holds
-  earnings. No client grant.
+- **`finance.fn_wallet_holds_earnings(wallet)`** → boolean (`00001210` §5) — has the wallet ever
+  received earned money, by any route (FCA N14)? A `finance.pending_releases` row (Decision #191); an
+  earned credit written at once, as a 0-day `pending_release_days` does (`fn_is_income_reason`); a
+  `team_distribution` credit; or a `transfer_in` from a wallet that itself holds earnings, followed
+  back through every transfer (a recursive walk over `transactions.ref_id`), so earnings moved through
+  someone's other wallet or a shared vault still count. A top-up, a refund, or a transfer of money no
+  wallet on the path earned does not. Sticky (#196 flag (c)). `begin_payout` requires a payout-ready
+  withdrawer for a `user` or `team` wallet that holds earnings (a `freelancer` wallet always). No
+  client grant.
 - **`finance.fn_owner_visible(owner_type, owner_id)`** → boolean (`20260723092000`) — can the caller
   see this owner's finances? (self / active-member / admin). Basis for the wallet-scoped RLS
   policies.
@@ -398,7 +412,9 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   - fees — `fees_escrows_minor` (released escrows' `platform_fee_cents`) · `fees_orders_minor`
     (`orders.platform_fee_minor`) · `fees_fx_minor` (`fx_conversions.spread_minor` in `from_currency`);
   - losses — `losses_chargebacks_minor` (lost cases' `unrecovered_cents`) ·
-    `losses_card_refunds_minor` (`inbound_payments.refund_unrecovered_cents`).
+    `losses_card_refunds_minor` (`inbound_payments.refund_unrecovered_cents`) · `losses_promos_minor`
+    (`order_lines.promo_discount_minor` where `promo_funded_by = 'platform'`: the platform's share of
+    its own codes, whose sellers are credited the line before it; Decision #485 (a), CK2).
 
   Every reason a function writes is one of these classes (external-in `topup`, `on_account_credit`;
   external-out `payout` net of `payout_reversal`, `chargeback`, `refund`, `invoice_payment`; FX
@@ -955,12 +971,16 @@ and is what the Details form pre-fills delivery from. An anonymous caller gets `
 `fn_purchase_owner_json` itself is callable by neither client role: it answers for whatever owner it
 is handed, so only the two doors above — which pass it the caller's own context — may reach it.
 
-### `finance.resolve_promo_code(p_code, p_owner_type DEFAULT NULL, p_owner_id DEFAULT NULL)` → jsonb
+### `finance.resolve_promo_code(p_code, p_owner_type DEFAULT NULL, p_owner_id DEFAULT NULL, p_product_ids DEFAULT NULL)` → jsonb
 
 What **one** code is worth, for the signed-in buyer who typed it:
-`{ found, code, label, kind, value_bp, value_minor, currency, valid, reason }`. `reason` is the
+`{ found, code, label, kind, value_bp, value_minor, currency, seller_funded, covers, valid, reason }`.
+Given the basket's products, `covers` is the ones the code discounts (`fn_promo_covers`: a seller's code
+only that seller's, within its `listing_ids`; a platform code all of them, Decision #485), and a code
+covering none of them is refused "This code doesn't apply to anything in your basket."; `NULL` when no
+products were named. `SECURITY DEFINER`, `search_path = ''` (CK2 pinned it). `reason` is the
 buyer-facing refusal sentence (unknown · no longer active · not active yet · expired on _date_ ·
-already used by this account · fully redeemed), decided here once so the basket and the checkout
+applies to nothing in the basket · already used by this account · fully redeemed), decided here once so the basket and the checkout
 cannot word the same refusal two ways. Given the basket's owner, it counts that account's past uses
 (`fn_promo_uses`) against `max_redemptions_per_account` and refuses "You've already used this code."
 — the refusal `place_wallet_order` makes at commit (FBP DB19). It counts only an account the caller
@@ -968,9 +988,33 @@ may see (`fn_owner_visible`); any other owner is ignored, so the door says nothi
 the caller cannot see. It never lists codes and never redeems one — `redemption_count` moves only in
 `place_wallet_order`.
 
-The saving itself is computed by the application against the lines (a percent of what is left after
-creator discounts; a flat saving only where every eligible line is priced in the code's currency),
-because it depends on the basket, not the code.
+The saving itself is computed by the application against the covered lines (a percent of what is
+left of them after creator discounts; a flat saving only where every eligible line is priced in the
+code's currency), because it depends on the basket, not the code.
+
+### Seller promo codes (`00001210` §9, MARKETPLACE CK2, Decision #485 / #536)
+
+Three doors, each `SECURITY DEFINER`, `search_path = ''`, granted to `authenticated`, each checking the
+capability itself through `finance.fn_can_issue_promo(p_issuer_type, p_issuer_id)` (internal): a person
+for themselves (`'user'`, `auth.uid()`); for a team, a holder of its `publish_listings`
+(`org.fn_member_can`, the gate `catalogue.fn_manages_listing` applies, #485 (b)).
+
+- **`finance.save_promo_code(p_issuer_type, p_issuer_id, p_code, p_label, p_kind, p_value_bp, p_value_minor, p_currency, p_listing_ids, p_starts_at, p_expires_at, p_max_redemptions, p_max_redemptions_per_account DEFAULT 1)` → jsonb**:
+  issues a code. Never a platform code (an issuer is required) and never an edit. The code is
+  upper-cased, `^[A-Z0-9][A-Z0-9-]{3,39}$`, unique across every issuer; a percent code 1–10,000 bp, a
+  flat one an amount and its currency; an expiry in the future and after the start; limits ≥ 1; the
+  scope only product listings of this seller the caller manages. Refusals: `42501` · `22023` ·
+  `PC409 promo_code_taken:`.
+- **`finance.archive_promo_code(p_id)` → jsonb**: stamps `deactivated_at`, idempotently. A code the
+  caller may not manage (another seller's, a platform code, none) is `P0002`.
+- **`finance.list_own_promo_codes(p_issuer_type, p_issuer_id)` → jsonb**: the seller's codes, live then
+  archived, newest first. `42501` unless the caller may issue for the seller.
+
+Each answers `finance.fn_promo_code_json(row)` (internal): `{ id, code, label, kind, value_bp, value_minor,
+currency, starts_at, expires_at, max_redemptions, max_redemptions_per_account, redemption_count,
+listing_ids, deactivated_at, created_at }`. **`finance.fn_promo_covers(p_promo, p_product)` → boolean**
+(internal) is the one coverage rule, behind `resolve_promo_code`'s `covers` and `place_wallet_order`'s
+per-line shares. Probe `promo_redemption_concurrency.sql` §5–§9.
 
 ### Order refunds: the line writer and the order rollup (`00001210` §9b, FBP DB19)
 
@@ -1059,7 +1103,9 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    used it `max_redemptions_per_account` times already (`fn_promo_uses`: its orders in every status)
    refuses `PC409 promo_already_used:` (FBP DB19, CO13; probe `promo_redemption_concurrency.sql` §3),
    then `redemption_count + 1` only while under `max_redemptions`, else `PC409 promo_exhausted:` — two
-   orders racing for the last redemption get exactly one (DB7, CO6; probe §1). Then the net must equal
+   orders racing for the last redemption get exactly one (DB7, CO6; probe §1). The code is valued on
+   the lines it covers only (`fn_promo_covers`: a seller's code that seller's product lines, a platform
+   code every one; Decision #485), and shared across them alone. Then the net must equal
    `p_expected_minor`, the total the buyer was shown, or `PC409 price_changed:` before any money moves
    (CO4; probe `checkout_charge_assert.sql`).
 6. **The wallet** in `p_currency` is locked (a personal owner's `user` and `freelancer` wallets are
@@ -1087,7 +1133,9 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    `finance.order_lines` row per line (fulfilment `download`; `download_name` the file's name when
    the bundle is one file, else NULL; `download_bytes` the bundle's total; the format and the
    licence — read from the product's newest frozen version, else its draft manifest; the line's
-   `promo_discount_minor` share, its commission `platform_fee_minor` and rate `platform_fee_bp`; an
+   `promo_discount_minor` share and who funded it (`promo_funded_by`; a platform-funded share leaves
+   the seller's sale, and so its commission and credit, at the line before it), its commission
+   `platform_fee_minor` and rate `platform_fee_bp`; an
    escrow line records `0` and no rate), each basket line stamped `purchased_at`, the basket's promo
    cleared, and `orders.promo_code` the code redeemed in step 5 (`NULL` when no promo saved
    anything).
@@ -1109,6 +1157,17 @@ currency the wallet actually moved, never re-converted.
 object or over 32 KB → `22023` before any money moves, otherwise reduced to the ids the listing's intake
 declares — and written to the order line's `intake_answers`. Probe
 `supabase/probes/session_intake_order_line.sql`.
+
+**A session listing priced per hour prices each sitting at its own length (SC10, Decision
+#__SC10_DEC__).** A `service_session` line is its first sitting, `projects.fn_sitting_price(rate,
+pricing_unit, minutes)`, a `set_session` line the sum of its `session_count` sittings
+(`projects.fn_sittings_price`), each at its plan entry's `durationMinutes`, else `session_minutes`. A
+per-hour `course_group_session` seat is the same sum over the listing's sittings, times the held
+seats. A per-session listing still costs `session_price × session_count` (a block) and
+`session_price × seats` (a seat), the same figures as before. A per-hour listing with no
+`session_minutes` is `PS501`. The order line's `duration_minutes` is its first sitting's own length.
+Card checkout replays this, so the card path prices the same. Probe
+`supabase/probes/session_hourly.sql`.
 
 **One-Off and Task lines (Decision #457).** A `one_off_service` / `single_service_task` line buys a
 listing's scoped engagement, and the payment creates it. While it is priced, the line is refused
@@ -1210,8 +1269,9 @@ about themselves (`user` or `freelancer`, one Standing), a team to its active me
 `place_wallet_order` charges the subject's next sale, so a previewed commission is the charged one.
 `next_commission_bp` is the next rung's tier rate (`NULL` at the top). `currencies` holds, per
 currency, the subject's product lines of the last year (`since`) whose order still stands (not
-`refunded` or `cancelled`) and whose rate was recorded: `lines`, `paid_minor` (what the buyers paid,
-`line_total_minor − promo_discount_minor` summed), `fee_minor` (Σ the recorded `platform_fee_minor`)
+`refunded` or `cancelled`) and whose rate was recorded: `lines`, `paid_minor` (what the sales were
+worth to the seller, `line_total_minor` less any seller-funded `promo_discount_minor`, summed; Decision
+#485 (a)), `fee_minor` (Σ the recorded `platform_fee_minor`)
 and `at_next_minor` (the same lines at `next_commission_bp`, truncated per line; `NULL` at the top
 rung). A line belongs to its product's owner, the rule the fee follows. Nothing is summed across
 currencies. The answer is the Zod `SellerCommissionSchema` (`packages/types/finance/order.ts`); the
@@ -1692,7 +1752,13 @@ the webhook answers 2xx, and a human reconciles it from `finance.v_ops_unledgere
 
 ### Card payments — user doors
 
-#### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key, p_ticket_id DEFAULT NULL, p_revision_id DEFAULT NULL, p_fx_quote_id DEFAULT NULL)` → jsonb
+#### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key, p_ticket_id DEFAULT NULL, p_revision_id DEFAULT NULL, p_fx_quote_id DEFAULT NULL, p_legal jsonb DEFAULT NULL)` → jsonb
+
+> **The Escrow Terms (Decision #534, LG3).** Once every `escrow_lock` gate below has passed, and
+> before the attempt is recorded, the door asks `org.fn_require_legal_acceptance('escrow-terms',
+> p_legal)`: a payer who has not accepted the version in effect is refused `PN409`
+> `legal_acceptance_required` with nothing recorded, and the dialog's retry carries the version. A
+> replay of a recorded attempt and a `wallet_topup` ask nothing; settlement never asks.
 
 > **With `p_fx_quote_id` (Decision #435)** an escrow lock is charged the quote's `from_minor` in its
 > `from_currency` into the payer's wallet in that currency, and `attach_checkout_order` accepts a
@@ -2074,8 +2140,9 @@ touched. The outcome reports `recovered_cents` (all three parts), `recovered_pay
   oldest first, under `SKIP LOCKED` (`swept_at`, `sweep_attempts + 1`); returns each with its
   `destination_account`. `PaymentBackendService.sweepStalePayouts` then completes, re-sends or fails it.
 - `finance.fn_min_withdrawal_minor(p_currency)` (internal) — `min_withdrawal_minor[currency]`, else its
-  `default`, else 0. `finance.fn_minor_units_text(p_amount, p_currency)` (internal) — the minimum in
-  major units for the refusal sentence.
+  `default`, else 0. `finance.fn_minor_units_text(p_amount, p_currency)` (internal, IMMUTABLE) — an amount in
+  grouped major units for a refusal sentence, with the code's ISO decimals from
+  `finance.fn_currency_exponent` (`1,234.56`; JPY `1,234`; KWD `1.234`; FINANCE DB8, FA C10).
 - `finance.fn_payout_destination(wallet)` (internal) — the owner's verified Connect account.
 
 ### Payout schedules (`00001240` §2, Decision #337, ruling M6)
@@ -2356,7 +2423,7 @@ significant figures (`coarsenPublishedTotal`).
 | `min_n` · `min_n_configured` | The threshold: the param when it is a number ≥ 1 (floored, capped at int4), else the literal 10 with `min_n_configured = false`. |
 | `platform_fee_bp` | The `platform_fee_bp` param (the public rate, never a negotiated one); `NULL` when missing or not an integer 0–10,000. |
 | `base_currency` | The `base_currency` param, upper case; `NULL` when not a three-letter code. |
-| `protected_count` · `protected_by_currency` | Escrows whose status is `funded` · `held` · `disputed` · `released`, and `[{currency, amount_minor}]` of their `amount_cents` per upper-cased currency. `refunded` is left out (refunded money can be escrowed again). Never summed across currencies. |
+| `protected_count` · `protected_by_currency` | Escrows whose status is `held` · `reserved` · `disputed` · `released`, and `[{currency, amount_minor}]` of their `amount_cents` per upper-cased currency. `refunded` is left out (refunded money can be escrowed again). Never summed across currencies. |
 | `stages_delivered` | `projects.project_stages` with status `approved` or `paid`, all time (archived included), in a non-personal project, with at least one escrow `released` to a payee — money evidence, because the project owner may write a stage's own `status` / `completed_at`. |
 | `approval_count` · `median_funding_to_approval_hours` | Over the same delivered stages: hours from the stage's first released escrow's `created_at` to its last release (`max(released_at)`, stamped by the release doors; the stage's `completed_at` only when no released escrow carries one); the count of such stages and their `percentile_cont(0.5)`. |
 
@@ -2380,7 +2447,8 @@ funding converts the payer's money into their OWN wallet in the seller's currenc
 single-currency doors (`fn_hold_ticket_escrow`, `fund_stage`, `fund_ticket`, `fund_paid_revision`,
 `fn_confirm_seat`, `fn_book_session_slot`, the reservations) hold from that wallet unchanged.
 Automatic holds (a claim, the Chain Reaction, the auto-fund queue) never convert. Switched off by
-`security.platform_params.fx_checkout_enabled` (false) until counsel and a live rate feed (DB17).
+`security.platform_params.fx_checkout_enabled` (false) until counsel and a live rate feed (the feed's
+door and job are built, FBP DB17, below; its vendor is the owner's pick, #471).
 
 ### Arithmetic (`00001200`)
 
@@ -2469,11 +2537,13 @@ honoured from any caller (it refuses only its sender); `on` loosens the gate, so
   conversion back; the money stays in the payer's wallet). A checkout with a quote places the order with
   `p_expected_minor` = the quote's `to_minor` and the quote.
 - **`finance.fund_with_conversion(p_fx_quote_id, p_project_id, p_stage_id, p_ticket_id DEFAULT NULL,
-  p_revision_id DEFAULT NULL)` → jsonb** (user door, `authenticated`): the wallet route of
-  `fund_stage` / `fund_ticket` / `fund_paid_revision` from the payer's own currency. The caller's
-  `funding` quote must price exactly what the door holds (`fn_stage_funding_need`, the ticket's stage
-  price, the round's price; `PC409`); gate, execute, carry, fund, stamp in one transaction. Returns the
-  door's answer plus `fx_conversion_id`, `charge_minor`, `charge_currency`.
+  p_revision_id DEFAULT NULL, p_legal jsonb DEFAULT NULL)` → jsonb** (user door, `authenticated`): the
+  wallet route of `fund_stage` / `fund_ticket` / `fund_paid_revision` from the payer's own currency.
+  The caller's `funding` quote must price exactly what the door holds (`fn_stage_funding_need`, the
+  ticket's stage price, the round's price; `PC409`); gate, execute, carry, fund, stamp in one
+  transaction, then ask for the Escrow Terms (`org.fn_require_legal_acceptance`, `PN409`
+  `legal_acceptance_required` until accepted, Decision #534). Returns the door's answer plus
+  `fx_conversion_id`, `charge_minor`, `charge_currency`.
 - **`place_on_account_order(…, p_fx_quote_id)`**: see above.
 
 ### Billing, statements, auto-fund, reconciliation
@@ -2494,3 +2564,88 @@ its use once (`PL403`).
 
 Probes: `fx_rounding_parity`, `fx_quote_guards`, `fx_checkout_conversion`, `fx_card_settlement`,
 `fx_refund_pinning`, `fx_invoice_billing_currency` (each asserts both reconciliation views are clean).
+
+### The daily rate feed (`00001200`, Decision #337, ruling M5 (f); Decision #471; FBP DB17)
+
+`finance.fx_rates` has two writers: the seed floor (`00005050`, provider `seed`, dated 2026-08-01) and
+this door. A feed is recorded whole or not at all, because these rates price conversions inside
+purchases (#435): a partial or malformed feed would mis-price a charge.
+
+- **`finance.fn_fx_feed_currencies()` → text[]** (STABLE, internal): the currencies a feed must quote,
+  the quotes the seed floor holds against `base_currency`: the 12 display currencies
+  (`DISPLAY_CURRENCIES`; `packages/types/finance/fx-feed.contract.test.ts` pins the two together).
+- **`finance.record_fx_rates(p_provider, p_as_of, p_rates, p_failure DEFAULT NULL)` → jsonb** (VOLATILE
+  definer, service role only; `FxService.refreshRates` from `POST /api/finance/cron/fx`). `p_rates` maps
+  each of those currencies to its rate against the base as a JSON **string**, a plain decimal of at most
+  ten integer and ten fractional digits (the column's `numeric(20, 10)`, so what is stored is what the
+  provider quoted), greater than zero, and exactly 1 for the base. It inserts every rate at `p_as_of`
+  `ON CONFLICT (base, quote, as_of) DO NOTHING` and writes one `metric` row (scope `finance.fx`), returning
+  `{recorded, quotes, provider, as_of, replay}`; a replay records nothing new. Otherwise it records
+  nothing and writes one `error` row (scope `finance.fx`, client id `fx:<provider>:<reason>`), which the
+  `finance.%` alert rules send (`00005065`), returning `{recorded: 0, refused, currencies, provider,
+  as_of}`. Reasons: `provider_invalid` (not a slug, or `seed`), `feed_unavailable` (no rates),
+  `as_of_missing`, `as_of_in_future`, `rates_invalid` (not an object), `currencies_unknown` (no seed
+  floor), `currency_missing`, `currency_unexpected`, `rate_invalid` (each naming its currencies), and
+  any snake_case `p_failure` the service found first (`feed_not_configured`, `fetch_failed`,
+  `http_error`, `body_invalid`, `base_invalid`, or its own check's reason), which wins over every check
+  here. The last rates stand, and age past `fx_rate_max_age_hours` into the stale mark.
+- **Job:** `finance-fx-daily` (`00005060`), an http job on `FINANCE_CRON_SECRET`, daily at 16:23 UTC,
+  registered only where the door exists.
+
+Probe: `fx_feed` (a full feed records 12 rows exactly as quoted; a replay records nothing; every refusal
+records nothing and leaves its error row; the grants). The provider's adapter is the owner's vendor
+pick (#471); until it lands, `configuredFxFeed` answers `null` and each run logs `feed_not_configured`.
+
+## AML monitoring signals and the Safety Hold (`00001240`, LEGAL LG7, Decision #529)
+
+The data half of the AML-ready posture (#336 ruling I1 ⚖️): the money doors record what they saw in
+`finance.aml_signals`; nothing reads a signal to decide anything except the ⚖️ Safety Hold, which ships
+off (`aml_safety_hold_enabled`). Every dial is a `security.platform_params` row (`00005001`,
+finance-model §13.1). All `STABLE` or trigger definers with `search_path = ''`.
+
+- **`finance.fn_aml_dial_int(p_key, p_fallback)`** → integer (internal) — a whole-number dial, never
+  below 0; the fallback when it is unset or not a number.
+- **`finance.fn_safety_hold_enabled()`** → boolean (internal) — `aml_safety_hold_enabled`; anything but
+  a JSON `true` is off.
+- **`finance.fn_aml_round_trip_people(p_escrow finance.escrows)`** → `(person, relation)` (internal) —
+  each person on both sides of an escrow: the payer side is the paying person, or the paying business's
+  owner and active members; the payee side is the paid freelancer, or the paid team's owner and active
+  members. `relation` is `same_account`, `business_seat`, `team_seat` or `business_and_team_seat`. An
+  enterprise seat over the paying business is not followed.
+- **`finance.fn_aml_record_round_trip()`** (trigger, `trg_escrows_aml_round_trip_insert` /
+  `_update`, `00001830`) — when an escrow is held for a named payee (`funding`) or released
+  (`release`), one `round_trip` row per person on both sides, with the escrow, its amount and
+  `facts` = `event`, `relation` and the payer, payee, stage, ticket, seat and revision ids. On the
+  table, so every door that holds or releases money records it. Moves no money.
+- **`finance.fn_aml_churn(p_user, p_wallet, p_amount, p_currency, p_now)`** → one row or none
+  (internal) — the settled card payments (`inbound_payments` with `succeeded_at`, top-ups and escrow
+  locks) the person made or that came into the wallet inside `aml_churn_window_hours` before `p_now`,
+  in the withdrawal's currency: `in_minor`, `payments`, `last_in_at`, `min_minor`, `window_hours`. A
+  row only when both the withdrawal and that money reach `aml_churn_min_minor` (per currency, via
+  `fn_param_minor`); an unset dial is no churn.
+- **`finance.fn_safety_hold(p_user, p_wallet, p_amount, p_currency, p_now)`** → `(held_until,
+  triggers)` (internal) — NULL and `{}` while the switch is off. Otherwise each trigger listed in
+  `aml_safety_hold_triggers` holds for `aml_safety_hold_hours` after its own event and the latest end
+  wins: `sign_in_change` (a `user.sign_in_changed` audit row, Decision #451 (c)), `rapid_churn`
+  (`fn_aml_churn`, from the newest payment), `round_trip` (a signal naming the person) and
+  `new_account` (an account younger than `aml_new_account_days` with card money in, from the newest
+  payment). Reads only, and never touches `pending_releases` or their clock (PRD-F15).
+- **`finance.fn_aml_signals_append_only()`** (trigger) — refuses UPDATE, DELETE and TRUNCATE (`PL403`).
+- **`finance.read_aml_signals(p_limit integer DEFAULT 200)`** → jsonb (operator) — `security.is_admin()`
+  only, else `42501` (the page answers 404). `{as_of, hold_enabled, counts: {round_trip, rapid_churn,
+  safety_hold}, signals: [...]}`, the newest `p_limit` (1–500) signals with their facts and the
+  subject's `username`. Granted to `authenticated`, never `anon`. Read by `aml-signals.ts`
+  `readAmlSignals` → `AmlSignalsReadSchema`, which `LedgerHealthService.amlSignals` exposes as
+  `/admin/ledger`'s AML signals section. No action: the review queue is Identity X2's, dormant.
+- **`finance.begin_payout`** gains two steps after every gate and the balance check: a withdrawal that is
+  rapid churn records a `rapid_churn` signal beside its payout (`facts` = the churn row); with the
+  switch on, a held withdrawal moves nothing (no payout, no debit, no attempt key), records one
+  `safety_hold` signal (`facts` = `held_until`, `triggers`, `instant`, `churn`) and answers
+  `{held: true, held_until, wallet_id, amount_cents, currency, replayed: false}` rather than raising,
+  so the record of the attempt is kept. `PaymentBackendService.withdraw` answers it 423 with
+  `safetyHoldSentence` (the hold's end in plain words). **`fn_claim_due_payout_schedules`** reports a
+  held run `skipped` (`detail` `safety_hold`), never struck.
+
+Probe: `aml_signals` (shape, round trips at funding and release, churn at and under the dial, the switch
+off changing nothing, each trigger holding and passing, a held scheduled run, conservation unchanged,
+the operator gate).

@@ -5,6 +5,9 @@ import {
 	alertChannelLabel,
 	alertGroup,
 	alertStatus,
+	AML_KIND_LABEL,
+	amlFactsText,
+	amlSubject,
 	conservationGroups,
 	conservationStatus,
 	daysText,
@@ -37,6 +40,7 @@ function usd(): ConservationCurrency {
 		feesFxMinor: 0,
 		lossesChargebacksMinor: 0,
 		lossesCardRefundsMinor: 0,
+		lossesPromosMinor: 0,
 		externalMinor: 16097200,
 		accountedMinor: 16097200,
 		imbalanceMinor: 0,
@@ -88,4 +92,58 @@ Deno.test("daysText and shortId", () => {
 	assertEquals(daysText(12), "12.0 d");
 	assertEquals(shortId("2f6a0b0e-6d43-4ad0-9a54-6b0a6f9d1c11"), "2f6a0b0e");
 	assertEquals(shortId(null), "—");
+});
+
+Deno.test("an AML signal's facts read as one plain line, and its person by handle", () => {
+	const base = {
+		id: "a1000000-0000-4000-8000-000000000001",
+		subjectUserId: "1fee216e-a637-4619-a90a-4ae03bb1ed8b",
+		subjectUsername: "riley",
+		walletId: null,
+		escrowId: null,
+		payoutId: null,
+		amountMinor: 100000,
+		currency: "USD",
+		createdAt: "2026-11-23T15:57:00+00:00",
+	};
+	assertEquals(
+		amlFactsText({
+			...base,
+			kind: "round_trip",
+			facts: {
+				event: "funding",
+				relation: "same_account",
+				ticketId: null,
+				cohortMembershipId: null,
+			},
+		}),
+		"At funding: the same account pays and is paid",
+	);
+	assertEquals(
+		amlFactsText({
+			...base,
+			kind: "rapid_churn",
+			facts: {
+				inMinor: 150000,
+				payments: 2,
+				lastInAt: "2026-11-23T14:05:00Z",
+				minMinor: 100000,
+				windowHours: 72,
+			},
+		}),
+		"2 card payments inside 72 h, the newest 23 Nov, 14:05 UTC",
+	);
+	assertEquals(
+		amlFactsText({
+			...base,
+			kind: "safety_hold",
+			facts: { heldUntil: "2026-11-26T14:05:00Z", triggers: ["rapid_churn", "sign_in_change"] },
+		}),
+		"Held until 26 Nov, 14:05 UTC: rapid churn, sign-in change",
+	);
+	assertEquals(amlSubject(base), "@riley");
+	assertEquals(amlSubject({ ...base, subjectUsername: null }), "1fee216e");
+	for (const kind of ["round_trip", "rapid_churn", "safety_hold"] as const) {
+		assertEquals(Boolean(AML_KIND_LABEL[kind]), true);
+	}
 });

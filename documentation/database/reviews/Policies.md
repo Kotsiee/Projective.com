@@ -3,15 +3,25 @@
 Migration
 [`00002018_policies_reviews_marketplace.sql`](../../../supabase/migrations/00002018_policies_reviews_marketplace.sql).
 
-| Table                      | Policy                     | Command | Roles  | Rule         |
-| :------------------------- | :------------------------- | :------ | :----- | :----------- |
-| `reviews.entity_reviews`   | Visible reviews are public | SELECT  | public | `is_visible` |
-| `reviews.review_reminders` | (RLS on, no policy)        | —       | —      | —            |
+| Table                           | Policy                        | Command | Roles  | Rule                                                                                 |
+| :------------------------------ | :---------------------------- | :------ | :----- | :----------------------------------------------------------------------------------- |
+| `reviews.entity_reviews`        | Visible reviews are public    | SELECT  | public | `is_visible OR (reviewer_user_id = auth.uid() AND withdrawn_at IS NULL AND hidden_at IS NULL)` |
+| `reviews.review_reminders`      | (RLS on, no policy)           | —       | —      | —                                                                                    |
+| `reviews.client_trust_scores`   | Shown trust scores are public | SELECT  | public | `review_count >= 3`                                                                  |
+| `reviews.client_trust_consents` | (RLS on, no policy)           | —       | —      | —                                                                                    |
 
 ## Reads: visible rows only
 
 A withdrawn or operator-hidden review is kept but no client reads it, signed in or not (Decision
-#487). Its author still sees their own through `reviews.get_reviewables`, a definer.
+#487). Its author still sees their own through `reviews.get_reviewables`, a definer. A blind review,
+waiting on an engagement for the other side's (Decision #486 (A)), is read by its author alone:
+`is_visible` is false until `reviews.fn_reveal` stamps `revealed_at`, and the policy's second arm
+admits the author's own live review only.
+
+A Client Trust Score is public once it is shown, from 3 reviews (#486 (B)); below that no client
+reads its row. Its one writer is `reviews.fn_recompute_client_trust`, and the consent log is written
+only by `reviews.acknowledge_client_trust`; neither table takes a client write privilege (`00002520`
+grants SELECT on `client_trust_scores` only).
 
 ## Writes: the doors, and nothing else
 

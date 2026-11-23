@@ -93,7 +93,7 @@ CREATE TABLE security.penalties (
     source_id uuid,
     severity numeric(6,2) NOT NULL DEFAULT 0,
     amount_cents bigint,
-    currency text,
+    currency text CHECK (currency ~ '^[A-Z]{3}$'),
     reason text,
     status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'reversed')),
     issued_by uuid REFERENCES auth.users (id),

@@ -172,6 +172,10 @@ CREATE INDEX IF NOT EXISTS idx_inbound_payments_revision
 CREATE INDEX IF NOT EXISTS idx_inbound_payments_unbound_deposits
     ON finance.inbound_payments (created_at)
     WHERE deposit_rule_id IS NOT NULL AND provider_ref IS NULL AND status = 'requires_payment';
+-- The card money a person put in lately, which the withdrawal door's churn and Safety Hold checks read
+-- (Decision #529).
+CREATE INDEX IF NOT EXISTS idx_inbound_payments_settled_by
+    ON finance.inbound_payments (created_by, succeeded_at DESC) WHERE succeeded_at IS NOT NULL;
 -- One ACTIVE Stripe payout account per owner. Partial, so a disabled account's history stays beside
 -- its replacement; record_payout_account returns the existing active account rather than racing it.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payout_accounts_owner_active
@@ -219,4 +223,11 @@ CREATE INDEX IF NOT EXISTS idx_orders_owner_promo
 CREATE INDEX IF NOT EXISTS idx_orders_placed_at ON finance.orders (placed_at);
 CREATE INDEX IF NOT EXISTS idx_orders_updated_at ON finance.orders (updated_at);
 CREATE INDEX IF NOT EXISTS idx_basket_items_created_at ON finance.basket_items (created_at);
+-- #endregion
+
+-- #region AML monitoring signals (Decision #529)
+-- The Safety Hold reads a person's recent signals of one kind; the operator reader lists the newest first.
+CREATE INDEX IF NOT EXISTS idx_aml_signals_subject
+    ON finance.aml_signals (subject_user_id, kind, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_aml_signals_created ON finance.aml_signals (created_at DESC);
 -- #endregion

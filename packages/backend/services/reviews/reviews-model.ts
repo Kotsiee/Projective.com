@@ -1,4 +1,6 @@
 import {
+	type ClientTrustWarning,
+	ClientTrustWarningRowSchema,
 	type Reviewable,
 	ReviewableSchema,
 	type ReviewActions,
@@ -19,7 +21,10 @@ const UNREACHABLE = "We couldn't reach reviews just now. Try again in a moment."
 // #region Refusals
 /** A door's refusal (SQLSTATE + message) onto a ServiceResult; the message is the database's own. */
 export function reviewRefusal<T>(error: { code?: string; message?: string }): ServiceResult<T> {
-	const message = error.message?.replace(/^(review|reply|hide|reviewables) refused: /, "") ??
+	const message = error.message?.replace(
+		/^(review|reply|hide|reviewables|warning|acknowledgement) refused: /,
+		"",
+	) ??
 		UNREACHABLE;
 	const sentence = message.charAt(0).toUpperCase() + message.slice(1) +
 		(message.endsWith(".") ? "" : ".");
@@ -40,6 +45,8 @@ export function reviewRefusal<T>(error: { code?: string; message?: string }): Se
 			return fail(422, { message: sentence });
 		case "PT501":
 			return fail(501, { message: sentence });
+		case "PT428":
+			return fail(428, { message: sentence });
 		default:
 			return fail(503, { message: UNREACHABLE });
 	}
@@ -56,6 +63,27 @@ export function toReviewables(raw: unknown): Reviewable[] {
 			? { ...row, target: { ...target, avatar: mediaUrl(parseMediaRef(target.avatar), "sm") } }
 			: row;
 	}));
+}
+
+/** reviews.get_client_trust_warning's answer in the app's casing (Decision #486 (C)). */
+export function toClientTrustWarning(raw: unknown): ClientTrustWarning {
+	const row = ClientTrustWarningRowSchema.parse(raw);
+	if (!row.warned) {
+		return {
+			warned: false,
+			score: null,
+			reviewCount: null,
+			reviewsHref: null,
+			acknowledged: false,
+		};
+	}
+	return {
+		warned: true,
+		score: row.score,
+		reviewCount: row.review_count,
+		reviewsHref: row.reviews_href,
+		acknowledged: row.acknowledged,
+	};
 }
 
 /** get_review_actions' rows, keyed by review id, in the app's casing. */

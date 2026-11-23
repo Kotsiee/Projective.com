@@ -25,10 +25,12 @@ export const PAYOUT_NOT_READY_REFUSAL =
 	"Verify your identity and add a payout account before you take on paid work or join a team.";
 
 /**
- * Who has to act: `self` (the caller — offer the fix link), `other` (the freelancer being seated) or
- * `team` (other shareholders of the team being seated). The database's HINT.
+ * Who has to act: `self` (the caller — offer the fix link), `other` (the freelancer being seated),
+ * `team` (other shareholders of the team being seated or publishing) or `seller` (a buyer booked a
+ * session or seat from a seller who cannot be paid yet: `finance.fn_assert_seller_payout_ready`,
+ * Decision #337 ruling M4, which never names the seller's people). The database's HINT.
  */
-export const PayoutGateActor = z.enum(["self", "other", "team"]);
+export const PayoutGateActor = z.enum(["self", "other", "team", "seller"]);
 export type PayoutGateActor = z.infer<typeof PayoutGateActor>;
 
 /** `details` of a payout-not-ready refusal. `members` lists unready `@handles` for a team lead only. */

@@ -23,14 +23,17 @@ import {
  */
 
 // #region Wallet
-/** Which kind of entity a wallet belongs to. `enterprise` is the buyer-only pooled entity (#0314). */
+/**
+ * Which kind of entity a wallet belongs to: `finance.wallets.owner_type`'s CHECK. `enterprise` is the
+ * buyer-only pooled entity (#0314). There is no `system` wallet: the platform's own accounts are not
+ * materialised (Decision #337, ruling M2).
+ */
 export const WalletOwnerType = z.enum([
 	"user",
 	"freelancer",
 	"business",
 	"team",
 	"enterprise",
-	"system",
 ]);
 export type WalletOwnerType = z.infer<typeof WalletOwnerType>;
 
@@ -120,13 +123,12 @@ export type Transaction = z.infer<typeof TransactionSchema>;
 
 // #region Escrow
 /**
- * Escrow lifecycle status. The engine writes `held` on hold and `released`/`refunded` on settle;
- * `disputed` parks funds in the Dispute Lockbox; `funded` is the table default (rarely persisted, as
- * the hold path writes `held` directly); `reserved` is a later ticket stage paid for ahead (Decision
- * #430): debited, unbound, held when the ticket reaches that stage and refunded if it never does. Text in
- * the DB (not a PG enum) — this enum documents the set.
+ * Escrow lifecycle status: `finance.escrows.status`'s CHECK. The engine writes `held` on hold (the
+ * column's default) and `released`/`refunded` on settle; `disputed` parks funds in the Dispute Lockbox;
+ * `reserved` is a later ticket stage paid for ahead (Decision #430): debited, unbound, held when the
+ * ticket reaches that stage and refunded if it never does.
  */
-export const EscrowStatus = z.enum(["funded", "held", "reserved", "released", "refunded", "disputed"]);
+export const EscrowStatus = z.enum(["held", "reserved", "released", "refunded", "disputed"]);
 export type EscrowStatus = z.infer<typeof EscrowStatus>;
 
 /** Who an escrow pays out to — an individual freelancer or a team (`assignment_type`). */

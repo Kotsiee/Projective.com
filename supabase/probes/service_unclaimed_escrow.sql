@@ -31,6 +31,16 @@
 
 BEGIN;
 
+-- Every claimant has accepted the IP Transfer Deed: this probe is about the escrow a service claim
+-- binds, not the first-claim ask (legal_commit_acceptance.sql).
+INSERT INTO org.legal_acceptances (user_id, document_slug, version, kind, surface)
+SELECT u.user_id, 'ip-transfer-deed', org.fn_current_legal_version('ip-transfer-deed'), 'accepted', 'claim'
+  FROM org.users_public u
+ WHERE NOT EXISTS (
+    SELECT 1 FROM org.legal_acceptances a
+     WHERE a.user_id = u.user_id AND a.document_slug = 'ip-transfer-deed'
+       AND a.version = org.fn_current_legal_version('ip-transfer-deed'));
+
 -- What an escrow paid out and what it refunded. Paid: every earned credit that names it, to any wallet
 -- but its payer's, whether still in the pending window (finance.pending_releases) or already in the
 -- ledger (a matured row's transaction is counted once). Refunded: credits to its payer's wallet. Its

@@ -269,7 +269,7 @@ $$;
 --   service    delivery_model (while a draft) · intake (ids and kinds fixed once first published) ·
 --              stage_template · allow_tiered_intensity · team_roles · deliverables ·
 --              turnaround_days · session_minutes · session_count · session_plan · session_rolling ·
---              meeting_provider · max_seats_per_cohort · allow_continuous_enrollment
+--              meeting_provider · max_seats_per_cohort · allow_continuous_enrollment · pricing_unit (SC10)
 --   product    format · licence · attribution_required · file_manifest
 --   children   skills (`org.skills` labels) · tags (at most 10) · collections (names)
 --   envelopes  offer — a `ListingOffer` (camelCase, discriminated by `archetype`) decoded onto the
@@ -304,6 +304,7 @@ DECLARE
     v_next_model marketplace.service_delivery_model;
     v_extra bigint;
     v_base bigint;
+    v_unit text;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to edit a listing' USING ERRCODE = '42501';
@@ -366,10 +367,12 @@ BEGIN
               ('session', 'plan', 'session_plan'),
               ('session', 'rolling', 'session_rolling'),
               ('session', 'meetingProvider', 'meeting_provider'),
+              ('session', 'pricingUnit', 'pricing_unit'),
               ('cohort', 'minutes', 'session_minutes'),
               ('cohort', 'count', 'session_count'),
               ('cohort', 'plan', 'session_plan'),
               ('cohort', 'meetingProvider', 'meeting_provider'),
+              ('cohort', 'pricingUnit', 'pricing_unit'),
               ('cohort', 'maxSeatsPerCohort', 'max_seats_per_cohort'),
               ('cohort', 'continuousEnrollment', 'allow_continuous_enrollment')
           ) AS m (archetype, src, dst)
@@ -408,7 +411,7 @@ BEGIN
     IF v_row.kind = 'product' AND (
         v_patch ?| ARRAY['delivery_model', 'intake', 'stage_template', 'allow_tiered_intensity', 'team_roles',
                          'deliverables', 'turnaround_days',
-                         'session_minutes', 'session_count', 'session_plan', 'session_rolling',
+                         'session_minutes', 'session_count', 'session_plan', 'session_rolling', 'pricing_unit',
                          'meeting_provider', 'max_seats_per_cohort', 'allow_continuous_enrollment']
     ) THEN
         RAISE EXCEPTION 'A product has no service terms' USING ERRCODE = '22023', DETAIL = 'kind';
@@ -539,7 +542,32 @@ BEGIN
                 RAISE EXCEPTION 'Session % takes a title of up to 80 characters and a description of up to 600', v_ord
                     USING ERRCODE = '22023', DETAIL = 'session_plan.' || (v_ord - 1);
             END IF;
+            -- A sitting's own length (SC10): 15 to 600 minutes, in fives (`SittingMinutes`).
+            IF v_item ? 'durationMinutes' AND pg_catalog.jsonb_typeof(v_item -> 'durationMinutes') <> 'null'
+               AND (pg_catalog.jsonb_typeof(v_item -> 'durationMinutes') <> 'number'
+                    OR (v_item ->> 'durationMinutes')::numeric NOT BETWEEN 15 AND 600
+                    OR (v_item ->> 'durationMinutes')::numeric % 5 <> 0) THEN
+                RAISE EXCEPTION 'Session % runs 15 to 600 minutes, in steps of 5', v_ord
+                    USING ERRCODE = '22023', DETAIL = 'session_plan.' || (v_ord - 1);
+            END IF;
         END LOOP;
+    END IF;
+
+    -- How a session listing is priced (SC10): per session or per hour, and sittings of different lengths
+    -- only per hour, judged on the listing as this save leaves it (the table's
+    -- ck_service_blueprints_session_lengths holds the same rule for any other write).
+    IF v_patch ? 'pricing_unit' AND (v_patch ->> 'pricing_unit') IS DISTINCT FROM 'per_session'
+       AND (v_patch ->> 'pricing_unit') IS DISTINCT FROM 'per_hour' THEN
+        RAISE EXCEPTION 'Sessions are priced per session or per hour' USING ERRCODE = '22023', DETAIL = 'pricing_unit';
+    END IF;
+    IF v_row.kind = 'service' AND v_patch ?| ARRAY['pricing_unit', 'session_plan'] THEN
+        SELECT CASE WHEN v_patch ? 'pricing_unit' THEN v_patch ->> 'pricing_unit' ELSE b.pricing_unit END,
+               CASE WHEN v_patch ? 'session_plan' THEN COALESCE(v_patch -> 'session_plan', '[]'::jsonb) ELSE b.session_plan END
+          INTO v_unit, v_doc
+          FROM marketplace.service_blueprints b WHERE b.id = v_row.service_blueprint_id;
+        IF v_unit <> 'per_hour' AND pg_catalog.jsonb_path_exists(v_doc, '$[*].durationMinutes ? (@ != null)') THEN
+            RAISE EXCEPTION 'Sessions of different lengths are priced per hour' USING ERRCODE = '22023', DETAIL = 'pricing_unit';
+        END IF;
     END IF;
 
     IF v_patch ? 'session_rolling' AND pg_catalog.jsonb_typeof(v_patch -> 'session_rolling') IS DISTINCT FROM 'boolean' THEN
@@ -669,6 +697,7 @@ BEGIN
                 THEN COALESCE(v_patch -> 'session_plan', '[]'::jsonb) ELSE b.session_plan END,
             session_rolling = CASE WHEN v_patch ? 'session_rolling'
                 THEN (v_patch ->> 'session_rolling')::boolean ELSE b.session_rolling END,
+            pricing_unit = CASE WHEN v_patch ? 'pricing_unit' THEN v_patch ->> 'pricing_unit' ELSE b.pricing_unit END,
             meeting_provider = CASE WHEN v_patch ? 'meeting_provider'
                 THEN NULLIF(v_patch ->> 'meeting_provider', '') ELSE b.meeting_provider END,
             updated_at = pg_catalog.now()
@@ -1231,7 +1260,8 @@ first publish tells the owning party''s followers (catalogue.listing_published, 
 Returns { listing_id, status, version } — version is that freeze''s answer, NULL otherwise. Refusals: 42501 not the
 seller · 22023 unknown status · PB404 no such listing · PG422 the publish gate (DETAIL lists what is
 missing, separated by |), or an attached file gone from the seller''s library · PM403 the seller is
-under 18 (catalogue.trg_listings_publish_age_gate).';
+under 18 (catalogue.trg_listings_publish_age_gate) · PK403 payout_not_ready, the seller of a product or
+session listing cannot be paid yet (catalogue.trg_listings_publish_payout_gate, Decision #337 ruling M4).';
 -- #endregion
 
 -- #region Sales
@@ -1313,6 +1343,43 @@ BEGIN
     IF NEW.status = 'published'::catalogue.listing_status
        AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status) THEN
         PERFORM org.fn_assert_adult(NEW.owner_user_id);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+-- #endregion
+
+-- #region Publish payout gate (Decision #337, ruling M4)
+-- A listing that earns its seller money without a ticket cannot go on sale until that seller can be
+-- paid: a product, and a service sold as sessions (`session`, `group_session`), need
+-- finance.fn_assert_payout_ready to pass for the owner — a team listing for the team, so every
+-- shareholder. A Pipeline, one-off or direct-deliverable service binds no seller (its tickets are
+-- claimed through the gated doors, FA K3), so it publishes freely, and drafting is always free. On the
+-- table, as the age gate is, so no write path publishes past it; it fires on becoming `published`, a
+-- resume from `paused` included. PK403 `payout_not_ready:` with HINT `self` (the publisher) or `team`.
+CREATE OR REPLACE FUNCTION catalogue.trg_listings_publish_payout_gate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.status = 'published'::catalogue.listing_status
+       AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status)
+       AND (
+           NEW.kind = 'product'::catalogue.listing_kind
+           OR EXISTS (
+               SELECT 1 FROM marketplace.service_blueprints b
+                WHERE b.id = NEW.service_blueprint_id
+                  AND b.delivery_model IN ('session'::marketplace.service_delivery_model,
+                                           'group_session'::marketplace.service_delivery_model)
+           )
+       ) THEN
+        IF NEW.owner_team_id IS NOT NULL THEN
+            PERFORM finance.fn_assert_payout_ready('team', NEW.owner_team_id);
+        ELSE
+            PERFORM finance.fn_assert_payout_ready('freelancer', NEW.owner_user_id);
+        END IF;
     END IF;
     RETURN NEW;
 END;
@@ -1817,13 +1884,18 @@ decides each. The candidate set for get_client_pipeline and fn_seller_order_line
 -- like `get_listing_sales` beside it: the buyer, the order's status and instant, and the line's own
 -- money. Never the payment method, card, promo, other sellers' lines or the order's totals. Answers
 -- only for listings `fn_manages_listing` admits; `p_listing` NULL is all of them.
+-- The buyer is the order's owner: a person by username, a team or business by its slug, with its
+-- owner as `buyer_contact_handle` because a message is person-to-person and `dm-<slug>` reaches
+-- nobody (Decisions #422 (b), #500 (C)). An enterprise has no handle and stays unnamed.
 CREATE OR REPLACE FUNCTION catalogue.fn_seller_order_lines(p_listing uuid DEFAULT NULL)
 RETURNS TABLE (
     listing_id uuid,
     order_line_id uuid,
     item_type text,
     buyer_user_id uuid,
+    buyer_kind text,
     buyer_handle text,
+    buyer_contact_handle text,
     order_status text,
     placed_at timestamptz,
     updated_at timestamptz,
@@ -1865,7 +1937,9 @@ AS $$
            x.id,
            x.item_type::text,
            CASE WHEN o.owner_type IN ('user', 'freelancer') THEN o.owner_id END,
-           u.username,
+           o.owner_type,
+           COALESCE(u.username, t.slug, b.slug),
+           cu.username,
            o.status::text,
            o.placed_at,
            o.updated_at,
@@ -1875,12 +1949,16 @@ AS $$
       FROM lines x
       JOIN finance.orders o ON o.id = x.order_id
       LEFT JOIN org.users_public u
-        ON o.owner_type IN ('user', 'freelancer') AND u.user_id = o.owner_id;
+        ON o.owner_type IN ('user', 'freelancer') AND u.user_id = o.owner_id
+      LEFT JOIN org.teams t ON o.owner_type = 'team' AND t.id = o.owner_id
+      LEFT JOIN org.business_profiles b ON o.owner_type = 'business' AND b.id = o.owner_id
+      LEFT JOIN org.users_public cu ON cu.user_id = COALESCE(t.owner_user_id, b.owner_user_id);
 $$;
 
 COMMENT ON FUNCTION catalogue.fn_seller_order_lines(uuid) IS
-'The order lines that bought the caller''s listings (fn_manages_listing), narrowed to the buyer, the
-order''s status and instant, and the line''s money. The order arm of get_client_pipeline.';
+'The order lines that bought the caller''s listings (fn_manages_listing), narrowed to the buyer (a
+person, team or business: its kind, handle and, for an entity, its owner as the contact), the order''s
+status and instant, and the line''s money. The order arm of get_client_pipeline.';
 
 -- One read of everyone buying, asking about or booking the caller's listings, one row per engagement.
 -- INVOKER, so every arm but the order one answers under the caller's own policies (thread
@@ -1888,7 +1966,10 @@ order''s status and instant, and the line''s money. The order arm of get_client_
 -- definer above. Each row carries its source table's OWN status, never a lane: the pipeline's lanes
 -- are derived in TypeScript (`laneOf`, @projective/types/catalogue/clients.ts), so this read invents no
 -- vocabulary (root CLAUDE.md §5). `action_reasons` names what is waiting on the seller.
--- `href` is the surface the engagement lives on: the conversation, the calendar event, the project.
+-- `href` is the surface the engagement lives on, by slug (Decision #88): the conversation with the buyer
+-- (`/messages/dm-<handle>`, which answers 303 to the pair's `cht-` thread, Decision #500 (B)), the
+-- calendar event (`?event=`, #388) or the project. Every arm's buyer is a person (`buyer_kind` 'user')
+-- but an order's, which may be a team or business reached through its contact (fn_seller_order_lines).
 -- `p_listing` NULL is every listing the caller manages; `p_limit` is clamped to 1–500, newest
 -- activity first.
 CREATE OR REPLACE FUNCTION catalogue.get_client_pipeline(p_listing uuid DEFAULT NULL, p_limit integer DEFAULT 200)
@@ -1897,7 +1978,9 @@ RETURNS TABLE (
     engagement_id uuid,
     listing_id uuid,
     buyer_user_id uuid,
+    buyer_kind text,
     buyer_handle text,
+    buyer_contact_handle text,
     status text,
     opened_at timestamptz,
     last_activity_at timestamptz,
@@ -1929,8 +2012,10 @@ AS $$
         SELECT 'inquiry'::text AS engagement_kind,
                t.id AS engagement_id,
                m.id AS listing_id,
-               b.user_id AS buyer_user_id,
+               NULLIF(t.created_by_user_id, auth.uid ()) AS buyer_user_id,
+               'user'::text AS buyer_kind,
                u.username AS buyer_handle,
+               NULL::text AS buyer_contact_handle,
                me.inbox_folder AS status,
                t.created_at AS opened_at,
                COALESCE(lm.created_at, t.created_at) AS last_activity_at,
@@ -1939,19 +2024,16 @@ AS $$
                NULL::timestamptz AS next_event_at,
                CASE WHEN lm.sender_user_id IS DISTINCT FROM auth.uid () AND lm.sender_user_id IS NOT NULL
                     THEN ARRAY['inquiry_unanswered'] ELSE ARRAY[]::text[] END AS action_reasons,
-               '/messages/' || t.id::text AS href
+               '/messages/dm-' || COALESCE(u.username, '') AS href
           FROM mine m
           JOIN comms.dm_threads t
             ON t.subject_listing_id = m.id AND t.kind = 'service_inquiry'::comms.conversation_kind
           JOIN comms.dm_participants me
             ON me.thread_id = t.id AND me.user_id = auth.uid () AND me.deleted_at IS NULL
-          LEFT JOIN LATERAL (
-              SELECT p.user_id FROM comms.dm_participants p
-               WHERE p.thread_id = t.id AND p.user_id <> auth.uid ()
-               ORDER BY p.joined_at, p.user_id
-               LIMIT 1
-          ) b ON true
-          LEFT JOIN org.users_public u ON u.user_id = b.user_id
+          -- The buyer is the thread's creator: an inquiry is opened by the buyer to the listing's seller
+          -- (comms.get_or_create_dm_thread) and never holds a third person, while the participants
+          -- policy shows the caller only their own row.
+          LEFT JOIN org.users_public u ON u.user_id = NULLIF(t.created_by_user_id, auth.uid ())
           LEFT JOIN LATERAL (
               SELECT dm.sender_user_id, dm.created_at FROM comms.dm_messages dm
                WHERE dm.thread_id = t.id AND dm.deleted_at IS NULL
@@ -1961,7 +2043,7 @@ AS $$
 
         UNION ALL
 
-        SELECT 'quote', q.id, m.id, q.requester_user_id, u.username, q.status,
+        SELECT 'quote', q.id, m.id, q.requester_user_id, 'user', u.username, NULL, q.status,
                q.created_at, GREATEST(q.updated_at, COALESCE(q.answered_at, q.created_at)),
                -- The live (pending or accepted) offer's price once the host has priced it, else the
                -- buyer's soft budget (Decision #458).
@@ -1982,7 +2064,7 @@ AS $$
 
         UNION ALL
 
-        SELECT 'discovery_call', d.id, m.id, d.requester_user_id, u.username, d.status::text,
+        SELECT 'discovery_call', d.id, m.id, d.requester_user_id, 'user', u.username, NULL, d.status::text,
                d.proposed_at, d.updated_at,
                d.fee_amount_minor, pg_catalog.upper(d.fee_currency::text),
                CASE WHEN COALESCE(d.confirmed_start, d.proposed_start) > pg_catalog.now()
@@ -2004,16 +2086,17 @@ AS $$
 
         UNION ALL
 
-        SELECT 'order', s.order_line_id, s.listing_id, s.buyer_user_id, s.buyer_handle, s.order_status,
+        SELECT 'order', s.order_line_id, s.listing_id, s.buyer_user_id, s.buyer_kind, s.buyer_handle,
+               s.buyer_contact_handle, s.order_status,
                s.placed_at, s.updated_at, s.line_total_minor, s.currency, NULL::timestamptz,
                ARRAY[]::text[],
-               '/messages/dm-' || COALESCE(s.buyer_handle, '')
+               '/messages/dm-' || COALESCE(s.buyer_contact_handle, s.buyer_handle, '')
           FROM sales s
          WHERE s.item_type NOT IN ('service_session', 'set_session', 'course_group_session')
 
         UNION ALL
 
-        SELECT 'session_booking', cm.id, m.id, cm.user_id, u.username, cm.status,
+        SELECT 'session_booking', cm.id, m.id, cm.user_id, 'user', u.username, NULL, cm.status,
                cm.joined_at,
                GREATEST(cm.joined_at, COALESCE(cm.cancelled_at, cm.joined_at), COALESCE(sit.touched, cm.joined_at)),
                s.line_total_minor, s.currency,
@@ -2068,7 +2151,8 @@ AS $$
 
         UNION ALL
 
-        SELECT 'pipeline_project', p.id, m.id, COALESCE(p.client_user_id, p.owner_user_id), u.username, p.status::text,
+        SELECT 'pipeline_project', p.id, m.id, COALESCE(p.client_user_id, p.owner_user_id), 'user', u.username, NULL,
+               p.status::text,
                p.created_at, p.last_activity_at,
                p.budget_amount_cents, pg_catalog.upper(p.currency),
                (SELECT pg_catalog.min(e.starts_at) FROM scheduling.events e
@@ -2105,7 +2189,8 @@ AS $$
           LEFT JOIN org.users_public u ON u.user_id = COALESCE(p.client_user_id, p.owner_user_id)
          WHERE COALESCE(p.client_user_id, p.owner_user_id) <> auth.uid ()
     )
-    SELECT a.engagement_kind, a.engagement_id, a.listing_id, a.buyer_user_id, a.buyer_handle, a.status,
+    SELECT a.engagement_kind, a.engagement_id, a.listing_id, a.buyer_user_id, a.buyer_kind, a.buyer_handle,
+           a.buyer_contact_handle, a.status,
            a.opened_at, a.last_activity_at, a.amount_minor, a.currency, a.next_event_at,
            a.action_reasons, a.href
       FROM arms a
@@ -2115,7 +2200,8 @@ $$;
 
 COMMENT ON FUNCTION catalogue.get_client_pipeline(uuid, integer) IS
 'Every engagement on the caller''s listings (fn_manages_listing): inquiry threads, quote requests,
-discovery calls, orders, session bookings and pipeline projects, each with its source table''s own
-status, the reasons it waits on the seller and its deep link. INVOKER: the arms answer under RLS,
+discovery calls, orders, session bookings and pipeline projects, each with its buyer (a person, or an
+order''s team or business and its contact), its source table''s own status, the reasons it waits on
+the seller and its deep link by slug (no uuid but ?event=). INVOKER: the arms answer under RLS,
 orders through fn_seller_order_lines. Lanes are derived in TypeScript (laneOf).';
 -- #endregion

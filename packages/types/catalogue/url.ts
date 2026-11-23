@@ -36,7 +36,14 @@ import {
 
 // #region Vocabularies
 /** The console canvas (`?view=`). */
-export const ConsoleView = z.enum(["listings", "analytics", "clients"]);
+export const ConsoleView = z.enum(["listings", "analytics", "clients", "promotions"]);
+
+/**
+ * The Promotions view's open dialog (`?promo=`, `view=promotions` only, MARKETPLACE CK2): `new` issues
+ * a code, `archive:<CODE>` confirms archiving one. One parameter, so one dialog at a time.
+ */
+export const PromoDialog = z.string().regex(/^(new|archive:[A-Z0-9][A-Z0-9-]{3,39})$/);
+export type PromoDialog = z.infer<typeof PromoDialog>;
 export type ConsoleView = z.infer<typeof ConsoleView>;
 
 /** The item workspace tab (`?tab=`). */
@@ -170,6 +177,8 @@ export interface ConsoleUrlState {
 	scope: ConsoleScope;
 	/** The client drawer's buyer (`view=clients`). */
 	client?: ClientKey;
+	/** The Promotions view's open dialog (`view=promotions`). */
+	promo?: PromoDialog;
 	/** Whether the quick-create modal is open (`?create=`). */
 	createOpen: boolean;
 	/** The kind the modal opens on (`?create=product` / `?create=service[:<model>]`). */
@@ -296,6 +305,8 @@ export function parseConsoleUrl(url: URL): ConsoleUrlState {
 	if (team) state.team = team;
 	const client = pick(ClientKey, q.get("client"));
 	if (client) state.client = client;
+	const promo = pick(PromoDialog, q.get("promo"));
+	if (promo && state.view === "promotions") state.promo = promo;
 	return state;
 }
 
@@ -338,6 +349,7 @@ export function consoleHref(state: Partial<ConsoleUrlState>): string {
 		["dir", state.dir && state.dir !== defaultSortDir(sort) ? state.dir : null],
 		["period", period === CONSOLE_DEFAULTS.period ? null : period],
 		["client", state.client],
+		["promo", view === "promotions" ? state.promo : undefined],
 		["create", createParam(state)],
 	]);
 }
@@ -443,6 +455,7 @@ const VIEW_TAB: Record<ConsoleView, WorkspaceTab> = {
 	listings: "edit",
 	analytics: "analytics",
 	clients: "clients",
+	promotions: "edit",
 };
 
 /**

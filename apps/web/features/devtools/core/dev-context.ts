@@ -139,6 +139,8 @@ export type DevBusinessPage = "auto" | BusinessPageSim;
 export type DevTeamPage = "auto" | TeamPageSim;
 /** A simulated state of the open engagement's reviews, or `auto` for the database's (Decision #487). */
 export type DevReviewState = "auto" | ReviewState;
+/** Whether every project's client reads as warned, or `auto` for the database's (Decision #486 (C)). */
+export type DevClientTrust = "auto" | "warned";
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
 	DevAccountLifecycle,
@@ -308,6 +310,13 @@ export interface DevOverrides {
 	 * development only; the panel reloads a project page to apply it. A write still meets the doors.
 	 */
 	reviewState: DevReviewState;
+	/**
+	 * Simulated Client Trust Score warning (Decision #486 (C)): `warned` restates every project's client
+	 * as below 3.00 from 3 reviews, so Apply on a listing and Accept request in a thread open the
+	 * Informed Consent dialog first. Client-side, through `data-dev-client-trust`; the acknowledgement it
+	 * posts is a no-op at the door, which still answers the database's real state.
+	 */
+	clientTrust: DevClientTrust;
 	/**
 	 * Simulated acting-member view for the Members tab (task §4) — the four access conditions the roster
 	 * rules branch on (Owner/Admin · Manager · Freelancer assigned · Freelancer unassigned). Consumed by
@@ -677,6 +686,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	businessPage: "auto",
 	teamPage: "auto",
 	reviewState: "auto",
+	clientTrust: "auto",
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	hasPendingRequests: true,
@@ -851,6 +861,12 @@ export const DEV_REVIEW_STATES: ReadonlyArray<DevOption<DevReviewState>> = [
 	{ value: "locked", label: "Locked" },
 	{ value: "withdrawn", label: "Withdrawn" },
 	{ value: "closed", label: "Closed" },
+];
+
+/** The client-trust warning in display order (Decision #486 (C)). `Auto` defers to the database. */
+export const DEV_CLIENT_TRUST: ReadonlyArray<DevOption<DevClientTrust>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "warned", label: "Warned" },
 ];
 
 /**
@@ -1433,6 +1449,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devTeamPage;
 		if (next.reviewState !== "auto") root.dataset.devReviewState = next.reviewState;
 		else delete root.dataset.devReviewState;
+		if (next.clientTrust !== "auto") root.dataset.devClientTrust = next.clientTrust;
+		else delete root.dataset.devClientTrust;
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devPendingRequests = String(next.hasPendingRequests);
@@ -1586,6 +1604,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devBusinessPage;
 		delete root.dataset.devTeamPage;
 		delete root.dataset.devReviewState;
+		delete root.dataset.devClientTrust;
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devPendingRequests;

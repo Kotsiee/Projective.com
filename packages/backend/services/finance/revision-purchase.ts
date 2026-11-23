@@ -7,6 +7,7 @@ import type {
 import { formatMoney } from "@projective/types/finance";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
+import { legalAcceptanceRefusal } from "../../core/legal-gate.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -240,6 +241,7 @@ async function fundByCard(
 		expectedAmountMinor: held ? held.quote.fromMinor : input.expectedAmountMinor,
 		currency: held ? held.quote.fromCurrency : input.currency,
 		fxQuoteId: held ? held.quote.id : null,
+		legalAcceptance: input.legalAcceptance ?? null,
 		idempotencyKey: input.idempotencyKey,
 	}, actor);
 	if (!begun.ok || !begun.data) {
@@ -265,10 +267,16 @@ async function fundFromWallet(
 			p_stage_id: facts.stage.id,
 			p_ticket_id: null,
 			p_revision_id: facts.revision.id,
+			p_legal: input.legalAcceptance ?? null,
 		})
-		: await projectsDb(actor).rpc("fund_paid_revision", { p_revision_id: facts.revision.id });
+		: await projectsDb(actor).rpc("fund_paid_revision", {
+			p_revision_id: facts.revision.id,
+			p_legal: input.legalAcceptance ?? null,
+		});
 	if (error) {
 		if (input.fxQuoteId && isQuoteRefusal(error)) return fail(409, { message: QUOTE_REFRESHED });
+		const legal = legalAcceptanceRefusal(error);
+		if (legal) return fail(legal.status, { message: legal.message, details: legal.details });
 		const authority = businessAuthorityRefusal(error);
 		if (authority) {
 			return fail(authority.status, { message: authority.message, details: authority.details });

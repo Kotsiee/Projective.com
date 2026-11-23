@@ -95,7 +95,7 @@ export interface FundingPaymentInput {
 const WORK: ReadonlySet<TicketStatus> = new Set(["claimed", "in_progress", "in_review"]);
 
 /** A dispute is a hold on the funds, not a state of this machine (§3.6 rule 4). */
-const HELD_ESCROW: ReadonlySet<string> = new Set(["funded", "held", "disputed"]);
+const HELD_ESCROW: ReadonlySet<string> = new Set(["held", "disputed"]);
 
 /** Resolve one ticket's funding state. Precedence: terminal money → held work → card payment → unfunded. */
 export function deriveFundingState(

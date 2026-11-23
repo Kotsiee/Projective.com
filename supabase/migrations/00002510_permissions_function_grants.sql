@@ -116,13 +116,15 @@ REVOKE ALL ON FUNCTION projects.fn_link_submission_files (uuid, uuid[]) FROM PUB
 REVOKE ALL ON FUNCTION projects.fn_enter_review (uuid) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION projects.review_submission (uuid, text, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.assign_from_application (uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION projects.fund_stage (uuid, uuid) TO authenticated;
+-- A client funds a stage through the door that asks for the Escrow Terms first (LG3, #534); the
+-- two-argument fund_stage is the internal door checkout, card settlement and conversion call.
+GRANT EXECUTE ON FUNCTION projects.fund_stage (uuid, uuid, jsonb) TO authenticated;
 -- The team apply gate is a step of apply_to_seat / apply_to_project, never a door of its own.
 REVOKE ALL ON FUNCTION projects.fn_assert_team_can_apply (uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- The two assignment doors: a self-claim (00001120) and the reviewer's pin (00001140). The claim core
 -- they share, projects.fn_assign_ticket_core, takes any assignee and checks nothing, so it is not granted.
-GRANT EXECUTE ON FUNCTION projects.claim_ticket (uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.claim_ticket (uuid, uuid, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.assign_ticket_manual (uuid, uuid) TO authenticated;
 -- #endregion
 
@@ -313,6 +315,9 @@ REVOKE ALL ON FUNCTION public.accept_current_terms (jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.accept_current_terms (jsonb) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION org.fn_record_legal_acceptance (uuid, jsonb, org.legal_acceptance_surface, uuid)
 FROM PUBLIC, anon, authenticated;
+-- The first-commit gate (LG3, #534) records for auth.uid() inside a claim or funding door; called
+-- directly it would record an acceptance outside any commit, so it is no client's.
+REVOKE ALL ON FUNCTION org.fn_require_legal_acceptance (text, jsonb) FROM PUBLIC, anon, authenticated;
 
 -- --- from 0309_business_finance_overview.sql ---
 
@@ -392,6 +397,7 @@ EXECUTE ON FUNCTION finance.fn_business_kyb_verified (uuid) TO service_role;
 -- inside the guarded doors, so no client role may call them.
 REVOKE ALL ON FUNCTION finance.fn_team_shareholders (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_assert_payout_ready (text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_assert_seller_payout_ready (text, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_wallet_holds_earnings (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION projects.fn_ticket_assignee_payout_ready (uuid, uuid) FROM PUBLIC, anon, authenticated;
 
@@ -923,7 +929,20 @@ EXECUTE ON FUNCTION finance.list_purchase_owners () TO authenticated;
 -- One typed code's worth (00001210 §9). The table itself stays unreadable: this answers for the one
 -- code the buyer typed and never lists the book.
 GRANT
-EXECUTE ON FUNCTION finance.resolve_promo_code (text, text, uuid) TO authenticated;
+EXECUTE ON FUNCTION finance.resolve_promo_code (text, text, uuid, uuid[]) TO authenticated;
+
+-- A seller's own codes (00001210 §9, MARKETPLACE CK2, Decision #485): each door checks itself that the
+-- caller may issue for the seller (finance.fn_can_issue_promo), so signed-in callers reach all three.
+-- The gate, the coverage rule and the row shape are internal.
+REVOKE ALL ON FUNCTION finance.save_promo_code (text, uuid, text, text, text, integer, bigint, text, uuid[], timestamptz, timestamptz, integer, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.save_promo_code (text, uuid, text, text, text, integer, bigint, text, uuid[], timestamptz, timestamptz, integer, integer) TO authenticated;
+REVOKE ALL ON FUNCTION finance.archive_promo_code (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.archive_promo_code (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.list_own_promo_codes (text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.list_own_promo_codes (text, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.fn_can_issue_promo (text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_promo_covers (finance.promo_codes, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_promo_code_json (finance.promo_codes) FROM PUBLIC, anon, authenticated;
 
 -- A business's invoicing terms (00001210 §10) — gated inside on manage_billing and, for the monthly
 -- mode, on KYB verification.
@@ -1082,11 +1101,14 @@ GRANT EXECUTE ON FUNCTION finance.public_metrics () TO service_role;
 -- --- finance: the Stripe fiat rails (00001230, Decision #125) ---
 -- USER doors: each authorises the caller with auth.uid() and records a REQUEST — it can never mark
 -- money received, an account payable or an identity verified.
-REVOKE ALL ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid, uuid) TO authenticated;
--- Single-ticket funding (Decisions #166, #430): a signed-in payer's door, never anon's.
-REVOKE ALL ON FUNCTION projects.fund_ticket (uuid, uuid, uuid[]) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION projects.fund_ticket (uuid, uuid, uuid[]) TO authenticated;
+REVOKE ALL ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid, uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid, uuid, uuid, jsonb) TO authenticated;
+-- Single-ticket funding (Decisions #166, #430): a signed-in payer's door, never anon's. It asks for the
+-- Escrow Terms first (LG3, #534); the three-argument fund_ticket is the internal door checkout, card
+-- settlement and conversion call, and no client's.
+REVOKE ALL ON FUNCTION projects.fund_ticket (uuid, uuid, uuid[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fund_ticket (uuid, uuid, uuid[], jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.fund_ticket (uuid, uuid, uuid[], jsonb) TO authenticated;
 -- Stage funding (Decision #197): the quote is the payer's read; the need, the payee rule and the bind
 -- run only inside the guarded doors (fund_stage, begin_card_payment, the claim trigger).
 REVOKE ALL ON FUNCTION projects.get_stage_funding_quote (uuid, uuid) FROM PUBLIC, anon;
@@ -1242,8 +1264,8 @@ REVOKE ALL ON FUNCTION finance.fn_pot_movements_append_only () FROM PUBLIC, anon
 -- from inside the money doors; the two guards are trigger functions.
 REVOKE ALL ON FUNCTION finance.quote_fx_conversion (text, uuid, text, text, bigint, text, text, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.quote_fx_conversion (text, uuid, text, text, bigint, text, text, uuid) TO authenticated;
-REVOKE ALL ON FUNCTION finance.fund_with_conversion (uuid, uuid, uuid, uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION finance.fund_with_conversion (uuid, uuid, uuid, uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.fund_with_conversion (uuid, uuid, uuid, uuid, uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.fund_with_conversion (uuid, uuid, uuid, uuid, uuid, jsonb) TO authenticated;
 REVOKE ALL ON FUNCTION finance.fn_execute_fx_quote (uuid, uuid, text, uuid, boolean) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_stamp_escrow_fx (uuid, uuid[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_refund_escrow_to_payer (uuid, bigint, text) FROM PUBLIC, anon, authenticated;
@@ -1265,6 +1287,11 @@ REVOKE ALL ON FUNCTION finance.fn_fx_quotes_guard () FROM PUBLIC, anon, authenti
 REVOKE ALL ON FUNCTION finance.fn_dev_fx_checkout () FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_dev_overrides_honoured () FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_fx_checkout_enabled () FROM PUBLIC, anon, authenticated;
+-- The daily FX feed (00001200, FBP DB17): only the service role records rates, from the
+-- FINANCE_CRON_SECRET cron. The set of currencies a feed must quote is read only inside that door.
+REVOKE ALL ON FUNCTION finance.record_fx_rates (text, timestamptz, jsonb, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_fx_rates (text, timestamptz, jsonb, text) TO service_role;
+REVOKE ALL ON FUNCTION finance.fn_fx_feed_currencies () FROM PUBLIC, anon, authenticated;
 
 -- FINANCE_BUILD_PROMPTS DB3: the scheduler's two sweeps (registered by name in 00005060), the one KYB
 -- predicate (any subject's verification, so never a client's to ask) and the open-dispute refusal.
@@ -1459,8 +1486,11 @@ REVOKE ALL ON FUNCTION projects.fn_ticket_settlement_guard () FROM PUBLIC, anon,
 -- the notifier and the terms trigger are internal (a direct call could notify anybody about anything).
 REVOKE ALL ON FUNCTION projects.request_paid_revision (uuid, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.request_paid_revision (uuid, jsonb) TO authenticated;
+-- A client pays for a round through the door that asks for the Escrow Terms first (LG3, #534); the
+-- one-argument fund_paid_revision is the internal door the basket, card settlement and conversion call.
 REVOKE ALL ON FUNCTION projects.fund_paid_revision (uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION projects.fund_paid_revision (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fund_paid_revision (uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.fund_paid_revision (uuid, jsonb) TO authenticated;
 REVOKE ALL ON FUNCTION projects.fn_notify_revision (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_stage_revision_terms () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_stage_intensity_terms () FROM PUBLIC, anon, authenticated, service_role;
@@ -2569,6 +2599,14 @@ GRANT EXECUTE ON FUNCTION reviews.hide_review (uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION reviews.get_reviewables (text) TO authenticated;
 GRANT EXECUTE ON FUNCTION reviews.get_review_actions (uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION reviews.fn_send_review_reminders (timestamptz) TO service_role;
+-- RV2 (Decision #486): the warning's read and the acknowledgement are the freelancer's; the reveal
+-- job is the service role's and pg_cron's. Every other new helper (fn_client_targets,
+-- fn_counterpart, fn_reveal, fn_after_review_change, fn_recompute_client_trust, fn_client_trust_shown,
+-- fn_project_client, fn_project_trust_warning, fn_assert_client_trust_consent and the dispute
+-- trigger's function) runs as its owner inside a door, a trigger or the job.
+GRANT EXECUTE ON FUNCTION reviews.get_client_trust_warning (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.acknowledge_client_trust (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION reviews.fn_reveal_due (timestamptz) TO service_role;
 -- #endregion
 
 -- #region ops — the job registry (00001650, Decision #203)
@@ -2782,6 +2820,22 @@ REVOKE ALL ON FUNCTION finance.mark_tax_document (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.mark_tax_document (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION finance.share_tax_document (uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.share_tax_document (uuid, uuid) TO authenticated;
+-- #endregion
+
+-- #region AML monitoring signals and the Safety Hold (00001240, Decision #529)
+-- The dials, the relation, the churn and hold checks answer about anyone at any clock, so no client role
+-- reaches them; they run inside finance.begin_payout and the escrow trigger. The trigger functions are
+-- reached only as triggers. The operator door: signed-in callers reach it, and it refuses anyone but
+-- security.is_admin() (42501), which /admin/ledger answers with a 404.
+REVOKE ALL ON FUNCTION finance.fn_aml_dial_int (text, integer) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_safety_hold_enabled () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_aml_round_trip_people (finance.escrows) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_aml_churn (uuid, uuid, bigint, text, timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_safety_hold (uuid, uuid, bigint, text, timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_aml_record_round_trip () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_aml_signals_append_only () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.read_aml_signals (integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.read_aml_signals (integer) TO authenticated;
 -- #endregion
 
 

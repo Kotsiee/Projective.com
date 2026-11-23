@@ -93,8 +93,8 @@ export const DisputeSettlementSchema = z.object({
 export type DisputeSettlement = z.infer<typeof DisputeSettlementSchema>;
 
 /**
- * One evidence file filed with a statement. Served by the files pipeline (`/api/files/object/:id`,
- * `fileObjectHref`), which `files.fn_can_read` opens to the dispute's parties and operators.
+ * One evidence file filed with a statement. Served by the media proxy (`/api/media/proxy/:id`,
+ * `mediaProxyHref`), which `files.fn_can_read` opens to the dispute's parties and operators.
  */
 export const DisputeEvidenceFileSchema = z.object({
 	id: uuid,

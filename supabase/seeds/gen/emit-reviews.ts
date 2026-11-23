@@ -16,13 +16,26 @@
  * `service_blueprint_id`; it is dated after its anchor completed and inside the 30-day window. A world
  * project's own reviews (`world.ts` PROJECTS) are emitted only for a completed project. Product
  * reviews wait for CK1 (`PRODUCT_REVIEWS_AWAITING_DELIVERY`).
+ *
+ * Decision #486: an engagement is reviewed both ways, double-blind. Every engagement review here is
+ * answered by its provider (`PROVIDER_REVIEWS_OF_CLIENTS`, the team's when a team sold it), and both
+ * are revealed at the later submit; a session review is revealed as it is written. Atlas Labs' past
+ * briefs (`WARNED_CLIENT`) closed their windows long ago, so their providers' low reviews are public
+ * and its Client Trust Score warns. The file ends by computing every client party's score through
+ * `reviews.fn_recompute_client_trust`, the score's one writer.
  */
 
 import { SERVICES } from "./corpus.ts";
 import { ENTITIES } from "./world.ts";
-import { LISTING_REVIEWS, type ListingReview, UNREVIEWED_ENGAGEMENTS } from "./reviews.ts";
+import {
+	LISTING_REVIEWS,
+	type ListingReview,
+	PROVIDER_REVIEWS_OF_CLIENTS,
+	UNREVIEWED_ENGAGEMENTS,
+	WARNED_CLIENT,
+} from "./reviews.ts";
 import { ago, HEADER, id, insert, insertAbsent, jsonb, q, slugFor, uuidFor } from "./sql.ts";
-import { party, persona, type Principal, type World } from "./resolve.ts";
+import { entity, party, persona, type Principal, type World } from "./resolve.ts";
 
 // #region Helpers
 /** A review is dated this many days after its anchor completed. */
@@ -64,6 +77,11 @@ function providerOf(owner: Principal): { type: "team" | "freelancer"; id: string
 		: { type: "freelancer", id: owner.accountUserId };
 }
 
+/** The table's comment floor, checked before the CHECK would refuse the seed. */
+function checkComment(what: string, comment: string): void {
+	if (comment.trim().length < 100) throw new Error(`reviews: ${what} is under 100 characters`);
+}
+
 function checkReview(listing: string, r: ListingReview, barred: Set<string>): void {
 	const [reviewer, , , comment, , reply] = r;
 	if (barred.has(reviewer)) {
@@ -84,7 +102,7 @@ export function emitReviews(world: World): string {
 	const out: string[] = [
 		HEADER(
 			"06_reviews.sql — reviews, each on the completed engagement or session seat that proves it",
-			"Decision #487: every review carries exactly one anchor and is dated inside its 30-day window. A listing's reviews rest on engagements and session seats minted here from the listing and reviewer keys; the review targets the provider and names the listing it was bought from.",
+			"Decision #487: every review carries exactly one anchor and is dated inside its 30-day window. A listing's reviews rest on engagements and session seats minted here from the listing and reviewer keys; the review targets the provider and names the listing it was bought from. Decision #486: each engagement review is answered by its provider and the pair revealed at the later submit; Atlas Labs' old briefs carry the low provider reviews that warn about it; every client party's Client Trust Score is computed at the end.",
 		),
 	];
 
@@ -175,6 +193,7 @@ export function emitReviews(world: World): string {
 			ago(created),
 			ago(doneDaysAgo),
 			ago(doneDaysAgo),
+			"NULL",
 		]);
 		pushHistory(key, projectId, owner.accountUserId, created, doneDaysAgo);
 		const stageId = uuidFor("stage", `${key}:s1`);
@@ -244,6 +263,7 @@ export function emitReviews(world: World): string {
 			ago(created),
 			ago(1),
 			ago(1),
+			"NULL",
 		]);
 		pushHistory(key, projectId, owner.accountUserId, created, null);
 		const stageId = uuidFor("stage", `${key}:s1`);
@@ -266,6 +286,8 @@ export function emitReviews(world: World): string {
 	// #endregion
 
 	// #region Listing reviews
+	/** Each client's count of provider reviews so far, so no client is answered twice in the same words. */
+	const answered = new Map<string, number>();
 	for (const s of SERVICES) {
 		const list = LISTING_REVIEWS[s.key] ?? [];
 		if (!list.length) continue;
@@ -327,6 +349,38 @@ export function emitReviews(world: World): string {
 			} else {
 				projectId = engagement(s, reviewer, done);
 			}
+			// The provider answers an engagement review a day or three later (never before the reply it
+			// may carry), and that second submit reveals both.
+			let revealed = daysAgo;
+			if (projectId) {
+				const n = answered.get(reviewer) ?? 0;
+				answered.set(reviewer, n + 1);
+				const slot = (reviewer.length + n) % PROVIDER_REVIEWS_OF_CLIENTS.length;
+				const [backRating, backTitle, backComment] = PROVIDER_REVIEWS_OF_CLIENTS[slot];
+				checkComment(`the provider's review of ${reviewer} on ${s.key}`, backComment);
+				revealed = Math.max(reply?.daysAgo ?? 0.25, daysAgo - 1 - (n % 3));
+				reviews.push([
+					id(uuidFor("client_review", `${s.key}:${reviewer}`)),
+					id(reviewerId(world, reviewer)),
+					"'user'",
+					id(owner.accountUserId),
+					id(projectId),
+					"NULL",
+					"NULL",
+					"NULL",
+					ago(done - WINDOW_DAYS),
+					backRating.toFixed(2),
+					q(backTitle),
+					q(backComment),
+					"NULL",
+					"NULL",
+					"NULL",
+					ago(revealed),
+					ago(revealed),
+					id(provider.type === "team" ? provider.id : null),
+					ago(revealed),
+				]);
+			}
 			reviews.push([
 				id(uuidFor("listing_review", `${s.key}:${reviewer}`)),
 				id(provider.id),
@@ -345,6 +399,8 @@ export function emitReviews(world: World): string {
 				reply ? ago(reply.daysAgo) : "NULL",
 				ago(daysAgo),
 				ago(reply ? reply.daysAgo : daysAgo),
+				"NULL",
+				ago(revealed),
 			]);
 		}
 	}
@@ -398,6 +454,104 @@ export function emitReviews(world: World): string {
 				"NULL",
 				ago(rv.daysAgo),
 				ago(rv.daysAgo),
+				"NULL",
+				// Unanswered on an engagement: blind until its window closes (Decision #486 (A)).
+				done > WINDOW_DAYS ? ago(done - WINDOW_DAYS) : "NULL",
+			]);
+		}
+	}
+	// #endregion
+
+	// #region A warned client's past briefs (Decision #486 (C))
+	{
+		const business = entity(world, WARNED_CLIENT.business);
+		const owner = persona(world, WARNED_CLIENT.owner).userId;
+		for (const [who, title, done, rating, heading, comment] of WARNED_CLIENT.engagements) {
+			const provider = persona(world, who).userId;
+			checkComment(`${who}'s review of ${WARNED_CLIENT.business}`, comment);
+			if (done <= WINDOW_DAYS) {
+				throw new Error(
+					`reviews: ${WARNED_CLIENT.business}'s brief by ${who} must be past its window`,
+				);
+			}
+			const key = `warned-client:${WARNED_CLIENT.business}:${who}`;
+			const projectId = uuidFor("project", key);
+			const created = done + 30;
+			projects.push([
+				id(projectId),
+				id(owner),
+				"NULL",
+				"NULL",
+				q(title),
+				q(slugFor("prj", key)),
+				jsonb({ text: title }),
+				q(title),
+				"'one_off'",
+				"'one_off'",
+				"'none'",
+				"'completed'",
+				"'unlisted'",
+				"'USD'",
+				"'fixed_price'",
+				"NULL",
+				ago(created),
+				ago(done),
+				ago(done),
+				id(business.entityId),
+			]);
+			pushHistory(key, projectId, owner, created, done);
+			const stageId = uuidFor("stage", `${key}:s1`);
+			stages.push([
+				id(stageId),
+				id(projectId),
+				q(title),
+				q(slugFor("stg", `${key}:s1`)),
+				"1",
+				"'paid'",
+				"300000",
+				"'Accepted and paid'",
+				ago(done),
+				ago(created),
+			]);
+			seats.push([
+				id(uuidFor("assignment", `${key}:s1`)),
+				id(stageId),
+				"'freelancer'",
+				id(provider),
+				"NULL",
+				id(owner),
+				"'completed'",
+				ago(done),
+				ago(created),
+			]);
+			participants.push([
+				id(uuidFor("participant", `${key}:${provider}`)),
+				id(projectId),
+				"'freelancer'",
+				id(provider),
+				"'assignee'",
+				ago(created),
+			]);
+			reviews.push([
+				id(uuidFor("client_review", key)),
+				id(business.entityId),
+				"'business'",
+				id(provider),
+				id(projectId),
+				"NULL",
+				"NULL",
+				"NULL",
+				ago(done - WINDOW_DAYS),
+				rating.toFixed(2),
+				q(heading),
+				q(comment),
+				"NULL",
+				"NULL",
+				"NULL",
+				ago(done - 2),
+				ago(done - 2),
+				"NULL",
+				ago(done - WINDOW_DAYS),
 			]);
 		}
 	}
@@ -427,6 +581,7 @@ export function emitReviews(world: World): string {
 				"created_at",
 				"updated_at",
 				"last_activity_at",
+				"client_business_id",
 			],
 			projects,
 		),
@@ -522,9 +677,25 @@ export function emitReviews(world: World): string {
 				"replied_at",
 				"created_at",
 				"updated_at",
+				"reviewer_team_id",
+				"revealed_at",
 			],
 			reviews,
 		),
+	);
+	out.push(
+		[
+			"-- Decision #486 (B): every client party's Client Trust Score, through its one writer.",
+			"DO $$",
+			"DECLARE t record;",
+			"BEGIN",
+			"    FOR t IN SELECT DISTINCT r.target_entity_type, r.target_entity_id FROM reviews.entity_reviews r",
+			"              WHERE r.is_visible AND r.target_entity_type IN ('user', 'business') LOOP",
+			"        PERFORM reviews.fn_recompute_client_trust(t.target_entity_type, t.target_entity_id);",
+			"    END LOOP;",
+			"END $$;",
+			"",
+		].join("\n"),
 	);
 	// #endregion
 

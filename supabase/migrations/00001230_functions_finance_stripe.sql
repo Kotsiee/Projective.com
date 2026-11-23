@@ -135,6 +135,8 @@ $$;
 --                  gates, and the amount is that ticket's own price (else its stage's).
 --                  With `p_revision_id` (Decision #199) it pays for ONE paid revision round:
 --                  projects.fund_paid_revision's gates, and the amount is the round's snapshotted price.
+--                  Once its gates pass it asks for the Escrow Terms, as every client funding door does
+--                  (LG3, `p_legal`), so the settlement that funds it later is never the one that asks.
 --
 -- Idempotent on the caller's attempt key (finance.idempotency_keys, scope `card_payment:<uid>`): the
 -- same key and request replays the recorded attempt; the same key with a different request refuses.
@@ -148,7 +150,8 @@ CREATE OR REPLACE FUNCTION finance.begin_card_payment(
     p_idempotency_key text,
     p_ticket_id uuid DEFAULT NULL,
     p_revision_id uuid DEFAULT NULL,
-    p_fx_quote_id uuid DEFAULT NULL
+    p_fx_quote_id uuid DEFAULT NULL,
+    p_legal jsonb DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -457,6 +460,7 @@ BEGIN
                 false
             );
         END IF;
+        PERFORM org.fn_require_legal_acceptance('escrow-terms', p_legal);
     END IF;
 
     INSERT INTO finance.inbound_payments (

@@ -43,6 +43,14 @@ CREATE TRIGGER trg_update_ratings
 AFTER INSERT OR UPDATE OR DELETE ON reviews.entity_reviews
 FOR EACH ROW EXECUTE FUNCTION reviews.recalculate_entity_rating();
 
+-- #region A dispute's ruling moves the client's trust score (Decision #486 (B))
+-- A `resolved_release` ruling on a dispute the client side opened costs its Client Trust Score 0.25.
+-- Reputation math on a reputation table, fired from the ruling; it moves no money.
+CREATE TRIGGER trg_disputes_client_trust
+AFTER UPDATE OF status ON finance.disputes
+FOR EACH ROW EXECUTE FUNCTION reviews.trg_dispute_client_trust();
+-- #endregion
+
 CREATE TRIGGER trg_update_project_counts
 AFTER INSERT OR UPDATE OF status OR DELETE ON projects.projects
 FOR EACH ROW EXECUTE FUNCTION projects.update_entity_project_counts();

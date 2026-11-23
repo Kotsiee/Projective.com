@@ -106,7 +106,7 @@ Deno.test("a bucket series draws every calendar bucket and converts each origin 
 			bucket: "2026-10-01",
 			currency: "EUR",
 			direction: "credit",
-			reason: "service_sale",
+			reason: "escrow_release",
 			total_cents: 3,
 			line_count: 1,
 		},
@@ -114,7 +114,7 @@ Deno.test("a bucket series draws every calendar bucket and converts each origin 
 			bucket: "2026-10-03",
 			currency: "GBP",
 			direction: "debit",
-			reason: "platform_fee",
+			reason: "fx_spread",
 			total_cents: 250,
 			line_count: 2,
 		},
@@ -134,26 +134,27 @@ Deno.test("a bucket series draws every calendar bucket and converts each origin 
 
 	const kinds = kindTotals(ctx, rows);
 	// Ranked by volume; a tie keeps the families' own order.
-	assertEquals(kinds.map((k) => k.kind), ["topup", "platform_fee", "service_sale", "product_sale"]);
+	assertEquals(kinds.map((k) => k.kind), [
+		"topup",
+		"platform_fee",
+		"escrow_release",
+		"product_sale",
+	]);
 	assertEquals(kinds.find((k) => k.kind === "platform_fee")?.lines, 2);
 });
 
 Deno.test("search words reach reason labels and the viewer's own accounts; families map to codes", () => {
 	assert(reasonsMatching("release").includes("escrow_release"));
-	assert(reasonsMatching("PLATFORM").includes("platform_fee"));
+	assert(reasonsMatching("TEAM").includes("team_split"));
 	assertEquals(reasonsMatching("   "), []);
 	assertEquals(reasonsForKinds([]), null);
 	assertEquals(reasonsForKinds(["other"]), null);
-	assertEquals(reasonsForKinds(["platform_fee"]), [
-		"platform_fee",
-		"instant_payout_fee",
-		"fx_spread",
-	]);
+	assertEquals(reasonsForKinds(["platform_fee"]), ["fx_spread"]);
 	assertEquals(ledgerKindOf("fx_conversion"), "transfer");
 	assertEquals(ledgerKindOf("fx_spread"), "platform_fee");
 	assert(reasonsMatching("conversion").includes("fx_conversion"));
 	assert(reasonsMatching("margin").includes("fx_spread"));
-	assertEquals(ledgerKindOf("service_sale_vault_retention"), "service_sale");
+	assertEquals(ledgerKindOf("invoice_payment"), "order_payment");
 	assertEquals(ledgerKindOf("something_new"), "other");
 	const accounts = [
 		{ owner: { name: "Atlas Labs" }, rows: [{ id: "w1" }, { id: "w2" }] },

@@ -7,6 +7,7 @@ import {
 	MilestoneSchema,
 	normaliseSessionPlan,
 	ScopeItem,
+	SessionPricingUnit,
 	TeamRoleSchema,
 } from "@projective/types/catalogue";
 import { parseSessionPlan, parseStoredList } from "@projective/types/explore";
@@ -34,6 +35,8 @@ export interface OfferBlueprintColumns {
 	session_count: number | null;
 	session_plan: unknown;
 	session_rolling: boolean | null;
+	/** Optional so a row read before the column existed reads as per session, the column default. */
+	pricing_unit?: string | null;
 	meeting_provider: string | null;
 	max_seats_per_cohort: number | null;
 	allow_continuous_enrollment: boolean | null;
@@ -61,7 +64,9 @@ function scopeOf(raw: string[] | null): string[] {
 
 function sessionFields(bp: OfferBlueprintColumns) {
 	const provider = MeetingProvider.safeParse(bp.meeting_provider);
+	const unit = SessionPricingUnit.safeParse(bp.pricing_unit);
 	return {
+		pricingUnit: unit.success ? unit.data : "per_session" as const,
 		minutes: bp.session_minutes && bp.session_minutes >= 5
 			? Math.min(600, bp.session_minutes)
 			: DEFAULT_SESSION_MINUTES,
@@ -158,6 +163,7 @@ export function offerColumns(offer: ListingOffer, current: FormArchetype): Recor
 				session_count: rolling ? 1 : offer.count,
 				session_plan: normaliseSessionPlan({ ...offer, rolling }),
 				session_rolling: rolling,
+				...(offer.pricingUnit ? { pricing_unit: offer.pricingUnit } : {}),
 				meeting_provider: offer.meetingProvider,
 			};
 			if (offer.archetype === "cohort") {

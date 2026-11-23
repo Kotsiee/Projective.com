@@ -12,9 +12,16 @@ import { currency, minorUnits, minorUnitsNonNeg, timestamp, uuid } from "./commo
 // #region Sections
 /**
  * The `/admin/ledger` sections, in page order. Each is one `LedgerHealthService` read; `alerts` is
- * MR4's (Decision #461), and MR3, MR5 and MR8b each add theirs here (FINANCE_BUILD_PROMPTS.md §0).
+ * MR4's (Decision #461), `aml_signals` LG7's (Decision #529), and MR3, MR5 and MR8b each add theirs
+ * here (FINANCE_BUILD_PROMPTS.md §0).
  */
-export const LedgerSectionId = z.enum(["conservation", "drift", "escrow_age", "alerts"]);
+export const LedgerSectionId = z.enum([
+	"conservation",
+	"drift",
+	"escrow_age",
+	"alerts",
+	"aml_signals",
+]);
 export type LedgerSectionId = z.infer<typeof LedgerSectionId>;
 // #endregion
 
@@ -42,6 +49,8 @@ export const ConservationCurrencySchema = z.object({
 	feesFxMinor: minorUnitsNonNeg,
 	lossesChargebacksMinor: minorUnitsNonNeg,
 	lossesCardRefundsMinor: minorUnitsNonNeg,
+	/** The platform-funded share of promo codes (`losses_promos_minor`, Decision #485 (a)). */
+	lossesPromosMinor: minorUnitsNonNeg,
 	externalMinor: minorUnits,
 	accountedMinor: minorUnits,
 	imbalanceMinor: minorUnits,

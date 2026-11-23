@@ -20,7 +20,8 @@ import type { OrderHistoryEntry, OrderHistoryPage, OrderStatus } from "../types/
  *
  * **A history row reprints the receipt.** Its figures are server-formatted `MoneyView`s through
  * {@link Amount}; its facts are MetaLine text. Each line links to its home (the purchases view, the
- * session's workspace, the project), and each order opens its full receipt on the confirmation view.
+ * session's workspace, the project) and a delivered product to its review (`reviewHref`, the review
+ * dialog on the purchases view), and each order opens its full receipt on the confirmation view.
  */
 
 // #region Props
@@ -154,11 +155,28 @@ function OrderEntry({ entry, owner }: { entry: OrderHistoryEntry; owner: string 
 								<div class="cko-orders__linebody">
 									<p class="cko-orders__linetitle">{line.title}</p>
 									<MetaLine size="xs" items={[itemKindMeta(line.itemType).label]} />
-									{line.home
+									{line.home || line.reviewHref
 										? (
-											<a class="cko-orders__home" href={line.home.href}>
-												{line.home.label}
-											</a>
+											<span class="cko-orders__links">
+												{line.home
+													? (
+														<a class="cko-orders__home" href={line.home.href}>
+															{line.home.label}
+														</a>
+													)
+													: null}
+												{line.reviewHref
+													? (
+														<a
+															class="cko-orders__review"
+															href={line.reviewHref}
+															aria-label={`Review ${line.title}`}
+														>
+															Review
+														</a>
+													)
+													: null}
+											</span>
 										)
 										: null}
 								</div>

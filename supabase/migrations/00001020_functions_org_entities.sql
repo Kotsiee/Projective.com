@@ -3965,7 +3965,7 @@ BEGIN
                     'pending_minor', COALESCE((SELECT sum(GREATEST(pr.amount_cents - pr.recovered_cents, 0))
                         FROM finance.pending_releases pr WHERE pr.wallet_id = w.id AND pr.state = 'pending'), 0),
                     'committed_minor', COALESCE((SELECT sum(e.amount_cents) FROM finance.escrows e
-                        WHERE e.payer_business_id = v_e.id AND e.status IN ('held', 'funded', 'reserved')
+                        WHERE e.payer_business_id = v_e.id AND e.status IN ('held', 'reserved')
                           AND upper(e.currency) = upper(w.currency)), 0),
                     'awaiting_approval_minor', COALESCE((SELECT sum(sa.amount_cents) FROM finance.spend_approvals sa
                         WHERE sa.wallet_id = w.id AND sa.status = 'pending'::finance.approval_status

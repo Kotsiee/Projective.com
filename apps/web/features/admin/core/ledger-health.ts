@@ -1,5 +1,9 @@
 import type { AlertDeliveryView, AlertsRead } from "@projective/types/ops";
 import type {
+	AmlRoundTripRelation,
+	AmlSignalKind,
+	AmlSignalsRead,
+	AmlSignalView,
 	ConservationCurrency,
 	EscrowAge,
 	EscrowAgeKind,
@@ -23,6 +27,7 @@ export type LedgerSectionResult =
 	| { id: "drift"; ok: true; data: LedgerDrift }
 	| { id: "escrow_age"; ok: true; data: EscrowAge }
 	| { id: "alerts"; ok: true; data: AlertsRead }
+	| { id: "aml_signals"; ok: true; data: AmlSignalsRead }
 	| { id: LedgerSectionId; ok: false; message: string };
 
 /** Each section's heading and the one sentence that says what it is for. */
@@ -46,6 +51,11 @@ export const LEDGER_SECTION_COPY: Record<LedgerSectionId, { title: string; lede:
 		title: "Alerts",
 		lede:
 			"Every money error, a job that failed or stopped running, a webhook that keeps failing, and a nightly check gone silent reach a person within minutes: by webhook, by email and as a notice to every operator. The same problem alerts once per window.",
+	},
+	aml_signals: {
+		title: "AML signals",
+		lede:
+			"Patterns the money doors recorded for the AML-ready posture: one person on both sides of an escrow, card money withdrawn soon after it came in, and withdrawals the Safety Hold refused. A signal is a fact to read, not a finding about anyone; the person never sees it, and there is nothing to act on here.",
 	},
 };
 // #endregion
@@ -113,6 +123,7 @@ export function conservationGroups(row: ConservationCurrency): ConservationGroup
 		group("Losses", [
 			{ label: "unrecovered chargebacks", minor: row.lossesChargebacksMinor },
 			{ label: "unrecovered refunds", minor: row.lossesCardRefundsMinor },
+			{ label: "platform promo codes", minor: row.lossesPromosMinor },
 		]),
 	];
 }
@@ -168,6 +179,71 @@ export function alertChannelLabel(channel: AlertDeliveryView["channel"]): string
 		case "in_app":
 			return "Operator notice";
 	}
+}
+// #endregion
+
+// #region AML signals
+/** What each kind of signal is, for its row. */
+export const AML_KIND_LABEL: Record<AmlSignalKind, string> = {
+	round_trip: "Both sides of an escrow",
+	rapid_churn: "Card money withdrawn soon after",
+	safety_hold: "Withdrawal held",
+};
+
+/** How the person is on both sides, in a reader's words. */
+export const AML_RELATION_LABEL: Record<AmlRoundTripRelation, string> = {
+	same_account: "the same account pays and is paid",
+	business_seat: "the paid freelancer holds a seat on the paying business",
+	team_seat: "the paying person holds a seat on the paid team",
+	business_and_team_seat: "one person holds a seat on the paying business and the paid team",
+};
+
+/** A Safety Hold trigger, in a reader's words. */
+const HOLD_TRIGGER_LABEL: Record<string, string> = {
+	sign_in_change: "sign-in change",
+	rapid_churn: "rapid churn",
+	round_trip: "both sides of an escrow",
+	new_account: "new account",
+};
+
+function shortDateTime(iso: string): string {
+	return new Date(iso).toLocaleString("en-GB", {
+		day: "numeric",
+		month: "short",
+		hour: "2-digit",
+		minute: "2-digit",
+		timeZone: "UTC",
+	}) + " UTC";
+}
+
+/**
+ * The one line of facts under a signal's kind: when a round trip was seen and how; how much card money
+ * came in before a churn, in how many payments and inside what window; when a hold ends and what held
+ * it. Figures are the minor units the island prints with `MoneyView`; this words the rest. Pure; pinned
+ * by `ledger-health.test.ts`.
+ */
+export function amlFactsText(signal: AmlSignalView): string {
+	switch (signal.kind) {
+		case "round_trip":
+			return `${signal.facts.event === "funding" ? "At funding" : "At release"}: ${
+				AML_RELATION_LABEL[signal.facts.relation]
+			}`;
+		case "rapid_churn":
+			return `${signal.facts.payments} card ${
+				signal.facts.payments === 1 ? "payment" : "payments"
+			} inside ${signal.facts.windowHours} h, the newest ${shortDateTime(signal.facts.lastInAt)}`;
+		case "safety_hold":
+			return `Held until ${shortDateTime(signal.facts.heldUntil)}: ${
+				signal.facts.triggers.map((t) => HOLD_TRIGGER_LABEL[t] ?? t).join(", ")
+			}`;
+	}
+}
+
+/** Who a signal is about: their handle, or a short id when the account has none (erased). */
+export function amlSubject(
+	signal: Pick<AmlSignalView, "subjectUsername" | "subjectUserId">,
+): string {
+	return signal.subjectUsername ? `@${signal.subjectUsername}` : shortId(signal.subjectUserId);
 }
 // #endregion
 

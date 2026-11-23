@@ -16,7 +16,8 @@ Deno.test("tunnelUrl: finds the assigned host, never cloudflared's own API host"
 
 Deno.test("storageAllowed: only the browser-facing storage routes, with their methods", () => {
 	assert(storageAllowed("GET", "/storage/v1/object/public/avatars/u/a.png"));
-	assert(storageAllowed("HEAD", "/storage/v1/object/sign/project/p/brief.pdf"));
+	// No signed read reaches a browser (ASSET_DELIVERY §5.3), so the tunnel forwards none.
+	assertFalse(storageAllowed("GET", "/storage/v1/object/sign/project/p/brief.pdf"));
 	assert(storageAllowed("PUT", "/storage/v1/object/upload/sign/project/p/new.png"));
 	assert(storageAllowed("OPTIONS", "/storage/v1/object/upload/sign/project/p/new.png"));
 

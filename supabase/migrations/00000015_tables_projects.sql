@@ -88,7 +88,7 @@ slug text NOT NULL,
 -- transition. `public` by default because somebody creating a project to hire against is asking to
 -- be found, which is safe to default precisely because it is intent and not state.
 publish_visibility visibility NOT NULL DEFAULT 'public'::visibility,
-  currency text NOT NULL DEFAULT 'USD'::text,
+  currency text NOT NULL DEFAULT 'USD'::text CHECK (currency ~ '^[A-Z]{3}$'),
   -- This project's auto-funding, overriding its client business's `auto_fund_mode`; NULL inherits it.
   -- Meaningless (and ignored) on a project with no client business: an individual is never auto-funded.
   auto_fund_override text CHECK (auto_fund_override IS NULL OR auto_fund_override IN ('off', 'add_to_basket', 'from_wallet')),
@@ -553,7 +553,7 @@ CREATE TABLE projects.maintenance_contracts (
   freelancer_profile_id uuid NOT NULL,
   business_profile_id uuid NOT NULL,
   amount_cents bigint NOT NULL CHECK (amount_cents >= 0),
-  currency text NOT NULL,
+  currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   billing_interval text NOT NULL,
   status text NOT NULL DEFAULT 'active'::text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -781,7 +781,7 @@ CREATE TABLE projects.stage_budget_rules (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     project_stage_id uuid NOT NULL,
     rule_type text NOT NULL,
-    amount_currency text NOT NULL,
+    amount_currency text NOT NULL CHECK (amount_currency ~ '^[A-Z]{3}$'),
     amount_cents bigint NOT NULL CHECK (amount_cents >= 0),
     notes text,
     CONSTRAINT stage_budget_rules_pkey PRIMARY KEY (id)

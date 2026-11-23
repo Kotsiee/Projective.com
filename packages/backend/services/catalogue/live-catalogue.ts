@@ -96,7 +96,7 @@ export interface CatalogueProductRow extends OfferProductColumns {
 /** The columns a {@link CatalogueListingRow} is read with: the row schema's keys, so the two cannot drift. */
 export const LISTING_COLUMNS = LISTING_ROW_COLUMNS;
 const BLUEPRINT_COLUMNS =
-	"id, slug, rating_average, rating_count, delivery_model, intake_fields, stage_template, allow_tiered_intensity, team_roles, deliverables, turnaround_days, session_minutes, session_count, session_plan, session_rolling, meeting_provider, max_seats_per_cohort, allow_continuous_enrollment, availability_preset_id";
+	"id, slug, rating_average, rating_count, delivery_model, intake_fields, stage_template, allow_tiered_intensity, team_roles, deliverables, turnaround_days, session_minutes, session_count, session_plan, session_rolling, pricing_unit, meeting_provider, max_seats_per_cohort, allow_continuous_enrollment, availability_preset_id";
 const PRODUCT_COLUMNS =
 	"id, slug, rating_average, rating_count, span, format, licence, attribution_required, file_manifest";
 
@@ -246,6 +246,8 @@ export function projectDetail(input: DetailInputs): ListingDetail {
 			pricing,
 			currency: l.currency,
 			tieredIntensity: offer.archetype === "pipeline" && offer.allowTieredIntensity,
+			perHour: (offer.archetype === "session" || offer.archetype === "cohort") &&
+				offer.pricingUnit === "per_hour",
 		}),
 		metrics: input.metrics,
 		updatedAt: new Date(l.updated_at).toISOString(),

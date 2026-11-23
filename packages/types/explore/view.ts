@@ -465,11 +465,14 @@ export type ServiceRole = z.infer<typeof ServiceRoleSchema>;
  * One sitting of a fixed-count Session or Group Session as the listing describes it — the session
  * plan the seller wrote (`service_blueprints.session_plan`), numbered from 1. A sitting the seller
  * did not describe carries blank strings rather than being left out, so the numbering holds.
+ * `minutes` is how long it runs: its own length on a listing sold by the hour (SC10), else the
+ * listing's.
  */
 export const SessionPlanItemSchema = z.object({
 	index: z.number().int().min(1).max(52),
 	title: z.string().max(80),
 	description: z.string().max(600),
+	minutes: z.number().int().min(5).max(600).optional(),
 });
 export type SessionPlanItem = z.infer<typeof SessionPlanItemSchema>;
 

@@ -71,6 +71,24 @@
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
+
+/* A delivered purchase's review: a text action, opening the dialog on this page (Decision #487 RV1). */
+.fh-purchases__review {
+	align-self: flex-start;
+	color: var(--primary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+}
+
+.fh-purchases__review:hover {
+	text-decoration: underline;
+}
+
+.fh-purchases__review:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
 /* #endregion */
 
 /* #region Files */

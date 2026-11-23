@@ -352,9 +352,25 @@ function gridInputFor(
 	const svc = view.service;
 	return {
 		sessionCount: format === "set_session" ? (svc?.sessionCount ?? 1) : 1,
-		durationMinutes: svc?.sessionMinutes ?? 60,
+		durationMinutes: bookingMinutesFor(svc, format),
 		seatsPerSession: format === "cohort" ? (cohort?.seats.remaining ?? 0) : null,
 	};
+}
+
+/**
+ * The length a booking's slots are cut at: its longest sitting. A listing sold by the hour may give
+ * its sittings lengths of their own (SC10), so cutting at the longest means any time offered fits
+ * every sitting the buyer may put there; `fn_book_session_slot` then books each at its own length.
+ */
+function bookingMinutesFor(
+	svc: EntityView["service"] | undefined,
+	format: ServiceBookingFormat,
+): number {
+	const base = svc?.sessionMinutes ?? 60;
+	const count = format === "set_session" ? (svc?.sessionCount ?? 1) : 1;
+	return Math.max(
+		...Array.from({ length: Math.max(1, count) }, (_, i) => svc?.sessionPlan?.[i]?.minutes ?? base),
+	);
 }
 
 /** The length of a call of the given flavour, from the provider's own settings. */
@@ -538,7 +554,7 @@ async function composeOffer(
 		seat,
 		draft,
 		sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
-		durationMinutes: view.service?.bookable ? (view.service.sessionMinutes ?? 60) : null,
+		durationMinutes: view.service?.bookable ? bookingMinutesFor(view.service, format) : null,
 		/*
 		 * Escrow is deliberately narrow. `PRODUCT_SPEC.md` locks escrow-at-checkout to SESSIONS: a
 		 * pipeline ticket escrows when the freelancer claims it, and a digital product has no

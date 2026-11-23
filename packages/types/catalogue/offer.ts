@@ -200,8 +200,22 @@ export const SESSION_DURATIONS = [15, 30, 45, 60, 90] as const;
 /** A session length in minutes: a preset, or a custom length of 5–600. */
 export const SessionMinutes = z.number().int().min(5).max(600);
 
+/**
+ * How a session listing is priced (`service_blueprints.pricing_unit`, SC10): each sitting at the
+ * listing's price, or the price read as an hourly rate and each sitting at its own length.
+ */
+export const SessionPricingUnit = z.enum(["per_session", "per_hour"]);
+export type SessionPricingUnit = z.infer<typeof SessionPricingUnit>;
+
+const LENGTHS_PRICED_PER_HOUR = {
+	message: "Sessions of different lengths are priced per hour.",
+	path: ["pricingUnit"],
+};
+
 const sessionFields = {
 	minutes: SessionMinutes,
+	/** Per session, or per hour (SC10). Absent reads as per session, the price every listing had before. */
+	pricingUnit: SessionPricingUnit.optional(),
 	/** Sittings in one booking. */
 	count: z.number().int().min(1).max(SESSION_PLAN_MAX),
 	/** The room provider; `null` uses the seller's connected default. */
@@ -221,7 +235,7 @@ export const SessionOfferSchema = z.object({
 	archetype: z.literal("session"),
 	...sessionFields,
 	rolling: z.boolean(),
-});
+}).refine(lengthsArePricedPerHour, LENGTHS_PRICED_PER_HOUR);
 export type SessionOffer = z.infer<typeof SessionOfferSchema>;
 
 /** A Group Session's offer. Seats per sitting are priced, so they live on `ListingPricing`. */
@@ -230,7 +244,7 @@ export const CohortListingOfferSchema = z.object({
 	...sessionFields,
 	maxSeatsPerCohort: z.number().int().min(1).max(500),
 	continuousEnrollment: z.boolean(),
-});
+}).refine(lengthsArePricedPerHour, LENGTHS_PRICED_PER_HOUR);
 export type CohortListingOffer = z.infer<typeof CohortListingOfferSchema>;
 
 /**
@@ -241,14 +255,65 @@ export function normaliseSessionPlan(
 	offer: Pick<SessionOffer | CohortListingOffer, "count" | "plan"> & { rolling?: boolean },
 ): BlueprintSessionPlanEntry[] {
 	if (offer.rolling) return [];
-	const plan = offer.plan.slice(0, offer.count).map((entry) => ({
+	const plan: BlueprintSessionPlanEntry[] = offer.plan.slice(0, offer.count).map((entry) => ({
 		title: entry.title.trim(),
 		description: entry.description.trim(),
+		...(entry.durationMinutes === undefined ? {} : { durationMinutes: entry.durationMinutes }),
 	}));
-	while (plan.length > 0 && !plan[plan.length - 1].title && !plan[plan.length - 1].description) {
+	while (plan.length > 0) {
+		const last = plan[plan.length - 1];
+		if (last.title || last.description || last.durationMinutes !== undefined) break;
 		plan.pop();
 	}
 	return plan;
+}
+
+/** Whether any of an offer's sittings has a length of its own (the /plan toggle's state). */
+export function hasVariableSessionLengths(
+	offer: { count: number; plan: readonly Pick<BlueprintSessionPlanEntry, "durationMinutes">[] },
+): boolean {
+	return offer.plan.slice(0, offer.count).some((entry) => entry.durationMinutes !== undefined);
+}
+
+function lengthsArePricedPerHour(
+	offer: { pricingUnit?: SessionPricingUnit; count: number; plan: BlueprintSessionPlanEntry[] },
+): boolean {
+	return offer.pricingUnit === "per_hour" || !hasVariableSessionLengths(offer);
+}
+
+/**
+ * The price of one sitting in minor units (SC10, mirrored exactly by `finance.fn_sitting_price`): per
+ * session, the listing's price; per hour, ⌊rate × minutes ÷ 60⌋, floored per sitting so a block's
+ * per-sitting escrows add up to its total.
+ */
+export function sittingPriceMinor(rate: number, unit: SessionPricingUnit, minutes: number): number {
+	return unit === "per_hour" ? Math.floor((rate * minutes) / 60) : rate;
+}
+
+/** Sitting `index`'s length (0-based): its plan entry's own, else the listing's (`finance.fn_sitting_minutes`). */
+export function sittingMinutes(
+	plan: readonly Pick<BlueprintSessionPlanEntry, "durationMinutes">[],
+	index: number,
+	fallback: number,
+): number {
+	return plan[index]?.durationMinutes ?? fallback;
+}
+
+/**
+ * Each of a listing's first `count` sittings at its own price (`finance.fn_sittings_price` is their
+ * sum): what a block holds per sitting, and, summed, what a block or a per-hour seat costs.
+ */
+export function sittingPricesMinor(
+	rate: number,
+	unit: SessionPricingUnit,
+	minutes: number,
+	plan: readonly Pick<BlueprintSessionPlanEntry, "durationMinutes">[],
+	count: number,
+): number[] {
+	return Array.from(
+		{ length: Math.max(1, count) },
+		(_, i) => sittingPriceMinor(rate, unit, sittingMinutes(plan, i, minutes)),
+	);
 }
 // #endregion
 

@@ -22,6 +22,8 @@ import { assert, assertEquals } from "@std/assert";
  * `file#function` (a door named by a variable, keyed by the function that calls it).
  */
 const ALLOWLIST: Readonly<Record<string, string>> = {
+	"fx-feed.ts#record_fx_rates":
+		"Service role: the daily FX feed records reference rates (finance.fx_rates) and moves no money. Only the FINANCE_CRON_SECRET cron reaches it.",
 	"fx-quotes.ts#quote_fx_conversion":
 		"A rate lock: writes one finance.fx_quotes row and moves no money. Only a funding door consumes it, and every one of those is behind the switch.",
 	"proposal-allowance.ts#get_proposal_allowance":

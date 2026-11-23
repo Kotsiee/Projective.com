@@ -47,9 +47,17 @@ WITH
 -- --- from 0216_reviews.sql ---
 
 -- Every visible review is public: a withdrawn or operator-hidden one is kept but read by no client,
--- signed in or not (Decision #487). Its author still sees their own through reviews.get_reviewables.
+-- signed in or not (Decision #487). A blind review, waiting on an engagement for the other side's
+-- (Decision #486 (A)), is read by its author alone, and by nobody else until it is revealed.
 CREATE POLICY "Visible reviews are public" ON reviews.entity_reviews FOR
-SELECT TO public USING (is_visible);
+SELECT TO public USING (
+    is_visible
+    OR (
+        reviewer_user_id = auth.uid ()
+        AND withdrawn_at IS NULL
+        AND hidden_at IS NULL
+    )
+);
 
 -- NO CLIENT WRITE POLICY, and no client write privilege either (00002500 / 00002520): a review moves
 -- a public rating (the definer trigger `reviews.recalculate_entity_rating` recomputes the target's
@@ -62,6 +70,16 @@ SELECT TO public USING (is_visible);
 -- The one-reminder ledger (00000019) is the reminder job's alone: RLS on with no policy, and no
 -- client privilege (00002520).
 ALTER TABLE reviews.review_reminders ENABLE ROW LEVEL SECURITY;
+
+-- The Client Trust Score (Decision #486 (B)) is public once it is shown, from 3 reviews; below that a
+-- reader sees no row. Its one writer is reviews.fn_recompute_client_trust.
+ALTER TABLE reviews.client_trust_scores ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Shown trust scores are public" ON reviews.client_trust_scores FOR
+SELECT TO public USING (review_count >= 3);
+
+-- The Informed Consent log (#486 (C)): RLS on with no policy and no client privilege. Its writer is
+-- reviews.acknowledge_client_trust; the proposal and hire doors read it as its owner.
+ALTER TABLE reviews.client_trust_consents ENABLE ROW LEVEL SECURITY;
 
 
 -- --- marketplace.promoted_placements: the paid-placement ledger ---

@@ -677,7 +677,20 @@ freelancer flag — so turning freelancer on or off can never strand a second ca
 
 Refusals are `42501` for the caller (`auth: sign in to edit availability`,
 `owner: you cannot edit this schedule`) and `22023` with a `<field>: <reason>` message for the
-input, like `org.save_profile`. Returns `{ok, schedule_id}`.
+input, like `org.save_profile`, and `PK403` `payout_not_ready:` when the save would switch paid calls
+on for a host who cannot be paid (below). Returns `{ok, schedule_id}`.
+
+**Paid calls need a payout-ready host** (Decision #337, ruling M4):
+`scheduling.trg_call_settings_paid_gate` (BEFORE INSERT / UPDATE OF `paid_enabled` on
+`scheduling.call_settings`, bound in `00001860`) runs `finance.fn_assert_payout_ready` whenever
+`paid_enabled` goes from off to on, or a row is born with it on: a person's schedule (`user`,
+`freelancer`) for that person, a team's for every shareholder. HINT `self` (the owner, linked to
+Settings → Verification) or `team`. It sits on the table, not in this function, because the "Manage
+call settings" policy lets the owner write the row directly too. Keeping paid calls on (a re-save, a
+new fee) and switching them off are never refused, and an `INSERT … ON CONFLICT DO UPDATE` — this
+function's upsert — is judged as the update it becomes: the trigger lets the proposed row pass when
+the stored one already has paid calls on. A business or enterprise schedule is not gated here; where
+its paid calls' money lands is SCH-WP6's. Paid requests stay refused (`paid_unavailable`) until then.
 
 The caller-side wrapper is `packages/backend/services/scheduling/live-owner-availability.ts`
 (`saveOwnerAvailability`). Two refusals happen before the database is asked: the Zod SSOT

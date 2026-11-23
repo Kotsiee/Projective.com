@@ -178,7 +178,16 @@
 	overflow-wrap: anywhere;
 }
 
-.cko-orders__home {
+/* A line's links: its home and, for a delivered product, its review (Decision #487 RV1). */
+.cko-orders__links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-4);
+	align-items: baseline;
+}
+
+.cko-orders__home,
+.cko-orders__review {
 	align-self: flex-start;
 	color: var(--primary);
 	font-size: var(--text-xs);
@@ -186,11 +195,13 @@
 	text-decoration: none;
 }
 
-.cko-orders__home:hover {
+.cko-orders__home:hover,
+.cko-orders__review:hover {
 	text-decoration: underline;
 }
 
-.cko-orders__home:focus-visible {
+.cko-orders__home:focus-visible,
+.cko-orders__review:focus-visible {
 	outline: none;
 	box-shadow: none;
 }

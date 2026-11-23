@@ -91,11 +91,21 @@ export function servicePriceParts(
 			unit: "ticket",
 		};
 	}
+	// A listing sold by the hour (SC10) quotes its hourly rate; per seat on a Group Session.
+	const hourly = item.sessionPricingUnit === "per_hour";
 	if (item.serviceType === "Session" && item.sessionPrice) {
-		return { from: { minor: minor(item.sessionPrice), currency }, to: null, unit: "session" };
+		return {
+			from: { minor: minor(item.sessionPrice), currency },
+			to: null,
+			unit: hourly ? "hour" : "session",
+		};
 	}
 	if (item.serviceType === "Group Session" && item.sessionPrice) {
-		return { from: { minor: minor(item.sessionPrice), currency }, to: null, unit: "seat" };
+		return {
+			from: { minor: minor(item.sessionPrice), currency },
+			to: null,
+			unit: hourly ? "hour per seat" : "seat",
+		};
 	}
 	if (typeof item.priceMinor === "number") {
 		return { from: { minor: item.priceMinor, currency }, to: null };
@@ -142,7 +152,8 @@ export interface ServiceStartingPrice {
  */
 export function serviceStartingPrice(item: ServiceItem): ServiceStartingPrice {
 	const parts = servicePriceParts(item);
-	const unit = SERVICE_UNITS[item.serviceType];
+	// The parts' own unit when they name one (`hour` for a listing sold by the hour), else the model's.
+	const unit = parts?.unit ?? SERVICE_UNITS[item.serviceType];
 	return {
 		amount: parts?.from ?? null,
 		fallback: item.price,

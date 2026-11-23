@@ -113,6 +113,12 @@ import { InlineNotice } from "@projective/ui/feedback";
 import { fundingRollup, previewFunding } from "../core/funding-ui.ts";
 import { FundStageDialog } from "@web/features/payments/components/FundStageDialog.tsx";
 import { PAYOUT_SETUP_ACTION, readPayoutGateDetails } from "@projective/types/finance";
+import {
+	type LegalAcceptanceRequired,
+	type LegalCommitStamp,
+	readLegalAcceptanceRequired,
+} from "@projective/types/legal";
+import { CommitAcceptanceDialog } from "@web/features/legal/components/CommitAcceptanceDialog.tsx";
 import { useSearchTarget } from "@features/shortcuts/hooks/useSearchTarget.ts";
 import { useNewTicketShortcut } from "../hooks/useTicketShortcuts.ts";
 
@@ -238,6 +244,9 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	const claimingId = useSignal<string | null>(null);
 	/** A claim the earning gate refused: the sentence and the viewer's own fix link. */
 	const claimGate = useSignal<{ message: string; href: string } | null>(null);
+	/** A first paid claim asked for the IP Transfer Deed (LG3): what the door asked, and for which card. */
+	const deedAsk = useSignal<LegalAcceptanceRequired | null>(null);
+	const claimAsked = useSignal<BoardCard | null>(null);
 	/** The Create stage popover a column menu's Add stage opens, and where it stands. */
 	const stageOpen = useSignal(false);
 	const stageAnchor = useSignal<StageAnchor | null>(null);
@@ -673,18 +682,29 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 * cannot set the assignee the escrow hold needs. Not optimistic: the claim takes an escrow hold, so
 	 * the card moves only when the server's claimed card comes back. A refusal is said in the server's
 	 * words; the earning gate's keeps its fix link on screen, and a needs-funding answer re-reads the
-	 * card, whose funding state the refused hold has just changed.
+	 * card, whose funding state the refused hold has just changed. A first paid claim is asked for the
+	 * IP Transfer Deed (LG3): the dialog's Accept claims again carrying the version it showed.
 	 */
-	async function claimTicket(card: BoardCard): Promise<void> {
+	async function claimTicket(card: BoardCard, legalAcceptance?: LegalCommitStamp): Promise<void> {
 		if (claimingId.value) return;
 		claimingId.value = card.id;
 		claimGate.value = null;
-		const res = await BoardService.claim({ projectId: props.projectId, ticketId: card.id });
+		const res = await BoardService.claim({
+			projectId: props.projectId,
+			ticketId: card.id,
+			legalAcceptance,
+		});
 		claimingId.value = null;
 		if (res.ok && res.data) {
 			const saved = res.data.card;
 			cards.value = cards.value.map((c) => (c.id === saved.id ? saved : c));
 			toast(res.message ?? "Ticket claimed.");
+			return;
+		}
+		const ask = readLegalAcceptanceRequired(res.details);
+		if (ask) {
+			claimAsked.value = card;
+			deedAsk.value = ask;
 			return;
 		}
 		const gate = readPayoutGateDetails(res.details);
@@ -1417,6 +1437,15 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 				: null}
 
 			<BuyNowModal host="body" />
+
+			<CommitAcceptanceDialog
+				request={deedAsk}
+				onAccept={(stamp) => {
+					const card = claimAsked.peek();
+					claimAsked.value = null;
+					if (card) void claimTicket(card, stamp);
+				}}
+			/>
 
 			{boardStageId && access.value.isClient
 				? (

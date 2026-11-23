@@ -126,6 +126,32 @@ export function purchasesHref(entitlementSlug?: string | null): string {
 		? `/files?source=purchases&entitlement=${encodeURIComponent(entitlementSlug)}`
 		: "/files?source=purchases";
 }
+
+/**
+ * The purchases view standing on one purchase with its review dialog open (`&review=`, Decision #487
+ * RV1). The order history and the purchases view link it, and an author's **Edit review** lands here
+ * (`reviews.get_review_actions` builds the same address).
+ */
+export function purchaseReviewHref(entitlementSlug: string): string {
+	return `${purchasesHref(entitlementSlug)}&review=${encodeURIComponent(entitlementSlug)}`;
+}
+
+/**
+ * The review link a purchase offers, or `null`: a person's own purchase, still active, delivered at
+ * least once (`first_delivered_at`). `reviews.submit_review` decides the rest. A business's purchase
+ * offers none: its member holding `purchase` may review it through the door, but a list cannot tell
+ * which members hold it, and a link that opens nothing is not offered.
+ */
+export function purchaseReviewLink(purchase: {
+	slug: string;
+	status: string;
+	firstDeliveredAt: string | null;
+	holderType: string;
+}): string | null {
+	return purchase.holderType === "user" && purchase.status === "active" && purchase.firstDeliveredAt
+		? purchaseReviewHref(purchase.slug)
+		: null;
+}
 // #endregion
 
 // #region Purchase DTOs
@@ -160,6 +186,8 @@ export const PurchaseSchema = z.object({
 	version: z.number().int().min(1).nullable(),
 	firstDeliveredAt: timestamptz.nullable(),
 	files: z.array(PurchaseFileSchema).max(24),
+	/** {@link purchaseReviewLink}: where its review is written, or `null` when none is offered. */
+	reviewHref: z.string().max(200).nullable(),
 });
 export type Purchase = z.infer<typeof PurchaseSchema>;
 

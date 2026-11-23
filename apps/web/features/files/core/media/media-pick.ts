@@ -1,8 +1,8 @@
 import {
 	type AssetItem,
 	type CropState,
-	fileObjectHref,
 	INITIAL_CROP,
+	mediaProxyHref,
 	type RenditionPurpose,
 } from "@projective/types/files";
 
@@ -111,7 +111,7 @@ export function candidateFromAsset(
 		id: asset.id,
 		name: asset.name,
 		kind: asset.kind,
-		src: asset.kind === "image" ? fileObjectHref(asset.id, { tier: "lg" }) : asset.url,
+		src: asset.kind === "image" ? mediaProxyHref(asset.id, { tier: "lg" }) : asset.url,
 		width: asset.width,
 		height: asset.height,
 		poster: asset.thumbnailUrl,

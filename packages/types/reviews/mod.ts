@@ -1,13 +1,14 @@
 /**
  * @projective/types/reviews — the Zod SSOT for `reviews.entity_reviews`, the doors that write it and
  * the two reads the review dialog and the review lists use (Decision #487; PRODUCT_SPEC §Reputation 3;
- * `documentation/database/reviews/`).
+ * `documentation/database/reviews/`), and the Client Trust Score with its warning (Decision #486).
  *
  * The database decides every rule: who may review what, the 30-day window, the one reply. These
  * schemas bound the request a route accepts and the rows a service maps, field for field.
  */
 
 import { z } from "zod";
+import { slugPattern } from "../slugs/slug.ts";
 
 // #region Constants
 /** How long an anchor stays reviewable after it completed (reviews.fn_review_window). */
@@ -51,6 +52,7 @@ export const EntityReviewRowSchema = z.object({
 	target_entity_type: ReviewTargetTypeSchema,
 	reviewer_user_id: z.string().uuid(),
 	reviewer_business_id: z.string().uuid().nullable(),
+	reviewer_team_id: z.string().uuid().nullable(),
 	project_id: z.string().uuid().nullable(),
 	stage_assignment_id: z.string().uuid().nullable(),
 	cohort_membership_id: z.string().uuid().nullable(),
@@ -66,6 +68,8 @@ export const EntityReviewRowSchema = z.object({
 	hidden_at: z.string().nullable(),
 	hidden_reason: z.string().max(500).nullable(),
 	hidden_by: z.string().uuid().nullable(),
+	/** NULL while an engagement review waits, blind, for the other side's (Decision #486 (A)). */
+	revealed_at: z.string().nullable(),
 	is_visible: z.boolean(),
 	reply_comment: z.string().max(REVIEW_REPLY_MAX).nullable(),
 	reply_user_id: z.string().uuid().nullable(),
@@ -133,6 +137,8 @@ export const ReviewableReviewSchema = z.object({
 	replied_at: z.string().nullable(),
 	window_closes_at: z.string(),
 	mine: z.boolean(),
+	/** False while it waits, blind, for the other side's review or the window's close. */
+	revealed: z.boolean(),
 	editable: z.boolean(),
 });
 export type ReviewableReview = z.infer<typeof ReviewableReviewSchema>;
@@ -197,4 +203,68 @@ export const ReviewReplySchema = z.object({
 	edited: z.boolean(),
 });
 export type ReviewReply = z.infer<typeof ReviewReplySchema>;
+// #endregion
+
+// #region Client Trust Score (Decision #486)
+/** The score's bars: shown from this many reviews, and a warning below this score. */
+export const CLIENT_TRUST_MIN_REVIEWS = 3;
+export const CLIENT_TRUST_WARN_BELOW = 3;
+
+/** One `reviews.client_trust_scores` row, column for column (00000019). */
+export const ClientTrustScoreRowSchema = z.object({
+	subject_type: z.enum(["user", "business"]),
+	subject_id: z.string().uuid(),
+	review_count: z.number().int().nonnegative(),
+	base: z.coerce.number().min(1).max(5),
+	lost_disputes: z.number().int().nonnegative(),
+	deduction: z.coerce.number().min(0).max(1.5),
+	score: z.coerce.number().min(1).max(5),
+	computed_at: z.string(),
+});
+export type ClientTrustScoreRow = z.infer<typeof ClientTrustScoreRowSchema>;
+
+/** A client party's score as a reader shows it: only from 3 reviews (reviews.fn_client_trust_shown). */
+export const ClientTrustShownSchema = z.object({
+	score: z.coerce.number(),
+	reviewCount: z.number().int(),
+	warned: z.boolean(),
+});
+export type ClientTrustShown = z.infer<typeof ClientTrustShownSchema>;
+
+/** Whether a shown score warns: below 3.00 with at least 3 reviews. */
+export function isClientTrustWarned(score: number, reviewCount: number): boolean {
+	return reviewCount >= CLIENT_TRUST_MIN_REVIEWS && score < CLIENT_TRUST_WARN_BELOW;
+}
+
+/** What reviews.get_client_trust_warning answers about one project's client. */
+export const ClientTrustWarningRowSchema = z.union([
+	z.object({ warned: z.literal(false) }),
+	z.object({
+		warned: z.literal(true),
+		score: z.coerce.number(),
+		review_count: z.number().int(),
+		reviews_href: z.string().nullable(),
+		acknowledged: z.boolean(),
+	}),
+]);
+export type ClientTrustWarningRow = z.infer<typeof ClientTrustWarningRowSchema>;
+
+/** The warning in the app's casing: what the Informed Consent dialog states before Apply or Accept. */
+export const ClientTrustWarningSchema = z.object({
+	warned: z.boolean(),
+	score: z.number().nullable(),
+	reviewCount: z.number().int().nullable(),
+	reviewsHref: z.string().nullable(),
+	acknowledged: z.boolean(),
+});
+export type ClientTrustWarning = z.infer<typeof ClientTrustWarningSchema>;
+
+/** `GET /api/reviews/client-trust?project=` and `POST` (acknowledge): the project's opaque slug. */
+export const ClientTrustQuerySchema = z.object({
+	project: z.string().regex(slugPattern("project")),
+});
+export type ClientTrustQuery = z.infer<typeof ClientTrustQuerySchema>;
+
+/** The SQLSTATE a proposal or hire acceptance raises before the consent (Decision #486 (C)). */
+export const CLIENT_TRUST_CONSENT_SQLSTATE = "PT428";
 // #endregion

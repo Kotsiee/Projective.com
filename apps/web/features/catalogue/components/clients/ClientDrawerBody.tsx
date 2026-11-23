@@ -19,6 +19,7 @@ import {
 	ACTION_LABELS,
 	type ClientReadScope,
 	ENGAGEMENT_LABELS,
+	ENTITY_KIND_LABELS,
 	HANDOFF_LABELS,
 	LANE_LABELS,
 	nextEventAt,
@@ -61,7 +62,9 @@ function when(at: string | number, hour12: boolean): string {
  * reschedule rounds waiting on either side with the calendar's own propose and accept controls.
  *
  * The thread is the pair's one conversation (a buyer's inquiry IS that thread); before either party
- * has written it is addressed as `dm-<handle>`, which the first send mints.
+ * has written it is addressed as `dm-<handle>`, which the first send mints. A team or business buyer
+ * is written to through its owner (`messageTo`), and quotes, which are person-to-person, are not
+ * offered on it.
  */
 export function ClientDrawerBody(props: ClientDrawerBodyProps): JSX.Element {
 	const detail = useSignal<ClientDetail | null>(null);
@@ -143,6 +146,9 @@ export function ClientDrawerBody(props: ClientDrawerBodyProps): JSX.Element {
 			<div class="cat-cdrawer__id">
 				<h2 class="cat-cdrawer__name" id={id("name")}>{data?.client.name ?? handle}</h2>
 				<p class="cat-cdrawer__meta">
+					{data?.client.entityKind && (
+						<span class="cat-cdrawer__meta-part">{ENTITY_KIND_LABELS[data.client.entityKind]}</span>
+					)}
 					<span class="cat-cdrawer__meta-part">{handle}</span>
 					{data && <span class="cat-cdrawer__meta-part">{LANE_LABELS[data.lane]}</span>}
 					{data && <span class="cat-cdrawer__meta-part cat-cdrawer__gross">{data.grossLabel}</span>}
@@ -184,17 +190,21 @@ export function ClientDrawerBody(props: ClientDrawerBodyProps): JSX.Element {
 		);
 	}
 
-	const conversationId = data.threadRef ?? dmConversationId(handle);
-	const chat: PopoutState = {
-		scope: "conversation",
-		projectId: conversationId,
-		channelId: conversationId,
-		conversationId,
-		title: data.client.name,
-		href: conversationHref(conversationId),
-		source: "page",
-		avatar: data.client.avatar || null,
-	};
+	const entity = data.client.entityKind;
+	const recipient = entity ? data.client.messageTo : { handle, name: data.client.name };
+	const conversationId = data.threadRef ?? (recipient ? dmConversationId(recipient.handle) : null);
+	const chat: PopoutState | null = conversationId && recipient
+		? {
+			scope: "conversation",
+			projectId: conversationId,
+			channelId: conversationId,
+			conversationId,
+			title: recipient.name,
+			href: conversationHref(conversationId),
+			source: "page",
+			avatar: entity ? null : data.client.avatar || null,
+		}
+		: null;
 	const next = nextEventAt(data.engagements);
 
 	return (
@@ -210,26 +220,39 @@ export function ClientDrawerBody(props: ClientDrawerBodyProps): JSX.Element {
 				</ul>
 			</section>
 
-			<QuotePanel
-				handle={handle}
-				only="host"
-				idBase={`cat-cdrawer-${props.idBase}`}
-				heading="Quotes"
-				sectionClass="cat-cdrawer__sec"
-				headingClass="cat-cdrawer__sec-head"
-				onChanged={() => pipelineRevision.value++}
-				issuer={{
-					buyerName: handle,
-					preferListing: "listing" in props.scope ? props.scope.listing : undefined,
-				}}
-			/>
+			{!entity && (
+				<QuotePanel
+					handle={handle}
+					only="host"
+					idBase={`cat-cdrawer-${props.idBase}`}
+					heading="Quotes"
+					sectionClass="cat-cdrawer__sec"
+					headingClass="cat-cdrawer__sec-head"
+					onChanged={() => pipelineRevision.value++}
+					issuer={{
+						buyerName: handle,
+						preferListing: "listing" in props.scope ? props.scope.listing : undefined,
+					}}
+				/>
+			)}
 
 			<section class="cat-cdrawer__sec" aria-labelledby={id("chat")}>
 				<h3 class="cat-cdrawer__sec-head" id={id("chat")}>Conversation</h3>
-				<div class="cat-cdrawer__thread">
-					<PopoutChat key={conversationId} state={chat} />
-				</div>
-				<a class="cat-cdrawer__link" href={chat.href}>Open in Messages</a>
+				{entity && (
+					<p class="cat-cdrawer__text">
+						{recipient
+							? `Messages reach ${recipient.name} (${recipient.handle}), who owns this ${entity}.`
+							: `This ${entity} names no one to message.`}
+					</p>
+				)}
+				{chat && (
+					<>
+						<div class="cat-cdrawer__thread">
+							<PopoutChat key={conversationId} state={chat} />
+						</div>
+						<a class="cat-cdrawer__link" href={chat.href}>Open in Messages</a>
+					</>
+				)}
 			</section>
 
 			<section class="cat-cdrawer__sec" aria-labelledby={id("sched")}>

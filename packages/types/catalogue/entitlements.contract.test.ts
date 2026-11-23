@@ -14,6 +14,7 @@ import {
 	EntitlementStatus,
 	ProductEntitlementRowSchema,
 	ProductVersionRowSchema,
+	purchaseReviewLink,
 	purchasesHref,
 } from "./entitlements.ts";
 
@@ -81,5 +82,22 @@ Deno.test("a download address encodes each segment and names no storage location
 		purchasesHref("ent-23456789ab"),
 		"/files?source=purchases&entitlement=ent-23456789ab",
 	);
+});
+
+Deno.test("a purchase offers its review only to a person, while active and once delivered", () => {
+	const base = {
+		slug: "ent-23456789ab",
+		status: "active",
+		firstDeliveredAt: "2026-11-20T10:00:00Z",
+		holderType: "user",
+	};
+	assertEquals(
+		purchaseReviewLink(base),
+		"/files?source=purchases&entitlement=ent-23456789ab&review=ent-23456789ab",
+	);
+	assertEquals(purchaseReviewLink({ ...base, firstDeliveredAt: null }), null);
+	assertEquals(purchaseReviewLink({ ...base, status: "refunded" }), null);
+	assertEquals(purchaseReviewLink({ ...base, status: "revoked" }), null);
+	assertEquals(purchaseReviewLink({ ...base, holderType: "business" }), null);
 });
 // #endregion

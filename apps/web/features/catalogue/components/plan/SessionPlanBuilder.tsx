@@ -6,15 +6,25 @@ import { DndContext, DropIndicator, useSortable } from "@projective/ui/dnd";
 import {
 	Button,
 	InputText,
+	NumberInput,
 	Select,
 	SelectButton,
 	Textarea,
 	TimeTumbler,
+	ToggleSwitch,
 } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { type BlueprintSessionPlanEntry, SESSION_PLAN_MAX } from "@projective/types/explore";
-import { SUB_PAGE_SECTION, workspaceHref } from "@projective/types/catalogue";
+import {
+	type BlueprintSessionPlanEntry,
+	SESSION_PLAN_MAX,
+	SittingMinutes,
+} from "@projective/types/explore";
+import {
+	hasVariableSessionLengths,
+	SUB_PAGE_SECTION,
+	workspaceHref,
+} from "@projective/types/catalogue";
 import {
 	type GroupScheduleMode,
 	GroupScheduleModeSchema,
@@ -40,13 +50,19 @@ import {
 	withTemplate,
 	withTemplateMoved,
 	withTemplateRemoved,
+	withVariableLengths,
 } from "../../core/plan-model.ts";
 import { cohorts, loadCohorts, saveSchedule, scheduleError } from "../../core/cohort-store.ts";
 import { useGatedDraft } from "../../hooks/useGatedDraft.ts";
 import { SubPageHead } from "../subpage/SubPageHead.tsx";
+import { FieldHead } from "../edit/FieldHead.tsx";
 
 const HEADING_ID = "cat-plan-h";
 const SUMMARY_ID = "cat-plan-summary";
+const LENGTHS_HINT_ID = "cat-plan-lengths-hint";
+const SITTING_MIN = SittingMinutes.minValue ?? 15;
+const SITTING_MAX = SittingMinutes.maxValue ?? 600;
+const SITTING_STEP = 5;
 const MODE_HINT_ID = "cat-plan-mode-hint";
 
 const MODE_OPTIONS: { label: string; value: GroupScheduleMode }[] = [
@@ -73,6 +89,8 @@ const freshKey = () => `s${++keySeq}`;
 interface SessionRowProps {
 	index: number;
 	entry: BlueprintSessionPlanEntry;
+	/** The listing's length, shown while the sitting has none of its own; `null` hides the field (SC10). */
+	lengthOf: number | null;
 	only: boolean;
 	onEntry: (patch: Partial<BlueprintSessionPlanEntry>) => void;
 	onRemove: () => void;
@@ -117,6 +135,28 @@ function SessionRow(props: SessionRowProps): JSX.Element {
 					aria-label={`Session ${n} title`}
 					fluid
 				/>
+				{props.lengthOf !== null && (
+					<NumberInput
+						class="cat-plan__minutes"
+						value={props.entry.durationMinutes ?? props.lengthOf}
+						onValueChange={(raw) => {
+							if (raw === null) return;
+							const snapped = Math.round(raw / SITTING_STEP) * SITTING_STEP;
+							const durationMinutes = Math.min(SITTING_MAX, Math.max(SITTING_MIN, snapped));
+							if (durationMinutes !== props.entry.durationMinutes) {
+								props.onEntry({ durationMinutes });
+							}
+						}}
+						min={SITTING_MIN}
+						max={SITTING_MAX}
+						step={SITTING_STEP}
+						maxFractionDigits={0}
+						icon="clock"
+						enableIconScrub
+						suffix="min"
+						aria-label={`Session ${n} length`}
+					/>
+				)}
 				{!props.only && (
 					<Button
 						iconOnly
@@ -293,6 +333,7 @@ function PlanRows(
 	const overIndex = useSignal<number | null>(null);
 	const rows = planRows(offer);
 	const problem = gated.problem.value;
+	const varied = hasVariableSessionLengths(offer);
 	const rolling = props.schedule?.scheduleMode === "rolling_templates" ? props.schedule : null;
 	const templates = rolling ? templateRows(rolling.weeklyTemplates, offer.count) : null;
 	const keepTemplates = (next: WeeklySessionTemplate[]) => {
@@ -328,6 +369,21 @@ function PlanRows(
 			<p class="cat-sec__value cat-offer__summary-line" id={SUMMARY_ID}>
 				{planSummary(offer).join(" · ")}
 			</p>
+			<div class="cat-plan__switchrow">
+				<FieldHead
+					label="Variable session lengths"
+					decorative
+					hint="Give each session its own length. Sessions of different lengths are priced per hour, so your price becomes an hourly rate."
+					hintId={LENGTHS_HINT_ID}
+				>
+					<ToggleSwitch
+						value={varied}
+						onValueChange={(on) => gated.set(withVariableLengths(offer, on))}
+						aria-label="Variable session lengths"
+						aria-describedby={LENGTHS_HINT_ID}
+					/>
+				</FieldHead>
+			</div>
 			<DndContext
 				onDragStart={(e) => (dragIndex.value = indexOf(e.active.id))}
 				onDragOver={(e) => (overIndex.value = e.over === null ? null : indexOf(e.over))}
@@ -347,6 +403,7 @@ function PlanRows(
 							<SessionRow
 								index={i}
 								entry={entry}
+								lengthOf={varied ? Math.max(SITTING_MIN, offer.minutes) : null}
 								only={offer.count <= SESSIONS_MIN}
 								onEntry={(patch) => gated.set(withSessionEntry(offer, i, patch))}
 								onRemove={() => remove(i)}

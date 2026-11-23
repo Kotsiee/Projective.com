@@ -35,6 +35,11 @@ export const OrderHistoryLineSchema = z.object({
 	lineTotal: MoneyViewSchema,
 	/** `null` when the line has no home the buyer can open (a ticket whose stage is gone, a product with no files). */
 	home: OrderLineHomeSchema.nullable(),
+	/**
+	 * A delivered product line's review, on the purchases view (`purchaseReviewLink`, Decision #487
+	 * RV1); `null` for every other line, and for a purchase not offered one.
+	 */
+	reviewHref: z.string().max(200).nullable(),
 });
 export type OrderHistoryLine = z.infer<typeof OrderHistoryLineSchema>;
 // #endregion

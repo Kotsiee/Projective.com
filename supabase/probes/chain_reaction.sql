@@ -129,7 +129,7 @@ EXCEPTION WHEN SQLSTATE 'PF402' THEN
 END $d$;
 ROLLBACK TO c_gate;
 SET LOCAL ROLE authenticated;
-SELECT projects.fund_ticket(:'project', :'ticket') AS c_fund \gset
+SELECT projects.fund_ticket(:'project', :'ticket', NULL, NULL) AS c_fund \gset
 RESET ROLE;
 SELECT pg_temp.check((SELECT payment_status = 'escrow_funded' FROM projects.tickets WHERE id = :'ticket')
     AND EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = :'ticket' AND project_stage_id = :'next_stage'

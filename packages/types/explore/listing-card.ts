@@ -48,6 +48,8 @@ export interface ListingCardSource {
 	metrics: Pick<ListingMetrics, "avgRating" | "ratingCount">;
 	/** A Pipeline service sold at tiered intensity (`service_blueprints.allow_tiered_intensity`). */
 	tieredIntensity?: boolean;
+	/** A session listing sold by the hour (`service_blueprints.pricing_unit`, SC10). */
+	perHour?: boolean;
 	/** A workspace listing's offer; a Pipeline's tier flag is read off it when the source states none. */
 	offer?: ListingOffer;
 	updatedAt: string;
@@ -84,6 +86,14 @@ export const UNPRICED_LABEL = "Set a price";
 // #endregion
 
 // #region Adapter
+/** Whether a session listing sells by the hour: the source says so, else its workspace offer does. */
+function perHourOf(source: ListingCardSource): boolean {
+	if (source.perHour !== undefined) return source.perHour;
+	const offer = source.offer;
+	return (offer?.archetype === "session" || offer?.archetype === "cohort") &&
+		offer.pricingUnit === "per_hour";
+}
+
 /**
  * The discovery card item for a listing. Pure: the same source always yields the same item, which is
  * what lets the workspace promise its live card is the card buyers see.
@@ -132,6 +142,7 @@ export function listingCardItem(source: ListingCardSource): ServiceItem | Produc
 			ticketPrice: source.pricing.ticketPrice ?? undefined,
 			...(tiered ? { tieredIntensity: true } : {}),
 			sessionPrice: source.pricing.sessionPrice ?? undefined,
+			...(perHourOf(source) ? { sessionPricingUnit: "per_hour" as const } : {}),
 			freeRevisions: source.pricing.freeRevisions ?? undefined,
 			extraRevisionPrice: source.pricing.extraRevisionPrice ?? undefined,
 		};

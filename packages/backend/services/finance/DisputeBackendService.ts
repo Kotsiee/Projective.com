@@ -21,7 +21,7 @@ import { type RawDispute, type RawQueue, toDisputeCase, toDisputeQueue } from ".
  * (`auth.uid()` and RLS are the gates; the operator door checks `security.is_admin()` itself). A no-show
  * claim is opened through `SessionBackendService.claimNoShow`; the sweep that audits and auto-escalates
  * runs in the database (`finance-dispute-sweep`). Evidence files are served by the files pipeline
- * (`/api/files/object/:id`), which `files.fn_can_read` opens to a dispute's parties.
+ * (`/api/media/proxy/:id`), which `files.fn_can_read` opens to a dispute's parties.
  *
  * Live only: a dispute is money held against a real escrow, so there is no fixture world — the stub
  * answers 503 rather than inventing a case.

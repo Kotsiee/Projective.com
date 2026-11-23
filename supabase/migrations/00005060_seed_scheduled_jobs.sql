@@ -103,6 +103,17 @@ SELECT 'finance-payout-schedules', 'http', '3,18,33,48 * * * *', NULL, '/api/fin
  WHERE pg_catalog.to_regprocedure('finance.fn_claim_due_payout_schedules(integer)') IS NOT NULL
 ON CONFLICT (name) DO NOTHING;
 
+-- The daily FX feed (Decision #337, ruling M5 (f); Decision #471; FBP DB17). The app fetches the
+-- provider's GBP-based rates and records them through finance.record_fx_rates, so an http job on the
+-- money crons' secret, registered only where that door exists. 16:23 UTC is after the London 4 pm fix in
+-- both GMT and BST (and the ECB's afternoon reference rates), on a minute no other job uses. A run that
+-- finds nothing new records nothing, so a retry is safe.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description)
+SELECT 'finance-fx-daily', 'http', '23 16 * * *', NULL, '/api/finance/cron/fx', 'FINANCE_CRON_SECRET',
+       'Records the day''s exchange rates for the 12 display currencies against GBP, all of them or none (a refused or failed feed leaves a finance.fx error and the last rates stand); a replay records nothing (FxService.refreshRates).'
+ WHERE pg_catalog.to_regprocedure('finance.record_fx_rates(text,timestamp with time zone,jsonb,text)') IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+
 -- 1-1 sessions (Decision #211). The handshake sweep reminds a provider once, a day before their block's
 -- earliest scheduling deadline, and lapses every set-session scheduling round still open at its
 -- deadline, so the pencilled-in time stands. Offset from the quarter hours the escrow sweep runs on.
@@ -329,6 +340,17 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
     ('reviews-reminders', 'sql', '21 9 * * *',
         'SELECT reviews.fn_send_review_reminders();', NULL, NULL,
         'Asks each client and attendee once per completed engagement or session to review it (review.reminder), three days after it completed and inside its 30-day window.')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
+-- #region [reviews] The double-blind reveal (Decision #486 (A), (B))
+-- Hourly, at a minute no other job uses: an engagement review the other side never answered becomes
+-- public as its 30-day window closes (review.received fires then), and every Client Trust Score not
+-- recomputed for a day is recomputed, so a lost dispute leaves the score as it passes 12 months.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('reviews-reveal', 'sql', '44 * * * *',
+        'SELECT reviews.fn_reveal_due();', NULL, NULL,
+        'Reveals each double-blind engagement review whose window closed unanswered (review.received at reveal), then recomputes every Client Trust Score older than a day.')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 

@@ -860,6 +860,10 @@ GRANT SELECT, INSERT ON TABLE finance.fx_conversions TO service_role;
 REVOKE ALL ON TABLE finance.processor_customers FROM anon, authenticated;
 GRANT ALL ON TABLE finance.processor_customers TO service_role;
 
+-- AML monitoring signals (Decision #529): written only by the money-path definers and read only through
+-- finance.read_aml_signals, so no role but the owner holds the table, the service role included.
+REVOKE ALL ON TABLE finance.aml_signals FROM PUBLIC, anon, authenticated, service_role;
+
 
 -- --- files: asset management (anon reach for the public tier) ---
 -- `anon` already holds USAGE on the `files` schema (00002500) but no table grant, so the anon
@@ -886,6 +890,9 @@ GRANT SELECT ON TABLE files.items TO anon;
 -- SELECT on the reviews themselves; the policy (00002018) shows visible rows only. No client role
 -- writes: every write is a definer in 00001670. The reminder ledger is the reminder job's alone.
 GRANT SELECT ON TABLE reviews.entity_reviews TO anon, authenticated;
+-- A client party's Client Trust Score, read as its policy allows (from 3 reviews, Decision #486); its
+-- one writer is reviews.fn_recompute_client_trust. reviews.client_trust_consents takes no client grant.
+GRANT SELECT ON TABLE reviews.client_trust_scores TO anon, authenticated;
 
 GRANT ALL ON ALL TABLES IN SCHEMA reviews TO service_role;
 

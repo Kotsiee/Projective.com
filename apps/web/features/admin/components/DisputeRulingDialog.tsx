@@ -11,7 +11,7 @@ import type {
 	DisputeParty,
 	DisputeQueueItem,
 } from "@projective/types/finance";
-import { fileObjectHref } from "@projective/types/files";
+import { mediaProxyHref } from "@projective/types/files";
 import {
 	disputeStatusLabel,
 	disputeStatusSeverity,
@@ -269,7 +269,7 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 																	<li key={f.id}>
 																		<a
 																			class="ddesk-dlg__file"
-																			href={fileObjectHref(f.id)}
+																			href={mediaProxyHref(f.id)}
 																			target="_blank"
 																			rel="noopener"
 																		>

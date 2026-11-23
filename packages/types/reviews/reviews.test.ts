@@ -40,6 +40,7 @@ function review(
 		replied_at: null,
 		window_closes_at: "2026-12-16T10:00:00Z",
 		mine: true,
+		revealed: true,
 		editable: true,
 		...over,
 	};

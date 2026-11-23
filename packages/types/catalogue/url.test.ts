@@ -447,3 +447,18 @@ Deno.test("only a listing slug and a known page name a sub-page", () => {
 	assertEquals(SUB_PAGE_SECTION, { plan: "offer", questions: "questions" });
 });
 // #endregion
+
+Deno.test("console url: ?promo= names the Promotions view's dialog, and only on that view", () => {
+	const at = (q: string) => parseConsoleUrl(new URL(`https://x.test/catalogue${q}`));
+	assertEquals(at("?view=promotions&promo=new").promo, "new");
+	assertEquals(at("?view=promotions&promo=archive:LAUNCH-20").promo, "archive:LAUNCH-20");
+	assertEquals(at("?view=promotions&promo=archive:no").promo, undefined);
+	assertEquals(at("?view=clients&promo=new").promo, undefined);
+	assertEquals(
+		parseConsoleUrl(
+			new URL(`https://x.test${consoleHref({ view: "promotions", promo: "archive:SALE-10" })}`),
+		).promo,
+		"archive:SALE-10",
+	);
+	assertEquals(consoleHref({ view: "listings", promo: "new" }), "/catalogue");
+});

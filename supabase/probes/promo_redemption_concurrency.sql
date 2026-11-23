@@ -16,6 +16,19 @@
 --      still offers it to the buyer's personal account and to a caller who names no account.
 --   4. Another account (the buyer's personal one) redeems the same code: two accounts, two orders,
 --      redemption_count 2.
+-- Seller codes (MARKETPLACE CK2, Decision #485), in this session as each actor's JWT:
+--   5. A seller issues a code over their own products (finance.save_promo_code) and lists it
+--      (list_own_promo_codes); a stranger cannot issue or list for them, nobody issues a platform code
+--      through the door, a listing of another seller is refused as a scope, and a taken code refuses.
+--   6. In a mixed basket the seller's code discounts only that seller's line: the preview covers only
+--      their product, the other seller's line keeps its whole price and credit, and the seller's
+--      commission is taken on the discounted price (the seller funds it).
+--   7. A code scoped to one listing discounts that product and not the same seller's other one.
+--   8. A platform code (no issuer) is the platform's cost: every line it discounts records
+--      `promo_funded_by = 'platform'`, each seller's commission and credit are those of the line before
+--      the code, and finance.v_conservation_identity's imbalance does not move.
+--   9. The seller archives the code: it stays listed with its archive instant, the preview refuses it,
+--      and a stranger cannot archive it.
 --
 -- COMMITS. A race needs both sessions to commit, so this probe cannot run inside a rolled-back
 -- transaction. It refuses the shared dev database `postgres`; run it against a disposable copy:
@@ -103,6 +116,44 @@ BEGIN
     PERFORM set_config('probe.code', v_code, false);
     PERFORM set_config('probe.once', v_once, false);
 END $$;
+
+-- Seller codes: the first product's owner is the seller; a second seller's product beside it; a second
+-- product of the seller's own, published, for the listing scope. The business's wallet (at least 10,000,
+-- §0) pays for every order here: 2,800 in §1–§3 and 6,950 in §6–§8.
+DO $$
+DECLARE
+    v_fx probe_fx;
+    v_seller uuid;
+    v_other uuid;
+    v_other_listing uuid;
+    v_second uuid;
+    v_second_listing uuid;
+    v_suffix text := upper(substr(md5(gen_random_uuid()::text), 1, 6));
+BEGIN
+    SELECT * INTO v_fx FROM probe_fx;
+    SELECT owner_user_id INTO v_seller FROM catalogue.products WHERE id = v_fx.product;
+    SELECT p.id, l.id INTO v_other, v_other_listing
+      FROM catalogue.products p
+      JOIN catalogue.listings l ON l.product_id = p.id AND l.status = 'published'
+     WHERE p.owner_team_id IS NULL AND p.owner_user_id NOT IN (v_seller, v_fx.buyer)
+       AND upper(p.currency) = v_fx.currency
+     ORDER BY p.id LIMIT 1;
+    IF v_other IS NULL THEN RAISE EXCEPTION 'FAIL fixture: no second seller''s published product in %', v_fx.currency; END IF;
+    UPDATE catalogue.products SET price_cents = 2000 WHERE id = v_other;
+    INSERT INTO catalogue.products (owner_user_id, title, price_cents, currency)
+    VALUES (v_seller, 'Probe CK2 second product', 500, v_fx.currency) RETURNING id INTO v_second;
+    INSERT INTO catalogue.listings (owner_user_id, kind, status, product_id, title, currency, published_at)
+    VALUES (v_seller, 'product', 'published', v_second, 'Probe CK2 second product', v_fx.currency, now())
+    RETURNING id INTO v_second_listing;
+    PERFORM set_config('probe.seller', v_seller::text, false);
+    PERFORM set_config('probe.other', v_other::text, false);
+    PERFORM set_config('probe.other_listing', v_other_listing::text, false);
+    PERFORM set_config('probe.second', v_second::text, false);
+    PERFORM set_config('probe.second_listing', v_second_listing::text, false);
+    PERFORM set_config('probe.seller_code', 'PROBESELL' || v_suffix, false);
+    PERFORM set_config('probe.scoped_code', 'PROBESCOPE' || v_suffix, false);
+    PERFORM set_config('probe.platform_code', 'PROBEPLAT' || v_suffix, false);
+END $$;
 -- #endregion
 
 -- #region Harness
@@ -179,6 +230,70 @@ BEGIN
     INSERT INTO probe_results VALUES (p_scenario, CASE WHEN p_ok THEN 'PASS' ELSE 'FAIL' END, p_detail);
     RAISE NOTICE '% %: %', CASE WHEN p_ok THEN 'PASS' ELSE 'FAIL' END, p_scenario, p_detail;
 END $$;
+
+-- Seller codes run in this session, as each actor's JWT (transaction-local, so one DO block each).
+CREATE FUNCTION pg_temp.act(p_uid uuid) RETURNS void LANGUAGE sql AS $$
+    SELECT set_config('request.jwt.claims',
+        CASE WHEN p_uid IS NULL THEN '' ELSE json_build_object('sub', p_uid, 'role', 'authenticated')::text END, true);
+$$;
+
+CREATE FUNCTION pg_temp.try(q text) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r text;
+BEGIN
+    EXECUTE q INTO r;
+    RETURN 'ok ' || COALESCE(r, '');
+EXCEPTION WHEN OTHERS THEN
+    RETURN 'refused ' || SQLSTATE || ' ' || SQLERRM;
+END $$;
+
+-- A business basket carrying a code, and a product line at its catalogue price.
+CREATE FUNCTION pg_temp.basket(p_promo text) RETURNS uuid LANGUAGE sql AS $$
+    INSERT INTO finance.baskets (owner_type, owner_id, name, promo_code)
+    VALUES ('business', (SELECT biz FROM probe_fx), 'Probe CK2 ' || gen_random_uuid(), p_promo) RETURNING id;
+$$;
+
+CREATE FUNCTION pg_temp.product_line(p_basket uuid, p_product uuid, p_position integer) RETURNS uuid
+LANGUAGE sql AS $$
+    INSERT INTO finance.basket_items (basket_id, item_type, item_id, title, unit_price_minor, currency,
+                                      destination_email, position)
+    SELECT p_basket, 'digital_product', p.id, 'Probe product', p.price_cents, upper(p.currency),
+           'probe@example.com', p_position
+      FROM catalogue.products p WHERE p.id = p_product
+    RETURNING id;
+$$;
+
+-- Pay for every line of a basket as the business owner, at the basket's prices; the order id.
+CREATE FUNCTION pg_temp.pay(p_basket uuid, p_promo text, p_expected bigint) RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE
+    v_ids uuid[];
+    v_units jsonb;
+    v_out jsonb;
+BEGIN
+    SELECT array_agg(bi.id ORDER BY bi.position), jsonb_object_agg(bi.id::text, bi.unit_price_minor)
+      INTO v_ids, v_units
+      FROM finance.basket_items bi WHERE bi.basket_id = p_basket;
+    PERFORM pg_temp.act((SELECT buyer FROM probe_fx));
+    v_out := finance.place_wallet_order(p_basket, v_ids, (SELECT currency FROM probe_fx), v_units, p_promo,
+        'probe-ck2-' || gen_random_uuid(), p_expected);
+    PERFORM pg_temp.act(NULL);
+    RETURN (v_out ->> 'order_id')::uuid;
+END $$;
+
+CREATE FUNCTION pg_temp.line_of(p_order uuid, p_item uuid) RETURNS finance.order_lines LANGUAGE sql AS $$
+    SELECT * FROM finance.order_lines WHERE order_id = p_order AND item_id = p_item;
+$$;
+
+-- What one order credited one seller (pending, Decision #191).
+CREATE FUNCTION pg_temp.credited(p_order uuid, p_owner uuid) RETURNS bigint LANGUAGE sql AS $$
+    SELECT COALESCE(sum(pr.amount_cents), 0)::bigint FROM finance.pending_releases pr
+      JOIN finance.wallets w ON w.id = pr.wallet_id
+     WHERE pr.order_id = p_order AND pr.reason = 'product_sale' AND w.owner_id = p_owner;
+$$;
+
+CREATE FUNCTION pg_temp.imbalance() RETURNS bigint LANGUAGE sql AS $$
+    SELECT COALESCE(sum(c.imbalance_minor), 0)::bigint FROM finance.v_conservation_identity c
+     WHERE c.currency = (SELECT currency FROM probe_fx);
+$$;
 -- #endregion
 
 -- #region 1. Two orders race for the last redemption
@@ -276,6 +391,213 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
     IF 'c' = ANY (COALESCE(dblink_get_connections(), '{}')) THEN PERFORM dblink_disconnect('c'); END IF;
     PERFORM pg_temp.probe_record('4 two accounts both redeem', false, SQLSTATE || ' ' || SQLERRM);
+END $$;
+-- #endregion
+
+-- #region 5. A seller issues and lists a code; nobody else issues it, and no one a platform code
+DO $$
+DECLARE
+    v_seller uuid := current_setting('probe.seller')::uuid;
+    v_code text := current_setting('probe.seller_code');
+    v_issue text := 'SELECT finance.save_promo_code(%L, %L::uuid, %L, %L, %L, %s)::text';
+    v_out text;
+    v_platform text;
+    v_foreign text;
+    v_taken text;
+    v_list text;
+    v_stranger text;
+    v_peek text;
+    v_row finance.promo_codes;
+BEGIN
+    PERFORM pg_temp.act(v_seller);
+    v_out := pg_temp.try(format(v_issue, 'user', v_seller, lower(v_code), 'Probe seller 20% off', 'percent', 2000));
+    v_platform := pg_temp.try(format(v_issue, NULL, NULL, v_code || 'P', 'Probe platform', 'percent', 1000));
+    v_foreign := pg_temp.try(format(
+        'SELECT finance.save_promo_code(%L, %L::uuid, %L, %L, %L, 1000, p_listing_ids => ARRAY[%L]::uuid[])::text',
+        'user', v_seller, v_code || 'F', 'Probe foreign scope', 'percent', current_setting('probe.other_listing')));
+    v_taken := pg_temp.try(format(v_issue, 'user', v_seller, v_code, 'Probe again', 'percent', 500));
+    v_list := pg_temp.try(format('SELECT finance.list_own_promo_codes(%L, %L::uuid)::text', 'user', v_seller));
+    PERFORM pg_temp.act((SELECT buyer FROM probe_fx));
+    v_stranger := pg_temp.try(format(v_issue, 'user', v_seller, v_code || 'S', 'Probe stranger', 'percent', 1000));
+    v_peek := pg_temp.try(format('SELECT finance.list_own_promo_codes(%L, %L::uuid)::text', 'user', v_seller));
+    PERFORM pg_temp.act(NULL);
+    SELECT * INTO v_row FROM finance.promo_codes WHERE code = v_code;
+    PERFORM set_config('probe.seller_code_id', COALESCE(v_row.id::text, ''), false);
+    PERFORM pg_temp.probe_record('5 a seller issues and lists their own code',
+        v_out LIKE 'ok %' AND to_jsonb(v_row) ->> 'issuer_type' = 'user'
+        AND (to_jsonb(v_row) ->> 'issuer_id')::uuid = v_seller
+        AND v_list LIKE 'ok %' AND substr(v_list, 4)::jsonb @> jsonb_build_array(
+            jsonb_build_object('code', v_code, 'redemption_count', 0, 'max_redemptions_per_account', 1)),
+        format('issue %s; list %s', left(v_out, 120), left(v_list, 160)));
+    PERFORM pg_temp.probe_record('5 nobody else issues it, nor a platform code',
+        v_stranger LIKE 'refused 42501%' AND v_peek LIKE 'refused 42501%' AND v_platform LIKE 'refused 42501%'
+        AND v_foreign LIKE 'refused 22023%' AND v_taken LIKE 'refused PC409 promo_code_taken:%',
+        format('stranger %s; stranger list %s; platform %s; foreign scope %s; taken %s', left(v_stranger, 70),
+               left(v_peek, 70), left(v_platform, 70), left(v_foreign, 90), left(v_taken, 90)));
+END $$;
+-- #endregion
+
+-- #region 6. A mixed basket: the seller's code discounts only the seller's line
+-- 20% of 1,000 is 200 on the seller's line; the other seller's 2,000 is untouched. The seller funds the
+-- code: their commission is on the 800 paid, and they are credited 800 less it.
+DO $$
+DECLARE
+    v_fx probe_fx;
+    v_seller uuid := current_setting('probe.seller')::uuid;
+    v_code text := current_setting('probe.seller_code');
+    v_other uuid := current_setting('probe.other')::uuid;
+    v_other_seller uuid;
+    v_basket uuid;
+    v_order uuid;
+    v_preview jsonb;
+    v_a finance.order_lines;
+    v_b finance.order_lines;
+BEGIN
+    SELECT * INTO v_fx FROM probe_fx;
+    SELECT owner_user_id INTO v_other_seller FROM catalogue.products WHERE id = v_other;
+    v_basket := pg_temp.basket(v_code);
+    PERFORM pg_temp.product_line(v_basket, v_fx.product, 0);
+    PERFORM pg_temp.product_line(v_basket, v_other, 1);
+    PERFORM pg_temp.act(v_fx.buyer);
+    EXECUTE 'SELECT finance.resolve_promo_code($1, $2, $3, $4)'
+       INTO v_preview USING v_code, 'business', v_fx.biz, ARRAY[v_fx.product, v_other];
+    PERFORM pg_temp.act(NULL);
+    v_order := pg_temp.pay(v_basket, v_code, 2800);
+    v_a := pg_temp.line_of(v_order, v_fx.product);
+    v_b := pg_temp.line_of(v_order, v_other);
+    PERFORM pg_temp.probe_record('6 the preview covers only the seller''s product',
+        (v_preview ->> 'valid')::boolean AND v_preview -> 'covers' = jsonb_build_array(v_fx.product),
+        format('preview %s', v_preview));
+    PERFORM pg_temp.probe_record('6 the seller''s code discounts only the seller''s line',
+        v_a.promo_discount_minor = 200 AND v_b.promo_discount_minor = 0
+        AND to_jsonb(v_a) ->> 'promo_funded_by' = 'seller' AND to_jsonb(v_b) ->> 'promo_funded_by' IS NULL
+        AND (SELECT promo_discount_minor FROM finance.orders WHERE id = v_order) = 200,
+        format('seller line %s off (%s), other line %s off', v_a.promo_discount_minor,
+               to_jsonb(v_a) ->> 'promo_funded_by', v_b.promo_discount_minor));
+    PERFORM pg_temp.probe_record('6 the seller''s commission is on the discounted price',
+        v_a.platform_fee_minor = (800 * v_a.platform_fee_bp) / 10000
+        AND pg_temp.credited(v_order, v_seller) = 800 - v_a.platform_fee_minor
+        AND v_b.platform_fee_minor = (2000 * v_b.platform_fee_bp) / 10000
+        AND pg_temp.credited(v_order, v_other_seller) = 2000 - v_b.platform_fee_minor,
+        format('seller fee %s at %s bp, credited %s; other fee %s at %s bp, credited %s',
+               v_a.platform_fee_minor, v_a.platform_fee_bp, pg_temp.credited(v_order, v_seller),
+               v_b.platform_fee_minor, v_b.platform_fee_bp, pg_temp.credited(v_order, v_other_seller)));
+EXCEPTION WHEN OTHERS THEN
+    PERFORM pg_temp.probe_record('6 a mixed basket', false, SQLSTATE || ' ' || SQLERRM);
+END $$;
+-- #endregion
+
+-- #region 7. A code scoped to one listing discounts that product only
+DO $$
+DECLARE
+    v_fx probe_fx;
+    v_seller uuid := current_setting('probe.seller')::uuid;
+    v_code text := current_setting('probe.scoped_code');
+    v_second uuid := current_setting('probe.second')::uuid;
+    v_out text;
+    v_basket uuid;
+    v_order uuid;
+BEGIN
+    SELECT * INTO v_fx FROM probe_fx;
+    PERFORM pg_temp.act(v_seller);
+    v_out := pg_temp.try(format(
+        'SELECT finance.save_promo_code(%L, %L::uuid, %L, %L, %L, 1000, p_listing_ids => ARRAY[%L]::uuid[])::text',
+        'user', v_seller, v_code, 'Probe scoped 10% off', 'percent', current_setting('probe.second_listing')));
+    PERFORM pg_temp.act(NULL);
+    v_basket := pg_temp.basket(v_code);
+    PERFORM pg_temp.product_line(v_basket, v_fx.product, 0);
+    PERFORM pg_temp.product_line(v_basket, v_second, 1);
+    v_order := pg_temp.pay(v_basket, v_code, 1450);
+    PERFORM pg_temp.probe_record('7 a listing-scoped code discounts that listing only',
+        v_out LIKE 'ok %' AND (pg_temp.line_of(v_order, v_fx.product)).promo_discount_minor = 0
+        AND (pg_temp.line_of(v_order, v_second)).promo_discount_minor = 50,
+        format('issue %s; in-scope line %s off, other line %s off', left(v_out, 60),
+               (pg_temp.line_of(v_order, v_second)).promo_discount_minor,
+               (pg_temp.line_of(v_order, v_fx.product)).promo_discount_minor));
+EXCEPTION WHEN OTHERS THEN
+    PERFORM pg_temp.probe_record('7 a listing-scoped code', false, SQLSTATE || ' ' || SQLERRM);
+END $$;
+-- #endregion
+
+-- #region 8. A platform code is the platform's cost
+-- 10% of 3,000 is 300, shared 100 and 200. Each seller is credited as if no code applied: commission
+-- on 1,000 and 2,000. The 300 is the platform's, a conservation term, so the identity does not move.
+DO $$
+DECLARE
+    v_fx probe_fx;
+    v_seller uuid := current_setting('probe.seller')::uuid;
+    v_code text := current_setting('probe.platform_code');
+    v_other uuid := current_setting('probe.other')::uuid;
+    v_other_seller uuid;
+    v_before bigint;
+    v_basket uuid;
+    v_order uuid;
+    v_a finance.order_lines;
+    v_b finance.order_lines;
+BEGIN
+    SELECT * INTO v_fx FROM probe_fx;
+    SELECT owner_user_id INTO v_other_seller FROM catalogue.products WHERE id = v_other;
+    INSERT INTO finance.promo_codes (code, label, kind, value_bp) VALUES (v_code, 'Probe platform 10% off', 'percent', 1000);
+    v_basket := pg_temp.basket(v_code);
+    PERFORM pg_temp.product_line(v_basket, v_fx.product, 0);
+    PERFORM pg_temp.product_line(v_basket, v_other, 1);
+    v_before := pg_temp.imbalance();
+    v_order := pg_temp.pay(v_basket, v_code, 2700);
+    v_a := pg_temp.line_of(v_order, v_fx.product);
+    v_b := pg_temp.line_of(v_order, v_other);
+    PERFORM pg_temp.probe_record('8 the lines record the platform as the funder',
+        v_a.promo_discount_minor = 100 AND v_b.promo_discount_minor = 200
+        AND to_jsonb(v_a) ->> 'promo_funded_by' = 'platform' AND to_jsonb(v_b) ->> 'promo_funded_by' = 'platform',
+        format('shares %s + %s, funded by %s / %s', v_a.promo_discount_minor, v_b.promo_discount_minor,
+               to_jsonb(v_a) ->> 'promo_funded_by', to_jsonb(v_b) ->> 'promo_funded_by'));
+    PERFORM pg_temp.probe_record('8 each seller is credited as if the code had not applied',
+        v_a.platform_fee_minor = (1000 * v_a.platform_fee_bp) / 10000
+        AND pg_temp.credited(v_order, v_seller) = 1000 - v_a.platform_fee_minor
+        AND v_b.platform_fee_minor = (2000 * v_b.platform_fee_bp) / 10000
+        AND pg_temp.credited(v_order, v_other_seller) = 2000 - v_b.platform_fee_minor,
+        format('fees %s / %s, credited %s / %s', v_a.platform_fee_minor, v_b.platform_fee_minor,
+               pg_temp.credited(v_order, v_seller), pg_temp.credited(v_order, v_other_seller)));
+    PERFORM pg_temp.probe_record('8 the conservation identity holds across the order',
+        pg_temp.imbalance() = v_before,
+        format('imbalance %s before, %s after', v_before, pg_temp.imbalance()));
+EXCEPTION WHEN OTHERS THEN
+    PERFORM pg_temp.probe_record('8 a platform code', false, SQLSTATE || ' ' || SQLERRM);
+END $$;
+-- #endregion
+
+-- #region 9. The seller archives the code
+DO $$
+DECLARE
+    v_seller uuid := current_setting('probe.seller')::uuid;
+    v_code text := current_setting('probe.seller_code');
+    v_id text := current_setting('probe.seller_code_id');
+    v_stranger text;
+    v_out text;
+    v_again text;
+    v_list text;
+    v_preview jsonb;
+BEGIN
+    PERFORM pg_temp.act((SELECT buyer FROM probe_fx));
+    v_stranger := pg_temp.try(format('SELECT finance.archive_promo_code(%L::uuid)::text', v_id));
+    v_preview := finance.resolve_promo_code(v_code);
+    PERFORM pg_temp.act(v_seller);
+    v_out := pg_temp.try(format('SELECT finance.archive_promo_code(%L::uuid)::text', v_id));
+    v_again := pg_temp.try(format('SELECT finance.archive_promo_code(%L::uuid)::text', v_id));
+    v_list := pg_temp.try(format('SELECT finance.list_own_promo_codes(%L, %L::uuid)::text', 'user', v_seller));
+    PERFORM pg_temp.act((SELECT buyer FROM probe_fx));
+    v_preview := finance.resolve_promo_code(v_code);
+    PERFORM pg_temp.act(NULL);
+    PERFORM pg_temp.probe_record('9 the seller archives it; the preview refuses it; a stranger cannot',
+        v_stranger LIKE 'refused P0002%' AND v_out LIKE 'ok %' AND v_again LIKE 'ok %'
+        AND (SELECT deactivated_at FROM finance.promo_codes WHERE code = v_code) IS NOT NULL
+        AND EXISTS (SELECT 1 FROM jsonb_array_elements(substr(v_list, 4)::jsonb) e
+                     WHERE e ->> 'code' = v_code AND e ->> 'deactivated_at' IS NOT NULL
+                       AND (e ->> 'redemption_count')::int = 1)
+        AND NOT (v_preview ->> 'valid')::boolean AND v_preview ->> 'reason' = 'This code is no longer active.',
+        format('stranger %s; archive %s; again %s; preview %s', left(v_stranger, 70), left(v_out, 60),
+               left(v_again, 40), v_preview ->> 'reason'));
+EXCEPTION WHEN OTHERS THEN
+    PERFORM pg_temp.probe_record('9 archive', false, SQLSTATE || ' ' || SQLERRM);
 END $$;
 -- #endregion
 

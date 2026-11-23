@@ -270,7 +270,7 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO finance.basket_items (id, basket_id, item_type, item_id, title, subtitle, unit_price_minor, currency, quantity, saved_for_later, position, scheduled_at, timezone, seats, destination_email, created_at)
 VALUES
-  ('2868e6c1-09d1-4906-a605-5db3ad29b1b0', '1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'digital_product', '75f0ec2a-da94-4f9b-a36c-1b2044191021', 'Motion primitives', 'Instant download', 4900, 'USD', 1, false, 0, NULL, NULL, NULL, 'noor@projective.dev', now() - interval '24 hours'),
+  ('a9fcc283-fa18-4bdc-a013-23c55a2917be', '1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'digital_product', 'ab9f2cc0-769d-4eed-a8ba-6c4ed741b3e3', '3D product scenes', 'Instant download', 9500, 'USD', 1, false, 0, NULL, NULL, NULL, 'noor@projective.dev', now() - interval '24 hours'),
   ('37ba09f9-c609-4d90-a91f-72079cf3ab3e', '1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'service_session', 'eaff7484-81fb-46d3-adb1-42da56453eb9', 'Live portfolio review', '60-minute session', 18000, 'USD', 1, false, 1, ((date_trunc('week', now() AT TIME ZONE 'Asia/Dubai') + interval '8 days' + interval '900 minutes') AT TIME ZONE 'Asia/Dubai'), 'Asia/Dubai', NULL, NULL, now() - interval '48 hours'),
   ('449fa1ab-6a10-4f96-ae00-7d01ce18ca8c', '1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'one_off_service', '56b1183a-92e4-4f4d-a30e-1e983a201c6b', 'Landing page in a week', 'One-off service', 240000, 'USD', 1, true, 2, NULL, NULL, NULL, NULL, now() - interval '72 hours'),
   ('52c36e0d-5c59-4fc4-a2eb-841b6b117b02', 'e472d4f3-d09e-4848-a0a8-b53d16724b72', 'digital_product', 'c31e9aa2-a1ea-4495-a471-7598b963bb23', 'Grain — Lightroom pack', 'Instant download', 2400, 'USD', 1, false, 0, NULL, NULL, NULL, 'theo@projective.dev', now() - interval '24 hours'),

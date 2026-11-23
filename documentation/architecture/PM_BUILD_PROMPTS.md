@@ -80,7 +80,7 @@ the rows its session updates (§1's readiness duty).
 The §B.0 hot files:
 
 - `00001240` (finance money): WP4b, beside FBP DB1–DB8 and F's later money prompts. `00001200`
-  likewise: WP4b, beside FBP DB8, DB21 and F·N4. (GH1 releases through both.)
+  likewise: WP4b, beside FBP DB21 and F·N4. (GH1 releases through both.)
 - `00005060` (jobs): WP4a (under 🧑 option A), WP5a, D7b and GH1. Each owns it only while it runs,
   and never beside an F, M, C, T, OPS or PROJECTS prompt that adds a job.
 - `00002510` (grants): WP4a, WP4b, WP5a, WP6, D7b and GH1. One writer at a time across every track.
@@ -91,7 +91,7 @@ The §B.0 hot files:
   them. A session that finds it must stops and says so.
 
 Shared beyond §B.0: `00001260` (WP4a; PROJECTS EX2); `00005001` platform params (WP4a, WP5a, WP5b,
-GH1; FBP DB8); `00005010` notification catalogue (WP4a, WP5a, WP6, D7b, GH1; M's notify engine);
+GH1); `00005010` notification catalogue (WP4a, WP5a, WP6, D7b, GH1; M's notify engine);
 `packages/backend/services/finance/funding-state.ts` (WP4b; the finance track). PROJECTS §0.2's
 hot-file table lists that file's writers of the same files.
 

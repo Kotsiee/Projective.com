@@ -146,7 +146,7 @@ UPDATE projects.stage_revision_requests SET price_cents = 1 WHERE id = pg_temp.s
 SELECT pg_temp.act(pg_temp.s('owner')); SET LOCAL ROLE authenticated;
 DO $$
 BEGIN
-    PERFORM projects.fund_paid_revision(pg_temp.s('rev')::uuid);
+    PERFORM projects.fund_paid_revision(pg_temp.s('rev')::uuid, NULL);
     RAISE EXCEPTION 'PROBE FAIL: a round was paid below the stage''s price';
 EXCEPTION WHEN SQLSTATE 'PC409' THEN
     PERFORM pg_temp.ok(true, 'guard: a round whose price is not the stage''s is refused (PC409)');
@@ -195,7 +195,7 @@ SELECT pg_temp.ok(EXISTS (SELECT 1 FROM comms.notifications n WHERE n.user_id = 
 SELECT pg_temp.act(pg_temp.s('owner')); SET LOCAL ROLE authenticated;
 DO $$
 BEGIN
-    PERFORM projects.fund_paid_revision(pg_temp.s('rev')::uuid);
+    PERFORM projects.fund_paid_revision(pg_temp.s('rev')::uuid, NULL);
     RAISE EXCEPTION 'PROBE FAIL: a paid round was funded twice';
 EXCEPTION WHEN SQLSTATE 'PC409' THEN
     PERFORM pg_temp.ok(true, 'replay: an open round cannot be paid again');

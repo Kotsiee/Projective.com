@@ -669,6 +669,10 @@ ALTER TABLE finance.inbound_payments ENABLE ROW LEVEL SECURITY;
 -- claim_due_deposit_rules, which authorise the caller themselves. Not default-deny by accident.
 ALTER TABLE finance.processor_customers ENABLE ROW LEVEL SECURITY;
 
+-- AML monitoring signals (Decision #529). RLS on with NO policy on purpose: the subject never sees a
+-- signal, and an operator reads them only through finance.read_aml_signals. Not default-deny by accident.
+ALTER TABLE finance.aml_signals ENABLE ROW LEVEL SECURITY;
+
 
 -- --- marketplace: the two tables that shipped without RLS ---
 -- Both carry `GRANT ALL ... TO anon, authenticated` (00002500, the schema-wide marketplace grant), so

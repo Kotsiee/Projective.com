@@ -149,6 +149,8 @@ BEGIN
        AND p.owner_team_id IS DISTINCT FROM v_team
        AND s.status = 'open' AND s.hire_trigger_active AND s.archived_at IS NULL
        AND NOT EXISTS (SELECT 1 FROM org.team_members m WHERE m.team_id = v_team AND m.user_id = p.owner_user_id)
+       -- Not a warned client's project (Decision #486): the Informed Consent is not what this probe tests.
+       AND reviews.fn_project_trust_warning(p.id) IS NULL
        AND NOT EXISTS (SELECT 1 FROM projects.stage_assignments sa
                         WHERE sa.project_stage_id = s.id AND sa.team_id = v_team)
        AND NOT EXISTS (SELECT 1 FROM projects.project_applications pa

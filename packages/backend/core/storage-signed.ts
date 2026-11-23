@@ -10,7 +10,6 @@ import { serverEnv } from "./env.ts";
  *
  *  - a SIGNED UPLOAD URL — a short-lived, single-object capability the browser PUTs its bytes to, so
  *    a 50 MB file never streams through an application request worker;
- *  - SIGNED READ URLs for a PRIVATE bucket (the picker's thumbnails of a person's own library);
  *  - download / upload / remove, for the quarantine → scan → promote step;
  *  - copy, for a pasted file: `files.items` allows one row per stored object, so a copy is new bytes.
  *
@@ -18,6 +17,9 @@ import { serverEnv } from "./env.ts";
  * after the fat service has checked, under the caller's own JWT, that the row it is about to act on
  * is theirs (the `files.items` insert/read under RLS). Keep it that way: never call these with a
  * path a client supplied.
+ *
+ * It mints no signed READ URL: every private read streams through the app, the media proxy or
+ * `/api/downloads/*` (`ASSET_DELIVERY_ARCHITECTURE.md` §5.3; ruling A2, Decision #499, keeps uploads).
  */
 
 // #region URL origin
@@ -55,43 +57,6 @@ export async function signedUploadUrl(bucket: string, path: string): Promise<Sig
 		url: publicise(data.signedUrl),
 		expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
 	};
-}
-
-/**
- * Signed READ URLs for several objects in one PRIVATE bucket, keyed by path. Paths storage refuses
- * are simply absent from the map — a caller renders the missing thumbnail, never a broken URL.
- */
-export async function signedReadUrls(
-	bucket: string,
-	paths: readonly string[],
-	expiresInSeconds = 60 * 30,
-): Promise<Map<string, string>> {
-	const out = new Map<string, string>();
-	const unique = [...new Set(paths.filter((p) => p.length > 0))];
-	if (unique.length === 0) return out;
-	const { data, error } = await getServiceClient().storage.from(bucket).createSignedUrls(unique, expiresInSeconds);
-	if (error || !data) return out;
-	for (const row of data) {
-		if (row.path && row.signedUrl && !row.error) out.set(row.path, publicise(row.signedUrl));
-	}
-	return out;
-}
-
-/**
- * One signed READ URL for an object, optionally as an attachment saved under `download` — the private
- * object route's redirect target. Short-lived by design: the route is the stable address and mints a
- * fresh one per request. `null` when storage refuses (a missing object, a bucket that is gone).
- */
-export async function signedObjectUrl(
-	bucket: string,
-	path: string,
-	expiresInSeconds: number,
-	download?: string | null,
-): Promise<string | null> {
-	const { data, error } = await getServiceClient().storage.from(bucket)
-		.createSignedUrl(path, expiresInSeconds, download ? { download } : undefined);
-	if (error || !data?.signedUrl) return null;
-	return publicise(data.signedUrl);
 }
 
 // #endregion

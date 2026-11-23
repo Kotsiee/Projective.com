@@ -24,7 +24,9 @@ import { filesNavigate } from "../core/files-state.ts";
  * link to `/api/downloads/ent-…/{fileId}`, which streams the file after its own gate. A refunded or
  * withdrawn purchase stays listed, marked as such, with its files no longer offered; a purchase whose
  * files are still being copied in after publishing says so instead of offering a link that 503s.
- * `&entitlement=ent-…` stands the page on one purchase (the confirmation's "Open in Purchases").
+ * `&entitlement=ent-…` stands the page on one purchase (the confirmation's "Open in Purchases"). A
+ * person's purchase delivered at least once links its review (`reviewHref`, `&review=ent-…`), which
+ * the route answers with the review dialog over this view (Decision #487 RV1).
  *
  * It renders in the library body's own box (`.fh-hub`), under the same lane, so the page reads as a
  * location of `/files`. The lane's rows navigate through {@link filesNavigate}, which the library
@@ -231,6 +233,16 @@ export default function PurchasesView(props: PurchasesViewProps): JSX.Element {
 											</li>
 										))}
 									</ul>
+								)}
+
+								{p.status === "active" && p.reviewHref && (
+									<a
+										class="fh-purchases__review"
+										href={p.reviewHref}
+										aria-label={`Review ${p.title}`}
+									>
+										Review this product
+									</a>
 								)}
 							</li>
 						))}

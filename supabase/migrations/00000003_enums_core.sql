@@ -94,7 +94,9 @@ CREATE TYPE org.achievement_tier AS ENUM ('milestone', 'bronze', 'silver', 'gold
 -- is not consented to, so it is shown.
 CREATE TYPE org.legal_acceptance_kind AS ENUM ('accepted', 'shown');
 
-CREATE TYPE org.legal_acceptance_surface AS ENUM ('join', 'join_oauth', 'join_enterprise', 'reaccept');
+-- `claim` and `fund` (LG3): the IP Transfer Deed at a maker's first paid claim, the Escrow Terms at a
+-- payer's first funding.
+CREATE TYPE org.legal_acceptance_surface AS ENUM ('join', 'join_oauth', 'join_enterprise', 'reaccept', 'claim', 'fund');
 -- #endregion
 
 -- #region projects

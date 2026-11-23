@@ -1247,6 +1247,62 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 
 -- #endregion
 
+-- #region LG3 — the client's funding doors ask for the Escrow Terms once per version
+-- A payer's first funding accepts the Escrow Terms at the version in effect (org.fn_require_legal_acceptance;
+-- `p_legal` carries the version the dialog showed). Each door funds through the internal one and asks
+-- last, so its own refusals (not a funder, nothing to fund, the spend gate) are said first and an
+-- unaccepted version unwinds the funding whole. Only these take a client's call: the internal
+-- fund_stage / fund_ticket / fund_paid_revision stay the doors that checkout (finance.place_wallet_order,
+-- a bought service's instantiation), a card settlement and finance.fund_with_conversion call, so a payer
+-- is asked where they act and never again mid-settlement.
+CREATE OR REPLACE FUNCTION projects.fund_stage(p_project_id uuid, p_stage_id uuid, p_legal jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_result jsonb := projects.fund_stage(p_project_id, p_stage_id);
+BEGIN
+    PERFORM org.fn_require_legal_acceptance('escrow-terms', p_legal);
+    RETURN v_result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION projects.fund_ticket(
+    p_project_id uuid,
+    p_ticket_id uuid,
+    p_stage_ids uuid[],
+    p_legal jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_result jsonb := projects.fund_ticket(p_project_id, p_ticket_id, p_stage_ids);
+BEGIN
+    PERFORM org.fn_require_legal_acceptance('escrow-terms', p_legal);
+    RETURN v_result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION projects.fund_paid_revision(p_revision_id uuid, p_legal jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_result jsonb := projects.fund_paid_revision(p_revision_id);
+BEGIN
+    PERFORM org.fn_require_legal_acceptance('escrow-terms', p_legal);
+    RETURN v_result;
+END;
+$$;
+-- #endregion
+
 -- #region Decision #198 — Fair Exit: the quote, its preview, and the door.
 -- What a Fair Exit at p_tier settles on a stage, read without moving anything: every escrow still held on
 -- the tickets that hold escrow on the stage — the set cancel_stage_fair_exit hands to

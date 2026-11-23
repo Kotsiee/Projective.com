@@ -31,6 +31,7 @@ function raw(): RawLedgerHealth {
 				fees_fx_minor: 0,
 				losses_chargebacks_minor: 0,
 				losses_card_refunds_minor: 0,
+				losses_promos_minor: 0,
 				external_minor: 0,
 				accounted_minor: 4321,
 				imbalance_minor: 4321,
@@ -53,6 +54,7 @@ function raw(): RawLedgerHealth {
 				fees_fx_minor: 0,
 				losses_chargebacks_minor: 0,
 				losses_card_refunds_minor: 0,
+				losses_promos_minor: 0,
 				external_minor: 16097200,
 				accounted_minor: 16097200,
 				imbalance_minor: 0,
@@ -156,6 +158,12 @@ Deno.test("toLedgerHealth of nothing is an empty, valid read", () => {
 	assertEquals(health.drift.lastLoggedAt, null);
 });
 
-Deno.test("the page's sections are conservation, drift, escrow age and alerts, in that order", () => {
-	assertEquals(LedgerSectionId.options, ["conservation", "drift", "escrow_age", "alerts"]);
+Deno.test("the page's sections are conservation, drift, escrow age, alerts and AML signals, in that order", () => {
+	assertEquals(LedgerSectionId.options, [
+		"conservation",
+		"drift",
+		"escrow_age",
+		"alerts",
+		"aml_signals",
+	]);
 });

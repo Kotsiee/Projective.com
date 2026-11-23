@@ -1,6 +1,7 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
 import type {
+	AmlSignalsRead,
 	ConservationCurrency,
 	ConservationNight,
 	ConversionDrift,
@@ -13,13 +14,15 @@ import type {
 import type { AlertsRead } from "@projective/types/ops";
 import type { ReadActor } from "../read-actor.ts";
 import { readEscrowAge } from "./escrow-age.ts";
+import { readAmlSignals } from "./aml-signals.ts";
 import { readAlerts } from "../ops/OpsAlertService.ts";
 
 /**
  * LedgerHealthService — the reads behind `/admin/ledger`, one per section (FBP DB16; Decision #337,
  * ruling M2 (A)). Conservation and Wallet drift come from the operator door `finance.get_ledger_health()`
  * (00001200), Escrow age from `finance.read_escrow_age()` (MR7, Decision #473), Alerts from
- * `ops.read_alert_deliveries()` (MR4, Decision #461). Each door is the gate: it
+ * `ops.read_alert_deliveries()` (MR4, Decision #461), AML signals from `finance.read_aml_signals()`
+ * (LG7, Decision #529). Each door is the gate: it
  * refuses anyone but a platform operator (`security.is_admin()`) with 42501, which maps to 403 and the
  * page answers with a 404, as `/admin/disputes` does (Decision #212). Nothing here decides or moves
  * money; the database computes every figure. MR3, MR5 and MR8b each add one read for their section.
@@ -45,6 +48,7 @@ interface RawCurrency {
 	fees_fx_minor: number;
 	losses_chargebacks_minor: number;
 	losses_card_refunds_minor: number;
+	losses_promos_minor: number;
 	external_minor: number;
 	accounted_minor: number;
 	imbalance_minor: number;
@@ -114,6 +118,7 @@ function toCurrency(raw: RawCurrency): ConservationCurrency {
 		feesFxMinor: raw.fees_fx_minor,
 		lossesChargebacksMinor: raw.losses_chargebacks_minor,
 		lossesCardRefundsMinor: raw.losses_card_refunds_minor,
+		lossesPromosMinor: raw.losses_promos_minor,
 		externalMinor: raw.external_minor,
 		accountedMinor: raw.accounted_minor,
 		imbalanceMinor: raw.imbalance_minor,
@@ -238,6 +243,10 @@ export const LedgerHealthService = {
 	/** Alerts: what the alert sweep raised and sent, and when each dead-man scope last wrote (MR4). */
 	alerts(actor: ReadActor): Promise<ServiceResult<AlertsRead>> {
 		return readAlerts(actor);
+	},
+	/** AML signals: what the money doors recorded for the AML-ready posture (LG7, Decision #529). */
+	amlSignals(actor: ReadActor): Promise<ServiceResult<AmlSignalsRead>> {
+		return readAmlSignals(actor);
 	},
 };
 // #endregion

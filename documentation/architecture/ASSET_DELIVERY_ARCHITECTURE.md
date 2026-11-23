@@ -1,7 +1,9 @@
 # Asset Storage, Delivery & Proxy Architecture
 
 > **Phase 0 is built (Decision #488, 2026-11-18): entitlements, frozen versions, the `originals`
-> bucket, `/api/downloads/[entitlement]/[fileId]` and the purchases view.** Everything else here is
+> bucket, `/api/downloads/[entitlement]/[fileId]` and the purchases view.** **Phase 1 is built
+> (Decision #SC9P1, 2026-11-23): no signed read URL reaches a browser, and `/api/files/object/[id]`
+> is a `308` to the media proxy.** Everything else here is
 > still a proposed design, binding nothing until its rulings in §13 are made. Logged as Decision #393. Companion spec: [`ANTI_PIRACY_ENGINE.md`](ANTI_PIRACY_ENGINE.md)
 > (watermarking, leak detection, takedowns, AI resistance). Business rules: `PRODUCT_SPEC.md`
 > §Digital Marketplace & IP Governance 7. Plan numbers: `finance-model.md` §16.8.
@@ -38,7 +40,7 @@ file nobody can download protects nothing.
 | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------- |
 | Streaming read proxy   | **Built.** Gate, allowlisted headers, never `text/html`, sandbox CSP, bodiless 404.                                                   | `Storage.md` §The upload pipeline · `services/media/stream.ts`    |
 | Navigation redirect    | **Built** on the proxy: a `303` to `/inspect/[fileId]`, with `?raw=1` or `?download=1` opting out.                                    | `features/inspector/core/proxy-navigation.ts`                     |
-| Signed read URLs       | **Still reach browsers.** `/api/files/object/[id]` answers `302` to a 300-second URL, and the library picker reads signed thumbnails. | `services/files/live-objects.ts` · `core/storage-signed.ts`       |
+| Signed read URLs       | **Closed (phase 1, Decision #SC9P1).** Every private read streams through the proxy or `/api/downloads/*`; `/api/files/object/[id]` is a `308` to the proxy, and the data-export archive streams. | `core/signed-reads.test.ts` · `services/media/library.ts`         |
 | Signed upload URLs     | **Reach browsers by design**: a write capability on one `quarantine` object.                                                          | `core/storage-signed.ts`                                          |
 | Public buckets         | **Four**: `avatars`, `showcase`, `catalogue`, `public_assets`. SSR links them directly.                                               | `00005040_seed_storage_buckets.sql` · `core/storage-url.ts`       |
 | Object ceiling         | **50 MiB** globally, with ClamAV contracted to 64 MiB.                                                                                | `supabase/config.toml` · `Projective-Safety/clamav/clamd.conf`    |
@@ -203,12 +205,15 @@ pipeline-cut rendition, moderated by the publication gate (Decision #148) and wo
 one refusal: `originals` and `deliveries` are never served through it, so `fn_can_read` can never
 become a second door to a sale original.
 
-**Retired:** `/api/files/object/[id]` and `signedReadUrls()`. Their consumers move to the proxy:
-`signedReadUrls()` signs the library picker's private thumbnails, and `fileObjectHref()` links the
-route from the share-folder listing, the chat image pick, both dispute evidence dialogs and the data
-export's file list. The data export's archive link, which `signedObjectUrl()` mints, is a signed
-read URL too (Decision #499 (C) and flag (b)). Moving them all closes the last signed read URL
-reaching a browser. **Kept:** signed upload URLs (ruling A2, ruled #499). They write one
+**Retired (phase 1, built by Decision #SC9P1, 2026-11-23):** `signedReadUrls()` and
+`signedObjectUrl()` are gone, and `storage-signed.ts` mints upload URLs only. The library picker's
+private thumbnails and originals, the share-folder listing, the chat image pick, both dispute
+evidence dialogs and the data export's file list link `mediaProxyHref()`. The data export's archive
+streams from `/api/user/data-export/download` with the `delivery` headers (§5.4) instead of a
+redirect to a signed URL. `/api/files/object/[id]` stays only as a permanent `308` to the proxy with
+the same query, so a link already issued (a downloaded export's file list) keeps working behind the
+proxy's read decision; it reads and signs nothing. `core/signed-reads.test.ts` fails if any source
+mints a signed read URL or names storage's private read routes outside the server-side transport. **Kept:** signed upload URLs (ruling A2, ruled #499). They write one
 `quarantine` object and read nothing, and routing uploads through the app would hold a request
 worker for an entire multi-gigabyte body.
 
@@ -659,7 +664,7 @@ All routes are thin: HTTP parsing, Zod, then a fat service returning `ServiceRes
 | `/api/licences/verify`                                 | `POST`         | `{ token, product, version }` → `{ valid, statement, expiresAt }`. Rate-limited per token. Reveals nothing about any other product. |
 | `/api/catalogue/files/upload-init` · `upload-complete` | `POST`         | §8.2 steps 1 to 7, with `?team=` as elsewhere under `/api/catalogue/*`.                                                             |
 | `/api/media/proxy/[fileId]`                            | `GET` · `HEAD` | **Changed:** refuses `originals` and `deliveries`.                                                                                  |
-| `/api/files/object/[id]`                               | `GET`          | **Retired** once its consumers move (§5.3).                                                                                         |
+| `/api/files/object/[id]`                               | `GET`          | **Retired (phase 1, #SC9P1):** a permanent `308` to `/api/media/proxy/[id]` with the same query. Reads and signs nothing.          |
 
 ```ts
 /** One delivery request, as the thin route parsed it. Reuses the proxy's transport fields. */
@@ -723,7 +728,7 @@ The recommended answer is what this document assumes.
 | Phase | Delivers                                                                        | Depends on                 | Done when                                                                                                                                      |
 | :---- | :------------------------------------------------------------------------------ | :------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0     | Entitlements, `product_versions`, `originals`, `/api/downloads`, purchases view | A6, A8 (ruled)             | A real checkout delivers every file of a bundle. A refunded line answers `404`. A concurrency probe passes on `place_wallet_order`. **Built (#488):** `product_delivery.sql`, `product_delivery_race.sql`. |
-| 1     | Close signed reads, retire `/api/files/object`                                  | A2 (ruled #499)            | A test finds no storage host in any read response.                                                                                             |
+| 1     | Close signed reads, retire `/api/files/object`                                  | A2 (ruled #499)            | A test finds no signed read URL and no private bucket's address in any read response; the four public buckets' addresses wait for phase 4 (narrowed, #SC9P1). **Built (#SC9P1):** `core/signed-reads.test.ts`. |
 | 2     | Upload whitelist, mandatory ClamAV, large files                                 | Safety node, A7            | EICAR is refused. A disallowed format is refused by sniffed type. A 1 GiB upload resumes.                                                      |
 | 3     | Edge host, `SUPABASE_PUBLIC_URL`, direct-link resolver, `clientKey` wiring      | Edge choice, A5            | Every row of §7.1 has a test. A signed URL's `token` never appears in a redirect.                                                              |
 | 4     | Sandbox origin, CDN, previews, then the §4.2 migration                          | A1, A4, phase 3            | A probe proves no `storage.objects` policy reaches `anon`, and `GET /object/authenticated/…` with the anon key is refused on all four buckets. |

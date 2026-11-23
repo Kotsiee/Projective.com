@@ -364,7 +364,7 @@ The provider's booking configuration, one row per schedule (PK is `schedule_id`)
 | `courtesy_enabled` · `courtesy_duration_minutes`   | boolean · int    | Free calls. Duration `CHECK 5–240`, default 15.                                  |
 | `courtesy_max_per_week` · `courtesy_cooldown_days` | integer          | Anti-abuse. `0` = unlimited / no cooldown.                                       |
 | `paid_enabled` · `paid_duration_minutes`           | boolean · int    | Paid consultations. Duration `CHECK 5–480`, default 30.                          |
-| `fee_amount_minor` · `fee_currency`                | bigint · char(3) | The `(amount_minor, currency)` pair — same money model as `finance`, not a fork. |
+| `fee_amount_minor` · `fee_currency`                | bigint · char(3) | The `(amount_minor, currency)` pair — same money model as `finance`, not a fork; `fee_currency` CHECK `^[A-Z]{3}$`. |
 | `buffer_before_minutes` · `buffer_after_minutes`   | integer          | The burnout guard (`CHECK 0–240`; after defaults to 10).                         |
 | `min_notice_minutes` · `max_advance_days`          | integer          | How close / how far ahead a request may land (default 720 min / 60 days).        |
 | `auto_confirm`                                     | boolean          | True → a request inside the working hours skips host approval.                   |
@@ -404,7 +404,7 @@ The booking record.
 | Intent       | `agenda` · `service_blueprint_id` → `marketplace.service_blueprints` (SET NULL) — the listing the call was booked ABOUT, or NULL for a call booked from the seller's profile         |
 | Conferencing | `provider_slug` · `connection_id` · `meeting_url` · `meeting_external_id`                                                                                                            |
 | Calendar     | `event_id` → `scheduling.events` (SET NULL)                                                                                                                                          |
-| Money        | `fee_amount_minor` · `fee_currency` · `payment_ref` · `escrow_id` · `refund_amount_minor` · `penalty_amount_minor`                                                                   |
+| Money        | `fee_amount_minor` · `fee_currency` (CHECK `^[A-Z]{3}$`) · `payment_ref` · `escrow_id` · `refund_amount_minor` · `penalty_amount_minor`                                             |
 | Lifecycle    | `proposed_at` · `responded_at` · `confirmed_at` · `cancelled_at` · `cancelled_by` · `cancellation_reason` · `is_late_cancel` · `completed_at` · `no_show_party` · `reschedule_count` |
 
 Constraints worth knowing: `ck_call_confirmed_has_slot` (a confirmed call must have an agreed slot),

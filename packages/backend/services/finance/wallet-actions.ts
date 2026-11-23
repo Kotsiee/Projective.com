@@ -22,6 +22,7 @@ import type {
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { businessNotActiveRefusal } from "../../core/business-lifecycle.ts";
+import { legalAcceptanceRefusal } from "../../core/legal-gate.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
@@ -112,9 +113,12 @@ function isQuoteRefusal(error: { code?: string; message: string }): boolean {
  * A money RPC's refusal: the business spend gate's (`kyb_required` / `over_limit` / `needs_approval` —
  * a 403 whose details name the spend an approval request would bind to), a draft or archived
  * business's (`business_not_active` — a 409 the business refusal map words; an archived business
- * takes no money in, Decision #248 (k)) or the function's own.
+ * takes no money in, Decision #248 (k)), the Escrow Terms not yet accepted at the version in effect
+ * (409 `legal_acceptance_required`, LG3) or the function's own.
  */
 function moneyRefusal(error: { code?: string; message: string; details?: string | null }): Result {
+	const legal = legalAcceptanceRefusal(error);
+	if (legal) return fail(legal.status, { message: legal.message, details: legal.details }) as Result;
 	const gate = spendGateRefusal(error);
 	if (gate) return fail(gate.status, { message: gate.message, details: gate.details }) as Result;
 	const inactive = businessNotActiveRefusal(error);
@@ -478,10 +482,12 @@ export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, act
 			p_stage_id: input.stageId,
 			p_ticket_id: null,
 			p_revision_id: null,
+			p_legal: input.legalAcceptance ?? null,
 		})
 		: await db.rpc("fund_stage", {
 			p_project_id: projectId,
 			p_stage_id: input.stageId,
+			p_legal: input.legalAcceptance ?? null,
 		});
 	if (error) {
 		if (input.fxQuoteId && isQuoteRefusal(error)) return refuse(409, FUNDING_QUOTE_REFRESHED);

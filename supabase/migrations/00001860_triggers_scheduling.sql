@@ -214,6 +214,12 @@ CREATE OR REPLACE TRIGGER trg_call_settings_age_gate
     FOR EACH ROW EXECUTE FUNCTION scheduling.trg_schedule_age_gate ();
 -- #endregion
 
+-- #region Paid calls need a payout-ready host (Decision #337, ruling M4; 00001510 §9b)
+CREATE OR REPLACE TRIGGER trg_call_settings_paid_gate
+    BEFORE INSERT OR UPDATE OF paid_enabled ON scheduling.call_settings
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_call_settings_paid_gate ();
+-- #endregion
+
 -- #region Availability presets & recurrence (Decision #217, 00001510 §10)
 CREATE OR REPLACE TRIGGER trg_availability_presets_touch
     BEFORE UPDATE ON scheduling.availability_presets

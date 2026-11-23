@@ -56,6 +56,7 @@ import {
 	VaultPermissionSchema,
 } from "./vault.ts";
 import { VerificationCaseSchema } from "./verification.ts";
+import { AmlSignalSchema } from "./aml-signals.ts";
 
 const SQL = readRepoFile("supabase/migrations/00000017_tables_finance.sql");
 
@@ -107,6 +108,7 @@ const ROWS: Readonly<Record<string, RowContract>> = {
 	"finance.allowance_ledger": { schema: AllowanceLedgerEntrySchema },
 	"finance.pending_releases": { schema: PendingReleaseSchema },
 	"finance.inbound_payments": { schema: InboundPaymentSchema },
+	"finance.aml_signals": { schema: AmlSignalSchema },
 };
 
 /**

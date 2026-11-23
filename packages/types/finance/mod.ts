@@ -19,6 +19,7 @@ export * from "./vault.ts";
 export * from "./billing.ts";
 export * from "./disputes.ts";
 export * from "./escrow-age.ts";
+export * from "./aml-signals.ts";
 export * from "./tax-reporting.ts";
 export * from "./ledger-health.ts";
 export * from "./business-billing.ts";

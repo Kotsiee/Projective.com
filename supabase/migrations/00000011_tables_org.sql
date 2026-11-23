@@ -288,7 +288,7 @@ CREATE TABLE org.business_profiles (
     bio jsonb NOT NULL DEFAULT '{}'::jsonb,
     languages text[] NOT NULL DEFAULT '{}'::text[],
     timezone text,
-    default_currency text DEFAULT 'USD',
+    default_currency text DEFAULT 'USD' CHECK (default_currency ~ '^[A-Z]{3}$'),
     tax_id text,
     address_line_1 text,
     address_city text,
@@ -983,7 +983,7 @@ CREATE TABLE org.enterprises (
     verification_level org.enterprise_verification_level NOT NULL DEFAULT 'unverified',
     logo_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
     billing_email text,
-    default_currency text NOT NULL DEFAULT 'USD',
+    default_currency text NOT NULL DEFAULT 'USD' CHECK (default_currency ~ '^[A-Z]{3}$'),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT enterprises_pkey PRIMARY KEY (id),
@@ -1029,23 +1029,26 @@ CREATE TABLE org.enterprise_members (
 -- #endregion
 
 -- #region Legal acceptance (Decision #446)
--- The versions of the three documents sign-up records: reference data seeded in 00005050 and mirrored
--- by LEGAL_VERSIONS in @projective/types/legal (a unit test holds them equal). A material version asks
--- everyone who accepted an older one to accept again (org.fn_needs_reacceptance); any other relies on
--- the Terms' continued-use clause.
+-- The versions of the documents a person accepts: the three sign-up records, and the two a first commit
+-- asks for (LG3: the IP Transfer Deed at a paid claim, the Escrow Terms at a funding). Reference data
+-- seeded in 00005050 and mirrored by LEGAL_VERSIONS in @projective/types/legal (a unit test holds them
+-- equal). A material sign-up version asks everyone who accepted an older one to accept again
+-- (org.fn_needs_reacceptance); any other relies on the Terms' continued-use clause. A commit document
+-- is asked for again at every new version.
 CREATE TABLE org.legal_document_versions (
     slug text NOT NULL,
     version text NOT NULL,
     effective_date date NOT NULL,
     material boolean NOT NULL DEFAULT false,
     CONSTRAINT legal_document_versions_pkey PRIMARY KEY (slug, version),
-    CONSTRAINT legal_document_versions_slug_check CHECK (slug IN ('terms', 'acceptable-use', 'privacy')),
+    CONSTRAINT legal_document_versions_slug_check CHECK (slug IN ('terms', 'acceptable-use', 'privacy', 'ip-transfer-deed', 'escrow-terms')),
     CONSTRAINT legal_document_versions_version_check CHECK (version ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')
 );
 
--- Which version of each sign-up document a person accepted (Terms, Acceptable Use) or was shown
--- (Privacy), on which surface, and for an enterprise owner the enterprise they accepted for. Written
--- only inside the door that creates the profile, or by public.accept_current_terms; append-only
+-- Which version of each document a person accepted (Terms, Acceptable Use, the IP Transfer Deed, the
+-- Escrow Terms) or was shown (Privacy), on which surface, and for an enterprise owner the enterprise they
+-- accepted for. Written only inside the door that creates the profile, by public.accept_current_terms,
+-- or by org.fn_require_legal_acceptance inside a claim or funding door (LG3); append-only
 -- (org.trg_legal_acceptances_append_only). Contract evidence, retained for the life of the account
 -- plus 6 years (finance-model.md §17), so a person's row is never cascaded away. No IP address and
 -- no user agent (data minimisation).

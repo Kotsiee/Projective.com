@@ -79,10 +79,15 @@ Recognised `save_listing` keys (Decision #217):
   boolean, else `22023`; the Pipeline offer's `allowTieredIntensity`) ·
   `team_roles` (≤ 12, a name and a headcount of 1–20) · `deliverables` (≤ 24 lines of ≤ 140) ·
   `turnaround_days` · `session_minutes` · `session_count` · `session_plan` (≤ 52 objects, each an
-  optional `title` string of ≤ 80 and `description` of ≤ 600, else `22023` DETAIL `session_plan.<i>`) ·
+  optional `title` string of ≤ 80 and `description` of ≤ 600, and an optional `durationMinutes`, a
+  whole 15–600 in fives, else `22023` DETAIL `session_plan.<i>`) ·
   `session_rolling` (a boolean, else `22023`; a rolling row must hold one sitting and no plan, else
   the table's `check_violation`, Decision #411) · `meeting_provider` · `max_seats_per_cohort` ·
-  `allow_continuous_enrollment`.
+  `allow_continuous_enrollment` · `pricing_unit` (`per_session` or `per_hour`, else `22023` DETAIL
+  `pricing_unit`; the session and cohort offers' `pricingUnit`. Judged on the listing as the save
+  leaves it, sittings with lengths of their own on a listing not priced per hour are `22023` DETAIL
+  `pricing_unit`, the rule `ck_service_blueprints_session_lengths` also holds on the table; SC10,
+  Decision #__SC10_DEC__).
 - **Product** (refused on a service): `format` · `licence` · `attribution_required` · `file_manifest`.
 - **Children:** `skills` (`org.skills` labels; an unknown label is dropped, not invented) · `tags`
   (at most 10) · `collections` (names).
@@ -111,6 +116,7 @@ The retired `media` and `availability` keys are no longer read.
 | `PE409`  | `delete_listing` on a listing with buyer history; `DETAIL` is the count. The console says to archive it instead. | 409  |
 | `23514`  | A video in showcase slot 1, or a position outside 1–6.                                        | 422  |
 | `PM403`  | The seller is under 18. Raised by `catalogue.trg_listings_publish_age_gate` (BEFORE INSERT / UPDATE OF `status` on `catalogue.listings`) on any move to `published`, so no write path publishes past it (Decision #190). | 403  |
+| `PK403`  | `payout_not_ready: …` — the seller of a **product** or **session** listing (`session`, `group_session`) cannot be paid yet. Raised by `catalogue.trg_listings_publish_payout_gate` (BEFORE INSERT / UPDATE OF `status`, after the age gate) on any move to `published`, a resume from `paused` included, through `finance.fn_assert_payout_ready` for the owner — a team listing for the team, so every shareholder (Decision #337, ruling M4). HINT `self` (the publisher, linked to Settings → Verification) or `team`, with the unready shareholders' handles in DETAIL for a team lead. A Pipeline, one-off or direct-deliverable service binds no seller and publishes freely (FA K3); drafting is never gated. | 403  |
 
 **Grants** ([`00002510_permissions_function_grants.sql`](../../../supabase/migrations/00002510_permissions_function_grants.sql)):
 every door above and `fn_listing_file_ok` are `REVOKE`d from `public` and `anon` and
@@ -159,19 +165,19 @@ action_required · closed`) are derived in TypeScript by `laneOf`
 
 | Function                                                  | Security | Does                                                                                                                                                                                                                                                                                                |
 | :-------------------------------------------------------- | :------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_client_pipeline(p_listing uuid?, p_limit int = 200)` | INVOKER  | `TABLE(engagement_kind, engagement_id, listing_id, buyer_user_id, buyer_handle, status, opened_at, last_activity_at, amount_minor, currency, next_event_at, action_reasons text[], href)`, newest activity first, `p_limit` clamped to 1–500. `p_listing` NULL is every listing the caller manages. |
+| `get_client_pipeline(p_listing uuid?, p_limit int = 200)` | INVOKER  | `TABLE(engagement_kind, engagement_id, listing_id, buyer_user_id, buyer_kind, buyer_handle, buyer_contact_handle, status, opened_at, last_activity_at, amount_minor, currency, next_event_at, action_reasons text[], href)`, newest activity first, `p_limit` clamped to 1–500. `p_listing` NULL is every listing the caller manages. Every arm's buyer is a person (`buyer_kind` `user`) but an order's (below). No `href` carries a uuid but `?event=` (Decisions #88, #500 (B), SC6). |
 | `fn_manages_listing(p_listing uuid)`                      | DEFINER  | True when the caller may manage the listing: its owner when personal, a holder of `publish_listings` on the owning team when a team's (`org.fn_member_can`, the permission twin). Also the `listing` arm of `analytics.fn_subject_visible`.                                                         |
 | `fn_candidate_listings(p_listing uuid?)`                  | DEFINER  | The caller's personal listings by owner and their active teams' listings by membership, both by index, so neither reader scans the catalogue; `fn_manages_listing` then decides each.                                                                                                               |
-| `fn_seller_order_lines(p_listing uuid?)`                  | DEFINER  | The order lines that bought the caller's managed listings, narrowed to the buyer, the order's status, `placed_at` / `updated_at`, the line's total, currency and `scheduled_at`. Never the payment method, card, promo, totals or other sellers' lines.                                             |
+| `fn_seller_order_lines(p_listing uuid?)`                  | DEFINER  | The order lines that bought the caller's managed listings, narrowed to the buyer, the order's status, `placed_at` / `updated_at`, the line's total, currency and `scheduled_at`. The buyer is the order's owner: `buyer_kind` is `finance.orders.owner_type` verbatim; `buyer_handle` a person's username or a team's or business's slug, with the entity's owner as `buyer_contact_handle` (`buyer_user_id` NULL), since a message is person-to-person (#422 (b), #500 (C)). An enterprise has no handle and stays unnamed. Never the payment method, card, promo, totals or other sellers' lines. |
 
 **Arms** (the pipeline is INVOKER, so each answers under the caller's own policies):
 
 | `engagement_kind`  | Source                                                             | `status` (verbatim)                         | `action_reasons`                                                                                     | `href`                                                     |
 | :----------------- | :----------------------------------------------------------------- | :------------------------------------------ | :--------------------------------------------------------------------------------------------------- | :--------------------------------------------------------- |
-| `inquiry`          | `comms.dm_threads` `service_inquiry` with `subject_listing_id`     | the seller's `dm_participants.inbox_folder` | `inquiry_unanswered` — the last message is not the seller's                                          | `/messages/<thread id>`                                    |
+| `inquiry`          | `comms.dm_threads` `service_inquiry` with `subject_listing_id`     | the seller's `dm_participants.inbox_folder` | `inquiry_unanswered` — the last message is not the seller's                                          | `/messages/dm-<buyer handle>` (303 to the pair's `cht-` thread); the buyer is the thread's `created_by_user_id` (an inquiry is opened by its buyer and holds no third person), since the participants policy shows only the caller's own row |
 | `quote`            | `marketplace.quote_requests` on the listing's blueprint; the amount is the live (pending or accepted) offer's price, else the soft budget (Decision #458) | `sent · answered · accepted · declined · withdrawn` | `inquiry_unanswered` while `sent`                                                                    | `/messages/dm-<buyer handle>`                              |
 | `discovery_call`   | `scheduling.discovery_calls.service_blueprint_id`                  | `scheduling.call_status`                    | `inquiry_unanswered` while `proposed`; `reschedule_open`                                             | `/calendar?event=<event id>`, else the DM                  |
-| `order`            | `fn_seller_order_lines` (non-session lines)                        | `finance.order_status`                      | —                                                                                                    | `/messages/dm-<buyer handle>`                              |
+| `order`            | `fn_seller_order_lines` (non-session lines)                        | `finance.order_status`                      | —                                                                                                    | `/messages/dm-<buyer handle>`; a team's or business's order `/messages/dm-<its owner>` |
 | `session_booking`  | `projects.cohort_memberships` on the listing's session engagements | `active · cancelled · completed`            | `handshake_pending` (round 0 collecting); `reschedule_open`; `dispute_open`                          | `/calendar?event=<next sitting's event>`, else the project |
 | `pipeline_project` | `projects.projects.source_blueprint_id`, `session_kind = 'none'`   | `project_status`                            | `revision_requested`; `reschedule_open`; `dispute_open`; `submission_pending` (a drafted submission) | `/projects/<prj- slug>`                                    |
 

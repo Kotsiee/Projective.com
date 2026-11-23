@@ -7,11 +7,14 @@ import type { InviteLinkView } from "../types/projects-types.ts";
 import { RequestService } from "../core/RequestService.ts";
 import { inviteLinkCopy } from "../core/invite-link-copy.ts";
 import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx";
+import { ensureClientTrustConsent } from "@features/reviews/core/client-trust.ts";
+import { ClientTrustDialog } from "@features/reviews/components/ClientTrustDialog.tsx";
 
 /**
  * InviteLinkLanding — the `/invite/[token]` page (Decision #145): where a stage invite link leads, who
  * shared it, and — only when the link is open to this person — an optional note and "Ask to join",
- * which files a pending request the project's managers answer. The page's state is the server's
+ * which files a pending request the project's managers answer (after the Informed Consent when the
+ * client is warned, Decision #486 (C)). The page's state is the server's
  * (`fn_invite_link_state`); after a successful ask it moves to `requested` locally, exactly what a
  * reload would read back.
  */
@@ -33,6 +36,11 @@ export default function InviteLinkLanding(props: InviteLinkLandingProps): JSX.El
 		if (busy.value) return;
 		busy.value = true;
 		error.value = null;
+		const project = view.value.projectSlug;
+		if (project && !(await ensureClientTrustConsent(project))) {
+			busy.value = false;
+			return;
+		}
 		const res = await RequestService.redeemInviteLink({ token: props.token, message: note.value });
 		busy.value = false;
 		if (res.ok) {
@@ -93,6 +101,7 @@ export default function InviteLinkLanding(props: InviteLinkLandingProps): JSX.El
 					<Icon name="arrow-right" size="sm" />
 				</a>
 			)}
+			<ClientTrustDialog />
 		</div>
 	);
 }

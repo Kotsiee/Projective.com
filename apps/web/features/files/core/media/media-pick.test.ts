@@ -45,7 +45,7 @@ function asset(overrides: Partial<AssetItem>): AssetItem {
 Deno.test("candidateFromAsset: an uploaded still frames from its upright lg tier", () => {
 	const c = candidateFromAsset(asset({}), false);
 	assert(!("refusal" in c));
-	assertEquals(c.src, "/api/files/object/a1?tier=lg");
+	assertEquals(c.src, "/api/media/proxy/a1?tier=lg");
 	assertEquals([c.width, c.height], [1600, 1200]);
 });
 

@@ -302,7 +302,8 @@ $$;
 -- close ends at it (Decision #498).
 --
 -- Refusals: 42501 signed out · 22023 a seat count outside 1–500 · P0002 no such cohort · PU422 your
--- own session · PS409 closed / full / already seated, with DETAIL {reason, remaining}.
+-- own session · PK403 `payout_not_ready:` (HINT `seller`) a host who cannot be paid (Decision #337,
+-- ruling M4) · PS409 closed / full / already seated, with DETAIL {reason, remaining}.
 CREATE OR REPLACE FUNCTION projects.reserve_seat(p_cohort_id uuid, p_seats integer DEFAULT 1)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -333,6 +334,13 @@ BEGIN
     IF projects.fn_is_session_host(v_cohort.project_id, v_uid) THEN
         RAISE EXCEPTION 'You can''t reserve a seat on your own session' USING ERRCODE = 'PU422';
     END IF;
+    -- The host must be payable before a buyer can hold a seat (Decision #337, ruling M4): the backstop
+    -- to the publish gate, for a host whose readiness lapsed after publishing.
+    PERFORM finance.fn_assert_seller_payout_ready(
+        CASE WHEN p.owner_team_id IS NOT NULL THEN 'team' ELSE 'freelancer' END,
+        COALESCE(p.owner_team_id, p.owner_user_id))
+       FROM projects.projects p
+      WHERE p.id = v_cohort.project_id;
     IF v_cohort.status <> 'enrolling'
        OR (v_cohort.enrolment_closes_at IS NOT NULL AND v_cohort.enrolment_closes_at <= pg_catalog.now()) THEN
         RAISE EXCEPTION USING ERRCODE = 'PS409', MESSAGE = 'This cohort isn''t taking bookings',
@@ -388,7 +396,8 @@ COMMENT ON FUNCTION projects.reserve_seat(uuid, integer) IS
 'Hold seats on an enrolling cohort for seat_hold_minutes (renewing the caller''s live hold, never
 shortening it), under a row lock on the cohort so the last seat cannot be sold twice; the seats the
 listing''s waitlist has first call on are refused (Decision #455). Refusals: 42501 · 22023 · P0002 ·
-PU422 own session · PS409 closed/full/already seated (DETAIL {reason, remaining}).';
+PU422 own session · PK403 payout_not_ready (HINT seller) a host who cannot be paid (Decision #337, ruling
+M4) · PS409 closed/full/already seated (DETAIL {reason, remaining}).';
 -- #endregion
 
 -- #region 4. Confirm a seat — when the order that paid for it settles
@@ -403,6 +412,9 @@ PU422 own session · PS409 closed/full/already seated (DETAIL {reason, remaining
 -- seat they did not get (the whole order rolls back with the refusal).
 --
 -- The buyer's place on the listing's waitlist, if any, becomes `converted` (Decision #455).
+--
+-- The seat's escrow names the host as its payee, so a host who cannot be paid (their readiness lapsed
+-- after the hold) seats nobody: PK403 `payout_not_ready:`, HINT `seller` (Decision #337, ruling M4).
 CREATE OR REPLACE FUNCTION projects.fn_confirm_seat(
     p_hold_id uuid,
     p_buyer uuid,
@@ -458,6 +470,7 @@ BEGIN
         v_payee_type := 'freelancer'::public.assignment_type;
         v_payee_id := v_project.owner_user_id;
     END IF;
+    PERFORM finance.fn_assert_seller_payout_ready(v_payee_type::text, v_payee_id);
 
     -- A seat given up earlier is taken again on the same row (one row per person per cohort).
     INSERT INTO projects.cohort_memberships (cohort_id, user_id, seats, status, order_line_id)
@@ -683,14 +696,58 @@ AS $$
                         WHERE e.cohort_membership_id = p_membership_id AND e.status = 'held');
 $$;
 
+-- The price of one sitting (SC10), the rule `sittingPriceMinor` (`@projective/types/catalogue`)
+-- mirrors exactly: per session, the listing's price; per hour, ⌊rate × minutes ÷ 60⌋, floored per
+-- sitting, so a block's per-sitting escrows add up to its line and a refunded sitting returns exactly
+-- what it held. Internal: finance.place_wallet_order, fn_book_session_slot.
+CREATE OR REPLACE FUNCTION projects.fn_sitting_price(p_rate bigint, p_unit text, p_minutes integer)
+RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = ''
+AS $$
+    SELECT CASE WHEN p_unit = 'per_hour' THEN (p_rate * p_minutes) / 60 ELSE p_rate END;
+$$;
+
+-- Sitting p_index's length (0-based): its plan entry's `durationMinutes`, else the listing's length.
+CREATE OR REPLACE FUNCTION projects.fn_sitting_minutes(p_plan jsonb, p_index integer, p_default integer)
+RETURNS integer
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = ''
+AS $$
+    SELECT COALESCE((p_plan -> p_index ->> 'durationMinutes')::integer, p_default);
+$$;
+
+-- What a listing's first p_count sittings cost together: the sum of each one's own price
+-- (`sittingPricesMinor`, summed). Internal: finance.place_wallet_order's block and per-hour seat lines.
+CREATE OR REPLACE FUNCTION projects.fn_sittings_price(
+    p_rate bigint, p_unit text, p_minutes integer, p_plan jsonb, p_count integer
+)
+RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(pg_catalog.sum(projects.fn_sitting_price(p_rate, p_unit,
+               projects.fn_sitting_minutes(p_plan, k, p_minutes))), 0)::bigint
+      FROM pg_catalog.generate_series(0, p_count - 1) AS k;
+$$;
+
 -- Internal: `finance.place_wallet_order` calls it for a `service_session` (p_sittings = 1) or a
 -- `set_session` line (p_sittings = the listing's session_count), inside its own transaction, after
--- writing the order line. In one step it:
+-- writing the order line. `p_unit_amount` is the listing's price as it reads it: per sitting, or per
+-- hour (`pricing_unit`, SC10). In one step it:
 --   * finds or makes the listing's engagement and seats the buyer on a fresh one-seat cohort;
 --   * writes the sittings — the first at the time the buyer picked, then each later time the buyer also
 --     chose at booking (`p_later_starts`, ascending, Decision #411), and every sitting left for later
 --     PROVISIONALLY a week after the one before (PRODUCT_SPEC §Session-Based A: the buyer commits to a
---     block, not to six specific Tuesdays) — and holds one escrow per sitting from the paying wallet;
+--     block, not to six specific Tuesdays) — each running its own length (projects.fn_sitting_minutes)
+--     — and holds one escrow per sitting from the paying wallet, at that sitting's own price
+--     (projects.fn_sitting_price: a per-hour listing's sittings differ when their lengths do);
 --   * titles a sitting from the listing's session plan when the seller described it;
 --   * mirrors every sitting onto the provider's calendar (`scheduling.events.source_session_event_id`,
 --     with both people on its roster), so it blocks their free/busy and the Proactive Calendar can
@@ -701,7 +758,8 @@ $$;
 --     time. A round still open at its deadline lapses and the provisional time stands — exactly what
 --     `lapsed` already means (projects.fn_lapse_session_handshakes, which also reminds the provider
 --     once, 24 hours before the earliest deadline).
--- The buyer must be an adult (Decision #208), and every sitting the buyer chose must sit inside the
+-- The buyer must be an adult (Decision #208) and the provider payable (Decision #337, ruling M4: PK403
+-- `payout_not_ready:`, HINT `seller`); every sitting the buyer chose must sit inside the
 -- provider's working hours — the listing's compiled availability preset when there is one, else the
 -- weekly bands (scheduling.fn_band_covers with the blueprint, Decision #217 (d)); the pencilled-in
 -- sittings are agreed through their handshakes instead. Chosen times run in order, each starting after
@@ -738,6 +796,9 @@ DECLARE
     v_project projects.projects;
     v_schedule uuid;
     v_minutes integer;
+    v_len integer;
+    v_amount bigint;
+    v_total bigint := 0;
     v_cohort uuid;
     v_membership uuid;
     v_payee_type public.assignment_type;
@@ -775,19 +836,24 @@ BEGIN
        OR v_bp.delivery_model <> 'session'::marketplace.service_delivery_model THEN
         RAISE EXCEPTION 'This session is no longer offered — nothing was charged' USING ERRCODE = 'PC409';
     END IF;
+    -- The backstop to the publish gate, for a provider whose readiness lapsed after publishing. The
+    -- listing's owner owns its engagement (projects.fn_session_engagement_for), so every escrow's payee.
+    PERFORM finance.fn_assert_seller_payout_ready(
+        CASE WHEN v_bp.owner_team_id IS NOT NULL THEN 'team' ELSE 'freelancer' END,
+        COALESCE(v_bp.owner_team_id, v_bp.freelancer_profile_id));
     v_minutes := COALESCE(v_bp.session_minutes, 60);
 
     IF v_chosen > p_sittings - 1 THEN
         RAISE EXCEPTION 'This booking holds % sessions, and % times were chosen', p_sittings, v_chosen + 1
             USING ERRCODE = '22023';
     END IF;
-    v_prev_end := p_starts_at + pg_catalog.make_interval(mins => v_minutes);
+    v_prev_end := p_starts_at + pg_catalog.make_interval(mins => projects.fn_sitting_minutes(v_bp.session_plan, 0, v_minutes));
     FOR k IN 1 .. v_chosen LOOP
         IF p_later_starts[k] IS NULL OR p_later_starts[k] < v_prev_end THEN
             RAISE EXCEPTION 'Each session has to start after the one before it ends — pick new times; nothing was charged'
                 USING ERRCODE = 'PC409';
         END IF;
-        v_prev_end := p_later_starts[k] + pg_catalog.make_interval(mins => v_minutes);
+        v_prev_end := p_later_starts[k] + pg_catalog.make_interval(mins => projects.fn_sitting_minutes(v_bp.session_plan, k, v_minutes));
     END LOOP;
 
     SELECT * INTO v_eng FROM projects.fn_session_engagement_for(p_blueprint_id);
@@ -799,24 +865,26 @@ BEGIN
     v_schedule := projects.fn_session_host_schedule(v_project.id);
     IF v_schedule IS NOT NULL THEN
         PERFORM 1 FROM scheduling.schedules WHERE id = v_schedule FOR UPDATE;
+        v_len := projects.fn_sitting_minutes(v_bp.session_plan, 0, v_minutes);
         IF NOT scheduling.fn_band_covers(v_schedule, 'working_hours'::scheduling.availability_kind,
-               p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_minutes), p_blueprint_id) THEN
+               p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_len), p_blueprint_id) THEN
             RAISE EXCEPTION 'That time is outside the provider''s hours — pick another; nothing was charged'
                 USING ERRCODE = 'PS409';
         END IF;
         -- The discovery-call gate's own predicate: blackouts, events and requested or confirmed calls,
         -- with the schedule's buffers — the rule the slot grid offered the time under.
-        IF NOT scheduling.fn_slot_is_free(v_schedule, p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_minutes)) THEN
+        IF NOT scheduling.fn_slot_is_free(v_schedule, p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_len)) THEN
             RAISE EXCEPTION 'That time was just taken — pick another; nothing was charged' USING ERRCODE = 'PS409';
         END IF;
         FOR k IN 1 .. v_chosen LOOP
+            v_len := projects.fn_sitting_minutes(v_bp.session_plan, k, v_minutes);
             IF NOT scheduling.fn_band_covers(v_schedule, 'working_hours'::scheduling.availability_kind,
-                   p_later_starts[k], p_later_starts[k] + pg_catalog.make_interval(mins => v_minutes), p_blueprint_id) THEN
+                   p_later_starts[k], p_later_starts[k] + pg_catalog.make_interval(mins => v_len), p_blueprint_id) THEN
                 RAISE EXCEPTION 'The time for session % is outside the provider''s hours — pick another; nothing was charged', k + 1
                     USING ERRCODE = 'PS409';
             END IF;
             IF NOT scheduling.fn_slot_is_free(v_schedule, p_later_starts[k],
-                   p_later_starts[k] + pg_catalog.make_interval(mins => v_minutes)) THEN
+                   p_later_starts[k] + pg_catalog.make_interval(mins => v_len)) THEN
                 RAISE EXCEPTION 'The time for session % was just taken — pick another; nothing was charged', k + 1
                     USING ERRCODE = 'PS409';
             END IF;
@@ -844,7 +912,14 @@ BEGIN
             WHEN k <= v_chosen THEN p_later_starts[k]
             ELSE COALESCE(p_later_starts[v_chosen], p_starts_at) + pg_catalog.make_interval(days => 7 * (k - v_chosen))
         END;
-        v_end := v_start + pg_catalog.make_interval(mins => v_minutes);
+        v_len := projects.fn_sitting_minutes(v_bp.session_plan, k, v_minutes);
+        v_end := v_start + pg_catalog.make_interval(mins => v_len);
+        v_amount := projects.fn_sitting_price(p_unit_amount, v_bp.pricing_unit, v_len);
+        IF v_amount <= 0 THEN
+            RAISE EXCEPTION 'Session % of this booking is too short to price — nothing was charged', k + 1
+                USING ERRCODE = 'PS501';
+        END IF;
+        v_total := v_total + v_amount;
         v_plan_title := CASE WHEN pg_catalog.jsonb_typeof(v_bp.session_plan -> k) = 'object'
                              THEN NULLIF(pg_catalog.btrim(COALESCE(v_bp.session_plan -> k ->> 'title', '')), '') END;
         v_title := CASE WHEN p_sittings = 1 THEN COALESCE(v_bp.title || ' — ' || v_plan_title, v_bp.title)
@@ -863,10 +938,10 @@ BEGIN
             v_eng.o_stage_id, v_membership, v_event,
             CASE WHEN p_payer_type = 'business' THEN p_payer_id END,
             CASE WHEN p_payer_type <> 'business' THEN p_payer_id END,
-            v_payee_type, v_payee_id, p_unit_amount, v_currency, 'held'
+            v_payee_type, v_payee_id, v_amount, v_currency, 'held'
         )
         RETURNING id INTO v_escrow;
-        PERFORM finance.fn_wallet_debit(p_payer_id, p_payer_type, v_currency, p_unit_amount,
+        PERFORM finance.fn_wallet_debit(p_payer_id, p_payer_type, v_currency, v_amount,
             'escrow_hold', 'escrows', v_escrow);
 
         INSERT INTO scheduling.events (
@@ -908,7 +983,7 @@ BEGIN
             ELSE pg_catalog.format('A block of %s sessions of "%s" was booked. Each session''s payment is held in escrow until after it.', p_sittings, v_bp.title)
         END,
         'projects.cohort_memberships', v_membership,
-        pg_catalog.jsonb_build_object('sittings', p_sittings, 'amount_minor', p_unit_amount * p_sittings,
+        pg_catalog.jsonb_build_object('sittings', p_sittings, 'amount_minor', v_total,
             'currency', v_currency),
         p_buyer, 'project', v_project.id, NULL, '/projects/' || v_project.slug
     );
@@ -1408,9 +1483,9 @@ BEGIN
             WHEN v_count = 1 THEN COALESCE(v_name || ' — ' || v_plan_title, v_name)
             WHEN v_plan_title IS NOT NULL THEN pg_catalog.format('%s — session %s of %s: %s', v_name, k, v_count, v_plan_title)
             ELSE pg_catalog.format('%s — session %s of %s', v_name, k, v_count) END, 200);
-        v_sittings := v_sittings || projects.fn_write_group_sitting(
-            v_cohort.id, v_title, v_starts[k], v_starts[k] + pg_catalog.make_interval(mins => v_minutes));
-        v_prev_end := v_starts[k] + pg_catalog.make_interval(mins => v_minutes);
+        -- Each sitting runs its own length on a per-hour listing (SC10), else the listing's.
+        v_prev_end := v_starts[k] + pg_catalog.make_interval(mins => projects.fn_sitting_minutes(v_bp.session_plan, k - 1, v_minutes));
+        v_sittings := v_sittings || projects.fn_write_group_sitting(v_cohort.id, v_title, v_starts[k], v_prev_end);
     END LOOP;
     PERFORM projects.fn_sync_sitting_mirrors(v_cohort.id);
 

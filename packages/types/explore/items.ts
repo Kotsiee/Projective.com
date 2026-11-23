@@ -242,6 +242,11 @@ export const ServiceItemSchema = z.object({
 	 */
 	sessionPrice: z.number().optional(),
 	/**
+	 * Session / Group Session only, and only when the listing sells by the hour (SC10): then
+	 * {@link sessionPrice} is an hourly rate and the card prints `$X / hour`. Absent means per session.
+	 */
+	sessionPricingUnit: z.literal("per_hour").optional(),
+	/**
 	 * How many revision rounds the seller includes at no extra cost, **per stage**.
 	 *
 	 * Declared by the seller rather than derived, because it is a commitment they make and not a

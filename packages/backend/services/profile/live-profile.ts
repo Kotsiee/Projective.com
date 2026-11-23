@@ -139,6 +139,8 @@ export interface RawProfile {
 	banner: unknown;
 	member_since: string;
 	rating: { as_helper: RawRating; as_client: RawRating };
+	/** A business's shown Client Trust Score (reviews.fn_client_trust_shown), else null or absent. */
+	client_trust?: { score: number | string; review_count: number; warned: boolean } | null;
 	verified: boolean;
 	verification_stamp?: string;
 	hire_intake: unknown;
@@ -463,6 +465,13 @@ export function mapProfileView(raw: RawProfile): ProfileView {
 			...(helper.count > 0 || seller ? { asHelper: helper } : {}),
 			...(client.count > 0 || !seller ? { asClient: client } : {}),
 		},
+		clientTrust: raw.client_trust
+			? {
+				score: num(raw.client_trust.score),
+				reviewCount: num(raw.client_trust.review_count),
+				warned: !!raw.client_trust.warned,
+			}
+			: null,
 		verified: !!raw.verified,
 		tier,
 		verifications,

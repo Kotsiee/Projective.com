@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DualRatingSchema, MessageTargetSchema, SkillRefSchema } from "../explore/items.ts";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
+import { ClientTrustShownSchema } from "../reviews/mod.ts";
 import { AvailabilityRuleSchema } from "../scheduling/scheduling.ts";
 import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
 import { AdornmentSlugSchema, PUBLIC_ADORNMENT_LIMIT, VerificationStampSchema } from "../org/standing.ts";
@@ -386,6 +387,11 @@ export const ProfileViewSchema = z.object({
 	hireIntake: z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX).optional(),
 	/** DUAL-track reputation: `asHelper` (freelancer) AND `asClient` — both may be present. */
 	rating: DualRatingSchema,
+	/**
+	 * A business's Client Trust Score (Decision #486 (B)), shown only from 3 freelancer reviews; null
+	 * below that and for a person or a team.
+	 */
+	clientTrust: ClientTrustShownSchema.nullable().optional(),
 	/** Whether the identity itself is platform-verified. */
 	verified: z.boolean(),
 	/** Highest attained trust tier (the headline mark). */

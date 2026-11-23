@@ -122,6 +122,36 @@ CREATE TRIGGER trg_pot_movements_no_truncate
     FOR EACH STATEMENT
     EXECUTE FUNCTION finance.fn_pot_movements_append_only ();
 
+-- The AML monitoring signals (00001240, Decision #529) are a record of what the money doors saw: the
+-- same rule.
+CREATE TRIGGER trg_aml_signals_append_only
+    BEFORE UPDATE OR DELETE ON finance.aml_signals
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_aml_signals_append_only ();
+
+CREATE TRIGGER trg_aml_signals_no_truncate
+    BEFORE TRUNCATE ON finance.aml_signals
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION finance.fn_aml_signals_append_only ();
+
+-- The round-trip signal (00001240, Decision #529): an escrow held for a named payee, or released, with
+-- one person on both sides. On the table, so no door that holds or releases money can skip it; WHEN keeps
+-- every other escrow write from calling it.
+CREATE TRIGGER trg_escrows_aml_round_trip_insert
+    AFTER INSERT ON finance.escrows
+    FOR EACH ROW
+    WHEN (NEW.payee_id IS NOT NULL AND NEW.status IN ('held', 'released'))
+    EXECUTE FUNCTION finance.fn_aml_record_round_trip ();
+
+CREATE TRIGGER trg_escrows_aml_round_trip_update
+    AFTER UPDATE OF status, payee_id ON finance.escrows
+    FOR EACH ROW
+    WHEN (NEW.payee_id IS NOT NULL AND (
+        (NEW.status = 'released' AND OLD.status IS DISTINCT FROM 'released')
+        OR (NEW.status = 'held' AND (OLD.status IS DISTINCT FROM 'held' OR OLD.payee_id IS NULL))
+    ))
+    EXECUTE FUNCTION finance.fn_aml_record_round_trip ();
+
 -- An executed FX conversion is ledger too (00001240, Decision #435); a quote is frozen once written,
 -- except that its use is recorded once.
 CREATE TRIGGER trg_fx_conversions_append_only

@@ -18,7 +18,7 @@ import {
 } from "@projective/types/finance";
 import type { ExploreItem } from "@projective/types/explore";
 import type { OrderHistoryLine, OrderHistoryPage, OrderLineHome } from "@projective/types/finance";
-import { downloadHref, purchasesHref } from "@projective/types/catalogue";
+import { downloadHref, purchaseReviewLink, purchasesHref } from "@projective/types/catalogue";
 import { IntakeAnswersSchema } from "@projective/types/services";
 import { getUserClient } from "../../core/supabase.ts";
 import { entitlementsForLines, type LineEntitlement } from "../catalogue/delivery.ts";
@@ -770,15 +770,25 @@ function homeOf(row: LineRow, line: OrderLine, ctx: LineContext): OrderLineHome 
 	return null;
 }
 
-/** One past line as the history lists it: the receipt's projection, reduced, and its home. */
-function historyLineOf(row: LineRow, order: OrderRow, ctx: LineContext): OrderHistoryLine {
+/**
+ * One past line as the history lists it: the receipt's projection, reduced, its home and, for a
+ * person's delivered product, its review. `holderType` is whose history this is.
+ */
+function historyLineOf(
+	row: LineRow,
+	order: OrderRow,
+	ctx: LineContext,
+	holderType: string,
+): OrderHistoryLine {
 	const line = toLine(row, order, ctx);
+	const entitlement = row.fulfilment === "download" ? ctx.entitlements.get(row.id) : undefined;
 	return {
 		id: line.id,
 		itemType: line.itemType,
 		title: line.title,
 		lineTotal: line.lineTotal,
 		home: homeOf(row, line, ctx),
+		reviewHref: entitlement ? purchaseReviewLink({ ...entitlement, holderType }) : null,
 	};
 }
 
@@ -815,7 +825,10 @@ export async function readOrderHistory(
 		const order = window.rows.find((o) => o.id === row.order_id);
 		const own = byOrder.get(row.order_id) ?? [];
 		if (!order || own.length >= 200) continue;
-		byOrder.set(row.order_id, [...own, historyLineOf(row, order, ctx)]);
+		byOrder.set(row.order_id, [
+			...own,
+			historyLineOf(row, order, ctx, owner.isEntity ? owner.ownerType : "user"),
+		]);
 	}
 
 	return {

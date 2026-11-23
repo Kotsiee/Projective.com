@@ -11,7 +11,8 @@ import type { CatalogueStats, ConsoleUrlState, ConsoleView } from "../types/cata
 /**
  * CatalogueHeader — the console's header band, laid out like every middle-nav header band (and like
  * the workspace's, {@link ListingHeader}): identity at the start (the title over the catalogue's
- * health — how much is live, how it is rated), the view switch (Listings · Analytics · Clients)
+ * health — how much is live, how it is rated), the view switch (Listings · Analytics · Clients ·
+ * Promotions)
  * centred, and the sales figures for the window at the end. Search, the type, sort and New listing
  * live in the canvas's sticky toolbar (`CatalogueToolbar`) (Decisions #221, #309).
  */
@@ -30,6 +31,7 @@ const VIEW_TABS: readonly TabStripItem<ConsoleView>[] = [
 	{ key: "listings", label: "Listings" },
 	{ key: "analytics", label: "Analytics" },
 	{ key: "clients", label: "Clients" },
+	{ key: "promotions", label: "Promotions" },
 ];
 
 export default function CatalogueHeader(props: CatalogueHeaderProps): JSX.Element {

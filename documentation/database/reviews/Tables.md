@@ -21,6 +21,7 @@ signed-out visitor. No client role holds a write privilege on any table here (`0
 | `target_entity_type`                               | `reviews.review_target_type`             | `user` · `freelancer` · `business` · `team` · `service_blueprint` · `product` (see below).                                                                            |
 | `reviewer_user_id`                                 | uuid → `org.users_public`                | The author.                                                                                                                                                           |
 | `reviewer_business_id`                             | uuid → `org.business_profiles`, nullable | The business the author wrote for: a business client is one party (Decision #244 (e), ruled by #487). NULL for a person.                                              |
+| `reviewer_team_id`                                 | uuid → `org.teams`, nullable             | The team the author wrote for when a team reviews its client (Decision #486): one party, like a business. At most one of the two party columns is set.              |
 | `project_id`                                       | uuid → `projects.projects`, nullable     | **Anchor:** the engagement.                                                                                                                                           |
 | `stage_assignment_id`                              | uuid → `projects.stage_assignments`      | The released seat that opened the review before the engagement completed (with `project_id` only).                                                                    |
 | `cohort_membership_id`                             | uuid → `projects.cohort_memberships`     | **Anchor:** the attendee's session seat.                                                                                                                              |
@@ -34,7 +35,8 @@ signed-out visitor. No client role holds a write privilege on any table here (`0
 | `edited_at`                                        | timestamptz                              | The author's last edit.                                                                                                                                               |
 | `withdrawn_at`                                     | timestamptz                              | The author withdrew it: kept, gone from every reader and average.                                                                                                     |
 | `hidden_at` / `hidden_reason` / `hidden_by`        | timestamptz / text (1–500) / uuid        | An operator hid it (`reviews.hide_review`); `ck_entity_reviews_hidden` pairs the time and the reason.                                                                 |
-| `is_visible`                                       | boolean, GENERATED STORED                | `withdrawn_at IS NULL AND hidden_at IS NULL` — the one predicate every reader, policy and aggregate uses.                                                             |
+| `revealed_at`                                      | timestamptz, DEFAULT `now()`             | Double-blind (Decision #486 (A)): NULL while an engagement review waits for the other side's on the same anchor or its window (`reviews.fn_reveal`); a session review is revealed as written. |
+| `is_visible`                                       | boolean, GENERATED STORED                | `withdrawn_at IS NULL AND hidden_at IS NULL AND revealed_at IS NOT NULL` — the one predicate every reader, policy and aggregate uses.                                 |
 | `reply_comment`                                    | text, 1–1,000 characters                 | The reviewed side's one public reply.                                                                                                                                 |
 | `reply_user_id` / `replied_at` / `reply_edited_at` | uuid / timestamptz / timestamptz         | Who replied and when; the reply is editable for 7 days.                                                                                                               |
 | `created_at` / `updated_at`                        | timestamptz                              |                                                                                                                                                                       |
@@ -47,13 +49,15 @@ Constraints:
   sitting only ever sit beside the anchor they belong to.
 - `ck_entity_reviews_hidden`, `ck_entity_reviews_reply` — a hidden review has its reason; a reply
   has its author and time, and an edit only follows a reply.
+- `ck_entity_reviews_one_party` — a review is a business's or a team's, never both.
 - `uq_entity_reviews_one_per_party` (`00004014`) — one review per (anchor, party, target), the party
-  being `COALESCE(reviewer_business_id, reviewer_user_id)`. A withdrawn or hidden review still
+  being `COALESCE(reviewer_business_id, reviewer_team_id, reviewer_user_id)`. A withdrawn or hidden review still
   counts. It replaces `unique_review_per_project`, whose NULLs were distinct and so bounded nothing
   without a project.
 
 Indexes for the readers (`00004014`): by target and date (visible only), by listing and date
-(visible only), by reviewer, by project anchor, by membership anchor.
+(visible only), by reviewer, by project anchor, by membership anchor, and the blind reviews by
+window (`idx_entity_reviews_unrevealed`, the `reviews-reveal` job).
 
 ### The target types, and the two reputation tracks
 
@@ -62,8 +66,8 @@ aggregate (`reviews.fn_recount_rating` filters on it):
 
 | `target_entity_type` | The reviewee is…            | Written by…                                  | Rating lands on                                                                                                                 |
 | :------------------- | :-------------------------- | :------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
-| `user`               | a person, **as a client**   | a provider (RV2's door)                      | `org.users_public.rating_*`                                                                                                     |
-| `business`           | a business, as a client     | a provider (RV2's door)                      | `org.business_profiles.rating_*`                                                                                                |
+| `user`               | a person, **as a client**   | a provider who worked on the engagement      | `org.users_public.rating_*`, and the Client Trust Score                                                                         |
+| `business`           | a business, as a client     | a provider who worked on the engagement      | `org.business_profiles.rating_*`, and the Client Trust Score                                                                    |
 | `freelancer`         | a person, **as a provider** | the client party of an engagement or session | `org.freelancer_profiles.rating_*`                                                                                              |
 | `team`               | a team, as a provider       | the client party of an engagement or session | `org.teams.rating_*`                                                                                                            |
 | `service_blueprint`  | a service listing           | no door writes it                            | `marketplace.service_blueprints.rating_*` — recomputed from every visible review carrying the listing in `service_blueprint_id` |
@@ -74,6 +78,42 @@ provider's profile and the listing's card are two views of the same rows (Decisi
 
 The landing page's former testimonials reader (`ExploreBackendService.testimonials`) is dead code
 since Decision #349 and reads visible rows only like everything else.
+
+## `reviews.client_trust_scores`
+
+Client Trust Score v1 (Decision #486 (B)), one row per client party, written only by
+`reviews.fn_recompute_client_trust`. RLS on; a reader sees a row once `review_count` reaches 3 (the
+score is shown from 3 reviews); no client writes it.
+
+| Column                        | Type                                    | Notes                                                                                                                     |
+| :---------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------ |
+| `subject_type` / `subject_id` | `user` or `business` / uuid, PK         | The client party: a person, or a business.                                                                                |
+| `review_count`                | integer                                 | n: the party's revealed, visible reviews by providers.                                                                    |
+| `base`                        | numeric(3,2), 1–5                       | (5·m + Σ ratings) / (5 + n), m being the client track's corpus mean over the same population.                            |
+| `lost_disputes`               | integer                                 | Disputes the party opened that were ruled `resolved_release` in the trailing 12 months.                                  |
+| `deduction`                   | numeric(3,2), 0–1.5                     | 0.25 per lost dispute (capped at 1.00) + 0.10 per ghosting auto-approval (capped at 0.50; dormant until #337 P3 builds it). |
+| `score`                       | numeric(3,2), 1–5                       | max(1.00, base − deduction). Warns below 3.00 from 3 reviews.                                                             |
+| `computed_at`                 | timestamptz                             | Recomputed on a reveal, an edit, withdrawal or hiding of a revealed review, a dispute ruling, and daily (`reviews-reveal`). |
+
+## `reviews.client_trust_consents`
+
+The Informed Consent (Decision #486 (C)): a freelancer acknowledged a warned client's score before
+applying to, or accepting a hire on, one of its projects. Written only by
+`reviews.acknowledge_client_trust`; read by `reviews.fn_assert_client_trust_consent` inside
+`projects.apply_to_project`, `projects.redeem_invite_link` and `projects.fn_apply_invitation_decision`.
+RLS on, no policy, no client
+privilege.
+
+| Column                        | Type                                  | Notes                                     |
+| :---------------------------- | :------------------------------------ | :---------------------------------------- |
+| `id`                          | uuid PK                               |                                           |
+| `user_id`                     | uuid → `org.users_public`             | The freelancer who acknowledged.          |
+| `project_id`                  | uuid → `projects.projects`            | The warned client's project.              |
+| `subject_type` / `subject_id` | `user` or `business` / uuid           | The client party.                         |
+| `score` / `review_count`      | numeric(3,2) / integer                | What the dialog showed.                   |
+| `acknowledged_at`             | timestamptz                           |                                           |
+
+`uq_client_trust_consents_once` — one row per (freelancer, project).
 
 ## `reviews.review_reminders`
 
@@ -103,7 +143,12 @@ the project owner's assignment policy cannot backdate it.
 
 `supabase/seeds/06_reviews.sql` (`gen/emit-reviews.ts`) writes the 21 service reviews of
 `gen/reviews.ts`, each on its anchor: a completed engagement bought from the listing, or a completed
-session seat with one completed sitting; two carry the provider's reply. One more completed
+session seat with one completed sitting; two carry the provider's reply. Each of the 14 engagement
+reviews is answered by its provider (`PROVIDER_REVIEWS_OF_CLIENTS`, the team's for a team listing),
+and the pair is revealed at the later submit (Decision #486). Atlas Labs' five past briefs
+(`WARNED_CLIENT`) carry low provider reviews revealed at their windows' close, so its Client Trust
+Score warns; the file ends by computing every client party's score through
+`reviews.fn_recompute_client_trust`. One more completed
 engagement is left unreviewed for the live path. The 16 product reviews wait for CK1
 (`PRODUCT_REVIEWS_AWAITING_DELIVERY`), and a world project's own reviews are emitted only once it is
 completed. The generator refuses a self-review, a review of one's own team, a comment under 100

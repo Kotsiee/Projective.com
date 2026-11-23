@@ -8,6 +8,16 @@
 \set QUIET on
 BEGIN;
 
+-- Every payer has accepted the Escrow Terms: this probe is about paying for a round, not the
+-- first-funding ask (legal_commit_acceptance.sql).
+INSERT INTO org.legal_acceptances (user_id, document_slug, version, kind, surface)
+SELECT u.user_id, 'escrow-terms', org.fn_current_legal_version('escrow-terms'), 'accepted', 'fund'
+  FROM org.users_public u
+ WHERE NOT EXISTS (
+    SELECT 1 FROM org.legal_acceptances a
+     WHERE a.user_id = u.user_id AND a.document_slug = 'escrow-terms'
+       AND a.version = org.fn_current_legal_version('escrow-terms'));
+
 -- #region Helpers
 CREATE FUNCTION pg_temp.ok(p_cond boolean, p_what text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
@@ -84,7 +94,7 @@ SELECT pg_catalog.set_config('probe.rev1', (projects.request_paid_revision(pg_te
 RESET ROLE;
 SELECT pg_catalog.set_config('probe.b0', pg_temp.balance()::text, true);
 SELECT pg_temp.act(pg_temp.s('owner')); SET LOCAL ROLE authenticated;
-SELECT projects.fund_paid_revision(pg_temp.s('rev1')::uuid);
+SELECT projects.fund_paid_revision(pg_temp.s('rev1')::uuid, NULL);
 RESET ROLE;
 SELECT pg_temp.ok(pg_temp.balance() = pg_temp.s('b0')::bigint - 5000, 'wallet: Available debited 5000 once');
 SELECT pg_temp.ok((SELECT count(*) = 1 FROM finance.escrows WHERE revision_id = pg_temp.s('rev1')::uuid

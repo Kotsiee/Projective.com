@@ -12,7 +12,7 @@ import {
 } from "@projective/ui/fields";
 import { Tag } from "@projective/ui/display";
 import type { DisputeCase, DisputeParty, DisputeSummary } from "@projective/types/finance";
-import { fileObjectHref } from "@projective/types/files";
+import { mediaProxyHref } from "@projective/types/files";
 import { termsReference } from "@projective/types/services";
 import type { SessionWorkspace } from "@projective/types/projects";
 import { DisputeService } from "../core/DisputeService.ts";
@@ -345,7 +345,7 @@ export function DisputeCaseDialog(props: DisputeCaseDialogProps): JSX.Element {
 																	<li key={f.id}>
 																		<a
 																			class="dispute-dlg__file"
-																			href={fileObjectHref(f.id)}
+																			href={mediaProxyHref(f.id)}
 																			target="_blank"
 																			rel="noopener"
 																		>

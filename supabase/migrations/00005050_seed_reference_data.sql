@@ -27,7 +27,11 @@ INSERT INTO search.search_weights (key, label, description, scope, weight) VALUE
   ('open_seats',       'Open seats',          'Available seats / open roles',                     'opportunity', 1.25),
   ('stage_count',      'Project stages',      'Structured scope depth',                           'opportunity', 0.50),
   ('budget_range',     'Budget / payout',     'Higher budget/payout range boost',                 'opportunity', 1.50),
-  ('price_tier',       'Service pricing',     'Service pricing-tier alignment',                   'opportunity', 1.00)
+  ('price_tier',       'Service pricing',     'Service pricing-tier alignment',                   'opportunity', 1.00),
+  -- Decision #486 (C): a warned client's project openings fall by this much (score below 3.00 from 3
+  -- reviews). 2.50 is the `penalty` term's, so a warned client's brief falls as far as a penalised
+  -- seller's listing (flag (c)'s proposal).
+  ('client_trust',     'Client trust warning','Project openings of a warned client rank lower (negative)', 'opportunity', 2.50)
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
 
@@ -338,15 +342,19 @@ ON CONFLICT (key) DO NOTHING;
 -- #endregion
 
 -- #region finance.fx_rates — baseline reference observations (platform base GBP)
--- A FLOOR, not a feed. The live rate table is refreshed from the configured provider; these rows
--- exist so a from-scratch reset can resolve every supported display currency immediately instead of
--- silently rendering unconverted origin amounts on a fresh database.
+-- A FLOOR, not a feed. The daily feed (`finance-fx-daily` → finance.record_fx_rates, FBP DB17) appends
+-- newer observations beside these, and the newest `as_of` wins; these rows exist so a from-scratch reset
+-- can resolve every supported display currency immediately instead of silently rendering unconverted
+-- origin amounts on a fresh database. The GBP-based rows also name the currencies a feed must quote
+-- (finance.fn_fx_feed_currencies), so a display currency is added here first.
 --
 -- Direction is fixed and non-negotiable: `rate` converts BASE into QUOTE
--- (`amount_quote = amount_base * rate`). The inverse pair is seeded explicitly rather than derived at
--- read time, because a reader that divides by the forward rate and a reader that multiplies by the
--- inverse disagree in the last minor unit, and a money figure that differs by which direction the
--- caller happened to ask in is worse than one that is merely stale.
+-- (`amount_quote = amount_base * rate`). Only the GBP-based rows are ever read: FxService reads
+-- `base = 'GBP'` and derives a QUOTE → GBP multiplier as 1 / rate (`resolveRate`), the quote door
+-- (finance.quote_fx_conversion) pivots every pair through GBP, and the feed writes GBP-based rows only,
+-- so no figure depends on which direction its caller asked in. No conversion reads the inverse rows
+-- below; org.fn_supported_display_currency (00001010) only checks that a sign-up's currency hint has a
+-- row both ways (the DISPLAY_CURRENCIES rule), which is why they stay.
 --
 -- `as_of` is a fixed reference instant, not `now()`: the seed must be byte-identical across resets so
 -- a snapshot captured in a test database is reproducible. `provider = 'seed'` marks these as
@@ -366,7 +374,7 @@ VALUES
     ('GBP', 'ZAR', 23.1000000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
     ('GBP', 'NGN', 1980.0000000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
     ('GBP', 'AED', 4.6600000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
-    -- Inverse pairs (QUOTE → GBP), seeded explicitly. See the direction note above.
+    -- Inverse pairs (QUOTE → GBP): never read by a conversion. See the direction note above.
     ('USD', 'GBP', 0.7874015748, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
     ('EUR', 'GBP', 0.8547008547, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
     ('CAD', 'GBP', 0.5780346821, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
@@ -411,15 +419,19 @@ INSERT INTO org.supported_locales (tag) VALUES
 ON CONFLICT (tag) DO NOTHING;
 -- #endregion
 
--- #region org.legal_document_versions — the sign-up documents' versions (Decision #446)
--- Every version of the Terms, the Acceptable Use Policy and the Privacy Policy, newest first per
--- document. LEGAL_VERSIONS in @projective/types/legal must list exactly these (manifest.contract.test.ts),
--- and it must match the content modules (features/legal/core/manifest.test.ts).
+-- #region org.legal_document_versions — the accepted documents' versions (Decision #446, LG3)
+-- Every version of the Terms, the Acceptable Use Policy and the Privacy Policy (sign-up), and of the IP
+-- Transfer Deed and the Escrow Terms (a first paid claim, a first funding), newest first per document.
+-- LEGAL_VERSIONS in @projective/types/legal must list exactly these (manifest.contract.test.ts), and it
+-- must match the content modules (features/legal/core/manifest.test.ts).
 INSERT INTO org.legal_document_versions (slug, version, effective_date, material) VALUES
     ('terms', '2.0', '2026-10-17', false),
     ('terms', '1.0', '2026-08-01', false),
     ('acceptable-use', '1.0', '2026-10-17', false),
     ('privacy', '1.1', '2026-11-18', false),
-    ('privacy', '1.0', '2026-10-17', false)
+    ('privacy', '1.0', '2026-10-17', false),
+    ('ip-transfer-deed', '1.0', '2026-10-17', false),
+    ('escrow-terms', '2.0', '2026-10-17', false),
+    ('escrow-terms', '1.0', '2026-08-01', false)
 ON CONFLICT (slug, version) DO NOTHING;
 -- #endregion

@@ -2,14 +2,29 @@ import {
 	type ConvertedAmount,
 	convertMinorUnits,
 	currencyExponent,
+	FX_RATE_MAX_AGE_HOURS,
 	type FxQuote,
 	type FxRateTable,
+	type FxRecordAnswer,
+	type FxRefreshResult,
 	PLATFORM_BASE_CURRENCY,
 	resolveRate,
 	toDisplayCurrency,
 } from "@projective/types/finance";
+import { isBearerAuthorised } from "../../core/bearer.ts";
+import { serverEnv } from "../../core/env.ts";
 import { openSharedKv } from "../../core/kv.ts";
-import { getAnonClient, isSupabaseConfigured } from "../../core/supabase.ts";
+import { getAnonClient, isSupabaseConfigured, useMocks } from "../../core/supabase.ts";
+import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import {
+	checkFxFeed,
+	configuredFxFeed,
+	type FxFeedAdapter,
+	FxFeedError,
+	type FxRecordCall,
+	type FxRecordDoor,
+	liveFxRecordDoor,
+} from "./fx-feed.ts";
 
 /**
  * FxService — the FAT currency-conversion engine. The **only** thing on the platform that turns one
@@ -46,15 +61,26 @@ import { getAnonClient, isSupabaseConfigured } from "../../core/supabase.ts";
  * `finance.fx_rates`, read as `anon`: the rates are public reference data (the policy is `USING
  * (true)` for `anon` and `authenticated`), and SSR converts a price for a signed-out visitor exactly
  * as for a signed-in one. The migrations seed a floor for every offerable currency, so a fresh
- * database always has an answer; a live provider's observations land beside it and win by `as_of`.
+ * database always has an answer; the daily feed's observations land beside it and win by `as_of`.
+ *
+ * ## The feed
+ *
+ * {@link FxService.refreshRates} is the one writer besides the seed (Decision #337, ruling M5 (f);
+ * Decision #471; FBP DB17): the `finance-fx-daily` job fetches the provider's rates, checks them, and
+ * records them all through `finance.record_fx_rates`, or none. A refused or failed feed leaves the last
+ * rates standing, so they age past {@link STALE_AFTER_MS} into the stale mark, the same window the
+ * conversion quote refuses them after.
  */
 
 // #region Cache
 /** How long a resolved rate table is considered current. */
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
-/** How old a table may be before figures derived from it are disclosed as stale. */
-const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+/**
+ * How old a table may be before figures derived from it are disclosed as stale: the same
+ * {@link FX_RATE_MAX_AGE_HOURS} after which `finance.quote_fx_conversion` refuses a rate.
+ */
+const STALE_AFTER_MS = FX_RATE_MAX_AGE_HOURS * 60 * 60 * 1000;
 
 /** The KV key prefix for a cached table, namespaced so it cannot collide with another domain's. */
 const KV_PREFIX = ["finance", "fx", "table"] as const;
@@ -203,6 +229,77 @@ async function readLiveTable(now: number): Promise<FxRateTable | null> {
 }
 // #endregion
 
+// #region The daily feed
+/** What one run of the feed reads and writes through; each defaults to the live one. */
+export interface FxRefreshDeps {
+	/** The provider. Omitted: {@link configuredFxFeed}; `null`: none is configured. */
+	feed?: FxFeedAdapter | null;
+	/** Where the feed is recorded. Omitted: `finance.record_fx_rates` as the service role. */
+	record?: FxRecordDoor;
+	/** The clock an `as_of` is judged against. */
+	now?: () => number;
+}
+
+/**
+ * The call a run makes of the door — the feed if it passed, or the refusal found first — and the
+ * currencies that refusal names.
+ */
+async function feedCall(
+	feed: FxFeedAdapter | null,
+	now: number,
+): Promise<{ call: FxRecordCall; named: string[] }> {
+	if (!feed) {
+		return {
+			call: { provider: "none", asOf: null, rates: null, failure: "feed_not_configured" },
+			named: [],
+		};
+	}
+	try {
+		const snapshot = await feed.fetchLatest();
+		const check = checkFxFeed(snapshot, now);
+		return {
+			call: {
+				provider: snapshot.provider,
+				asOf: Number.isNaN(Date.parse(snapshot.asOf)) ? null : snapshot.asOf,
+				rates: snapshot.rates,
+				failure: check.ok ? null : check.reason,
+			},
+			named: check.ok ? [] : check.currencies,
+		};
+	} catch (error) {
+		const failure = error instanceof FxFeedError ? error.code : "fetch_failed";
+		console.error(
+			"[fx-feed:fetch]",
+			failure,
+			error instanceof Error ? error.message : String(error),
+		);
+		return { call: { provider: feed.provider, asOf: null, rates: null, failure }, named: [] };
+	}
+}
+
+/** The run's outcome from the door's answer; a refusal names the door's currencies, else the check's. */
+function refreshResult(answer: FxRecordAnswer, named: readonly string[]): FxRefreshResult {
+	if (answer.refused) {
+		return {
+			recorded: 0,
+			provider: answer.provider,
+			asOf: answer.as_of,
+			outcome: "refused",
+			reason: answer.refused,
+			currencies: answer.currencies?.length ? answer.currencies : [...named],
+		};
+	}
+	return {
+		recorded: answer.recorded,
+		provider: answer.provider,
+		asOf: answer.as_of,
+		outcome: answer.recorded > 0 ? "recorded" : "replay",
+		reason: null,
+		currencies: [],
+	};
+}
+// #endregion
+
 export class FxService {
 	/**
 	 * The current rate table for `base` (defaults to the platform base), cached for 15 minutes.
@@ -332,6 +429,42 @@ export class FxService {
 	 */
 	static supportedCurrency(code: string | null | undefined): string {
 		return toDisplayCurrency(code);
+	}
+
+	/**
+	 * Whether a scheduler's `Authorization: Bearer …` header carries `FINANCE_CRON_SECRET` (≥ 32
+	 * characters; unset or short authorises nothing), compared in constant time.
+	 */
+	static isCronAuthorised(authorization: string | null): boolean {
+		return isBearerAuthorised(authorization, serverEnv().financeCronSecret);
+	}
+
+	/**
+	 * One run of the daily feed: fetch the provider's rates, check them ({@link checkFxFeed}), then
+	 * record them through `finance.record_fx_rates`, all twelve or none. The door applies the checks
+	 * again and is the authority; a refusal found here is passed to it, so it logs the `finance.fx`
+	 * error and records nothing. A run with no configured feed records nothing and is logged the same
+	 * way (`feed_not_configured`). New rates drop the cached tables, so the next read sees them.
+	 *
+	 * 200 whenever the door answered, with what it did (`recorded`, `replay` or `refused`); 503 when the
+	 * database cannot be written in this environment or the door could not be reached.
+	 */
+	static async refreshRates(deps: FxRefreshDeps = {}): Promise<ServiceResult<FxRefreshResult>> {
+		if (!deps.record && (useMocks() || !isSupabaseConfigured())) {
+			return fail(503, { message: "Exchange rates can't be recorded in this environment." });
+		}
+		const record = deps.record ?? liveFxRecordDoor;
+		const feed = deps.feed === undefined ? configuredFxFeed() : deps.feed;
+		const { call, named } = await feedCall(feed, (deps.now ?? Date.now)());
+		let answer: FxRecordAnswer;
+		try {
+			answer = await record(call);
+		} catch (error) {
+			console.error("[fx-feed:record]", error instanceof Error ? error.message : String(error));
+			return fail(503, { message: "The exchange rates could not be recorded. Try again later." });
+		}
+		if (answer.recorded > 0) await FxService.invalidate();
+		return ok(refreshResult(answer, named));
 	}
 
 	/** Drop every cached table. For tests and for an operational rate-refresh hook. */

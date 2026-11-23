@@ -279,7 +279,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
 | `00005010` (notification catalogue)                      | EX1, EX2, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1             | COMMS MS4                                                         |
-| `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | FBP DB17; MR5; T&S SN2                                            |
+| `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
 | `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | ST4, TK1, EX1, EX2; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1 | COMMS NT5; T&S R3                                                 |
 | `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3, CH4                                                | COMMS MS3, MS5; T&S R2                                            |

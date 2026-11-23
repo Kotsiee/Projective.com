@@ -1,5 +1,6 @@
 import type { ComponentChildren, JSX } from "preact";
 import { MetaLine } from "@projective/ui/display";
+import { CLIENT_TRUST_MIN_REVIEWS } from "@projective/types/reviews";
 import { MoneyView } from "@projective/ui/display/money";
 import {
 	type EstimatedSpend,
@@ -46,25 +47,40 @@ interface Metric {
 }
 
 /**
- * A business's trust readout (BP1, Decision #244): the rating freelancers gave it as their client,
- * with how many reviews stand behind it. It is the only COMPUTED input of the Client Trust Score
- * PRODUCT_SPEC names — the score itself has no definition yet (#244 FLAG), so the strip shows the
- * figure that exists rather than inventing one.
+ * A business's trust readout (BP1, Decision #244; defined by #486 (B)): its Client Trust Score with
+ * how many freelancer reviews stand behind it. Below 3 reviews the score is not shown, so the strip
+ * says how many there are and when the score appears, rather than a figure that is not one yet.
  */
-function clientRatingSub(count: number): string {
+function clientReviewsSub(count: number): string {
 	return `${count} ${count === 1 ? "review" : "reviews"} from freelancers`;
 }
 
 function metricsFor(profile: ProfileView, spend: EstimatedSpend | null): Metric[] {
 	const items: Metric[] = [];
 	const track = profile.rating.asHelper ?? profile.rating.asClient;
-	if (track && track.count > 0) {
-		const business = profile.kind === "business";
+	if (profile.kind === "business") {
+		if (profile.clientTrust) {
+			items.push({
+				key: "rating",
+				value: profile.clientTrust.score.toFixed(2),
+				label: "Client Trust Score",
+				sub: clientReviewsSub(profile.clientTrust.reviewCount),
+				href: reviewsHref(profile.handle),
+			});
+		} else if (track && track.count > 0) {
+			items.push({
+				key: "rating",
+				value: String(track.count),
+				label: track.count === 1 ? "Review from freelancers" : "Reviews from freelancers",
+				sub: `Client Trust Score shows from ${CLIENT_TRUST_MIN_REVIEWS}`,
+				href: reviewsHref(profile.handle),
+			});
+		}
+	} else if (track && track.count > 0) {
 		items.push({
 			key: "rating",
 			value: track.value.toFixed(1),
-			label: business ? "Client rating" : "Rating",
-			sub: business ? clientRatingSub(track.count) : undefined,
+			label: "Rating",
 			href: reviewsHref(profile.handle),
 		});
 	}

@@ -57,7 +57,12 @@ DECLARE
 BEGIN
     SELECT p.id, s.id, p.owner_user_id INTO v_project, v_stage, v_host
       FROM projects.projects p JOIN projects.project_stages s ON s.project_id = p.id
-     WHERE p.owner_user_id IS NOT NULL AND p.source_blueprint_id IS NULL ORDER BY p.id, s.id LIMIT 1;
+     WHERE p.owner_user_id IS NOT NULL AND p.source_blueprint_id IS NULL
+       -- A project nobody holds a seat on: this probe changes its format, which the shape lock refuses once
+       -- freelancers are onboarded (and the seed's own engagements carry seats).
+       AND NOT EXISTS (SELECT 1 FROM projects.project_stages ps JOIN projects.stage_assignments sa ON sa.project_stage_id = ps.id
+                        WHERE ps.project_id = p.id)
+     ORDER BY p.id, s.id LIMIT 1;
     SELECT b.id INTO v_blueprint FROM marketplace.service_blueprints b ORDER BY b.id LIMIT 1;
     UPDATE marketplace.service_blueprints SET meeting_provider = 'zoom' WHERE id = v_blueprint;
     SELECT sc.id INTO v_schedule FROM scheduling.schedules sc

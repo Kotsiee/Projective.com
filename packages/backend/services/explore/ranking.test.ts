@@ -67,7 +67,13 @@ Deno.test("an inactive, negative or absent weight scores as switched off; absent
 	assertEquals(weights.review_sentiment, 1.75);
 	assertEquals(weights.review_count, 0);
 	assertEquals(weights.workload, 0);
-	assertEquals(missing, ["discovery_boost", "penalty", "interest_history", "text_relevance"]);
+	assertEquals(missing, [
+		"discovery_boost",
+		"penalty",
+		"interest_history",
+		"text_relevance",
+		"client_trust",
+	]);
 	assertEquals(total(seller({ rating: { value: 5, count: 40 } }), NO_WEIGHTS), 0);
 });
 
@@ -215,4 +221,22 @@ Deno.test("byScore orders best first, then newest, then by id — never a tie", 
 		{ id: "z", createdAt: "2026-12-01" },
 	];
 	assertEquals([...items].sort(byScore(scores)).map((it) => it.id), ["b", "a", "c", "d", "z"]);
+});
+
+Deno.test("a warned client's opening falls by client_trust, unscaled by Standing (Decision #486 (C))", () => {
+	const brief: RankSignals = { rating: { value: 2.6, count: 5 }, penalty: 0, tenureDays: 400 };
+	const clear = scoreItem(brief, { weights: WEIGHTS, priorMean: PRIOR });
+	const warned = scoreItem({ ...brief, clientWarned: true }, {
+		weights: WEIGHTS,
+		priorMean: PRIOR,
+	});
+	assertEquals(WEIGHTS.client_trust, 2.5);
+	assertEquals(clear.clientTrust, 0);
+	assertEquals(warned.clientTrust, -2.5);
+	assertAlmostEquals(warned.total, clear.total - 2.5, 1e-9);
+	const off = scoreItem({ ...brief, clientWarned: true }, {
+		weights: { ...WEIGHTS, client_trust: 0 },
+		priorMean: PRIOR,
+	});
+	assertAlmostEquals(off.total, clear.total, 1e-9);
 });

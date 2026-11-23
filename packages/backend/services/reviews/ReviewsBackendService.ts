@@ -1,4 +1,5 @@
 import {
+	type ClientTrustWarning,
 	type EditReviewInput,
 	type Reviewable,
 	ReviewActionsSchema,
@@ -10,7 +11,12 @@ import { z } from "zod";
 import { getUserClient, isExploreBackendLive } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
-import { reviewRefusal, toReviewables, toReviewViewers } from "./reviews-model.ts";
+import {
+	reviewRefusal,
+	toClientTrustWarning,
+	toReviewables,
+	toReviewViewers,
+} from "./reviews-model.ts";
 
 /**
  * ReviewsBackendService — the FAT service behind writing a review, the target's one reply, and what a
@@ -20,7 +26,9 @@ import { reviewRefusal, toReviewables, toReviewViewers } from "./reviews-model.t
  * definers in `00001670` (`submit_review`, `edit_review`, `withdraw_review`, `reply_to_review`,
  * `edit_reply`, `get_reviewables`, `get_review_actions`), which check the anchor, the party, the
  * 30-day window and the one reply, and answer each refusal with its own SQLSTATE; this service maps
- * those onto HTTP statuses and keeps the database's sentence. With `EXPLORE_BACKEND_LIVE=false` the
+ * those onto HTTP statuses and keeps the database's sentence. It also reads a project client's Client
+ * Trust Score warning and logs the freelancer's acknowledgement of it (Decision #486 (C):
+ * `get_client_trust_warning`, `acknowledge_client_trust`). With `EXPLORE_BACKEND_LIVE=false` the
  * reads answer nothing to review and a write answers that reviews need the live backend: there is no
  * fixture world of engagements to anchor one on.
  */
@@ -161,9 +169,59 @@ export class ReviewsBackendService {
 		}
 	}
 
+	/**
+	 * Whether a project's client is warned (its Client Trust Score below 3.00 from 3 reviews) and, if so,
+	 * the score, its review count, the client's reviews page and whether the caller has acknowledged it.
+	 * Not warned when reviews are not live: the doors that enforce the consent are not either.
+	 */
+	static async clientTrustWarning(
+		projectSlug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<ClientTrustWarning>> {
+		const clear: ClientTrustWarning = {
+			warned: false,
+			score: null,
+			reviewCount: null,
+			reviewsHref: null,
+			acknowledged: false,
+		};
+		if (!isExploreBackendLive()) return ok(clear);
+		if (!canReadLive(actor)) return fail(401, { message: SIGNED_OUT });
+		try {
+			const db = getUserClient(actor.accessToken);
+			const { data, error } = await db.schema("reviews").rpc("get_client_trust_warning", {
+				p_project_slug: projectSlug,
+			});
+			if (error) return reviewRefusal(error);
+			if (data === null) return fail(404, { message: "No such project." });
+			return ok(toClientTrustWarning(data));
+		} catch (error) {
+			console.error("[reviews:trust-warning]", error instanceof Error ? error.message : error);
+			return fail(503, { message: UNREACHABLE });
+		}
+	}
+
+	/** Log the caller's acknowledgement of a warned client's score on one project, once. */
+	static async acknowledgeClientTrust(
+		projectSlug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<null>> {
+		return await ReviewsBackendService.call(
+			"acknowledge_client_trust",
+			{ p_project_slug: projectSlug },
+			actor,
+			"Acknowledged.",
+		);
+	}
+
 	// #region One door call
 	private static async call(
-		door: "edit_review" | "withdraw_review" | "reply_to_review" | "edit_reply",
+		door:
+			| "edit_review"
+			| "withdraw_review"
+			| "reply_to_review"
+			| "edit_reply"
+			| "acknowledge_client_trust",
 		args: Record<string, unknown>,
 		actor: ReadActor,
 		message: string,

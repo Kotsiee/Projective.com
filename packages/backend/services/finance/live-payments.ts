@@ -20,9 +20,11 @@ import {
 	type VerificationCase,
 	VerificationCaseSchema,
 } from "@projective/types/finance";
+import type { LegalCommitStamp } from "@projective/types/legal";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { businessAuthorityRefusal } from "../../core/business-authority.ts";
 import { businessNotActiveRefusal } from "../../core/business-lifecycle.ts";
+import { legalAcceptanceRefusal } from "../../core/legal-gate.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import type { FailureDetails, FieldErrors } from "../ServiceResult.ts";
@@ -121,6 +123,9 @@ export function refusalOf(
 	if (isAgeRestricted(error)) {
 		return { status: AGE_RESTRICTED.status, message: AGE_RESTRICTED.message };
 	}
+	// `legal_acceptance_required:` — a card escrow lock asks for the Escrow Terms first (LG3).
+	const legal = legalAcceptanceRefusal(error);
+	if (legal) return legal;
 	// `not_funder:` — the card escrow lock asks the same funder predicate as fund_stage (BB2).
 	const authority = businessAuthorityRefusal(error);
 	if (authority) return authority;
@@ -279,6 +284,8 @@ export function beginCardPayment(
 		revisionId?: string | null;
 		/** The payer's `escrow_lock` conversion quote, charged in its currency (Decision #435). */
 		fxQuoteId?: string | null;
+		/** The Escrow Terms version an `escrow_lock` payer accepted in the dialog (LG3). */
+		legalAcceptance?: LegalCommitStamp | null;
 		expectedAmountMinor: number;
 		currency: string;
 		idempotencyKey: string;
@@ -296,6 +303,7 @@ export function beginCardPayment(
 		...(args.ticketId ? { p_ticket_id: args.ticketId } : {}),
 		...(args.revisionId ? { p_revision_id: args.revisionId } : {}),
 		...(args.fxQuoteId ? { p_fx_quote_id: args.fxQuoteId } : {}),
+		...(args.legalAcceptance ? { p_legal: args.legalAcceptance } : {}),
 	}, (row) => ({ payment: inboundPaymentOf(row), replayed: row.replayed === true }));
 }
 
@@ -488,14 +496,29 @@ export function payoutOf(row: Row): Payout {
 	});
 }
 
-/** What `finance.begin_payout` answers: the debited payout, where it goes, and whether it replayed. */
-export interface BegunPayout {
-	payout: Payout;
-	destination: string | null;
-	replayed: boolean;
+/**
+ * What `finance.begin_payout` answers: the debited payout, where it goes, and whether it replayed; or,
+ * under the ⚖️ Safety Hold (Decision #529, off until the owner turns it on), that nothing moved and
+ * when the withdrawal may be tried again.
+ */
+export type BegunPayout =
+	| { held: false; payout: Payout; destination: string | null; replayed: boolean }
+	| { held: true; heldUntil: string };
+
+/** `finance.begin_payout`'s jsonb onto {@link BegunPayout}. Pure; pinned by `live-payments.test.ts`. */
+export function begunPayoutOf(row: Row): BegunPayout {
+	if (row.held === true && typeof row.held_until === "string") {
+		return { held: true, heldUntil: row.held_until };
+	}
+	return {
+		held: false,
+		payout: payoutOf(row),
+		destination: typeof row.destination === "string" ? row.destination : null,
+		replayed: row.replayed === true,
+	};
 }
 
-/** Start a withdrawal (`finance.begin_payout`) — debits the wallet at once. */
+/** Start a withdrawal (`finance.begin_payout`) — debits the wallet at once, unless it is held. */
 export function beginPayout(
 	accessToken: string,
 	args: {
@@ -514,11 +537,7 @@ export function beginPayout(
 		p_instant: args.instant,
 		p_idempotency_key: args.idempotencyKey,
 		p_destination_method_id: args.destinationMethodId,
-	}, (row) => ({
-		payout: payoutOf(row),
-		destination: typeof row.destination === "string" ? row.destination : null,
-		replayed: row.replayed === true,
-	}));
+	}, begunPayoutOf);
 }
 
 /** Whose card is being saved and the Customer it attaches to (`finance.card_owner_for`). */

@@ -7,6 +7,7 @@ import { EngagementKind, ProjectFormat, ProjectPartySchema, ProjectStatus } from
 import { ProjectStructure } from "./setup.ts";
 import { StageActivity } from "./detail.ts";
 import { FileItemSchema } from "./files.ts";
+import { LegalCommitStampSchema } from "../legal/acceptance.ts";
 import { SubmissionTreeNodeSchema } from "./submissions.ts";
 
 /**
@@ -1400,10 +1401,12 @@ export const UNCLAIMED_WORK_MESSAGE = "A freelancer starts this ticket by claimi
 /**
  * A freelancer's self-claim of one `open_pull` ticket (`projects.claim_ticket`). There is no assignee
  * field: the claimant is always the session's own user, so a payload cannot name anyone else.
+ * `legalAcceptance` is the IP Transfer Deed version the acceptance dialog showed (LG3).
  */
 export const ClaimTicketSchema = z.object({
 	projectId: z.string().min(1).max(120),
 	ticketId: z.string().min(1).max(120),
+	legalAcceptance: LegalCommitStampSchema.optional(),
 });
 export type ClaimTicket = z.infer<typeof ClaimTicketSchema>;
 

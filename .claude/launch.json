@@ -2,6 +2,26 @@
 	"version": "0.0.1",
 	"configurations": [
 		{
+			"name": "web-sc6",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13861'; deno task dev --port 13861 --strictPort"
+			],
+			"port": 13861
+		},
+		{
+			"name": "web-lg7",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13747'; deno task dev --port 13747 --strictPort"
+			],
+			"port": 13747
+		},
+		{
 			"name": "web-sc5-wt",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [
@@ -518,6 +538,56 @@
 			],
 			"port": 13471,
 			"autoPort": false
+		},
+		{
+			"name": "web-lg1",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13711'; deno task dev --port 13711 --strictPort"
+			],
+			"port": 13711
+		},
+		{
+			"name": "web-lg6",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13766'; deno task dev --port 13766 --strictPort"
+			],
+			"port": 13766
+		},
+		{
+			"name": "web-ck2",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13862'; deno task dev --port 13862 --strictPort"
+			],
+			"port": 13862
+		},
+		{
+			"name": "web-rv2",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13923'; deno task dev --port 13923 --strictPort"
+			],
+			"port": 13923
+		},
+		{
+			"name": "web-ck2-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13863'; deno task dev:mock --port 13863 --strictPort"
+			],
+			"port": 13863
 		}
 	]
 }

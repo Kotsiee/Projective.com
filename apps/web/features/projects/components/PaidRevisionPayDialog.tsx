@@ -10,6 +10,12 @@ import {
 	type FundingCharge,
 	type PaidRevisionFundingMethod,
 } from "@projective/types/finance";
+import {
+	type LegalAcceptanceRequired,
+	type LegalCommitStamp,
+	readLegalAcceptanceRequired,
+} from "@projective/types/legal";
+import { CommitAcceptanceDialog } from "@features/legal/components/CommitAcceptanceDialog.tsx";
 import { FundingConversion } from "@features/payments/components/FundingConversion.tsx";
 import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
 import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
@@ -56,6 +62,7 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 	const key = useSignal(attemptKey());
 	const funding = useSignal<FundingCharge | null>(null);
 	const reading = useSignal(false);
+	const escrowAsk = useSignal<LegalAcceptanceRequired | null>(null);
 
 	async function readCharge(payIn: string | null = null): Promise<void> {
 		if (!round || !stageId || !submissionId) return;
@@ -91,7 +98,8 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 	const cardBlocked = !!charge?.quote && !cardQuote;
 	const busy = step.value === "starting" || step.value === "settling" || reading.value;
 
-	async function pay(chosen: PaidRevisionFundingMethod): Promise<void> {
+	/** A payer's first funding is asked for the Escrow Terms (LG3); Accept pays again carrying them. */
+	async function pay(chosen: PaidRevisionFundingMethod, legalAcceptance?: LegalCommitStamp): Promise<void> {
 		if (!round || !stageId || !submissionId || busy) return;
 		method.value = chosen;
 		step.value = "starting";
@@ -103,7 +111,14 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 			currency: round.currency,
 			fxQuoteId: chosen === "wallet" ? charge?.quote?.quoteId ?? null : cardQuote,
 			idempotencyKey: key.value,
+			legalAcceptance,
 		});
+		const ask = res.ok ? null : readLegalAcceptanceRequired(res.details);
+		if (ask) {
+			step.value = "choose";
+			escrowAsk.value = ask;
+			return;
+		}
 		if (!res.ok || !res.data) {
 			step.value = "choose";
 			error.value = res.message ?? "That payment didn't go through — nothing was charged.";
@@ -231,6 +246,12 @@ export function PaidRevisionPayDialog(props: PaidRevisionPayDialogProps): JSX.El
 					</p>
 				)
 				: null}
+			<CommitAcceptanceDialog
+				request={escrowAsk}
+				onAccept={(stamp) => {
+					if (method.value) void pay(method.value, stamp);
+				}}
+			/>
 		</Dialog>
 	);
 }

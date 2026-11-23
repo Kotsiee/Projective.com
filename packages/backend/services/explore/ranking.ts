@@ -50,6 +50,7 @@ export const RANKING_WEIGHT_KEYS = [
 	"penalty",
 	"interest_history",
 	"text_relevance",
+	"client_trust",
 ] as const;
 
 /** One coefficient the score reads. */
@@ -91,6 +92,7 @@ export function resolveWeights(rows: readonly RankingWeightRow[]): ResolvedWeigh
 			penalty: weightOf("penalty"),
 			interest_history: weightOf("interest_history"),
 			text_relevance: weightOf("text_relevance"),
+			client_trust: weightOf("client_trust"),
 		},
 		missing: RANKING_WEIGHT_KEYS.filter((key) => !byKey.has(key)),
 	};
@@ -162,6 +164,11 @@ export interface RankSignals {
 	standingWeightBp?: number;
 	/** Active discovery-rank penalty severity on the owner (`0` when clean). */
 	penalty: number;
+	/**
+	 * The item's client party is warned: its Client Trust Score is below 3.00 from 3 reviews (Decision
+	 * #486 (C)). Set only on a project opening; "their project posts are de-ranked".
+	 */
+	clientWarned?: boolean;
 	/** Whole days since the owner joined. */
 	tenureDays: number;
 }
@@ -183,6 +190,8 @@ export interface ScoreBreakdown {
 	standing: number;
 	/** The weighted trust penalty — zero or negative, never scaled by Standing. */
 	penalty: number;
+	/** `−client_trust` for a warned client's opening, else zero; never scaled by Standing. */
+	clientTrust: number;
 	total: number;
 }
 
@@ -241,6 +250,7 @@ export function scoreItem(signals: RankSignals, context: RankContext): ScoreBrea
 	const standing = clamp(signals.standingWeightBp ?? BASIS_POINTS, 0, 10 * BASIS_POINTS) /
 		BASIS_POINTS;
 	const penalty = -(w.penalty * clamp(signals.penalty, 0, PENALTY_CAP)) / PENALTY_CAP || 0;
+	const clientTrust = signals.clientWarned ? -w.client_trust : 0;
 
 	return {
 		sentiment,
@@ -249,7 +259,8 @@ export function scoreItem(signals: RankSignals, context: RankContext): ScoreBrea
 		boost,
 		standing,
 		penalty,
-		total: standing * (sentiment + volume + availability + boost) + penalty,
+		clientTrust,
+		total: standing * (sentiment + volume + availability + boost) + penalty + clientTrust,
 	};
 }
 

@@ -14,7 +14,9 @@
 --   5  submit_review (Decision #487): no JWT 42501, a 13-17 account PM403, no anchor PT404, not the
 --      client party PT403, oneself PT422, a target with no completed seat PT404, a running seat
 --      PT404, a product PT501 (until CK1), bad input 22023; a valid review carries its anchor and its
---      window, moves the provider's average and tells them; a second on the same anchor is PT409; a
+--      window, and on an engagement waits blind until the provider reviews the client back (Decision
+--      #486; reviews_reciprocal.sql), which moves the provider's average and tells them; a second on
+--      the same anchor is PT409; a
 --      released seat after work began and a completed sitting each open a review; the sitting's
 --      review_asked_at is never touched; past 30 days PT410; a listing's buyer moves the listing's
 --      average too and the provider is told at /view/svc-…#evp-reviews
@@ -342,7 +344,10 @@ BEGIN
     PERFORM pg_temp.check(pg_temp.avg_of(f) = '0.00/0', format('5k F starts unrated (%s)', pg_temp.avg_of(f)));
     v := pg_temp.door(c, pg_temp.submit('project', v_done, 'freelancer', f::text, 4));
     PERFORM pg_temp.check(v = '', format('5l the client reviews F on the completed engagement (got %L)', v));
-    PERFORM pg_temp.check(pg_temp.avg_of(f) = '4.00/1', format('5m F''s average moves to 4.00 over 1 (%s)', pg_temp.avg_of(f)));
+    PERFORM pg_temp.check(pg_temp.avg_of(f) = '0.00/0', format('5l2 blind until F answers: F''s average has not moved (%s)', pg_temp.avg_of(f)));
+    v := pg_temp.door(f, pg_temp.submit('project', v_done, 'user', c::text, 5));
+    PERFORM pg_temp.check(v = '' AND pg_temp.avg_of(f) = '4.00/1',
+        format('5m F reviews C back, which reveals the pair: F''s average moves to 4.00 over 1 (got %L, %s)', v, pg_temp.avg_of(f)));
     SELECT r.id INTO v_id FROM reviews.entity_reviews r WHERE r.target_entity_id = f AND r.reviewer_user_id = c;
     PERFORM set_config('probe.review_f', v_id::text, true);
     PERFORM pg_temp.check(EXISTS (SELECT 1 FROM reviews.entity_reviews r WHERE r.id = v_id
@@ -404,6 +409,8 @@ BEGIN
     SELECT b.rating_count INTO v_before FROM marketplace.service_blueprints b WHERE b.id = r.blueprint;
     v := pg_temp.door(r.client_user_id, pg_temp.submit('project', r.id::text, 'freelancer', r.provider::text, 5));
     PERFORM pg_temp.check(v = '', format('5w the buyer of a listing reviews its provider (got %L)', v));
+    v := pg_temp.door(r.provider, pg_temp.submit('project', r.id::text, 'user', r.client_user_id::text, 5));
+    PERFORM pg_temp.check(v = '', format('5w2 the provider reviews the buyer back, revealing the pair (got %L)', v));
     PERFORM pg_temp.check((SELECT b.rating_count FROM marketplace.service_blueprints b WHERE b.id = r.blueprint) = v_before + 1,
         '5x the listing''s count moves with its provider''s review');
     PERFORM pg_temp.check(EXISTS (SELECT 1 FROM comms.notifications n
@@ -463,7 +470,9 @@ BEGIN
 
     v := pg_temp.door(c, pg_temp.submit('project', v_done, 'freelancer', g::text, 2));
     PERFORM pg_temp.check(v = '', format('6p the client reviews G (got %L)', v));
-    SELECT r.id INTO v_g FROM reviews.entity_reviews r WHERE r.target_entity_id = g;
+    v := pg_temp.door(g, pg_temp.submit('project', v_done, 'user', c::text, 4));
+    PERFORM pg_temp.check(v = '', format('6p2 G reviews the client back, revealing the pair (got %L)', v));
+    SELECT r.id INTO v_g FROM reviews.entity_reviews r WHERE r.target_entity_id = g AND r.reviewer_user_id = c;
     PERFORM pg_temp.check(pg_temp.avg_of(g) = '2.00/1', format('6q G''s average is 2.00 over 1 (%s)', pg_temp.avg_of(g)));
     v := pg_temp.door(c, format('SELECT reviews.withdraw_review(%L)', v_g));
     PERFORM pg_temp.check(v = '' AND pg_temp.avg_of(g) = '0.00/0',

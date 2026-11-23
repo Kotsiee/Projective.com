@@ -39,6 +39,7 @@ const CONSOLE_PARAMS: ReadonlySet<string> = new Set([
 	"dir",
 	"period",
 	"client",
+	"promo",
 	"create",
 ]);
 
@@ -65,6 +66,7 @@ export function mergeConsoleUrl(
 	}
 	if (next.type === "product") next.model = [];
 	if (next.view !== "clients") next.client = undefined;
+	if (next.view !== "promotions") next.promo = undefined;
 	if (!next.createOpen) {
 		next.createKind = undefined;
 		next.createModel = undefined;

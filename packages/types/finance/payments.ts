@@ -9,6 +9,7 @@ import {
 } from "./common.ts";
 import { KycStatus } from "./verification.ts";
 import { MoneyViewSchema } from "./wallet.ts";
+import { LegalCommitStampSchema } from "../legal/acceptance.ts";
 
 /**
  * finance payments — the Stripe fiat rails, Phase 1 (root CLAUDE.md §8 Decision #125).
@@ -189,6 +190,8 @@ export const CreateEscrowLockIntentSchema = z.object({
 	 */
 	fxQuoteId: uuid.nullable().optional(),
 	idempotencyKey: attemptKey,
+	/** The Escrow Terms version the acceptance dialog showed (LG3). */
+	legalAcceptance: LegalCommitStampSchema.optional(),
 });
 export type CreateEscrowLockIntent = z.infer<typeof CreateEscrowLockIntentSchema>;
 
@@ -298,6 +301,8 @@ export const FundPaidRevisionSchema = z.object({
 	 */
 	fxQuoteId: uuid.nullable().optional(),
 	idempotencyKey: attemptKey,
+	/** The Escrow Terms version the acceptance dialog showed (LG3). */
+	legalAcceptance: LegalCommitStampSchema.optional(),
 });
 export type FundPaidRevision = z.infer<typeof FundPaidRevisionSchema>;
 
