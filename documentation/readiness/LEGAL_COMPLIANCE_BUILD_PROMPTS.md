@@ -35,7 +35,7 @@ A landed prompt gets its row here.
 
 | ID  | What landed | Commit | Text at |
 | :-- | :---------- | :----- | :------ |
-| LG2 | The counsel brief: FOUNDER_QUESTIONNAIRE Part E with the sign-off runbook (#528); E.1.7 filled from LG1's drift table (#531) | `b3148e47`, LG1_COMMIT | `dea66769` |
+| LG2 | The counsel brief: FOUNDER_QUESTIONNAIRE Part E with the sign-off runbook (#528); E.1.7 filled from LG1's drift table (#531) | `b3148e47`, `9325e5df` | `dea66769` |
 
 ### 0.1 Row → work order
 
@@ -333,7 +333,7 @@ its status stays ❌.
 
 ### LG1 — The six legal documents say what the product does
 
-> **Status 2026-11-23:** partly done. Steps 1–3 and 5 landed in LG1_COMMIT (Decision #531): the
+> **Status 2026-11-23:** partly done. Steps 1–3 and 5 landed in `9325e5df` (Decision #531): the
 > drafts corrected in place, #270 (c), (d), (e), (g) and (o) settled, the drift left open in
 > FOUNDER_QUESTIONNAIRE E.1.7, new PRD-M8 and PRD-C37. Step 6 landed except the monitoring-signals
 > clause, which waits for LG7. Step 4 waits for your answer to stop (a); stop (b) is yours to supply.
