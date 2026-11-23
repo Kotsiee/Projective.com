@@ -35,32 +35,32 @@
 `git show f2e25929:documentation/architecture/FINANCE_BUILD_PROMPTS.md`, or for an `MR` row
 `git show f2e25929:documentation/readiness/MONEY_BUILD_PROMPTS.md`.
 
-| ID   | What landed                                                                                               | Commit                 | Text at    |
-| :--- | :-------------------------------------------------------------------------------------------------------- | :--------------------- | :--------- |
-| F0   | Superseded: Decision #337's OWNER RULINGS carry FA §4.6's flags (ruling Q0.1 (c)); never run              | — (#337)               | `f2e25929` |
-| DB1  | Deposit rules and pots written through doors only; `update_deposit_rule`; `finance_invariants.sql`        | `660c9658`, `172f9d66` | `f2e25929` |
-| DB2  | Refunds, dispute updates, cancelled payouts and out-of-order disputes ledgered                            | `dd3986e5`             | `f2e25929` |
-| DB3  | Enterprise KYB, inbound-transfer capability, approval expiry, fee fallback, no release in a dispute       | `44382c08`             | `f2e25929` |
-| DB4  | Payout schedules run as withdrawals by their author; the cron route and job                               | `b61486be`             | `f2e25929` |
-| DB5  | Pots are earmarks: doors, allocation on matured income, `finance.pot_movements`                           | `bc35b27b`             | `f2e25929` |
+| ID   | What landed                                                                                                       | Commit                 | Text at    |
+| :--- | :---------------------------------------------------------------------------------------------------------------- | :--------------------- | :--------- |
+| F0   | Superseded: Decision #337's OWNER RULINGS carry FA §4.6's flags (ruling Q0.1 (c)); never run                      | — (#337)               | `f2e25929` |
+| DB1  | Deposit rules and pots written through doors only; `update_deposit_rule`; `finance_invariants.sql`                | `660c9658`, `172f9d66` | `f2e25929` |
+| DB2  | Refunds, dispute updates, cancelled payouts and out-of-order disputes ledgered                                    | `dd3986e5`             | `f2e25929` |
+| DB3  | Enterprise KYB, inbound-transfer capability, approval expiry, fee fallback, no release in a dispute               | `44382c08`             | `f2e25929` |
+| DB4  | Payout schedules run as withdrawals by their author; the cron route and job                                       | `b61486be`             | `f2e25929` |
+| DB5  | Pots are earmarks: doors, allocation on matured income, `finance.pot_movements`                                   | `bc35b27b`             | `f2e25929` |
 | DB6  | A card dispute freezes the payee's still-clearing rows it funded (`hold_chargeback_id`); lost recovers them first | `daae69b1` (#532)      | `f2e25929` |
-| DB7  | Checkout integrity: charge assert, atomic promo, key re-check, second tab, `invoiced`                     | `24cbab02`             | `f2e25929` |
-| DB10 | On-account limit and approval threshold per currency (`finance.fn_param_minor`)                           | `f408e708`             | `f2e25929` |
-| DB11 | A product sale pays the seller's Standing-tapered commission; the Agency contract ruled B (#252)          | `9d15fcd0`             | `f2e25929` |
-| DB12 | A non-zero deadline bonus is refused (`ck_escrows_bonus_unfunded`)                                        | `4ff0ede2`             | `f2e25929` |
-| DB16 | Per-currency conservation identity, checked nightly, read on `/admin/ledger`; the seed conserves (#483)   | `85e7d4e4`             | `f2e25929` |
-| DB19 | Order lines written `refunded` / `cancelled`, the order rolls up, one promo redemption per account (#511) | `3041e5ef`             | `f2e25929` |
-| SV1  | Finance row schemas and `finance-tables.contract.test.ts`; its two CHECKs moved to DB8 step 3             | `4c9482a2`, `388d9952` | `f2e25929` |
-| SV2  | The wallet read: resolved scope (303), decidable approvals, per-currency reads, `pdfHref`                 | `d4c4a194`             | `f2e25929` |
-| SV3  | Recurring-rule actions; every automation control locked until its engine runs                             | `fdeb3018`             | `f2e25929` |
-| SV4  | Checkout refuses before Stripe is touched; its tests; the `checkoutPayment` dev axis                      | `f691a0bb`             | `f2e25929` |
-| SV6  | "Wallet covers" counts only the wallet that pays                                                          | `d2d7a07e`             | `f2e25929` |
-| MR0  | The finance work orders refreshed, §F Track cells set, the money decision pack ruled (#466–#472)          | `19697b94`             | `f2e25929` |
-| MR1  | An unclaimed escrow binds no payee on any project kind, so it is refunded, never paid (#474)              | `47f493c6`             | `f2e25929` |
-| MR2  | A brief settles its escrow before it cancels; nothing archives while money is held (#479)                 | `18f0ed13`             | `f2e25929` |
-| MR4  | Money alerts by webhook and email digest, with a dead-man check (#507); OPS5 extended the pipeline        | `322c4dc9`, `c93f6a18` | `f2e25929` |
-| MR6  | A read-only `deno task stripe:preflight` and the SA §Stripe 1.4 go-live runbook (#476)                    | `cb01469d`, `e9e36f8d` | `f2e25929` |
-| MR7  | One counsel brief (`FOUNDER_QUESTIONNAIRE.md` Part D, #473) and the Escrow age reader                     | `14f36cb0`             | `f2e25929` |
+| DB7  | Checkout integrity: charge assert, atomic promo, key re-check, second tab, `invoiced`                             | `24cbab02`             | `f2e25929` |
+| DB10 | On-account limit and approval threshold per currency (`finance.fn_param_minor`)                                   | `f408e708`             | `f2e25929` |
+| DB11 | A product sale pays the seller's Standing-tapered commission; the Agency contract ruled B (#252)                  | `9d15fcd0`             | `f2e25929` |
+| DB12 | A non-zero deadline bonus is refused (`ck_escrows_bonus_unfunded`)                                                | `4ff0ede2`             | `f2e25929` |
+| DB16 | Per-currency conservation identity, checked nightly, read on `/admin/ledger`; the seed conserves (#483)           | `85e7d4e4`             | `f2e25929` |
+| DB19 | Order lines written `refunded` / `cancelled`, the order rolls up, one promo redemption per account (#511)         | `3041e5ef`             | `f2e25929` |
+| SV1  | Finance row schemas and `finance-tables.contract.test.ts`; its two CHECKs moved to DB8 step 3                     | `4c9482a2`, `388d9952` | `f2e25929` |
+| SV2  | The wallet read: resolved scope (303), decidable approvals, per-currency reads, `pdfHref`                         | `d4c4a194`             | `f2e25929` |
+| SV3  | Recurring-rule actions; every automation control locked until its engine runs                                     | `fdeb3018`             | `f2e25929` |
+| SV4  | Checkout refuses before Stripe is touched; its tests; the `checkoutPayment` dev axis                              | `f691a0bb`             | `f2e25929` |
+| SV6  | "Wallet covers" counts only the wallet that pays                                                                  | `d2d7a07e`             | `f2e25929` |
+| MR0  | The finance work orders refreshed, §F Track cells set, the money decision pack ruled (#466–#472)                  | `19697b94`             | `f2e25929` |
+| MR1  | An unclaimed escrow binds no payee on any project kind, so it is refunded, never paid (#474)                      | `47f493c6`             | `f2e25929` |
+| MR2  | A brief settles its escrow before it cancels; nothing archives while money is held (#479)                         | `18f0ed13`             | `f2e25929` |
+| MR4  | Money alerts by webhook and email digest, with a dead-man check (#507); OPS5 extended the pipeline                | `322c4dc9`, `c93f6a18` | `f2e25929` |
+| MR6  | A read-only `deno task stripe:preflight` and the SA §Stripe 1.4 go-live runbook (#476)                            | `cb01469d`, `e9e36f8d` | `f2e25929` |
+| MR7  | One counsel brief (`FOUNDER_QUESTIONNAIRE.md` Part D, #473) and the Escrow age reader                             | `14f36cb0`             | `f2e25929` |
 
 ### 0.1 Run order
 
@@ -77,7 +77,7 @@ file-disjoint. Inside a wave, §0.2 and §0.3 still decide what may overlap.
 | Wave    | SQL lane (serial)                                                                                                                  | App lane (parallel, file-disjoint)                                                                        |
 | :------ | :--------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
 | 2 (UAT) | PM **PM-GH1** (F23) → **DB14** → **DB15** (F6)                                                                                     | **SV5** (F20) · **UI1**                                                                                   |
-| ✔       | **UAT checkpoint:** F6, F14, F20 and F23 closed (F5: DB6, #532); re-score (MR9 step 1)                                               |                                                                                                           |
+| ✔       | **UAT checkpoint:** F6, F14, F20 and F23 closed (F5: DB6, #532); re-score (MR9 step 1)                                             |                                                                                                           |
 | 3       | **DB8** → **DB9** (F7, F10) → **SV8** (F11) → **DB13** → **DB20** (F13) → **DB21** → **MR3** (F12) → **DB17** (F21) → **MR5** (F8) | **UI2** → **UI6** · **UI4** (both after UI1) · **UI3** · **SV7** (after DB15) · **UI5** (after SV5, DB17) |
 | 4       | **MR8a → MR8b** (F16), alone: nothing else runs in the SQL lane beside them                                                        | —                                                                                                         |
 | Later   | **DB18** (after its 🧑 and DB17) · **E3** (after SCH-WP6)                                                                          | **E1** (after PRD-K3, the SQL lane through MR3, UI2, UI3, UI5) → **E2** (after every UI prompt)           |
@@ -92,8 +92,8 @@ Why this order:
 - **UAT rows lead,** in the order of PRD's UAT critical path: F23 → F5 → F6, with F20 (SV5) and F14
   (SBP) beside them. DB16 has landed, so every later money prompt proves in its own change that it
   conserved money.
-- **Disputes are one chain:** DB6 ✅ (the freeze, ruling M3, #532) → DB21 (product disputes reuse it) → MR3
-  (card refunds reuse DB21, DB19's line states and `/admin/ledger`).
+- **Disputes are one chain:** DB6 ✅ (the freeze, ruling M3, #532) → DB21 (product disputes reuse
+  it) → MR3 (card refunds reuse DB21, DB19's line states and `/admin/ledger`).
 - **Currency follows ruling M5:** the CHECKs and the exponent list (DB8), settlement and entity
   currency (DB9), fresh rates (DB17), then the own-wallet conversion, if it is wanted (DB18).
 - **External reconciliation (MR5) runs after DB9 and MR3:** it reuses DB16's terms and DB9's
@@ -138,8 +138,8 @@ Why this order:
 - **SCH-WP6** (paid consultations) never runs beside DB13, which also edits `place_wallet_order` and
   the escrow holds. **E3** waits for SCH-WP6 and DB15.
 - **DB15** runs while no SCH work package is running (`00001155`, `00001510`).
-- **PM-WP4** (the Fair Exit floor, the ticket-level Fair Exit, removal refunds) no longer waits: DB6 landed (#532, B.3).
-  DB13 and DB20 never run beside it: all three edit `00001200`'s release paths.
+- **PM-WP4** (the Fair Exit floor, the ticket-level Fair Exit, removal refunds) no longer waits: DB6
+  landed (#532, B.3). DB13 and DB20 never run beside it: all three edit `00001200`'s release paths.
 - **PM-GH1** (the ghosting auto-approve, FDD D-9 (a)) is `PM_BUILD_PROMPTS.md`'s; it takes Wave 2's
   first SQL slot here and judges a bonus as DB13 rules.
 - **DB14** runs while no P-track SQL step edits `00001110`, `00001150` or `00001850`. **DB13**
@@ -153,8 +153,9 @@ Why this order:
 - **LEGAL_COMPLIANCE LG7** edits `00001240`'s withdrawal path in this lane, never beside MR8a or
   MR8b.
 - **LEGAL_COMPLIANCE LG4** adds one enqueue line each to `fn_mature_pending_releases` and
-  `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6 (landed, #532),
-  whose clearing-window holds decide which escrows count as finally released (#530 (g)).
+  `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6
+  (landed, #532), whose clearing-window holds decide which escrows count as finally released (#530
+  (g)).
 - **Identity:** MFA's AAL2 step-up on withdrawals and payout-account changes, and IW-M13, wait for
   the finance SQL lane (`begin_payout`, `record_payout_account`). DB9's sign-up suggestion edits the
   identity track's wizard files (`apps/web/features/auth/core/*`): coordinate with
