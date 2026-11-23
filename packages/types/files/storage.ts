@@ -425,11 +425,6 @@ export function libraryLocation(
  */
 export function contactLocation(
 	userId: string,
-/** `evidence/{reportId}/{fileId}` — a reported file's frozen copy; service-role ONLY (T&S R1). */
-export function evidenceLocation(reportId: string, fileId: string): StorageLocation {
-	return { bucket: "evidence", path: join(reportId, fileId) };
-}
-
 	assetId: string,
 	filename: string,
 ): StorageLocation {
@@ -453,6 +448,11 @@ export function originalLocation(
 	fileId: string,
 ): StorageLocation {
 	return { bucket: "originals", path: join(productId, versionId, fileId) };
+}
+
+/** `evidence/{reportId}/{fileId}` — a reported file's frozen copy; service-role ONLY (T&S R1). */
+export function evidenceLocation(reportId: string, fileId: string): StorageLocation {
+	return { bucket: "evidence", path: join(reportId, fileId) };
 }
 
 /**
