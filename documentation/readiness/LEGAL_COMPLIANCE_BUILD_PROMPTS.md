@@ -446,6 +446,7 @@ line, if E.2 grows.
 ```
 
 Readiness rows (§1.1): **PRD-M1** stays ❌ (its evidence already names the brief). No score changes.
+
 ### LG3 — The maker accepts the deed and the payer the Escrow Terms, once per version (conditional)
 
 > **Status 2026-11-23:** open; runs only on A at §0.4 item 4, after LG2's brief is sent.
