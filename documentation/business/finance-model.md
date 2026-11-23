@@ -389,8 +389,14 @@ Breakdown: System Fee (5%) → £50 to the Fee Collection Account; Team Vault (1
   segregation this line states.
 - **Contract structure:** the contract is between Client and Freelancer/Team; Projective's ledger
   reflects a "right to payment," not a resale of services.
-- **Tax reporting:** Stripe issues 1099/local tax forms per jurisdiction, reducing Projective's own
-  administrative/tax liability.
+- **Tax reporting** (Decision #527, ruling A: Stripe first): Stripe issues no 1099-K for these
+  accounts, because the platform collects the fees (`fees_collector: application`). Any US 1099 duty
+  would be Projective's, filed through Stripe's 1099 tool. W-9 / W-8 collection is a US-business
+  preview that is not on Accounts v2. UK and EU DAC7 reporting is Stripe's Platform tax reporting, a
+  private preview: Stripe collects and verifies the seller's tax number at onboarding and generates
+  the filing, but it takes the money totals from the platform, which files. Projective's half is the
+  operator export over the ledger (`finance.read_seller_tax_report`, PRODUCT_SPEC §Identity, Taxes &
+  Compliance 2). ⚖️ Which duties apply is counsel's (#527 (A)).
 
 ---
 
@@ -706,7 +712,10 @@ Governs shared wallets (Business / Team / Enterprise).
   invoice currency however its sellers price.
 - **Idempotency** (`finance.idempotency_keys`): every money-mutating request presents a key; a retry
   replays the stored response rather than re-executing — retries **never double-move money**.
-- **Tax docs:** Stripe-issued 1099 / local forms surface to the user (§9); no PII is stored.
+- **Tax docs:** any form Stripe makes available stays in the seller's Stripe Express dashboard, which
+  Settings → Verification & payouts → Tax documents points to (§9). Projective stores no tax number,
+  only the payout-account reference to Stripe's record, and the residence certificate a seller
+  chooses to upload and show to one client (Decision #527).
 - **Notifications:** finance events route through `comms.fn_notify` — low balance, escrow funded,
   payout cleared, deposit failed, invoice due, cap exceeded, approval requested.
 

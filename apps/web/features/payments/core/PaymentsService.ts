@@ -14,7 +14,10 @@ import type {
 	KybOnboardingInput,
 	PaymentFundingPoll,
 	SavedCardResult,
+	ShareTaxDocumentInput,
 	StageFundingQuote,
+	TaxDocument,
+	TaxDocuments,
 	TicketFundingQuote,
 	VerificationStatus,
 } from "@projective/types/finance";
@@ -211,5 +214,23 @@ export const PaymentsService = {
 	/** Start (or resume) payout onboarding (the Connect account a withdrawal goes to). */
 	startPayoutOnboarding(input: ConnectOnboardingInput): Promise<PaymentsResponse<ConnectOnboardingLink>> {
 		return post("/api/finance/connect/onboarding", input);
+	},
+
+	/** The seller's tax documents and the clients they may show one to (LEGAL LG6). */
+	taxDocuments(): Promise<PaymentsResponse<TaxDocuments>> {
+		return send("/api/finance/tax-documents");
+	},
+
+	/** Mark a file the seller just uploaded as their residence certificate: private, shown to nobody. */
+	markTaxDocument(fileId: string): Promise<PaymentsResponse<TaxDocument | null>> {
+		return post("/api/finance/tax-documents", { fileId });
+	},
+
+	/** Show a certificate to one project's client, replacing any earlier share, or to nobody. */
+	shareTaxDocument(
+		fileId: string,
+		input: ShareTaxDocumentInput,
+	): Promise<PaymentsResponse<TaxDocument | null>> {
+		return post(`/api/finance/tax-documents/${encodeURIComponent(fileId)}/share`, input);
 	},
 };

@@ -3735,23 +3735,31 @@ security.
 > pooled Business Wallet. This narrows the former "Freelancer/Client" Level-2 label to the earner.
 > Concrete gate + predicates: `finance-model.md` §10.
 
-#### 2. Automated Tax Compliance
+#### 2. Tax Reporting & Documents (Stripe first — Decision #527, ruling A)
 
-Projective removes the "Tax Season" headache by automating the generation of all necessary tax
-documents based on the platform's transaction ledger.
+Projective keeps the ledger a tax authority may ask about and does not file tax forms itself. What
+Stripe collects and files stays Stripe's; the platform account is GB (#423), on Connect Express over
+Accounts v2 (#125). ⚖️ Which seller-reporting duties Projective has, and in which jurisdictions, is
+counsel's (#527 (A)); this section describes what is built, not that it meets them.
 
-##### For US-Based Users
-
-- **Form 1099-K/1099-NEC:** Automatically generated for freelancers who exceed federal or state
-  earning thresholds.
-- **W-9 Collection:** Seamlessly collected during the Level 2 verification process.
-
-##### For International Users (VAT/GST)
-
-- **Reverse Charge Mechanism:** For B2B transactions within the EU, Projective automatically handles
-  VAT ID validation and applies reverse-charge logic to invoices.
-- **Tax Residence Certificates:** Centralized storage for freelancers to provide proof of residency
-  to clients for withholding tax exemptions.
+- **Stripe's forms:** any tax form Stripe makes available for a seller's payout account is in their
+  Stripe Express dashboard; Settings → Verification & payouts → **Tax documents** points there.
+  Stripe issues no 1099 itself for this account set-up (the platform collects the fees), so any US
+  1099 duty would be Projective's, filed through Stripe's 1099 tool. **Not built:** 1099-K / 1099-NEC
+  generation and W-9 / W-8 collection (Stripe's collection is a US-business preview and is not on
+  Accounts v2); both wait for counsel and Stripe (#527 flags (a), (b), (d)).
+- **Seller reporting dataset (UK platform-operator rules, EU DAC7):** an operator exports, per seller,
+  currency and calendar quarter, what the ledger credited them, the platform fees attributed to it,
+  the number of paid activities, the country their profile states, and the payout-account reference
+  to the identity and tax number Stripe holds (`GET /api/finance/tax-report?year=`). A person files
+  it, through Stripe's Platform tax reporting (a private preview that takes these totals) or with
+  counsel. Kept for the window in `finance-model.md` §17.
+- **Reverse Charge Mechanism:** for B2B transactions within the EU, VAT ID validation and
+  reverse-charge logic on invoices. **Not built** (MARKETPLACE CK4, Decision #490).
+- **Tax Residence Certificates:** a seller uploads their certificate in Tax documents. It is private
+  to them until they show it to the client of one of their projects, one client at a time, and they
+  can make it private again whenever they like. It is malware-scanned when the upload pipeline is
+  (PRD-D3, not built yet); until then it is content-checked like every upload.
 
 #### 3. Anti-Money Laundering (AML) & Fraud Detection
 

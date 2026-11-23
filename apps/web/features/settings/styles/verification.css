@@ -99,3 +99,49 @@
 .vrf__foot {
 	margin: 0;
 }
+
+/* Tax documents (LEGAL LG6): a sub-heading one register down, each certificate a row of name, Meta
+   line and its controls, and Stripe's sign-in as a plain inline link. */
+.vrf__h--minor {
+	margin-block-start: var(--space-4);
+	font-size: var(--text-sm);
+}
+
+.vrf__list--tight {
+	gap: var(--space-4);
+}
+
+.vrf__list--tight .vrf__row + .vrf__row {
+	padding-block-start: var(--space-4);
+}
+
+.vrf__doc {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.vrf__doc-name {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	overflow-wrap: anywhere;
+}
+
+.vrf__meta {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+}
+
+.vrf__link {
+	color: var(--on-surface);
+	text-decoration: underline;
+	text-decoration-color: var(--primary);
+	text-underline-offset: 0.2em;
+}
+
+.vrf__link:hover {
+	text-decoration-thickness: 2px;
+}

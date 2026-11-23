@@ -9,11 +9,12 @@ import "../styles/settings.css";
 import { Alert } from "@projective/ui/feedback";
 import { Button, FormControl, Select } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import type { VerificationStatus } from "@projective/types/finance";
+import type { TaxDocuments, VerificationStatus } from "@projective/types/finance";
 import type { EarnedVerificationStamp } from "@projective/types/org";
 import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
 import { StatusMark } from "../components/SettingsParts.tsx";
 import { SettingsBreadcrumb } from "../components/SettingsBreadcrumb.tsx";
+import { TaxDocumentsSection } from "../components/TaxDocumentsSection.tsx";
 import {
 	kybCopy,
 	kycCopy,
@@ -31,6 +32,9 @@ export interface VerificationConsoleProps {
 	error: string | null;
 	/** A notice from a return out of a Stripe-hosted flow, resolved server-side. */
 	notice: { tone: "info" | "success" | "warning"; text: string } | null;
+	/** The seller's tax documents (LEGAL LG6); `null` when they could not be read (`taxError` says why). */
+	taxDocuments: TaxDocuments | null;
+	taxError: string | null;
 }
 
 /**
@@ -43,7 +47,7 @@ type ActionWeight = "accent" | "primary" | "utility";
 /**
  * VerificationConsole — Settings → Verification & payouts (root CLAUDE.md §8 Decision #126).
  *
- * Three checks, each a section with its status and at most one next step:
+ * Three checks and the seller's tax documents, each a section with its status and at most one next step:
  *
  * 1. **Identity (Level 2 KYC)** — a freelancer's Stripe Identity check, the half of the earning gate
  *    `org.freelancer_profiles.kyc_status` records. A client never needs it. Started through
@@ -54,7 +58,9 @@ type ActionWeight = "accent" | "primary" | "utility";
  *    (`POST /api/finance/connect/onboarding`), the other half (`payout_ready`). Stripe's `return_url`
  *    and `refresh_url` are `/api/finance/connect/return|refresh`, which re-read the account from Stripe
  *    and land back here with `?payouts=<status>`.
- * 3. **Businesses (Level 3 KYB)** — each client business the person belongs to, verified through its own
+ * 3. **Tax documents** (sellers; LEGAL LG6, Decision #527) — where Stripe's tax forms live, and a private
+ *    tax residence certificate shown to one project's client at a time ({@link TaxDocumentsSection}).
+ * 4. **Businesses (Level 3 KYB)** — each client business the person belongs to, verified through its own
  *    Connect onboarding (`POST /api/finance/verify/kyb`), recorded on `org.business_profiles.kyb_status`
  *    and landing back with `?kyb=<status>`.
  *
@@ -176,6 +182,14 @@ export default function VerificationConsole(props: VerificationConsoleProps): JS
 							/>
 						)}
 					</Section>
+
+					{s.isFreelancer && (
+						<TaxDocumentsSection
+							initial={props.taxDocuments}
+							error={props.taxError}
+							hasPayoutAccount={!!s.payoutAccount?.accountId}
+						/>
+					)}
 
 					{s.businesses.length > 0 && (
 						<section class="vrf__group" aria-labelledby="vrf-biz">

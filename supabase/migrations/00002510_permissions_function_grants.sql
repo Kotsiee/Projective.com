@@ -2747,6 +2747,29 @@ REVOKE ALL ON FUNCTION finance.read_escrow_age () FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.read_escrow_age () TO authenticated;
 -- #endregion
 
+-- #region Seller tax reporting (00001200, LEGAL LG6)
+-- The internal reader answers for every seller, so no client role reaches it; it is not granted to the
+-- service role either, which may not read the org columns it joins (Decision #382). The operator door:
+-- signed-in callers reach it, and it refuses anyone but security.is_admin() (42501), which the export
+-- route answers with a 404.
+REVOKE ALL ON FUNCTION finance.fn_seller_tax_report (integer) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.read_seller_tax_report (integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.read_seller_tax_report (integer) TO authenticated;
+-- #endregion
+
+-- #region Seller tax documents (00001200, LEGAL LG6)
+-- The seller's own doors: each answers only for the caller's own files. The two helpers read any
+-- file and any project, so no client role reaches them.
+REVOKE ALL ON FUNCTION finance.fn_tax_document_client (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_tax_document_json (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.list_tax_documents () FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.list_tax_documents () TO authenticated;
+REVOKE ALL ON FUNCTION finance.mark_tax_document (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.mark_tax_document (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.share_tax_document (uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.share_tax_document (uuid, uuid) TO authenticated;
+-- #endregion
+
 
 -- #region Conservation identity (00001200, FBP DB16)
 -- The nightly check writes ops rows and reveals every currency's figures: the service role and the

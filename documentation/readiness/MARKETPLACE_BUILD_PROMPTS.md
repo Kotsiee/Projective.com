@@ -186,8 +186,8 @@ check, #447). Record each run in its row's evidence; MKZ step 1 checks them.
   (`FOUNDER_QUESTIONNAIRE.md` Part D).
 - **MK-41's screening** is T&S SN2 → SN3; the safety node lives outside this repo (PRD-D10).
 - **MK-56** (a business buys a One-Off) is ruled individuals-only for now (#457).
-- **PRD-M5's seller tax forms** (1099 / W-9) are a payout-side question:
-  [LEGAL LG6](LEGAL_COMPLIANCE_BUILD_PROMPTS.md). CK4 covers checkout and invoice tax only.
+- **PRD-M5's seller tax forms** (1099 / W-9) were a payout-side question: LEGAL LG6 landed
+  (Decision #527, Stripe first). CK4 covers checkout and invoice tax only.
 
 ---
 
@@ -446,9 +446,9 @@ decision row.
 ```
 
 §1.2 rows: **MK-20** stays 🟡 with the note "built, off pending counsel"; → ✅ when the switch is on
-in the target environment. **PRD-M5** narrowed (the checkout half). **MW-57** stays ❌ until LEGAL
-LG6 lands too (then 🟡, both switches off). The seller tax forms, platform reporting and
-tax-residence certificates are LG6's.
+in the target environment. **PRD-M5** narrowed (the checkout half). **MW-57** goes ❌ → 🟡 with CK4
+now that LEGAL LG6 has landed (#527: platform reporting and tax-residence certificates; no 1099 /
+W-9, which Stripe offers no path to for this account).
 
 ---
 

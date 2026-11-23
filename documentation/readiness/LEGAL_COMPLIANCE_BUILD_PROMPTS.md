@@ -6,8 +6,8 @@
 > PRD-A4. The rulings it builds on are the legal library's (#270), the AML posture (#336 I1) and
 > checkout tax (#490).
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 8 open, 1 partly done, 1 done (§0 ledger).
-> Runnable now: LG0, LG6, LG7; LG1 once its stop (a) is answered.
+> **Verified against code 2026-11-23 at `f2e25929`.** 7 open, 1 partly done, 2 done (§0 ledger).
+> Runnable now: LG0, LG7; LG1 once its stop (a) is answered.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -36,6 +36,7 @@ A landed prompt gets its row here.
 | ID  | What landed | Commit | Text at |
 | :-- | :---------- | :----- | :------ |
 | LG2 | The counsel brief: FOUNDER_QUESTIONNAIRE Part E with the sign-off runbook (#528); E.1.7 filled from LG1's drift table (#531) | `b3148e47`, `9325e5df` | `dea66769` |
+| LG6 | Stripe first (#527): the operator seller tax-report CSV over the ledger, a private residence certificate shown to one client, finance-model §9 corrected | LG6_COMMIT | `a3a1ace4` |
 
 ### 0.1 Row → work order
 
@@ -45,7 +46,7 @@ A landed prompt gets its row here.
 | PRD-M2 | PROD | Critical | — (✅, AU1 #446)                     | — (LG3 extends it to two more documents if you choose A)                                                                                                                     |
 | PRD-M3 | PROD | Normal   | OPS7 (OPERATIONS)                    | ✅ when `account-data-exports` returns a 2xx from the hosted scheduler                                                                                                       |
 | PRD-M4 | PROD | High     | (LG3) → **LG4** → **LG5**            | 🟡 on LG4 (a signed transfer record on each final release) · ✅ on LG5 (audit packs)                                                                                         |
-| PRD-M5 | PROD | High     | CK4 + **LG6**                        | 🟡 when both land with their switches off · ✅ when counsel confirms the obligations and the switches are on in the target environment                                       |
+| PRD-M5 | PROD | High     | CK4 + LG6 (landed, §0.0)            | 🟡 when CK4 lands with its switch off · ✅ when counsel confirms the obligations and its switch is on in the target environment                                       |
 | PRD-M6 | PROD | Normal   | **LG7** + X2                         | ✅ when the signals record on every money movement they cover, an operator can read them, and the Safety Hold is built behind its switch · 🟡 if only the signals land       |
 | PRD-M7 | PROD | High     | **LG8** (⏳ CK4)                     | 🟡 when built behind `platform_fee_tax_enabled` (off) · ✅ when counsel confirms and the switch is on                                                                        |
 | PRD-A4 | UAT  | Normal   | **LG0**                              | ✅ when no placeholder is reachable. It stays ✅ when LG4 and LG5 open the pages again                                                                                       |
@@ -57,7 +58,7 @@ A landed prompt gets its row here.
 | ID-11 | Critical | 🟡 → ✅ with PRD-M1                                                                                            |
 | MW-55 | Normal   | ❌ → 🟡 on LG4 (the workspace and its transfers page) · ✅ on LG5                                              |
 | MW-56 | High     | ❌ → 🟡 on LG4 · ✅ once the IP Transfer Deed's text is counsel-reviewed (PRD-M1)                              |
-| MW-57 | High     | ❌ → 🟡 when CK4 and LG6 land with their switches off · ✅ when the switches are on                            |
+| MW-57 | High     | ❌ → 🟡 when CK4 lands with its switch off (LG6 landed) · ✅ when the switch is on                         |
 | MW-58 | Normal   | ❌ → ✅ on LG7 (signals recorded and readable by an operator; the reporting programme stays dormant by ruling) |
 
 ### 0.2 Findings the prompts rely on (checked 2026-11-19, still true at `f2e25929`)
@@ -109,7 +110,7 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 | :--- | :------------------ | :--------------------------------------------------------------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------- |
 | 1    | **LG1** (steps 4, 6) | —                                                                                        | **LG0**                  | LG1 step 4: your answer to its stop (a); step 6's rest: LG7                   |
 | 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                                           | (LG4/LG5's UI halves)    | LG4 builds once LG2's brief is sent and LG3 and FINANCE DB6 land (#530 (g)); counsel rules text |
-| 3    | —                   | **LG7** takes a turn in [the finance SQL lane](../architecture/FINANCE_BUILD_PROMPTS.md) | **LG6** (research first) | LG7: never beside MR8a/MR8b. LG6's reader after its 🧑                                          |
+| 3    | —                   | **LG7** takes a turn in [the finance SQL lane](../architecture/FINANCE_BUILD_PROMPTS.md) | — (LG6 landed, §0.0)     | LG7: never beside MR8a/MR8b                                          |
 | 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (which waits for DB21)                                                                      |
 | Last | **LG9**             | —                                                                                        | —                        | Everything above that can land                                                                  |
 
@@ -160,8 +161,8 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
    invoice that carries a line for it. A payee gets their own records, the agreements they are party
    to and their own payout statement, never a client invoice. An operator produces either through an
    audited door.
-7. **LG6:** Stripe first (recommended): use what Stripe files, and keep a reporting dataset for what
-   it doesn't. Log the US framing (finding 6) as a decision row.
+7. **LG6:** ruled (#527 (D)): A, Stripe first, and landed (§0.0). It has no switch: an operator
+   read and a seller's own upload change no legal posture. The US framing is #527 (A), for counsel.
 8. **LG7:** answer Identity X2's stop (who builds what; A recommended), and set the signal
    thresholds as dials. The Safety Hold ships switched off.
 9. **LG8:** is the 5% fee VAT-inclusive (**A**, recommended: "flat 5%" stays true and payout maths
@@ -177,7 +178,7 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
 - **⚖️ Counsel:** the library sign-off and every item in LG2's brief (FOUNDER_QUESTIONNAIRE Part E).
 - **You, after counsel signs a document:** run LG2's sign-off runbook (Part E.4): set `reviewedAt`,
   remove the reconstructed baselines, mark material versions. That is the only route to PRD-M1 ✅.
-- **You:** the switches (`tax_collection_enabled`, LG6's, LG7's Safety Hold, LG8's) in each hosted
+- **You:** the switches (`tax_collection_enabled`, LG7's Safety Hold, LG8's) in each hosted
   environment, once counsel has answered. No agent turns a ⚖️ switch on.
 - **You:** generate LG4's signing key and put it in each environment's secrets. No agent sees the
   private key.
@@ -275,7 +276,7 @@ Run them from their own files, with their own headers: CK4 in
 [MARKETPLACE_BUILD_PROMPTS.md](MARKETPLACE_BUILD_PROMPTS.md), OPS7 in
 [OPERATIONS_BUILD_PROMPTS.md](OPERATIONS_BUILD_PROMPTS.md) §2, X2 in
 [IDENTITY_BUILD_PROMPTS.md](../architecture/IDENTITY_BUILD_PROMPTS.md). Their rows here: CK4 narrows
-PRD-M5 (MW-57 stays ❌ until LG6), OPS7 flips PRD-M3, X2 shares PRD-M6 with LG7.
+PRD-M5 (with LG6 landed, MW-57 moves with CK4), OPS7 flips PRD-M3, X2 shares PRD-M6 with LG7.
 
 ---
 
@@ -600,62 +601,6 @@ PRODUCT_SPEC (the rule on who gets which pack); the decision row.
 ```
 
 Readiness rows (§1.1): **PRD-M4** → ✅; **MW-55** → ✅.
-
-### LG6 — Seller tax documents and platform reporting
-
-> **Status 2026-11-23:** open; its research runs now, its reader after the stop.
-
-Covers PRD-M5's payout half and MW-57, beside CK4.
-
-```text
-PROMPT LG6: Find out what Stripe already files for this platform, collect only what it does not,
-and keep the seller-reporting dataset a GB platform may owe
-
-ROLE: Payments engineer + compliance analyst. App lane for the research; the SQL lane for the
-reader after the stop.
-
-CONTEXT (verified at 197b0d0c; re-check every line):
-  - PRODUCT_SPEC §Identity, Taxes & Compliance 2 promises 1099-K / 1099-NEC, W-9 collection at
-    Level 2, EU reverse charge on invoices (CK4's), and storage for tax residence
-    certificates. finance-model §9: "Stripe issues 1099/local tax forms per jurisdiction" is
-    unverified.
-  - The platform account is GB (#423 (B)), Connect Express on Accounts v2 (#125). org has a
-    tax_id column (00000011:292) and finance a business_tax_id (00000017:1393): find what
-    writes and reads each.
-  - The retention table (FOUNDER_QUESTIONNAIRE I1) already names "seller tax-reporting data
-    (platform reporting)": 6 years (UK), 10 years (EU sellers, DAC7).
-
-STEPS:
-  1. Research, read-only, with the stripe:stripe-docs and stripe:stripe-best-practices skills:
-     what Connect tax reporting offers a GB platform with Express accounts (1099 forms, W-9 / TIN
-     collection during onboarding, DAC7 or UK platform reporting support), and what the Express
-     dashboard shows a seller. Cite URLs, quote at most one sentence each, and draw no legal
-     conclusion.
-  2. 🧑 + ⚖️ STOP. Put this to me with the research:
-     A (recommended), Stripe first: what Stripe collects and files stays Stripe's. Projective
-       keeps a per-seller, per-period reporting reader over the ledger (gross consideration,
-       fees, number of paid activities, country, and the identity and TIN references Stripe
-       holds), exported by an operator. Filing is a human's job. Tax residence certificates are
-       a private upload in Settings → Payouts that a seller can share with a client party.
-     B: Projective generates per-jurisdiction forms itself.
-     Also log a decision row: the spec's tax section is written for a US platform (1099 / W-9)
-     while the platform is GB, and UK and EU seller reporting is unmentioned (§0.2 finding 6).
-     That is a gap for me and counsel, not one for you to resolve.
-  3. On A: the operator-only STABLE reader and its CSV export (00001200 or the finance read file
-     the house uses; grant in 00002510), and a probe on fixtures. In Settings → Payouts, a "Tax
-     documents" section: where Stripe's forms live (the Express dashboard link, if step 1 shows
-     one) and the certificate upload (the files pipeline, private, scanned).
-  4. Correct finance-model §9's tax sentence to what step 1 proved.
-
-ACCEPTANCE: the research and the ruling are recorded. The reader's figures for a seeded seller
-match the ledger in a probe, and a member gets 404. The certificate upload is private, and
-sharing reaches only the chosen client party. check, lint, test:unit and test:probes are green.
-SAME CHANGE: PRODUCT_SPEC §Identity, Taxes & Compliance 2 (as ruled; anything not built marked
-so); finance-model §9; documentation/database/finance/*; the decision rows.
-```
-
-Readiness rows (§1.1): **PRD-M5** → 🟡 once CK4 has also landed (each with its switch off);
-otherwise the row is narrowed only. **MW-57** follows the same rule.
 
 ### LG7 — AML signals and the Safety Hold
 

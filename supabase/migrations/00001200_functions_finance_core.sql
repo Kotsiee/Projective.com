@@ -2097,3 +2097,326 @@ BEGIN
 END;
 $$;
 -- #endregion
+
+-- #region Seller tax reporting — what the ledger credited each seller, per quarter (LEGAL LG6, Decision #527)
+-- The dataset a platform-reporting regime may ask of Projective (UK platform-operator rules, EU DAC7):
+-- per seller, currency and calendar quarter (UTC), what the ledger credited them as income, the platform
+-- fees attributed to it, and how many paid activities it came from. Stripe holds the seller's verified
+-- identity and tax number; the row carries only the reference to it (the payout account) and the
+-- country the seller's own profile states. Filing is a person's job: an operator exports this
+-- (Decision #527 (D), ruling A). Whether and where Projective must report is counsel's (#527 (A)).
+--
+-- Income is every ledger CREDIT under finance.fn_is_income_reason, dated when it reached the wallet: a
+-- release still inside its pending window is counted in the quarter it matures. The fee is the source's
+-- own record. An escrow's `platform_fee_cents` is shared across every credit it paid (a team's members
+-- and its vault) by each credit's part of the escrow's total payout, the not-yet-matured releases
+-- included, each share floored, so a direct payee carries the whole fee. A product sale's fee is the
+-- `platform_fee_minor` of that order's lines whose product the seller owns. Read-only.
+CREATE OR REPLACE FUNCTION finance.fn_seller_tax_report(p_year integer)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    WITH per_source AS (
+        SELECT w.owner_type, w.owner_id, t.currency, t.ref_table, t.ref_id,
+               EXTRACT(quarter FROM t.created_at AT TIME ZONE 'UTC')::integer AS quarter,
+               pg_catalog.sum(t.amount_cents)::bigint AS credited
+          FROM finance.transactions t
+          JOIN finance.wallets w ON w.id = t.wallet_id
+         WHERE t.direction = 'credit'
+           AND finance.fn_is_income_reason(t.reason)
+           AND t.created_at >= pg_catalog.make_timestamptz(p_year, 1, 1, 0, 0, 0, 'UTC')
+           AND t.created_at < pg_catalog.make_timestamptz(p_year + 1, 1, 1, 0, 0, 0, 'UTC')
+         GROUP BY w.owner_type, w.owner_id, t.currency, t.ref_table, t.ref_id, 6
+    ),
+    escrow_fee AS (
+        SELECT s.ref_id, e.platform_fee_cents AS fee,
+               COALESCE((SELECT pg_catalog.sum(t.amount_cents) FROM finance.transactions t
+                          WHERE t.ref_table = 'escrows' AND t.ref_id = e.id AND t.direction = 'credit'
+                            AND finance.fn_is_income_reason(t.reason)), 0)
+             + COALESCE((SELECT pg_catalog.sum(pr.amount_cents - pr.recovered_cents) FROM finance.pending_releases pr
+                          WHERE pr.escrow_id = e.id AND pr.state <> 'available'), 0) AS paid_out
+          FROM (SELECT DISTINCT ref_id FROM per_source WHERE ref_table = 'escrows') s
+          JOIN finance.escrows e ON e.id = s.ref_id
+    ),
+    with_fees AS (
+        SELECT s.*,
+               CASE s.ref_table
+                   WHEN 'escrows' THEN (
+                       SELECT CASE WHEN f.paid_out > 0
+                                   THEN pg_catalog.div(f.fee::numeric * s.credited, f.paid_out)::bigint
+                                   ELSE 0 END
+                         FROM escrow_fee f WHERE f.ref_id = s.ref_id)
+                   WHEN 'orders' THEN (
+                       SELECT pg_catalog.sum(ol.platform_fee_minor)::bigint
+                         FROM finance.order_lines ol
+                         JOIN catalogue.products p ON p.id = ol.item_id
+                        WHERE ol.order_id = s.ref_id AND ol.item_type = 'digital_product'
+                          AND COALESCE(p.owner_team_id, p.owner_user_id) = s.owner_id
+                          AND (p.owner_team_id IS NOT NULL) = (s.owner_type = 'team'))
+               END AS fee
+          FROM per_source s
+    ),
+    per_quarter AS (
+        SELECT owner_type, owner_id, currency, quarter,
+               pg_catalog.sum(credited)::bigint AS credited,
+               COALESCE(pg_catalog.sum(fee), 0)::bigint AS fees,
+               pg_catalog.count(*)::integer AS activities
+          FROM with_fees
+         GROUP BY owner_type, owner_id, currency, quarter
+    )
+    SELECT pg_catalog.jsonb_build_object(
+        'year', p_year,
+        'rows', COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+            'seller_type', q.owner_type,
+            'seller_id', q.owner_id,
+            'currency', q.currency,
+            'quarter', q.quarter,
+            'credited_minor', q.credited,
+            'fees_minor', q.fees,
+            'gross_minor', q.credited + q.fees,
+            'activities', q.activities,
+            'profile_country', CASE q.owner_type
+                WHEN 'business' THEN (SELECT b.country FROM org.business_profiles b WHERE b.id = q.owner_id)
+                WHEN 'enterprise' THEN (SELECT en.address_country FROM org.enterprises en WHERE en.id = q.owner_id)
+                WHEN 'team' THEN NULL
+                ELSE (SELECT u.country FROM org.users_public u WHERE u.user_id = q.owner_id)
+            END,
+            'payout_provider', pa.provider,
+            'payout_account_id', pa.account_id
+        ) ORDER BY q.owner_type, q.owner_id, q.currency, q.quarter), '[]'::jsonb)
+    )
+      FROM per_quarter q
+      LEFT JOIN LATERAL (
+          SELECT a.provider, a.account_id FROM finance.payout_accounts a
+           WHERE a.owner_id = q.owner_id
+             AND CASE WHEN q.owner_type IN ('user', 'freelancer') THEN a.owner_type IN ('user', 'freelancer')
+                      ELSE a.owner_type = q.owner_type END
+           ORDER BY (a.status <> 'disabled') DESC, a.created_at DESC
+           LIMIT 1
+      ) pa ON true;
+$$;
+
+COMMENT ON FUNCTION finance.fn_seller_tax_report(integer) IS
+'Per seller, currency and calendar quarter (UTC) of p_year: credited_minor (ledger income credits),
+fees_minor (the platform fees attributed to them), gross_minor (their sum), activities (the distinct
+escrows and orders paid), profile_country and the payout account reference (LEGAL LG6, Decision #527).
+Read-only. Internal: reached through finance.read_seller_tax_report (operators) and probes.';
+
+-- The operator door (`/api/admin/seller-tax-report`): security.is_admin() only. Anyone else gets 42501,
+-- which the route answers with a 404, as /admin/ledger does (Decision #212).
+CREATE OR REPLACE FUNCTION finance.read_seller_tax_report(p_year integer)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid() IS NULL OR NOT security.is_admin() THEN
+        RAISE EXCEPTION 'Only a platform operator can read the seller tax report' USING ERRCODE = '42501';
+    END IF;
+    IF p_year IS NULL OR p_year < 2000 OR p_year > 9998 THEN
+        RAISE EXCEPTION 'year: give a calendar year from 2000' USING ERRCODE = '22023';
+    END IF;
+    RETURN finance.fn_seller_tax_report(p_year);
+END;
+$$;
+-- #endregion
+
+-- #region Seller tax documents — a residence certificate kept private and shown to one client (LEGAL LG6, Decision #527)
+-- A seller's tax residence certificate is an ordinary private upload to their own library (the files
+-- pipeline), which finance.mark_tax_document marks `files.items.metadata -> 'tax_document'`. Only a
+-- definer can write that key (files.fn_guard_pipeline_columns), so nobody can forge the mark, and
+-- marking resets the file to private with no grants. finance.share_tax_document shows it to exactly one
+-- person, the client of a project the seller works on, through files.set_item_access (`restricted`
+-- with one `user` viewer grant, the complete list), so a second share replaces the first; sharing to no
+-- project makes it private again. Scanned when the upload pipeline scans (T&S SN1, PRD-D3); until then
+-- it is content-sniffed only, like every upload.
+
+-- The person the caller may show a tax document to for p_project_id: the project's client, when the
+-- caller works on it (they own a listing-made engagement, take part, or hold a live assignment, as
+-- projects.has_project_access decides) and is not that client. NULL otherwise. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_tax_document_client(p_project_id uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(p.client_user_id, p.owner_user_id)
+      FROM projects.projects p
+     WHERE p.id = p_project_id
+       AND auth.uid() IS NOT NULL
+       AND COALESCE(p.client_user_id, p.owner_user_id) <> auth.uid()
+       AND projects.has_project_access(p.id);
+$$;
+
+-- One tax document as the seller's section shows it, or NULL when p_file_id is not the caller's
+-- marked, live document. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_tax_document_json(p_file_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.jsonb_build_object(
+        'file_id', i.id,
+        'kind', i.metadata #>> '{tax_document,kind}',
+        'name', i.display_name,
+        'mime_type', i.mime_type,
+        'size_bytes', i.size_bytes,
+        'created_at', i.created_at,
+        'shared', (
+            SELECT pg_catalog.jsonb_build_object(
+                'project_id', p.id,
+                'project_slug', p.slug,
+                'project_title', p.title,
+                'client_user_id', g.grantee_id,
+                'client_name', COALESCE(NULLIF(pg_catalog.btrim(pg_catalog.concat_ws(' ', u.first_name, u.last_name)), ''), u.username)
+            )
+              FROM files.item_grants g
+              JOIN org.users_public u ON u.user_id = g.grantee_id
+              LEFT JOIN projects.projects p ON p.id = (i.metadata #>> '{tax_document,shared_project_id}')::uuid
+             WHERE i.visibility <> 'private'::files.file_visibility
+               AND g.item_id = i.id AND g.revoked_at IS NULL AND g.grantee_kind = 'user'::files.grantee_kind
+             ORDER BY g.created_at DESC
+             LIMIT 1
+        )
+    )
+      FROM files.items i
+     WHERE i.id = p_file_id
+       AND i.owner_user_id = auth.uid()
+       AND i.owner_type = 'user'::files.owner_kind
+       AND i.deleted_at IS NULL
+       AND i.metadata ? 'tax_document';
+$$;
+
+-- The caller's tax documents, newest first, and the projects they may show one to (Settings →
+-- Verification & payouts → Tax documents).
+CREATE OR REPLACE FUNCTION finance.list_tax_documents()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to see your tax documents' USING ERRCODE = '42501';
+    END IF;
+    RETURN pg_catalog.jsonb_build_object(
+        'documents', COALESCE((
+            SELECT pg_catalog.jsonb_agg(finance.fn_tax_document_json(i.id) ORDER BY i.created_at DESC, i.id)
+              FROM files.items i
+             WHERE i.owner_user_id = v_uid AND i.owner_type = 'user'::files.owner_kind
+               AND i.deleted_at IS NULL AND i.metadata ? 'tax_document'
+        ), '[]'::jsonb),
+        'targets', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'project_id', c.id,
+                       'project_slug', c.slug,
+                       'project_title', c.title,
+                       'client_user_id', c.client_id,
+                       'client_name', COALESCE(NULLIF(pg_catalog.btrim(pg_catalog.concat_ws(' ', u.first_name, u.last_name)), ''), u.username)
+                   ) ORDER BY c.title, c.id)
+              FROM (
+                  SELECT p.id, p.slug, p.title, finance.fn_tax_document_client(p.id) AS client_id
+                    FROM projects.projects p
+                   WHERE (p.owner_user_id = v_uid AND p.client_user_id IS NOT NULL)
+                      OR EXISTS (SELECT 1 FROM projects.project_participants pp
+                                  WHERE pp.project_id = p.id AND pp.profile_type = 'freelancer' AND pp.profile_id = v_uid)
+                      OR EXISTS (SELECT 1 FROM projects.stage_assignments sa
+                                   JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+                                  WHERE ps.project_id = p.id AND sa.freelancer_profile_id = v_uid)
+              ) c
+              JOIN org.users_public u ON u.user_id = c.client_id
+             WHERE c.client_id IS NOT NULL
+        ), '[]'::jsonb)
+    );
+END;
+$$;
+
+-- Mark one of the caller's own uploaded files as a tax residence certificate, private and shared with
+-- nobody. Marking it again changes nothing but resets its sharing.
+-- Errors: 42501 signed out; PF404 not the caller's live file; 22023 not yet through the upload pipeline.
+CREATE OR REPLACE FUNCTION finance.mark_tax_document(p_file_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_item files.items%ROWTYPE;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to keep tax documents' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO v_item FROM files.items i
+     WHERE i.id = p_file_id AND i.owner_user_id = v_uid AND i.owner_type = 'user'::files.owner_kind
+       AND i.deleted_at IS NULL
+       FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'No such file' USING ERRCODE = 'PF404';
+    END IF;
+    IF v_item.status <> 'uploaded'::files.file_status OR v_item.source <> 'supabase'::files.file_source THEN
+        RAISE EXCEPTION 'That file has not finished uploading' USING ERRCODE = '22023';
+    END IF;
+    PERFORM files.set_item_access(p_file_id, 'private'::files.file_visibility, NULL, '[]'::jsonb);
+    UPDATE files.items
+       SET metadata = metadata || pg_catalog.jsonb_build_object(
+               'tax_document', pg_catalog.jsonb_build_object('kind', 'residence_certificate'))
+     WHERE id = p_file_id;
+    RETURN finance.fn_tax_document_json(p_file_id);
+END;
+$$;
+
+-- Show the caller's tax document to the client of p_project_id and nobody else, or, with no project,
+-- to nobody. Errors: 42501 signed out; PF404 not the caller's tax document; 22023 a project the caller
+-- cannot show it to (not on it, or its client).
+CREATE OR REPLACE FUNCTION finance.share_tax_document(p_file_id uuid, p_project_id uuid DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_client uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to share tax documents' USING ERRCODE = '42501';
+    END IF;
+    PERFORM 1 FROM files.items i
+     WHERE i.id = p_file_id AND i.owner_user_id = v_uid AND i.owner_type = 'user'::files.owner_kind
+       AND i.deleted_at IS NULL AND i.metadata ? 'tax_document'
+       FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'No such tax document' USING ERRCODE = 'PF404';
+    END IF;
+
+    IF p_project_id IS NULL THEN
+        PERFORM files.set_item_access(p_file_id, 'private'::files.file_visibility, NULL, '[]'::jsonb);
+        UPDATE files.items SET metadata = metadata #- '{tax_document,shared_project_id}' WHERE id = p_file_id;
+        RETURN finance.fn_tax_document_json(p_file_id);
+    END IF;
+
+    v_client := finance.fn_tax_document_client(p_project_id);
+    IF v_client IS NULL THEN
+        RAISE EXCEPTION 'You can show a tax document only to the client of a project you work on'
+            USING ERRCODE = '22023';
+    END IF;
+    PERFORM files.set_item_access(p_file_id, 'restricted'::files.file_visibility, NULL,
+        pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('kind', 'user', 'id', v_client, 'role', 'viewer')));
+    UPDATE files.items
+       SET metadata = pg_catalog.jsonb_set(metadata, '{tax_document,shared_project_id}', pg_catalog.to_jsonb(p_project_id))
+     WHERE id = p_file_id;
+    RETURN finance.fn_tax_document_json(p_file_id);
+END;
+$$;
+-- #endregion

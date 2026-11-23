@@ -1299,7 +1299,7 @@ function walletsInView(ctx: WalletContext): string[] {
 }
 
 /** A text cell as a spreadsheet will read it: quoted when it must be, and never a formula. */
-function csvText(value: string | null): string {
+export function csvText(value: string | null): string {
 	let text = value ?? "";
 	// A cell a spreadsheet would evaluate — `=`, `+`, `-`, `@`, or a control character first — is made
 	// literal, so a counterparty named `=HYPERLINK(…)` stays a name when the export is opened.

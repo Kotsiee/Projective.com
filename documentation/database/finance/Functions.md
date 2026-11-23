@@ -445,6 +445,51 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
   (`00002510`), never `anon`. Read by `escrow-age.ts` `readEscrowAge` → `EscrowAgeSchema`
   (`@projective/types/finance`), which `LedgerHealthService.escrowAge` exposes as `/admin/ledger`'s
   Escrow age section (FBP DB16).
+- **`finance.fn_seller_tax_report(p_year integer)`** → jsonb (internal; LEGAL LG6, Decision #527) —
+  the seller tax-reporting dataset for one calendar year: `{ year, rows }`, one row per seller
+  (`seller_type`, `seller_id`: the wallet owner), `currency` and UTC calendar `quarter`, with
+  `credited_minor` (every ledger CREDIT under `finance.fn_is_income_reason`, dated by
+  `transactions.created_at`, so a release still in its pending window counts in the quarter it
+  matures), `fees_minor` (an escrow's `platform_fee_cents` shared across every credit it paid by each
+  credit's part of the escrow's total payout, unmatured `pending_releases` included, each share
+  floored, so a direct payee carries the whole fee; a product sale's fee is the
+  `order_lines.platform_fee_minor` of that order's `digital_product` lines whose `catalogue.products`
+  owner is the seller), `gross_minor` (their sum), `activities` (distinct escrows and orders),
+  `profile_country` (`users_public.country`, `business_profiles.country` or
+  `enterprises.address_country` as the profile states it, free text; `null` for a team) and the newest
+  live `payout_accounts` row's `payout_provider` / `payout_account_id` (the reference to the identity
+  and tax number Stripe holds). `STABLE`, invoker, `search_path = ''`. Granted to no client role and
+  not to `service_role` (it joins `org` columns that role may not read, Decision #382).
+- **`finance.read_seller_tax_report(p_year integer)`** → jsonb (operator) — the door to the above.
+  `STABLE`, `SECURITY DEFINER`, `search_path = ''`; `security.is_admin()` only, else `42501`, checked
+  before the year; a year outside 2000–9998 is `22023`. Granted to `authenticated` (`00002510`), never
+  `anon`. Read by `TaxReportingService.sellerTaxReport` → `SellerTaxReportSchema`; exported as CSV by
+  `GET /api/finance/tax-report?year=`, which answers 404 to anyone but an operator. Probe:
+  `supabase/probes/seller_tax_report.sql`.
+- **Seller tax documents** (LEGAL LG6, Decision #527) — a seller's tax residence certificate is a
+  private upload to their own library that these doors mark `files.items.metadata -> 'tax_document'`
+  (`{ kind: 'residence_certificate', shared_project_id? }`), a key only a definer can write
+  (`files.fn_guard_pipeline_columns`). Each is `SECURITY DEFINER`, `search_path = ''`, granted to
+  `authenticated` only, and answers for the caller's own files (`owner_type = 'user'`); errors `42501`
+  signed out · `PF404` not the caller's (document) · `22023` refused. Probe:
+  `supabase/probes/seller_tax_documents.sql`.
+  - **`finance.list_tax_documents()`** → jsonb `STABLE` — `{ documents, targets }`: the caller's marked
+    live files, newest first, each with `shared` (the one live `user` grant while the file is not
+    private, and the project it was shared for) or `null`; and every project the caller works on (owner
+    of a listing-made engagement, participant or assignee) whose client is someone else, with that
+    client.
+  - **`finance.mark_tax_document(p_file_id uuid)`** → jsonb — marks one of the caller's `uploaded`
+    Projective-stored files (`22023` before the pipeline finishes) and resets it to `private` with no
+    grants through `files.set_item_access`.
+  - **`finance.share_tax_document(p_file_id uuid, p_project_id uuid DEFAULT NULL)`** → jsonb — shows
+    the document to `finance.fn_tax_document_client(p_project_id)` and nobody else (`restricted`, one
+    `user` viewer grant as the complete list, so a second share replaces the first) and records the
+    project; `NULL` makes it private again. A project the caller is not on, or is the client of, is
+    `22023`.
+  - `finance.fn_tax_document_client(p_project_id uuid)` → uuid (internal) — the project's client
+    (`COALESCE(client_user_id, owner_user_id)`) when `projects.has_project_access` admits the caller and
+    the caller is not that client, else `NULL`. `finance.fn_tax_document_json(p_file_id uuid)` → jsonb
+    (internal) — one document as the list shows it. Neither is granted to a client role.
 - **`finance.fn_check_conservation()`** → integer (FBP DB16; Decision #337, ruling M2 (A)) — the
   nightly check: one `ops.log_entries` row per currency of `v_conservation_identity` under one run
   (`source = 'server'`, `scope = 'finance.conservation'`, `client_id = 'conservation:<run id>'`):

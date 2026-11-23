@@ -688,6 +688,17 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		anchor: "payouts",
 	},
 	{
+		key: "verification.tax-documents",
+		section: "verification",
+		label: "Tax documents",
+		description: "Stripe's tax forms and your tax residence certificate",
+		icon: "document",
+		keywords: ["tax", "tax form", "residence certificate", "withholding", "1099", "dac7"],
+		surface: "status-escalate",
+		gate: isSeller,
+		anchor: "tax-documents",
+	},
+	{
 		key: "verification.businesses",
 		section: "verification",
 		label: "Business verification",
