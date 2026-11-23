@@ -586,7 +586,10 @@ STEPS:
      of 00001130) or give the stale copy a PRODUCTION_READINESS row (#530 (D) 1).
   3. Enqueue, per (a): fn_mature_pending_releases and fn_wallet_credit_pending's immediate
      branch each record the escrow's request in the same transaction, with one PERFORM line
-     each in 00001240 (one request per escrow, a replay adds none).
+     each in 00001240 (one request per escrow, a replay adds none). DB6 holds only some of an
+     escrow's rows when the disputed amount is smaller, so the request waits for the escrow's
+     last row to mature. An escrow with any row on hold, or ever recovered by a lost dispute
+     (`hold_chargeback_id`, kept after the dispute closes), gets none.
   4. The job `legal-issue-deeds` (registered in 00005060, its bearer added to OPS1's registry)
      takes requests, streams each submission file from storage and hashes the stored bytes,
      builds the payload, signs it, and writes the record through a service-role definer door.
