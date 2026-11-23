@@ -206,7 +206,7 @@ gates (SBP S1, back on in S4).
   on `formatMoney` / `Intl.NumberFormat` is `OPTIMIZATION_BUILD_PROMPTS.md`'s (RED WP7).
 - **Tax computation (A9)** (#490): Stripe Tax at checkout and on invoices, collected by the platform
   on digital products only and added on top of the price, behind `tax_collection_enabled` (off until
-  counsel). Built by `readiness/MARKETPLACE_BUILD_PROMPTS.md` CK4 (#544), not switched on.
+  counsel). Built by `readiness/MARKETPLACE_BUILD_PROMPTS.md` CK4 (`d8958235`, #544), not switched on.
 - **X4 / N31:** the root `CLAUDE.md` persona fix is the owner's edit (`f1f10e31`). No prompt here
   touches a guardrail file.
 - **Planned, no prompt:** the Income Smoother engine (ruling M6: a `PRODUCT_SPEC.md` entry first),

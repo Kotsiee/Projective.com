@@ -322,7 +322,7 @@ rows from §0.1.
 
 ### CK4 — Tax at checkout, built behind a switch that stays off
 
-> **Status 2026-11-23:** partly done. Steps 1–5 landed in one change (#544), behind
+> **Status 2026-11-23:** partly done. Steps 1–5 landed in `d8958235` (#544), behind
 > `tax_collection_enabled` (off): probe `checkout_tax.sql`, `checkout-tax.test.ts` and the CK4 cases
 > of `CheckoutBackendService.test.ts`. Left: the acceptance run against Stripe's own figures, which
 > waits for the owner to activate Stripe Tax in the Dashboard (head office, registrations; the test
