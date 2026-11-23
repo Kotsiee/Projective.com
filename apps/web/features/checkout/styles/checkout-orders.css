@@ -209,13 +209,38 @@
 	box-shadow: none;
 }
 
-/* Cancel (FBP DB21) is a button that reads as its sibling links: no box, no fill. */
+/* Cancel and Report a problem (FBP DB21) are buttons that read as their sibling links: no box, no fill. */
 .cko-orders__cancel {
 	padding: 0;
 	border: none;
 	background: none;
 	font-family: inherit;
 	cursor: pointer;
+}
+
+/* The report dialog (ReportProblemDialog, FBP DB21). */
+.cko-problem__body {
+	display: grid;
+	gap: var(--space-3);
+}
+
+.cko-problem__lead {
+	margin: 0;
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.cko-problem__meta {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-problem__foot {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--space-2);
 }
 
 .cko-orders__lineprice {

@@ -24,8 +24,9 @@ import {
 	confirmSentence,
 	isPreviewCase,
 	operatorSentence,
-	OUTCOME_HINT,
-	OUTCOME_LABEL,
+	outcomeHint,
+	outcomeLabel,
+	outcomesFor,
 	partyLabel,
 	previewCase,
 	roomAccessLine,
@@ -57,8 +58,6 @@ const PARTY_NAMES: Record<DisputeParty, string> = {
 	respondent: "The provider",
 	operator: "Projective",
 };
-
-const OUTCOMES: ReadonlyArray<DisputeOutcome> = ["release", "refund", "split"];
 
 export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Element {
 	const { open, onRuled } = props;
@@ -108,7 +107,9 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 		} else request.current++;
 	});
 
-	const chosen = (OUTCOMES as ReadonlyArray<string>).includes(outcome.value)
+	const kind = dispute.value?.kind ?? "general";
+	const outcomes = outcomesFor(kind);
+	const chosen = (outcomes as ReadonlyArray<string>).includes(outcome.value)
 		? outcome.value as DisputeOutcome
 		: null;
 	const problem = rulingProblem(chosen, share.value, notes.value);
@@ -293,11 +294,11 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 										<h3 class="ddesk-dlg__heading">Ruling</h3>
 										<SelectButton
 											aria-label="Ruling"
-											options={OUTCOMES.map((o) => ({ label: OUTCOME_LABEL[o], value: o }))}
+											options={outcomes.map((o) => ({ label: outcomeLabel(kind, o), value: o }))}
 											value={outcome}
 											disabled={busy.value}
 										/>
-										{chosen ? <p class="ddesk-dlg__meta">{OUTCOME_HINT[chosen]}</p> : null}
+										{chosen ? <p class="ddesk-dlg__meta">{outcomeHint(kind, chosen)}</p> : null}
 										{chosen === "split"
 											? (
 												<div class="ddesk-dlg__field">

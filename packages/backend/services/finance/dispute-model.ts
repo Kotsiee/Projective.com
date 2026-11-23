@@ -1,6 +1,7 @@
 import {
 	type DisputeAudit,
 	type DisputeCase,
+	type DisputeKind,
 	type DisputeQueue,
 	type DisputeQueueItem,
 	type DisputeQueueParty,
@@ -40,7 +41,7 @@ interface RawMessage {
 /** `finance.get_dispute`'s answer. */
 export interface RawDispute {
 	id: string;
-	kind: "no_show" | "general";
+	kind: "no_show" | "general" | "product";
 	status: string;
 	role: string;
 	reason: string;
@@ -61,6 +62,8 @@ export interface RawDispute {
 	amount_minor: number;
 	currency: string;
 	project: { id: string; slug: string } | null;
+	/** A product dispute's purchase (FBP DB21); absent or null on any other. */
+	purchase?: { line_id: string; title: string } | null;
 	sitting: { id: string; slug: string; title: string; starts_at: string; ends_at: string } | null;
 	messages: RawMessage[] | null;
 	/** The custom quote the engagement was bought on (Decision #522); absent before the key existed. */
@@ -162,6 +165,11 @@ function settlementOf(raw: Record<string, unknown> | null): DisputeSettlement | 
 // #endregion
 
 // #region The case
+/** The read's kind; anything unrecognised reads as a general dispute. */
+function kindOf(raw: string | null | undefined): DisputeKind {
+	return raw === "no_show" || raw === "product" ? raw : "general";
+}
+
 /** Map `finance.get_dispute`; `null` when the row is absent or unrecognisable. */
 export function toDisputeCase(raw: RawDispute | null): DisputeCase | null {
 	if (!raw) return null;
@@ -170,7 +178,7 @@ export function toDisputeCase(raw: RawDispute | null): DisputeCase | null {
 	if (!status.success || !role.success) return null;
 	return {
 		id: raw.id,
-		kind: raw.kind === "no_show" ? "no_show" : "general",
+		kind: kindOf(raw.kind),
 		status: status.data,
 		role: role.data,
 		reason: raw.reason.slice(0, 500) || "No reason given.",
@@ -192,6 +200,7 @@ export function toDisputeCase(raw: RawDispute | null): DisputeCase | null {
 		currency: raw.currency,
 		amountLabel: formatMoney(Math.max(0, int(raw.amount_minor)), raw.currency),
 		projectSlug: raw.project?.slug ?? "",
+		purchaseTitle: raw.purchase?.title?.slice(0, 200) || null,
 		sitting: raw.sitting
 			? {
 				id: raw.sitting.id,
@@ -246,6 +255,8 @@ export interface RawQueueItem {
 	amount_minor: number;
 	currency: string;
 	project: { slug: string | null; title: string | null } | null;
+	/** A product dispute's purchase (FBP DB21); absent or null on any other. */
+	purchase?: { title: string | null } | null;
 	sitting: { title: string; starts_at: string; ends_at: string } | null;
 	claimant: RawParty | null;
 	respondent: RawParty | null;
@@ -282,7 +293,7 @@ export function toDisputeQueueItem(raw: RawQueueItem): DisputeQueueItem | null {
 	return {
 		id: raw.id,
 		status: status.data,
-		kind: raw.kind === "no_show" ? "no_show" : "general",
+		kind: kindOf(raw.kind),
 		reason: (raw.reason ?? "").slice(0, 500) || "No reason given.",
 		openedAt: raw.opened_at,
 		respondBy: raw.respond_by,
@@ -294,6 +305,7 @@ export function toDisputeQueueItem(raw: RawQueueItem): DisputeQueueItem | null {
 		amountLabel: formatMoney(amountMinor, raw.currency),
 		projectSlug: raw.project?.slug ?? "",
 		projectTitle: (raw.project?.title ?? "").slice(0, 200),
+		purchaseTitle: raw.purchase?.title?.slice(0, 200) || null,
 		sitting: raw.sitting
 			? {
 				title: raw.sitting.title.slice(0, 200) || "Session",

@@ -68,6 +68,7 @@ const KNOWN_WRITES = [
 	"move_pot_funds",
 	"pay_invoice",
 	"resolve_dispute",
+	"open_order_line_dispute",
 	"cancel_order_line",
 	"refund_session_forfeit",
 ];

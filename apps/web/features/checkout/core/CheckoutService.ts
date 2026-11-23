@@ -13,6 +13,7 @@ import type {
 	OrderPage,
 	SaveBuyerDetails,
 } from "../types/checkout-types.ts";
+import type { OrderProblemReason } from "@projective/types/finance";
 
 /**
  * CheckoutService — the THIN client controller for `/api/checkout/*`.
@@ -137,5 +138,19 @@ export const CheckoutService = {
 		entitlement: string,
 	): Promise<CheckoutResponse<{ status: string; refundedMinor: number; currency: string }>> {
 		return postCheckout(`/api/checkout/orders/${encodeURIComponent(entitlement)}/cancel`, {});
+	},
+
+	/**
+	 * Report a problem with a downloaded digital product while its sale clears (FBP DB21), named by its
+	 * entitlement's slug: the seller's earnings are held and an operator rules. The history re-reads.
+	 */
+	reportProblem(
+		entitlement: string,
+		input: { reason: OrderProblemReason; statement: string },
+	): Promise<CheckoutResponse<{ disputeId: string; status: string }>> {
+		return postCheckout(`/api/checkout/orders/${encodeURIComponent(entitlement)}/problem`, {
+			...input,
+			fileIds: [],
+		});
 	},
 };

@@ -756,8 +756,12 @@ Governs shared wallets (Business / Team / Enterprise).
     `finance.cancel_order_line`): what they paid comes back to the wallet that paid, at once
     (`order_refund`); the seller's still-clearing credit is taken back in full; the line's fee, and a
     promo share the platform funded, stop counting; and the purchase stops downloading. ⚖️ A
-    delivered line is refused only once `finance.delivered_refund_refusal` is on. The dispute is
-    **Not built yet** (DB21 step 2).
+    delivered line is refused only once `finance.delivered_refund_refusal` is on. **After a download,**
+    still inside the window, a missing or faulty file is a dispute (FBP DB21,
+    `finance.open_order_line_dispute`): the seller's clearing credit is frozen (`on_hold`) and an
+    operator rules. Upheld, the buyer is refunded from that credit as a cancel would; dismissed, it
+    clears to the seller. Never split; one report per line; once the sale has cleared, support
+    handles it.
   - **An escrow refund** is recorded on the order line it bought (ruling M8; Decision #469): partial
     refunds accumulate on the line, and refunded in full it is `cancelled` when no delivery had
     begun and `refunded` when it had. The order is `cancelled` when every line is, and `refunded`

@@ -34,6 +34,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"escrow.needs_funding",
 	"escrow.released",
 	"escrow.refunded",
+	"order.line_refunded",
 	"escrow.disputed",
 	"payout.sent",
 	"payout.failed",

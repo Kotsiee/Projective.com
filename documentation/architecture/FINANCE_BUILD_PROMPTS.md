@@ -8,7 +8,7 @@
 > [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part C); the readiness rows add #423, #435
 > and #460–#472.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 16 open, 8 partly done, 27 done or superseded
+> **Verified against code 2026-11-23 at `f2e25929`.** 16 open, 7 partly done, 28 done or superseded
 > (§0 ledger). Runnable now: DB14, SV8, DB13 and DB20 (SQL lane, one at a time); SV5, UI1
 > and UI3 (app lane). DB17's last step waits on the owner's vendor pick (#471).
 >
@@ -53,6 +53,7 @@
 | DB15 | Payout-ready before earning without a ticket: publish, booking (HINT `seller`), paid calls; N14           | DB15_COMMIT            | `DB15_PARENT` |
 | DB16 | Per-currency conservation identity, checked nightly, read on `/admin/ledger`; the seed conserves (#483)   | `85e7d4e4`             | `f2e25929` |
 | DB19 | Order lines written `refunded` / `cancelled`, the order rolls up, one promo redemption per account (#511) | `3041e5ef`             | `f2e25929` |
+| DB21 | A buyer cancels a product while its sale clears, or reports a faulty one (earnings frozen, an operator rules); a forfeit given back | `6f11cc0a`, DB21B_COMMIT | `f2e25929` |
 | SV1  | Finance row schemas and `finance-tables.contract.test.ts`; its two CHECKs moved to DB8 step 3             | `4c9482a2`, `388d9952` | `f2e25929` |
 | SV2  | The wallet read: resolved scope (303), decidable approvals, per-currency reads, `pdfHref`                 | `d4c4a194`             | `f2e25929` |
 | SV3  | Recurring-rule actions; every automation control locked until its engine runs                             | `fdeb3018`             | `f2e25929` |
@@ -81,7 +82,7 @@ file-disjoint. Inside a wave, §0.2 and §0.3 still decide what may overlap.
 | :------ | :--------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
 | 2 (UAT) | PM **PM-GH1** (F23) → **DB14** (F6)                                                                                                 | **SV5** (F20) · **UI1**                                                                                   |
 | ✔       | **UAT checkpoint:** F6, F14, F20 and F23 closed (F5: DB6, #532); re-score (MR9 step 1)                                               |                                                                                                           |
-| 3       | **SV8** (F11) → **DB13** → **DB20** (F13) → **DB21** → **MR3** (F12) → **MR5** (F8)                | **UI2** → **UI6** · **UI4** (both after UI1) · **UI3** · **SV7** · **UI5** (after SV5) · **DB17 step 1** (F21, after the owner's vendor pick)              |
+| 3       | **SV8** (F11) → **DB13** → **DB20** (F13) → **MR3** (F12) → **MR5** (F8)                           | **UI2** → **UI6** · **UI4** (both after UI1) · **UI3** · **SV7** · **UI5** (after SV5) · **DB17 step 1** (F21, after the owner's vendor pick)              |
 | 4       | **MR8a → MR8b** (F16), alone: nothing else runs in the SQL lane beside them                                                        | —                                                                                                         |
 | Later   | **DB18** (after its 🧑 and DB17 step 1) · **E3** (after SCH-WP6)                                                                          | **E1** (after PRD-K3, the SQL lane through MR3, UI2, UI3, UI5) → **E2** (after every UI prompt)           |
 | Last    | **MR9** re-scores §F → **Z1** sweeps the docs                                                                                      |                                                                                                           |
@@ -95,8 +96,8 @@ Why this order:
 - **UAT rows lead,** in the order of PRD's UAT critical path: F23 → F5 → F6, with F20 (SV5) and F14
   (SBP) beside them. DB16 has landed, so every later money prompt proves in its own change that it
   conserved money.
-- **Disputes are one chain:** DB6 ✅ (the freeze, ruling M3, #532) → DB21 (product disputes reuse it) → MR3
-  (card refunds reuse DB21, DB19's line states and `/admin/ledger`).
+- **Disputes are one chain:** DB6 ✅ (the freeze, ruling M3, #532) → DB21 ✅ (product disputes reuse it,
+  #543) → MR3 (card refunds reuse DB21's refund writer, DB19's line states and `/admin/ledger`).
 - **Currency follows ruling M5:** the CHECKs and the exponent list (DB8, done: #538), settlement and
   entity currency (DB9), fresh rates (DB17), then the own-wallet conversion, if it is wanted (DB18).
 - **External reconciliation (MR5) runs after MR3:** it reuses DB16's terms and DB9's (landed)
@@ -105,11 +106,11 @@ Why this order:
 
 ### 0.2 Prompts in this file that may not run in parallel
 
-- `00001240`: DB18, DB21, SV8, MR8b.
+- `00001240`: DB18, SV8, MR8b.
 - `00001210`: DB13, MR8b. `00001200`: DB13, DB20, MR8a.
-- `00000017`: DB13, DB18, DB21, MR3, MR5, MR8a.
+- `00000017`: DB13, DB18, MR3, MR5, MR8a.
 - `00001230` + `stripe-webhook.ts`: MR3, MR5, MR8b.
-- `00002510`: DB14, DB18, DB21, MR3, MR5 (SV7 if it adds a read).
+- `00002510`: DB14, DB18, MR3, MR5 (SV7 if it adds a read).
 - `00005060`: MR5. `00005001`: DB13, DB18. `00001830`: DB18, MR3, MR8a. `00003004`: DB18, MR5,
   MR8a. `00001150`: DB13, DB14, MR8b.
 - `/admin/ledger` (`features/admin`, `LedgerHealthService`): MR3, MR5 and MR8b each add a section,
@@ -118,7 +119,7 @@ Why this order:
   `live-basket.ts`, `checkout-refusal.ts`, `commerce-*.ts`): SV5, SV7.
 - The wallet stylesheets: UI1 with every UI prompt. `WalletDialogs.tsx`, `WalletHome.island.tsx`:
   UI2, UI3, UI5, DB18.
-- `apps/web/features/checkout/**`: UI5, UI6, DB21. Check `git status` for the Decision #243 peers
+- `apps/web/features/checkout/**`: UI5, UI6. Check `git status` for the Decision #243 peers
   before any UI prompt.
 - `packages/ui` and `DESIGN_SYSTEM.md`: SV5, UI1, UI2, UI4, UI5, UI6, DB18. Pull before each edit.
 
@@ -126,12 +127,12 @@ Why this order:
 
 | Hot file                             | Finance prompts that write it                            | Other writers (never at the same time)                             |
 | :----------------------------------- | :------------------------------------------------------- | :----------------------------------------------------------------- |
-| `00001240` (finance money)           | DB18, DB21, SV8, MR8b                                    | PM-WP4, LEGAL_COMPLIANCE LG4                                       |
+| `00001240` (finance money)           | DB18, SV8, MR8b                                          | PM-WP4, LEGAL_COMPLIANCE LG4                                       |
 | `00005060` (jobs)                    | MR5                                                      | PM-GH1; comms, PM, scheduling and security packages that add a job |
 | `00001150` (stage funding)           | DB13, DB14, MR8b                                         | PM-GH1 and every P-track SQL step on it                            |
 | `00001155` (sessions)                | MR8b                                                     | every SCH work package                                             |
 | `00001020` (workspaces)              | — (DB9 done)                                             | identity rank, archive and seat items; SA G4                       |
-| `00002510` (grants)                  | DB14, DB18, DB21, MR3, MR5 (SV7 if it adds a read)       | many                                                               |
+| `00002510` (grants)                  | DB14, DB18, MR3, MR5 (SV7 if it adds a read)             | many                                                               |
 | `stripe-webhook.ts` + `00001230`     | MR3, MR5, MR8b                                           | SBP S4                                                             |
 | `live-wallet.ts` / `wallet-scope.ts` | SV5, SV8, DB18                                           | RED WP2                                                            |
 | `features/devtools` + `dev-seam.ts`  | UI3                                                      | SBP S4, S6; IDG F6                                                 |
@@ -151,8 +152,8 @@ Why this order:
 - **RED WP2 / WP11** (the wallet read path, SQL aggregates) wait for SV5. **RED WP4** (keyboard on
   money paths) waits for UI2, UI3 and UI5. **RED WP7** (the money sweep and its lint ban) waits for
   UI5 (and SBP S5).
-- **Marketplace:** CK4 (checkout tax, #490) and SC7 (#493) wait for DB21's step 2 (steps 1 and 3
-  landed, #542).
+- **Marketplace:** CK4 (checkout tax, #490) and SC7 (#493) waited for DB21, which has landed (#542,
+  #543).
 - **LEGAL_COMPLIANCE LG4** adds one enqueue line each to `fn_mature_pending_releases` and
   `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6 (landed, #532),
   whose clearing-window holds decide which escrows count as finally released (#530 (g)).
@@ -173,7 +174,7 @@ Why this order:
 | DB17   | #539 (a): a once-a-day feed against the 24-hour window leaves conversion quotes refused (`fx_rate_stale`) from each day's fix + 24 h until the next run, for a whole day after one failed run, and from Saturday afternoon to Monday's run every weekend (no fix is published then). Keep it (A), run the feed hourly (B), or age a rate in market time, so the weekend closure (Fri 22:00 – Sun 22:00 UTC) does not count (C)? | B + C, before `fx_checkout_enabled` is switched on |
 
 **Ruled, and written into their prompts as steps:** DB13 (#468), DB17 (#471;
-the vendor is still the owner's pick), DB18's margin (#435 (C)), DB21 (#470), MR3 (#464), MR5 (#460)
+the vendor is still the owner's pick), DB18's margin (#435 (C)), MR3 (#464), MR5 (#460)
 and MR8a (#463).
 
 **⚖️ ruled, pending counsel** (build behind a flag that stays off; never switch it on). One brief
@@ -230,7 +231,7 @@ Readiness rules). A row stays 🟡 while a hosted or human step is left, named i
 | PRD-F9    | High · PROD             | 🟡  | No prompt: a hosted send on both channels (DB16 done, MR4 done; PRD-G6) | ruled (#507 (E)(3))             |
 | PRD-F10   | High · PROD             | ✅  | DB8 done (#538; N24)                                                    | —                               |
 | PRD-F11   | High · PROD             | ❌  | **SV8**                                                                 | ⚖️ M9 as built (no flag needed) |
-| PRD-F12   | High · PROD             | 🟡  | **DB21** step 2 + **MR3** (DB21 1, 3 #542; DB19 #511)                  | ruled (#470, #464)              |
+| PRD-F12   | High · PROD             | 🟡  | **MR3** (DB21 done, #542, #543; DB19 #511)                             | ruled (#464)                    |
 | PRD-F13   | Normal · PROD           | ❌  | **DB13 → DB20**                                                         | ruled (#468)                    |
 | PRD-F14   | High · UAT              | ❌  | SBP **S1 → S2 → S3 → S4**                                               | ruled (#252 (f); #472)          |
 | PRD-F15   | Critical · PROD         | ❌  | No prompt: counsel (MR7 done wrote the brief, #473)                     | ⚖️ counsel + Stripe             |
@@ -691,61 +692,6 @@ finance-model.md §5 marker removed.
 HOT: 00001200 (never beside PM-WP4).
 ```
 
-### DB21 — Refunds a buyer or provider can start (M8)
-
-> **Status 2026-11-23:** partly done. Steps 1 and 3 landed in `6f11cc0a` (Decision #542): a buyer
-> cancels a digital product while its sale clears (`finance.cancel_order_line`, the order history's
-> Cancel), and a provider gives a session forfeit back (`finance.refund_session_forfeit`, the
-> session sidebar's Refund this forfeit), proved by `supabase/probes/product_refunds.sql`. Step 2,
-> the product dispute, is open.
-
-```text
-PROMPT DB21 (the rest): A buyer disputes an undelivered or defective product while its sale clears
-
-ROLE: Ledger engineer.
-
-CONTEXT: Decision #337, ruling M8: no refund on a digital product after its first download, except
-for non-delivery or a defective file, through a dispute, recovered from the seller's pending row
-(M3's order). Ruled (Decision #470, A): a product dispute may be opened only while the sale is still
-clearing (7 days), which is also when the seller's money can be held; the order page says so; M3's
-"cleared money is never clawed back" holds. Built (#542): finance.cancel_order_line, its read
-finance.cancellable_order_lines, finance.fn_line_sale_release (the seller's still-clearing row of a
-line) and the line-keyed finance.fn_record_line_refund, which a buyer win should reuse; the history's
-Cancel (CheckoutOrdersScreen). DB6 (#532) freezes pending rows keyed by
-pending_releases.hold_chargeback_id, which names card disputes only: a product dispute's freeze needs
-its own key beside it (and ck_pending_releases_hold_case widened), never a reuse of that column.
-
-FILES:
-  - supabase/migrations/00000017_tables_finance.sql (an order-line subject on the dispute table
-    F1260 uses, in place). Reuse PROJECTS EX2's dispute subject (finance.disputes.subject_kind,
-    with order_line reserved for this prompt) and add no second subject column; if this prompt
-    runs first, EX2 adopts its column instead. One design either way.
-  - supabase/migrations/00001260_functions_finance_disputes.sql (open_order_line_dispute; the
-    refund on a buyer win) + 00002510
-  - packages/backend/services/finance/DisputeBackendService.ts; the buyer's order view,
-    /checkout/orders ("Report a problem" after a download); /admin/disputes lists order-line cases;
-    the types
-  - supabase/probes/product_refunds.sql (extend)
-  - finance-model.md §15, PRODUCT_SPEC.md §Orders, Refunds & Promo Codes (the dispute's "Not built
-    yet"), PRODUCT_MANAGEMENT.md §3.5 and §3.8, documentation/database/finance/*
-
-STEPS:
-  2. open_order_line_dispute(p_line, p_reason, p_evidence): non-delivery or a defective file, within
-     the ruling's window. It freezes the seller's pending row for the line (on_hold, DB6); the
-     operator desk rules it through the existing ruling flow; a buyer win refunds as step 1 does,
-     from the frozen row.
-
-ACCEPTANCE: product_refunds.sql: a dispute freezes and a buyer win recovers from the frozen row;
-finance_invariants.sql and conservation_identity.sql pass. Screenshots of "Report a problem" at 390
-and 1440. Readiness: part of PRD-F12 (MR3 completes it; USER_FLOWS MK-31).
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place; Zod + documentation/database/finance/*;
-PRODUCT_MANAGEMENT.md §3.5 and §3.8; the M8 dispute marker removed.
-HOT: 00001260, 00000017, 00002510, apps/web/features/checkout/** (the #243 peers).
-```
 ### MR3 — An operator can refund a card payment, and money still moves in one place (PRD-F12, card half)
 
 ```text
@@ -762,7 +708,7 @@ Dashboard and Projective records neither who did it nor why.
 finance.v_ops_unledgered_payments (00003004:246) lists settled payments with no ledger credit, and
 the settlement_mismatch / business_archived payments awaiting a human (SA §Stripe, #200). #457 (b)
 adds captured payments whose engagement was refused. Each of these needs a card refund, and none
-has a door. DB16 (/admin/ledger, 85e7d4e4) and DB19 (3041e5ef) have landed; it needs DB21.
+has a door. DB16 (/admin/ledger, 85e7d4e4), DB19 (3041e5ef) and DB21 (#542, #543) have landed.
 
 Who may start a card refund (ruled: Decision #464, A): operators only, from /admin, for (i) a
 payment on v_ops_unledgered_payments and (ii) a top-up that support agrees to return while the
@@ -816,7 +762,7 @@ ACCEPTANCE: card_refund.sql (ROLLBACK) proves:
 Unit tests cover the idempotency key and the route's 404. The smoke has a refund leg. Screenshots
 of the dialog at 1440 and 390. conservation_identity.sql passes.
 
-SAME CHANGE: Zod + database docs; PRD-F12 narrowed. F12 flips to ✅ only once DB21 has landed too.
+SAME CHANGE: Zod + database docs; PRD-F12 🟡 → ✅ (DB21 has landed, #542, #543).
 USER_FLOWS MK-31's operator half; both scoreboards; one Score history line.
 HOT: 00001230 + stripe-webhook.ts (never beside SBP S4), 00000017, 00002510.
 ```

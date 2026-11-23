@@ -54,6 +54,9 @@ CREATE INDEX IF NOT EXISTS idx_dispute_messages_dispute_created ON finance.dispu
 -- One LIVE dispute per escrow (Decision #212): two racing no-show claims cannot both open one.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_disputes_escrow_live ON finance.disputes (escrow_id)
 WHERE status IN ('open', 'awaiting_response', 'under_review');
+-- One product dispute per order line, ever (FBP DB21): a ruled report is final, so a line is never reported twice.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_disputes_order_line ON finance.disputes (order_line_id)
+WHERE order_line_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_disputes_session_event ON finance.disputes (session_event_id)
 WHERE session_event_id IS NOT NULL;
 -- The sweep's auto-escalation scan.
@@ -106,6 +109,8 @@ CREATE INDEX IF NOT EXISTS idx_pending_releases_due ON finance.pending_releases 
 -- The rows a card dispute froze, which its close recovers from or returns (ruling M3).
 CREATE INDEX IF NOT EXISTS idx_pending_releases_hold ON finance.pending_releases (hold_chargeback_id)
     WHERE hold_chargeback_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pending_releases_hold_dispute ON finance.pending_releases (hold_dispute_id)
+    WHERE hold_dispute_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_statements_owner ON finance.statements (owner_type, owner_id, period_start DESC);
 CREATE INDEX IF NOT EXISTS idx_chargebacks_wallet ON finance.chargebacks (wallet_id, status);
 CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expiry ON finance.idempotency_keys (expires_at);

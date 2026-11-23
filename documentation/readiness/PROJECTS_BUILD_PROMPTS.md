@@ -213,8 +213,8 @@ lane's coordinator before taking one.
 
 1. **PM-GH1** (PJ-31). The lane ran DB6 first (#532).
 2. FBP **DB6** ✅ (#532): WP4a, WP4b and EX2 no longer wait for it.
-3. **EX2** (PJ-43). It designs the dispute subject that FBP DB21 and PM-WP4a step 6 reuse, so it
-   runs before both.
+3. **EX2** (PJ-43). FBP DB21 landed first with the dispute subject (`subject_kind`, #543); EX2 adds
+   the ticket escrow to it, and PM-WP4a step 6 reuses it.
 4. **PM-WP4a** (PJ-39, PJ-46's half), then **PM-WP4b** (PJ-09, PJ-21, PJ-34). They run right after
    EX2, never beside DB21 or MR3, which touch `00001200`.
 5. **EX3** (PJ-43 → ✅). It edits `00000017`, so it belongs to this lane. It may run after any
@@ -1024,10 +1024,11 @@ CONTEXT (verified at e1ff027b; re-check every line):
     :250, the api/finance/disputes/* routes, admin/disputes.tsx, notifications 00005010:135-139.
   - The spec: PRODUCT_SPEC.md §Dispute Mechanism (:3577-3604), PRODUCT_MANAGEMENT.md §3.8
     (:708) and §3.1.
-  - One subject design must serve this prompt, FBP DB21's order-line dispute
-    (open_order_line_dispute, FINANCE_BUILD_PROMPTS.md) and PM-WP4a step 6's Fair Exit contest.
-    DB21 becomes one more subject_kind. If DB21 has landed first with its own subject column,
-    adopt its column instead: one design either way.
+  - One subject design serves this prompt, FBP DB21's order-line dispute and PM-WP4a step 6's Fair
+    Exit contest. DB21 landed first (#543): finance.disputes.subject_kind (session_seat ·
+    ticket_escrow · order_line, default session_seat), a nullable escrow_id, order_line_id and
+    ck_disputes_subject; fn_dispute_context and fn_dispute_party know a product's seller;
+    fn_settle_dispute routes an order line to fn_settle_order_line_dispute. Adopt it: one design.
 
 🧑 DECISION (before step 2). Put all of these to me at once:
   1. What is contestable. Recommended: held escrow (§3.8), plus money released into the 7-day
@@ -1048,8 +1049,8 @@ CONTEXT (verified at e1ff027b; re-check every line):
 STEPS:
   1. Red first: supabase/probes/ticket_dispute.sql. There is no door to raise a dispute on a
      held ticket escrow.
-  2. Schema, in place: finance.disputes gains subject_kind (session_seat | ticket_escrow, with
-     order_line reserved for DB21) and nullable ticket_id and stage_id, with a CHECK per kind.
+  2. Schema, in place: finance.disputes has subject_kind already (DB21, #543); add nullable
+     ticket_id and stage_id, and widen ck_disputes_subject for ticket_escrow.
      Existing rows backfill to session_seat. uq_disputes_escrow_live stays. Never drop a column.
   3. Doors (SECURITY DEFINER, search_path ''): finance.open_ticket_dispute (the party check is
      the payer side via fn_assert_business_actor or can_review_project, or the escrow's payee;

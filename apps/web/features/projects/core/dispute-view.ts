@@ -277,6 +277,7 @@ export function devDisputeCase(
 		currency,
 		amountLabel: formatMoney(amount, currency),
 		projectSlug: ws.slug,
+		purchaseTitle: null,
 		sitting: {
 			id: sitting.id,
 			slug: "ssn-preview000",

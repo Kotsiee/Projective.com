@@ -1,7 +1,9 @@
 -- =============================================================================================
 -- 00001260_functions_finance_disputes.sql — the platform dispute lifecycle (Decision #212).
 --
--- A `finance.disputes` row contests ONE held escrow. Until this file nothing ever moved one: a
+-- A `finance.disputes` row contests ONE held escrow, or one digital product line whose seller's
+-- earnings are still clearing (`subject_kind` order_line, FBP DB21, §6b). Until this file nothing ever
+-- moved an escrow's: a
 -- no-show claim (`projects.claim_session_no_show`, 00001155) opened a row, the session sweep refused
 -- to release a seat with an open claim, and no function, route or person could close it — the seat's
 -- money stayed held forever. The lifecycle (PRODUCT_MANAGEMENT §3.8, PRODUCT_SPEC §Dispute Resolution):
@@ -29,6 +31,7 @@
 --   4. Settlement           fn_settle_dispute — the one writer of a resolved_* status
 --   5. Advance              fn_advance_dispute — open → audit → ruling or awaiting_response
 --   6. User doors           respond_to_dispute · escalate_dispute · get_dispute
+--   6b. Product dispute     open_order_line_dispute · order_line_disputes · fn_settle_order_line_dispute
 --   7. Operator doors       list_disputes_for_review · resolve_dispute — security.is_admin() only
 --   8. The sweep            sweep_disputes — scheduled every 15 minutes (00005060)
 --   9. Immutability         fn_dispute_records_immutable (trigger function)
@@ -53,8 +56,10 @@ AS $$
     );
 $$;
 
--- Everything a dispute's doors need about the engagement it sits on, in one row: the seat escrow's
--- project, its owner (the respondent of record), the claimant and the sitting's title.
+-- Everything a dispute's doors need about what it contests, in one row: for an escrow, its project, the
+-- project's owner (the respondent of record), the claimant and the sitting's title; for a digital product
+-- line (FBP DB21), the product's owner and owning team and the line's title. The two links are where
+-- each side follows the case: the project, or the buyer's orders and the seller's wallet.
 CREATE OR REPLACE FUNCTION finance.fn_dispute_context(p_dispute_id uuid)
 RETURNS TABLE (
     dispute_id uuid,
@@ -63,7 +68,12 @@ RETURNS TABLE (
     project_slug text,
     owner_user_id uuid,
     claimant uuid,
-    event_title text
+    event_title text,
+    subject_kind text,
+    order_line_id uuid,
+    owner_team_id uuid,
+    claimant_href text,
+    respondent_href text
 )
 LANGUAGE plpgsql
 STABLE
@@ -72,19 +82,24 @@ SET search_path = ''
 AS $$
 BEGIN
     RETURN QUERY
-    SELECT d.id, d.escrow_id, p.id, p.slug, p.owner_user_id, d.opened_by_profile,
-           COALESCE(se.title, p.title)
+    SELECT d.id, d.escrow_id, p.id, p.slug, COALESCE(p.owner_user_id, cp.owner_user_id), d.opened_by_profile,
+           COALESCE(se.title, p.title, ol.title), d.subject_kind, d.order_line_id,
+           COALESCE(p.owner_team_id, cp.owner_team_id),
+           CASE WHEN d.order_line_id IS NOT NULL THEN '/checkout/orders' ELSE '/projects/' || p.slug END,
+           CASE WHEN d.order_line_id IS NOT NULL THEN '/wallet/transactions' ELSE '/projects/' || p.slug END
       FROM finance.disputes d
-      JOIN finance.escrows e ON e.id = d.escrow_id
-      JOIN projects.project_stages ps ON ps.id = e.project_stage_id
-      JOIN projects.projects p ON p.id = ps.project_id
+      LEFT JOIN finance.escrows e ON e.id = d.escrow_id
+      LEFT JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+      LEFT JOIN projects.projects p ON p.id = ps.project_id
       LEFT JOIN projects.session_events se ON se.id = d.session_event_id
+      LEFT JOIN finance.order_lines ol ON ol.id = d.order_line_id
+      LEFT JOIN catalogue.products cp ON cp.id = ol.item_id
      WHERE d.id = p_dispute_id;
 END;
 $$;
 
 -- Which side of a dispute a user is on: `claimant` (who opened it), `respondent` (who delivers the
--- engagement — its owner or an active member of the owning team), or NULL. A platform operator is not
+-- engagement, or sold the product: its owner or an active member of the owning team), or NULL. A platform operator is not
 -- a party; callers check security.is_admin() separately.
 CREATE OR REPLACE FUNCTION finance.fn_dispute_party(p_dispute_id uuid, p_user_id uuid)
 RETURNS text
@@ -105,6 +120,15 @@ BEGIN
     END IF;
     IF v_ctx.claimant = p_user_id THEN
         RETURN 'claimant';
+    END IF;
+    IF v_ctx.subject_kind = 'order_line' THEN
+        IF v_ctx.owner_user_id = p_user_id OR (v_ctx.owner_team_id IS NOT NULL AND EXISTS (
+               SELECT 1 FROM org.team_members tm
+                WHERE tm.team_id = v_ctx.owner_team_id AND tm.user_id = p_user_id AND tm.status = 'active'
+           )) THEN
+            RETURN 'respondent';
+        END IF;
+        RETURN NULL;
     END IF;
     IF projects.fn_is_session_host(v_ctx.project_id, p_user_id) THEN
         RETURN 'respondent';
@@ -287,7 +311,8 @@ $$;
 -- An escrow that already left `held` by another path (the sweep's no-show refund, a forfeit, a lost
 -- chargeback's refund) is recorded as it settled — `refunded` → resolved_refund, `released` →
 -- resolved_release — whatever was asked (`settlement.by_fact`). A frozen (`disputed`) escrow waits for
--- its card dispute. Only seat escrows can be settled here: no door opens a dispute on anything else.
+-- its card dispute. Only seat escrows can be settled here, and digital product lines through
+-- fn_settle_order_line_dispute (§6b, FBP DB21): no door opens a dispute on anything else.
 -- p_actor NULL is the platform's own audit. Notifies both parties (`dispute.resolved`).
 CREATE OR REPLACE FUNCTION finance.fn_settle_dispute(
     p_dispute_id uuid,
@@ -323,6 +348,9 @@ BEGIN
     END IF;
     IF p_outcome IS NULL OR p_outcome NOT IN ('release', 'refund', 'split') THEN
         RAISE EXCEPTION 'A ruling is release, refund or split' USING ERRCODE = '22023';
+    END IF;
+    IF v_d.subject_kind = 'order_line' THEN
+        RETURN finance.fn_settle_order_line_dispute(v_d.id, p_outcome, p_actor, p_notes);
     END IF;
     IF p_outcome = 'split' AND (p_bp IS NULL OR p_bp NOT BETWEEN 1 AND 9999) THEN
         RAISE EXCEPTION 'A split gives the provider between 0.01 %% and 99.99 %%' USING ERRCODE = '22023';
@@ -627,6 +655,7 @@ DECLARE
     v_uid uuid := auth.uid();
     v_d finance.disputes;
     v_e finance.escrows;
+    v_l finance.order_lines;
     v_ctx record;
     v_role text;
     v_live boolean;
@@ -643,12 +672,14 @@ BEGIN
         RETURN NULL;
     END IF;
     SELECT * INTO v_e FROM finance.escrows WHERE id = v_d.escrow_id;
+    SELECT * INTO v_l FROM finance.order_lines WHERE id = v_d.order_line_id;
     SELECT * INTO v_ctx FROM finance.fn_dispute_context(v_d.id);
     v_live := v_d.status IN ('open', 'awaiting_response', 'under_review');
 
     RETURN pg_catalog.jsonb_build_object(
         'id', v_d.id,
-        'kind', CASE WHEN v_d.session_event_id IS NOT NULL THEN 'no_show' ELSE 'general' END,
+        'kind', CASE WHEN v_d.subject_kind = 'order_line' THEN 'product'
+                     WHEN v_d.session_event_id IS NOT NULL THEN 'no_show' ELSE 'general' END,
         'status', v_d.status,
         'role', v_role,
         'reason', v_d.reason,
@@ -669,9 +700,13 @@ BEGIN
               FROM scheduling.rooms r
              WHERE r.session_event_id = v_d.session_event_id
         ) END,
-        'amount_minor', v_e.amount_cents,
-        'currency', v_e.currency,
-        'project', pg_catalog.jsonb_build_object('id', v_ctx.project_id, 'slug', v_ctx.project_slug),
+        -- What the claimant paid: the escrow, or the product line less its promo.
+        'amount_minor', COALESCE(v_e.amount_cents, GREATEST(v_l.line_total_minor - v_l.promo_discount_minor, 0)),
+        'currency', COALESCE(v_e.currency, v_l.currency),
+        'project', CASE WHEN v_ctx.project_id IS NOT NULL THEN
+            pg_catalog.jsonb_build_object('id', v_ctx.project_id, 'slug', v_ctx.project_slug) END,
+        'purchase', CASE WHEN v_l.id IS NOT NULL THEN
+            pg_catalog.jsonb_build_object('line_id', v_l.id, 'title', v_l.title) END,
         'sitting', (
             SELECT pg_catalog.jsonb_build_object('id', se.id, 'slug', se.slug, 'title', se.title,
                        'starts_at', se.start_time, 'ends_at', se.end_time)
@@ -722,6 +757,243 @@ END;
 $$;
 -- #endregion
 
+-- #region 6b. The product dispute (FBP DB21; Decision #337, ruling M8; Decision #470 (A))
+-- A buyer reports a digital product they downloaded as not delivered or faulty while its sale is still
+-- clearing: the days the seller's earnings are held (#470 (A): the only window in which they can be).
+-- Before any download the buyer cancels instead (finance.cancel_order_line). The report freezes the
+-- seller's clearing row for the line (`on_hold`, keyed by pending_releases.hold_dispute_id beside DB6's
+-- card-dispute key) and goes straight to an operator (`under_review`, with its review SLA): there is no
+-- room audit to run, and the seller is told and may add a statement (finance.respond_to_dispute). The
+-- operator rules through the existing desk (finance.resolve_dispute → fn_settle_dispute →
+-- fn_settle_order_line_dispute): upheld refunds the buyer from the frozen row as a cancel does;
+-- dismissed returns the row to clearing. Never split. One report per line, ever.
+
+-- Report a problem with a digital product (user door): a member of the buying account (the order's own
+-- read rule), on a confirmed, downloaded line whose seller's earnings are still clearing, saying whether
+-- it `not_delivered` or is `defective`, with a statement and up to ten of their own uploaded files.
+-- Refuses what a buyer win could not pay back (a conversion, on account) as the cancel does.
+CREATE OR REPLACE FUNCTION finance.open_order_line_dispute(
+    p_line_id uuid,
+    p_reason text,
+    p_statement text,
+    p_file_ids uuid[] DEFAULT '{}'::uuid[]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    l finance.order_lines;
+    o finance.orders;
+    e catalogue.entitlements;
+    r finance.pending_releases;
+    v_reason text := pg_catalog.btrim(COALESCE(p_reason, ''));
+    v_body text := pg_catalog.btrim(COALESCE(p_statement, ''));
+    v_files uuid[] := COALESCE(p_file_ids, '{}'::uuid[]);
+    v_id uuid;
+    v_message uuid;
+    v_ctx record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to report a problem' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO l FROM finance.order_lines WHERE id = p_line_id FOR UPDATE;
+    IF FOUND THEN
+        SELECT * INTO o FROM finance.orders WHERE id = l.order_id FOR UPDATE;
+    END IF;
+    IF o.id IS NULL OR NOT finance.fn_owner_visible(o.owner_type, o.owner_id) THEN
+        RAISE EXCEPTION 'That purchase doesn''t exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF l.item_type <> 'digital_product' THEN
+        RAISE EXCEPTION 'Only a digital product can be reported here' USING ERRCODE = '22023';
+    END IF;
+    IF v_reason NOT IN ('not_delivered', 'defective') THEN
+        RAISE EXCEPTION 'Say whether the files didn''t arrive or are faulty' USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.length(v_body) NOT BETWEEN 1 AND 4000 THEN
+        RAISE EXCEPTION 'Describe the problem in up to 4,000 characters' USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.cardinality(v_files) > 10 THEN
+        RAISE EXCEPTION 'Attach at most ten files' USING ERRCODE = '22023';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM pg_catalog.unnest(v_files) f(id)
+         WHERE NOT EXISTS (
+             SELECT 1 FROM files.items i
+              WHERE i.id = f.id AND i.owner_user_id = v_uid AND i.deleted_at IS NULL
+                AND i.status = 'uploaded'
+         )
+    ) THEN
+        RAISE EXCEPTION 'Evidence must be your own uploaded files' USING ERRCODE = '22023';
+    END IF;
+    IF EXISTS (SELECT 1 FROM finance.disputes d WHERE d.order_line_id = l.id) THEN
+        RAISE EXCEPTION 'A problem with this purchase was already reported' USING ERRCODE = 'PO409';
+    END IF;
+    IF l.status <> 'confirmed' THEN
+        RAISE EXCEPTION 'This purchase was already refunded or cancelled' USING ERRCODE = 'PO409';
+    END IF;
+    IF o.fx_conversion_id IS NOT NULL OR o.status = 'invoiced'
+       OR finance.fn_order_paying_wallet(o.id, l.currency) IS NULL THEN
+        RAISE EXCEPTION 'This order was paid in another currency or on account, so support handles a problem with it. Contact support.'
+            USING ERRCODE = 'PO409';
+    END IF;
+    SELECT * INTO e FROM catalogue.entitlements WHERE order_line_id = l.id;
+    IF e.first_delivered_at IS NULL THEN
+        RAISE EXCEPTION 'Nothing from this purchase has been downloaded yet, so cancel it instead' USING ERRCODE = 'PO409';
+    END IF;
+    SELECT * INTO r FROM finance.pending_releases
+     WHERE id = finance.fn_line_sale_release(l) AND state = 'pending' AND recovered_cents = 0
+       FOR UPDATE;
+    IF r.id IS NULL THEN
+        RAISE EXCEPTION 'The seller''s earnings from this sale have cleared, so a problem with it can''t be reported here. Contact support.'
+            USING ERRCODE = 'PO409';
+    END IF;
+
+    INSERT INTO finance.disputes (subject_kind, order_line_id, opened_by_profile, reason, status, escalated_at, review_by)
+    VALUES ('order_line', l.id, v_uid, v_reason, 'under_review', pg_catalog.now(),
+            finance.fn_dispute_review_by(pg_catalog.now()))
+    RETURNING id INTO v_id;
+    UPDATE finance.pending_releases SET state = 'on_hold', hold_dispute_id = v_id WHERE id = r.id;
+    INSERT INTO finance.dispute_messages (dispute_id, sender_user_id, party, body)
+    VALUES (v_id, v_uid, 'claimant', v_body)
+    RETURNING id INTO v_message;
+    INSERT INTO finance.dispute_evidence (dispute_id, message_id, file_id, submitted_by)
+    SELECT DISTINCT v_id, v_message, f.id, v_uid FROM pg_catalog.unnest(v_files) f(id);
+
+    SELECT * INTO v_ctx FROM finance.fn_dispute_context(v_id);
+    IF v_ctx.owner_user_id IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            v_ctx.owner_user_id, 'dispute.opened', 'A buyer reported a problem',
+            pg_catalog.format('A buyer reported that "%s" %s. Its earnings are held while Projective reviews the report; you''ll hear the ruling.',
+                l.title, CASE v_reason WHEN 'defective' THEN 'is faulty' ELSE 'didn''t arrive' END),
+            'finance.disputes', v_id, pg_catalog.jsonb_build_object('reason', v_reason),
+            v_uid, NULL, NULL, NULL, v_ctx.respondent_href
+        );
+    END IF;
+    RETURN pg_catalog.jsonb_build_object('dispute_id', v_id, 'status', 'under_review', 'line_id', l.id,
+        'held_minor', r.amount_cents, 'currency', l.currency);
+END;
+$$;
+
+-- The product-dispute state of these lines for the order history (read): whether the caller may report
+-- a problem now (what open_order_line_dispute checks, short of the statement), and the status of the
+-- line's report if one was made. Only digital product lines of orders the caller can see.
+CREATE OR REPLACE FUNCTION finance.order_line_disputes(p_line_ids uuid[])
+RETURNS TABLE (line_id uuid, can_report boolean, dispute_status text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT l.id,
+           d.id IS NULL AND l.status = 'confirmed'
+             AND o.fx_conversion_id IS NULL AND o.status <> 'invoiced'
+             AND en.first_delivered_at IS NOT NULL
+             AND finance.fn_order_paying_wallet(o.id, l.currency) IS NOT NULL
+             AND finance.fn_line_sale_release(l) IS NOT NULL,
+           d.status::text
+      FROM finance.order_lines l
+      JOIN finance.orders o ON o.id = l.order_id
+      LEFT JOIN catalogue.entitlements en ON en.order_line_id = l.id
+      LEFT JOIN finance.disputes d ON d.order_line_id = l.id
+     WHERE l.id = ANY (COALESCE(p_line_ids, '{}'))
+       AND l.item_type = 'digital_product'
+       AND finance.fn_owner_visible(o.owner_type, o.owner_id);
+$$;
+
+-- Settles a product dispute, from fn_settle_dispute under its lock: `refund` upholds the report (the
+-- buyer is paid back from the frozen row, finance.fn_refund_product_line, as a cancel is); `release`
+-- dismisses it (the row returns to clearing, `pending`, and matures on its date, or at the next sweep
+-- if that has passed). A line refunded or cancelled by another path is recorded as it settled
+-- (`settlement.by_fact`). A split is refused. Tells both sides (`dispute.resolved`).
+CREATE OR REPLACE FUNCTION finance.fn_settle_order_line_dispute(
+    p_dispute_id uuid,
+    p_outcome text,
+    p_actor uuid,
+    p_notes text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_d finance.disputes;
+    l finance.order_lines;
+    r finance.pending_releases;
+    v_ctx record;
+    v_status public.dispute_status;
+    v_settlement jsonb;
+    v_moved bigint;
+    v_title text;
+    v_body text;
+    v_payload jsonb;
+BEGIN
+    SELECT * INTO v_d FROM finance.disputes WHERE id = p_dispute_id AND subject_kind = 'order_line' FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That dispute does not exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_d.status::text LIKE 'resolved\_%' THEN
+        RAISE EXCEPTION 'This dispute is already resolved' USING ERRCODE = 'PS409';
+    END IF;
+    IF p_outcome IS NULL OR p_outcome NOT IN ('release', 'refund') THEN
+        RAISE EXCEPTION 'A product dispute is upheld (refund) or dismissed (release), never split' USING ERRCODE = '22023';
+    END IF;
+    SELECT * INTO l FROM finance.order_lines WHERE id = v_d.order_line_id FOR UPDATE;
+    SELECT * INTO r FROM finance.pending_releases
+     WHERE hold_dispute_id = v_d.id AND state = 'on_hold'
+     ORDER BY id
+     LIMIT 1
+       FOR UPDATE;
+
+    IF l.status <> 'confirmed' THEN
+        v_status := CASE WHEN l.status IN ('refunded', 'cancelled') THEN 'resolved_refund' ELSE 'resolved_release' END;
+        v_settlement := pg_catalog.jsonb_build_object('by_fact', true, 'line_status', l.status, 'currency', l.currency);
+    ELSIF r.id IS NULL THEN
+        RAISE EXCEPTION 'The earnings this report held are no longer on hold; nothing can be ruled on' USING ERRCODE = 'PS409';
+    ELSIF p_outcome = 'release' THEN
+        v_status := 'resolved_release';
+        UPDATE finance.pending_releases SET state = 'pending' WHERE id = r.id;
+        v_settlement := pg_catalog.jsonb_build_object('payee_minor', r.amount_cents, 'fee_minor', l.platform_fee_minor,
+            'refund_minor', 0, 'currency', l.currency);
+    ELSE
+        v_status := 'resolved_refund';
+        v_moved := finance.fn_refund_product_line(l.id, r.id);
+        v_settlement := pg_catalog.jsonb_build_object('payee_minor', 0, 'fee_minor', 0, 'refund_minor', v_moved,
+            'currency', l.currency);
+    END IF;
+
+    UPDATE finance.disputes
+       SET status = v_status,
+           resolved_at = pg_catalog.now(),
+           resolved_by = p_actor,
+           resolution_notes = NULLIF(pg_catalog.btrim(COALESCE(p_notes, '')), ''),
+           settlement = v_settlement,
+           updated_at = pg_catalog.now()
+     WHERE id = v_d.id;
+
+    SELECT * INTO v_ctx FROM finance.fn_dispute_context(v_d.id);
+    v_title := CASE v_status WHEN 'resolved_refund' THEN 'Problem report upheld — refunded' ELSE 'Problem report dismissed' END;
+    v_body := pg_catalog.format('The report about "%s" is closed. %s', v_ctx.event_title, CASE v_status
+        WHEN 'resolved_refund' THEN 'What the buyer paid went back to them, and the sale''s earnings were taken back.'
+        ELSE 'The sale''s earnings clear to the seller as usual.' END);
+    v_payload := pg_catalog.jsonb_build_object('status', v_status, 'settlement', v_settlement);
+    PERFORM comms.fn_notify(v_ctx.claimant, 'dispute.resolved', v_title, v_body, 'finance.disputes', v_d.id,
+        v_payload, p_actor, NULL, NULL, NULL, v_ctx.claimant_href);
+    IF v_ctx.owner_user_id IS NOT NULL THEN
+        PERFORM comms.fn_notify(v_ctx.owner_user_id, 'dispute.resolved', v_title, v_body, 'finance.disputes', v_d.id,
+            v_payload, p_actor, NULL, NULL, NULL, v_ctx.respondent_href);
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object('dispute_id', v_d.id, 'status', v_status, 'settlement', v_settlement);
+END;
+$$;
+-- #endregion
+
 -- #region 7. The operator doors
 -- The operator queue (`/admin/disputes`): every LIVE dispute, or those in one live status, with what a
 -- reviewer triages on — the parties, the money at stake, the sitting, the deadline that applies and
@@ -768,16 +1040,21 @@ BEGIN
                          pg_catalog.jsonb_build_object(
                              'id', d.id,
                              'status', d.status,
-                             'kind', CASE WHEN d.session_event_id IS NOT NULL THEN 'no_show' ELSE 'general' END,
+                             'kind', CASE WHEN d.subject_kind = 'order_line' THEN 'product'
+                                          WHEN d.session_event_id IS NOT NULL THEN 'no_show' ELSE 'general' END,
                              'reason', d.reason,
                              'opened_at', d.created_at,
                              'respond_by', d.respond_by,
                              'escalated_at', d.escalated_at,
                              'review_by', d.review_by,
                              'overdue', d.status = 'under_review' AND d.review_by <= v_now,
-                             'amount_minor', e.amount_cents,
-                             'currency', e.currency,
-                             'project', pg_catalog.jsonb_build_object('slug', p.slug, 'title', p.title),
+                             'amount_minor', COALESCE(e.amount_cents,
+                                 GREATEST(ol.line_total_minor - ol.promo_discount_minor, 0)),
+                             'currency', COALESCE(e.currency, ol.currency),
+                             'project', CASE WHEN p.id IS NOT NULL THEN
+                                 pg_catalog.jsonb_build_object('slug', p.slug, 'title', p.title) END,
+                             'purchase', CASE WHEN ol.id IS NOT NULL THEN
+                                 pg_catalog.jsonb_build_object('title', ol.title) END,
                              'sitting', CASE WHEN se.id IS NOT NULL THEN pg_catalog.jsonb_build_object(
                                  'title', se.title, 'starts_at', se.start_time, 'ends_at', se.end_time) END,
                              'claimant', pg_catalog.jsonb_build_object(
@@ -792,12 +1069,14 @@ BEGIN
                                            WHERE ev.dispute_id = d.id)
                          ) AS item
                     FROM finance.disputes d
-                    JOIN finance.escrows e ON e.id = d.escrow_id
-                    JOIN projects.project_stages ps ON ps.id = e.project_stage_id
-                    JOIN projects.projects p ON p.id = ps.project_id
+                    LEFT JOIN finance.escrows e ON e.id = d.escrow_id
+                    LEFT JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+                    LEFT JOIN projects.projects p ON p.id = ps.project_id
                     LEFT JOIN projects.session_events se ON se.id = d.session_event_id
+                    LEFT JOIN finance.order_lines ol ON ol.id = d.order_line_id
+                    LEFT JOIN catalogue.products cp ON cp.id = ol.item_id
                     LEFT JOIN org.users_public cu ON cu.user_id = d.opened_by_profile
-                    LEFT JOIN org.users_public ou ON ou.user_id = p.owner_user_id
+                    LEFT JOIN org.users_public ou ON ou.user_id = COALESCE(p.owner_user_id, cp.owner_user_id)
                    WHERE d.status IN ('open', 'awaiting_response', 'under_review')
                      AND (p_status IS NULL OR d.status::text = p_status)
                    ORDER BY 2, 3, d.id

@@ -112,6 +112,10 @@ export function reasonMeta(reason: string, direction: "credit" | "debit"): Reaso
 			return { category: "earning", label: "Vault share of a fair-exit release", refKind: "stage" };
 		case "fair_exit_refund":
 			return { category: "refund", label: "Fair-exit refund", refKind: "stage" };
+		case "order_refund":
+			return { category: "refund", label: "Purchase refunded", refKind: null };
+		case "forfeit_refund":
+			return { category: "refund", label: "Session forfeit given back", refKind: null };
 		case "team_finder_fee":
 			return { category: "earning", label: "Finder's fee", refKind: "stage" };
 		case "instant_payout_fee":

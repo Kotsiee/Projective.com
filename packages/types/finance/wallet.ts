@@ -297,7 +297,14 @@ export const LEDGER_KIND_REASONS: Readonly<Record<LedgerKind, readonly string[]>
 	topup: ["topup"],
 	payout: ["payout", "payout_reversal"],
 	transfer: ["transfer_in", "transfer_out", "team_distribution", "fx_conversion"],
-	refund: ["refund", "escrow_refund", "fair_exit_refund", "chargeback"],
+	refund: [
+		"refund",
+		"escrow_refund",
+		"fair_exit_refund",
+		"chargeback",
+		"order_refund",
+		"forfeit_refund",
+	],
 	other: [],
 };
 

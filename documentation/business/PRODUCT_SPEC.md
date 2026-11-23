@@ -3342,8 +3342,12 @@ The commerce rules every order follows (Decision #337, ruling M8):
   one refunded. **Built** (FBP DB19).
 - **A buyer may cancel a digital product while its sale is still clearing** (the days its seller's
   money is held): what they paid comes back at once, the seller's earnings from it are taken back,
-  and its files stop downloading. Once the sale has cleared, a faulty or missing file is a dispute
-  (**Not built yet**, FBP DB21 step 2). **Built** (FBP DB21).
+  and its files stop downloading. **Built** (FBP DB21).
+- **After a download, while the sale still clears, a buyer may report a faulty or missing file.**
+  The seller's earnings from the sale are held while Projective reviews it. Upheld, what the buyer paid
+  comes back to the wallet that paid; dismissed, the seller is paid as usual. A purchase is reported
+  once, and a report is never split. Once the sale has cleared, support handles a problem. **Built**
+  (FBP DB21).
 - **An order's states are the ones it can reach.** An on-account order is **invoiced**; refunds and
   cancellations write **refunded** and **cancelled**; the never-written `processing` and
   `awaiting_payment` states are retired. **Built.**
@@ -3360,8 +3364,8 @@ The commerce rules every order follows (Decision #337, ruling M8):
   The code box is rate-limited, so codes cannot be guessed in bulk. **Built** (MARKETPLACE CK2,
   Decision #536).
 
-The download refusal above waits for counsel, and a refund the buyer or provider starts is **Not
-built yet** (FBP DB21).
+The download refusal above waits for counsel, and an operator's refund to a card is **Not built
+yet** (FBP MR3).
 
 #### 7. Asset Protection (Decision #393)
 

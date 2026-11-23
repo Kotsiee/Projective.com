@@ -311,7 +311,8 @@ $$;
 
 -- #region 1b. Refunds a buyer or provider can start (FBP DB21; Decision #337, ruling M8)
 -- A digital product line its buyer cancels before the sale clears, and a session forfeit its provider
--- gives back. A product dispute (non-delivery, a defective file) is the dispute engine's (00001260).
+-- gives back. A product dispute (non-delivery, a defective file) is the dispute engine's (00001260); its
+-- buyer win refunds through finance.fn_refund_product_line, as a cancel does.
 
 -- The seller's still-clearing credit for a digital product line: the `product_sale` row of the
 -- line's order, in a wallet of the product's owner, of exactly the line's credit (the line, less a
@@ -340,6 +341,65 @@ AS $$
      LIMIT 1;
 $$;
 
+-- The wallet that paid an order: its first `order_payment` debit, when that wallet is in p_currency (the
+-- line's). Where a digital product line's refund goes back to. NULL for an order paid any other way.
+-- Internal (FBP DB21).
+CREATE OR REPLACE FUNCTION finance.fn_order_paying_wallet(p_order_id uuid, p_currency text)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE WHEN pg_catalog.upper(x.currency) = pg_catalog.upper(p_currency) THEN x.id END
+      FROM finance.transactions t
+      JOIN finance.wallets x ON x.id = t.wallet_id
+     WHERE t.ref_table = 'orders' AND t.ref_id = p_order_id AND t.reason = 'order_payment' AND t.direction = 'debit'
+     ORDER BY t.created_at, t.id
+     LIMIT 1;
+$$;
+
+-- A digital product line's money going back to its buyer (FBP DB21), under the caller's locks and
+-- checks: what they paid, into the wallet that paid (`order_refund`); the seller's clearing row
+-- p_release_id (pending, or on hold for a product dispute) closed, taken back in full, with no ledger
+-- line, since that money never cleared; the entitlement `refunded`, so the download route stops serving
+-- it; and the line written through fn_record_line_refund (`cancelled`, or `refunded` once delivered).
+-- p_release_id is NULL only when the seller was credited nothing. Returns the amount refunded. Internal:
+-- finance.cancel_order_line and a product dispute's buyer win (fn_settle_order_line_dispute) call it.
+CREATE OR REPLACE FUNCTION finance.fn_refund_product_line(p_line_id uuid, p_release_id uuid)
+RETURNS bigint
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    l finance.order_lines;
+    w finance.wallets;
+    v_paid bigint;
+BEGIN
+    SELECT * INTO l FROM finance.order_lines WHERE id = p_line_id FOR UPDATE;
+    v_paid := GREATEST(l.line_total_minor - l.promo_discount_minor, 0);
+    IF p_release_id IS NOT NULL THEN
+        UPDATE finance.pending_releases
+           SET recovered_cents = amount_cents, state = 'available', matured_at = pg_catalog.now()
+         WHERE id = p_release_id AND state IN ('pending', 'on_hold') AND recovered_cents = 0;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'The seller''s earnings from this sale are no longer clearing' USING ERRCODE = 'PO409';
+        END IF;
+    END IF;
+    SELECT * INTO w FROM finance.wallets WHERE id = finance.fn_order_paying_wallet(l.order_id, l.currency);
+    IF w.id IS NULL THEN
+        RAISE EXCEPTION 'This order wasn''t paid from a wallet in its own currency, so it can''t be refunded here. Contact support.'
+            USING ERRCODE = 'PO409';
+    END IF;
+    PERFORM finance.fn_wallet_credit(w.owner_id, w.owner_type, w.currency, v_paid, 'order_refund', 'order_lines', l.id);
+    UPDATE catalogue.entitlements SET status = 'refunded', updated_at = pg_catalog.now() WHERE order_line_id = l.id;
+    PERFORM finance.fn_record_line_refund(l.id, v_paid);
+    RETURN v_paid;
+END;
+$$;
+
 -- Which of these lines the caller may cancel now (read; FBP DB21): the lines of orders the caller can
 -- see that finance.cancel_order_line would accept, so the order history offers Cancel only where it
 -- works. The door re-checks everything under its locks.
@@ -359,6 +419,8 @@ AS $$
        AND l.item_type = 'digital_product' AND l.status = 'confirmed'
        AND l.line_total_minor - l.promo_discount_minor > 0
        AND o.fx_conversion_id IS NULL AND o.status <> 'invoiced'
+       AND NOT EXISTS (SELECT 1 FROM finance.disputes d WHERE d.order_line_id = l.id
+                        AND d.status IN ('open', 'awaiting_response', 'under_review'))
        AND NOT (e.first_delivered_at IS NOT NULL AND e.delivery_terms_accepted_at IS NOT NULL
                 AND COALESCE((SELECT f.enabled FROM security.feature_flags f
                                WHERE f.key = 'finance.delivered_refund_refusal'), false))
@@ -392,7 +454,6 @@ DECLARE
     o finance.orders;
     e catalogue.entitlements;
     r finance.pending_releases;
-    w finance.wallets;
     p catalogue.products;
     v_paid bigint;
     v_credit bigint;
@@ -428,6 +489,11 @@ BEGIN
             USING ERRCODE = 'PO409';
     END IF;
 
+    IF EXISTS (SELECT 1 FROM finance.disputes d WHERE d.order_line_id = l.id
+                AND d.status IN ('open', 'awaiting_response', 'under_review')) THEN
+        RAISE EXCEPTION 'The problem you reported with this purchase is being reviewed; its ruling decides the refund'
+            USING ERRCODE = 'PO409';
+    END IF;
     v_credit := l.line_total_minor - l.platform_fee_minor
                 - CASE WHEN l.promo_funded_by = 'platform' THEN 0 ELSE l.promo_discount_minor END;
     IF v_credit > 0 THEN
@@ -438,24 +504,8 @@ BEGIN
             RAISE EXCEPTION 'The seller''s earnings from this sale are no longer clearing, so it can''t be cancelled here'
                 USING ERRCODE = 'PO409';
         END IF;
-        UPDATE finance.pending_releases
-           SET recovered_cents = amount_cents, state = 'available', matured_at = pg_catalog.now()
-         WHERE id = r.id;
     END IF;
-
-    SELECT x.* INTO w
-      FROM finance.transactions t
-      JOIN finance.wallets x ON x.id = t.wallet_id
-     WHERE t.ref_table = 'orders' AND t.ref_id = o.id AND t.reason = 'order_payment' AND t.direction = 'debit'
-     ORDER BY t.created_at, t.id
-     LIMIT 1;
-    IF w.id IS NULL OR pg_catalog.upper(w.currency) <> pg_catalog.upper(l.currency) THEN
-        RAISE EXCEPTION 'This order wasn''t paid from a wallet in its own currency, so it can''t be cancelled here. Contact support.'
-            USING ERRCODE = 'PO409';
-    END IF;
-    PERFORM finance.fn_wallet_credit(w.owner_id, w.owner_type, w.currency, v_paid, 'order_refund', 'order_lines', l.id);
-    UPDATE catalogue.entitlements SET status = 'refunded', updated_at = pg_catalog.now() WHERE id = e.id;
-    PERFORM finance.fn_record_line_refund(l.id, v_paid);
+    PERFORM finance.fn_refund_product_line(l.id, r.id);
 
     SELECT * INTO p FROM catalogue.products WHERE id = l.item_id;
     IF p.owner_user_id IS NOT NULL THEN

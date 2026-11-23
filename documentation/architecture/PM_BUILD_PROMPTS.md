@@ -496,10 +496,10 @@ STEPS:
      floor_tier, basis, ends_at, status open | contested | settled), and the doors open windows
      instead of settling. projects.contest_fair_exit(p_window_id, p_statement), by the payee or an
      active member of the payee team inside the window, opens a finance.disputes row through
-     PROJECTS EX2's doors, as one more subject_kind. finance.disputes has no kind column today
-     (00000017:303-340; get_dispute derives one, 00001260:651, :749), fn_settle_dispute refuses any
-     escrow that is not a session seat (:332-334) and fn_dispute_party knows only session hosts
-     (:109): EX2 widens all three, and this step adds no subject design of its own.
+     PROJECTS EX2's doors, as one more subject_kind. finance.disputes.subject_kind exists (FBP
+     DB21, #543); fn_settle_dispute still settles only a seat escrow or an order line, and
+     fn_dispute_party knows session hosts and a product's seller: EX2 widens both for the ticket
+     escrow, and this step adds no subject design of its own.
      projects.fn_settle_fair_exit_windows() settles
      every uncontested window past ends_at (registered in 00005060, every 15 minutes); a contested
      escrow settles only through resolve_dispute. First verify that no ticket trigger

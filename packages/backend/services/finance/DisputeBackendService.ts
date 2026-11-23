@@ -8,6 +8,7 @@ import type {
 	DisputeResolveInput,
 	DisputeRespondInput,
 	DisputeStatus,
+	ReportOrderProblemInput,
 } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
 import { type RawDispute, type RawQueue, toDisputeCase, toDisputeQueue } from "./dispute-model.ts";
@@ -19,7 +20,8 @@ import { type RawDispute, type RawQueue, toDisputeCase, toDisputeQueue } from ".
  * It decides nothing. Every rule — who is a party, when a case escalates, what a ruling moves, the
  * attendance audit — is a definer in `00001260_functions_finance_disputes.sql`, called AS the caller
  * (`auth.uid()` and RLS are the gates; the operator door checks `security.is_admin()` itself). A no-show
- * claim is opened through `SessionBackendService.claimNoShow`; the sweep that audits and auto-escalates
+ * claim is opened through `SessionBackendService.claimNoShow`, and a buyer's report on a downloaded
+ * product here ({@link DisputeBackendService.reportOrderProblem}, FBP DB21); the sweep that audits and auto-escalates
  * runs in the database (`finance-dispute-sweep`). Evidence files are served by the files pipeline
  * (`/api/media/proxy/:id`), which `files.fn_can_read` opens to a dispute's parties.
  *
@@ -29,7 +31,10 @@ import { type RawDispute, type RawQueue, toDisputeCase, toDisputeQueue } from ".
 
 // #region Refusals
 /** A definer's refusal (SQLSTATE + message) onto a ServiceResult. */
-function refusal<T>(error: { code?: string; message?: string }): ServiceResult<T> {
+function refusal<T>(
+	error: { code?: string; message?: string },
+	missing = "That dispute doesn't exist.",
+): ServiceResult<T> {
 	const message = error.message ?? "That couldn't be done just now.";
 	switch (error.code) {
 		case "42501":
@@ -37,8 +42,9 @@ function refusal<T>(error: { code?: string; message?: string }): ServiceResult<T
 		case "22023":
 			return fail(422, { message });
 		case "P0002":
-			return fail(404, { message: "That dispute doesn't exist." });
+			return fail(404, { message: missing });
 		case "PS409":
+		case "PO409":
 			return fail(409, { message });
 		default:
 			return fail(502, { message: "That couldn't be done just now. Please try again." });
@@ -119,6 +125,39 @@ export class DisputeBackendService {
 			if (error) return refusal(error);
 			return ok({ status: (data as { status: DisputeStatus }).status }, {
 				message: "Your statement was filed.",
+			});
+		});
+	}
+
+	/**
+	 * Report a problem with a downloaded digital product while its sale clears (FBP DB21; ruling M8): the
+	 * entitlement's slug names the line, read under the caller's JWT, then `finance.open_order_line_dispute`
+	 * freezes the seller's clearing earnings and sends the case to an operator. A money write (it holds
+	 * money), so the switch comes first.
+	 */
+	static reportOrderProblem(
+		entitlement: string,
+		input: ReportOrderProblemInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ disputeId: string; status: DisputeStatus }>> {
+		return guarded("report", async () => {
+			const blocked = refuseUnlessMoneyLive<{ disputeId: string; status: DisputeStatus }>(actor);
+			if (blocked) return blocked;
+			const db = getUserClient(actor.accessToken!);
+			const { data: row, error: readError } = await db.schema("catalogue").from("entitlements")
+				.select("order_line_id").eq("slug", entitlement).maybeSingle();
+			if (readError) throw new Error(readError.message);
+			if (!row) return fail(404, { message: "That purchase doesn't exist." });
+			const { data, error } = await db.schema("finance").rpc("open_order_line_dispute", {
+				p_line_id: (row as { order_line_id: string }).order_line_id,
+				p_reason: input.reason,
+				p_statement: input.statement,
+				p_file_ids: input.fileIds,
+			});
+			if (error) return refusal(error, "That purchase doesn't exist.");
+			const out = data as { dispute_id: string; status: DisputeStatus };
+			return ok({ disputeId: out.dispute_id, status: out.status }, {
+				message: "Reported. The seller's earnings are held while Projective reviews it.",
 			});
 		});
 	}

@@ -1,5 +1,6 @@
 import type {
 	DisputeCase,
+	DisputeKind,
 	DisputeOutcome,
 	DisputeQueue,
 	DisputeQueueCounts,
@@ -91,9 +92,11 @@ export function partyLabel(party: DisputeQueueParty, fallback: string): string {
 	return party.name ?? (party.handle ? `@${party.handle}` : fallback);
 }
 
-/** The case's subject line: the sitting it is about, else the engagement. */
-export function caseTitle(item: Pick<DisputeQueueItem, "sitting" | "projectTitle">): string {
-	return item.sitting?.title || item.projectTitle || "Dispute";
+/** The case's subject line: the sitting it is about, else the engagement, else the purchase (FBP DB21). */
+export function caseTitle(
+	item: Pick<DisputeQueueItem, "sitting" | "projectTitle" | "purchaseTitle">,
+): string {
+	return item.sitting?.title || item.projectTitle || item.purchaseTitle || "Dispute";
 }
 
 /** The one deadline that applies to a case, as a meta fragment. */
@@ -165,6 +168,40 @@ export const OUTCOME_HINT: Record<DisputeOutcome, string> = {
 	refund: "The claim is upheld. The whole payment goes back to the attendee.",
 	split: "The provider is paid their share, less the platform fee on it; the rest is refunded.",
 };
+
+/**
+ * The rulings a case offers, and how each reads for it. A product dispute (FBP DB21) is upheld or
+ * dismissed, never split (`ck_disputes_order_line_split`), and its parties are a buyer and a seller.
+ */
+export function outcomesFor(kind: DisputeKind): ReadonlyArray<DisputeOutcome> {
+	return kind === "product" ? ["release", "refund"] : ["release", "refund", "split"];
+}
+
+const PRODUCT_OUTCOME: Record<"release" | "refund", { label: string; hint: string }> = {
+	release: {
+		label: "Pay the seller",
+		hint: "The report is dismissed. The held earnings clear to the seller as they would have.",
+	},
+	refund: {
+		label: "Refund the buyer",
+		hint:
+			"The report is upheld. What the buyer paid goes back to the wallet that paid; the seller's earnings are taken back.",
+	},
+};
+
+/** An outcome's label for a case of this kind. */
+export function outcomeLabel(kind: DisputeKind, outcome: DisputeOutcome): string {
+	return kind === "product" && outcome !== "split"
+		? PRODUCT_OUTCOME[outcome].label
+		: OUTCOME_LABEL[outcome];
+}
+
+/** What an outcome does for a case of this kind, said once under the choice. */
+export function outcomeHint(kind: DisputeKind, outcome: DisputeOutcome): string {
+	return kind === "product" && outcome !== "split"
+		? PRODUCT_OUTCOME[outcome].hint
+		: OUTCOME_HINT[outcome];
+}
 
 /**
  * The provider's share as basis points, from the percentage the operator typed (two decimals at most):
@@ -257,6 +294,7 @@ function previewItem(
 		amountLabel: formatMoney(amountMinor, "GBP"),
 		projectSlug: "prj-preview000",
 		projectTitle: "Previewed engagement",
+		purchaseTitle: null,
 		sitting: {
 			title: `Previewed session ${n + 1}`,
 			startsAt: new Date(opened - 2 * HOUR).toISOString(),
@@ -324,6 +362,7 @@ export function previewCase(item: DisputeQueueItem): DisputeCase {
 		currency: item.currency,
 		amountLabel: item.amountLabel,
 		projectSlug: item.projectSlug,
+		purchaseTitle: item.purchaseTitle,
 		sitting: item.sitting ? { id: item.id, slug: "ssn-preview000", ...item.sitting } : null,
 		messages: reviewed
 			? [

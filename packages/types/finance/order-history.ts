@@ -3,6 +3,7 @@ import { timestamp } from "./common.ts";
 import { PurchasableItemKind, reference } from "./basket.ts";
 import { MoneyViewSchema } from "./wallet.ts";
 import { OrderStatus } from "./order.ts";
+import { DisputeStatus } from "./disputes.ts";
 
 /**
  * finance order history — the Zod SSOT for `/checkout/orders` (MARKETPLACE CK3): every order the acting
@@ -46,6 +47,16 @@ export const OrderHistoryLineSchema = z.object({
 	 * `null` for every other line.
 	 */
 	cancel: z.object({ entitlement: z.string().regex(/^ent-[23456789a-z]{10}$/) }).nullable(),
+	/**
+	 * A digital product's problem report (FBP DB21), named by its entitlement's slug: `canReport` while a
+	 * downloaded line's sale still clears and nothing was reported (`finance.order_line_disputes`), and
+	 * the report's `status` once one was made. `null` for every other line, and for a line with neither.
+	 */
+	problem: z.object({
+		entitlement: z.string().regex(/^ent-[23456789a-z]{10}$/),
+		canReport: z.boolean(),
+		status: DisputeStatus.nullable(),
+	}).nullable(),
 });
 export type OrderHistoryLine = z.infer<typeof OrderHistoryLineSchema>;
 

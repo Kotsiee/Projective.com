@@ -13,6 +13,7 @@ import {
 	buildIcsCalendar,
 	calendarLinksFor,
 	DEFAULT_LOCALE,
+	DisputeStatus,
 	formatMoney,
 	fulfilmentKindOf,
 } from "@projective/types/finance";
@@ -787,10 +788,41 @@ async function cancellableLines(
 	return new Set(((data ?? []) as unknown[]).map(String));
 }
 
+/** A product line's report state as the history shows it (FBP DB21). */
+type LineDispute = { canReport: boolean; status: DisputeStatus | null };
+
+/**
+ * The page's product lines' report state (FBP DB21): `finance.order_line_disputes` says whether
+ * the caller may report a problem now (a downloaded line whose sale still clears, nothing reported)
+ * and the status of a report already made. Empty when the page sells no download.
+ */
+async function lineDisputes(
+	actor: ReadActor & { accessToken: string },
+	lines: readonly LineRow[],
+): Promise<ReadonlyMap<string, LineDispute>> {
+	const ids = lines.filter((l) => l.fulfilment === "download").map((l) => l.id);
+	if (ids.length === 0) return new Map();
+	const { data, error } = await getUserClient(actor.accessToken).schema("finance")
+		.rpc("order_line_disputes", { p_line_ids: ids });
+	if (error) throw new Error(`finance.order_line_disputes failed: ${error.message}`);
+	const rows = (data ?? []) as {
+		line_id: string;
+		can_report: boolean;
+		dispute_status: string | null;
+	}[];
+	return new Map(rows.map((r) => {
+		const status = DisputeStatus.safeParse(r.dispute_status);
+		return [r.line_id, {
+			canReport: r.can_report === true,
+			status: status.success ? status.data : null,
+		}];
+	}));
+}
+
 /**
  * One past line as the history lists it: the receipt's projection, reduced, its home, for a person's
- * delivered product its review, and Cancel where the sale is still clearing. `holderType` is whose
- * history this is.
+ * delivered product its review, Cancel where the sale is still clearing, and its problem report.
+ * `holderType` is whose history this is.
  */
 function historyLineOf(
 	row: LineRow,
@@ -798,9 +830,11 @@ function historyLineOf(
 	ctx: LineContext,
 	holderType: string,
 	cancellable: ReadonlySet<string>,
+	disputes: ReadonlyMap<string, LineDispute>,
 ): OrderHistoryLine {
 	const line = toLine(row, order, ctx);
 	const entitlement = row.fulfilment === "download" ? ctx.entitlements.get(row.id) : undefined;
+	const dispute = disputes.get(row.id);
 	return {
 		id: line.id,
 		itemType: line.itemType,
@@ -809,6 +843,9 @@ function historyLineOf(
 		home: homeOf(row, line, ctx),
 		reviewHref: entitlement ? purchaseReviewLink({ ...entitlement, holderType }) : null,
 		cancel: entitlement && cancellable.has(row.id) ? { entitlement: entitlement.slug } : null,
+		problem: entitlement && (dispute?.canReport || dispute?.status)
+			? { entitlement: entitlement.slug, canReport: dispute.canReport, status: dispute.status }
+			: null,
 	};
 }
 
@@ -841,6 +878,7 @@ export async function readOrderHistory(
 	}
 	const ctx = await lineContext(actor, lines);
 	const cancellable = await cancellableLines(actor, lines);
+	const disputes = await lineDisputes(actor, lines);
 	const byOrder = new Map<string, OrderHistoryLine[]>();
 	for (const row of lines) {
 		const order = window.rows.find((o) => o.id === row.order_id);
@@ -848,7 +886,14 @@ export async function readOrderHistory(
 		if (!order || own.length >= 200) continue;
 		byOrder.set(row.order_id, [
 			...own,
-			historyLineOf(row, order, ctx, owner.isEntity ? owner.ownerType : "user", cancellable),
+			historyLineOf(
+				row,
+				order,
+				ctx,
+				owner.isEntity ? owner.ownerType : "user",
+				cancellable,
+				disputes,
+			),
 		]);
 	}
 

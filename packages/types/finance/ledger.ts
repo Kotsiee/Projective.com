@@ -332,7 +332,8 @@ export type WalletBalances = z.infer<typeof WalletBalancesSchema>;
  * A row of `finance.pending_releases` — one earned credit inside the safety window (Decision #191):
  * an escrow release, team share, fair-exit or seat payout (`escrowId`) or a product sale (`orderId`),
  * exactly one. It reaches the Available balance at `availableAt`; `recoveredCents` is what a lost
- * chargeback took back first. Still pending = `amountCents - recoveredCents` while `state` is `pending`.
+ * chargeback took back first. A row frozen by a card dispute (`holdChargebackId`) or a product dispute
+ * (`holdDisputeId`) is `on_hold`. Still pending = `amountCents - recoveredCents` while `state` is `pending`.
  */
 export const PendingReleaseSchema = z.object({
 	id: uuid,
@@ -350,6 +351,8 @@ export const PendingReleaseSchema = z.object({
 	transactionId: uuid.nullable(),
 	/** The card dispute that last froze this row (Decision #337, ruling M3); kept once it resolves. */
 	holdChargebackId: uuid.nullable(),
+	/** The product dispute that froze this row (FBP DB21, a buyer's report while the sale clears); kept once it resolves. */
+	holdDisputeId: uuid.nullable(),
 	createdAt: timestamp,
 }).refine((r) => (r.escrowId === null) !== (r.orderId === null), {
 	message: "A pending release is keyed to exactly one source: an escrow or an order",
@@ -357,8 +360,8 @@ export const PendingReleaseSchema = z.object({
 }).refine((r) => r.recoveredCents <= r.amountCents, {
 	message: "recoveredCents cannot exceed amountCents",
 	path: ["recoveredCents"],
-}).refine((r) => r.state !== "on_hold" || r.holdChargebackId !== null, {
-	message: "A row on hold names the dispute that froze it",
+}).refine((r) => r.state !== "on_hold" || r.holdChargebackId !== null || r.holdDisputeId !== null, {
+	message: "A row on hold names the dispute that froze it: a card dispute or a product dispute",
 	path: ["holdChargebackId"],
 });
 export type PendingRelease = z.infer<typeof PendingReleaseSchema>;

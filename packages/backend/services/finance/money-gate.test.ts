@@ -261,6 +261,15 @@ const OTHER_WRITES: [
 		(actor) => OrderBackendService.cancelLine("ent-2345678abc", actor),
 	],
 	["give a session forfeit back", (actor) => OrderBackendService.refundForfeit(ID, actor)],
+	[
+		"report a problem with a purchase",
+		(actor) =>
+			DisputeBackendService.reportOrderProblem(
+				"ent-2345678abc",
+				{ reason: "defective", statement: "It won't open.", fileIds: [] },
+				actor,
+			),
+	],
 	["resolve a dispute", (actor) =>
 		DisputeBackendService.resolve(
 			ID,

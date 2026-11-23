@@ -133,10 +133,17 @@ export const DisputeAgreedTermsSchema = z.object({
 });
 export type DisputeAgreedTerms = z.infer<typeof DisputeAgreedTermsSchema>;
 
+/**
+ * What a dispute contests: a no-show claim on a seat's sitting, any other engagement escrow, or a
+ * digital product line whose sale is still clearing (`product`, FBP DB21).
+ */
+export const DisputeKind = z.enum(["no_show", "general", "product"]);
+export type DisputeKind = z.infer<typeof DisputeKind>;
+
 /** A dispute as its reader may see it — `finance.get_dispute`, mapped. */
 export const DisputeCaseSchema = z.object({
 	id: uuid,
-	kind: z.enum(["no_show", "general"]),
+	kind: DisputeKind,
 	status: DisputeStatus,
 	role: DisputeRole,
 	reason: z.string().min(1).max(500),
@@ -170,7 +177,10 @@ export const DisputeCaseSchema = z.object({
 	currency,
 	/** The money at stake, server-formatted. */
 	amountLabel: z.string().max(40),
-	projectSlug: z.string().min(1).max(120),
+	/** The engagement's project; empty on a product dispute, which has none. */
+	projectSlug: z.string().max(120),
+	/** The purchase a product dispute is about (FBP DB21); null on any other. */
+	purchaseTitle: z.string().max(200).nullable(),
 	sitting: z.object({
 		id: uuid,
 		slug: z.string().min(1).max(40),
@@ -217,7 +227,7 @@ export type DisputeQueueParty = z.infer<typeof DisputeQueuePartySchema>;
 export const DisputeQueueItemSchema = z.object({
 	id: uuid,
 	status: DisputeQueueStatus,
-	kind: z.enum(["no_show", "general"]),
+	kind: DisputeKind,
 	reason: z.string().min(1).max(500),
 	openedAt: timestamp,
 	respondBy: timestamp.nullable(),
@@ -232,6 +242,8 @@ export const DisputeQueueItemSchema = z.object({
 	amountLabel: z.string().max(40),
 	projectSlug: z.string().max(120),
 	projectTitle: z.string().max(200),
+	/** The purchase a product dispute is about (FBP DB21); null on any other. */
+	purchaseTitle: z.string().max(200).nullable(),
 	sitting: z.object({
 		title: z.string().min(1).max(200),
 		startsAt: timestamp,
@@ -293,6 +305,21 @@ export const DisputeRespondInputSchema = z.object({
 	fileIds: z.array(uuid).max(10).default([]),
 });
 export type DisputeRespondInput = z.infer<typeof DisputeRespondInputSchema>;
+
+/** Why a buyer reports a downloaded product (FBP DB21): its files didn't arrive whole, or are faulty. */
+export const OrderProblemReason = z.enum(["not_delivered", "defective"]);
+export type OrderProblemReason = z.infer<typeof OrderProblemReason>;
+
+/**
+ * `POST /api/checkout/orders/[entitlement]/problem` — a buyer's report on a downloaded digital product
+ * while its sale clears (`finance.open_order_line_dispute`, FBP DB21), with up to ten of their files.
+ */
+export const ReportOrderProblemInputSchema = z.object({
+	reason: OrderProblemReason,
+	statement: z.string().trim().min(1, "Say what went wrong.").max(4000),
+	fileIds: z.array(uuid).max(10).default([]),
+});
+export type ReportOrderProblemInput = z.infer<typeof ReportOrderProblemInputSchema>;
 
 /** `POST /api/finance/disputes/:id/resolve` — a platform operator's ruling. */
 export const DisputeResolveInputSchema = z.object({

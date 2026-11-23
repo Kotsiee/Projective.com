@@ -3638,6 +3638,16 @@ forfeit. The order history's tier-5 **Cancel** on a digital product whose sale i
 (`CheckoutOrdersScreen`, `line.cancel`) opens the same `CommitReview` (Purchase · Goes back to;
 **Cancel purchase**), and the page re-reads on success.
 
+**`ReportProblemDialog` (`features/checkout/components/`, FBP DB21).** The order history's tier-5
+**Report a problem** on a downloaded product whose sale still clears (`line.problem.canReport`) opens
+it: one `Dialog` (props `open: Signal<boolean>`, `title`, `onSend`) with the purchase's title, a
+`SelectButton` (The files didn't arrive · The files are faulty), a `Textarea` (4,000), a meta sentence
+saying what sending does (the seller's earnings held, an upheld report paying back the wallet that
+paid, one report only), a refusal as an assertive `InlineNotice`, and **Not now** (tier 5) · **Send
+report** (the primary fill: it opens a case and moves none of the buyer's money, so not the amber).
+Once sent the history re-reads, and the line's meta text says where the report stands (Problem under
+review · Refunded after review · Problem report dismissed), never as a `Tag`.
+
 **`ReviewDialog` + `ReviewReplyThread` + `ReviewsBlock` (`features/reviews/`, `features/projects/components/overview/`, Decision #487).**
 How a client reviews what they completed, and how the reviewed side answers. `ReviewsBlock` is the
 Overview's aside region "Reviews" (server component, `Block` + `pjd-row` links, no card of its own):
@@ -3689,7 +3699,7 @@ title with a meta-register lede and a text **Refresh** (it re-reads `GET /api/fi
 warning `Message` while any review is overdue, a `TabMenu` (tablist mode, one `tabpanel`) — Under
 review · Awaiting response · Open · All live, each with the server's count as its badge (a count, §3
 gate 7) — then one hairline-separated row per case, oldest-due first: the case title (the sitting,
-else the engagement), one `--text-secondary` meta line (claimant v. respondent · the held amount,
+else the engagement, else the purchase on a product case, FBP DB21), one `--text-secondary` meta line (claimant v. respondent · the held amount,
 `tabular-nums` · the deadline that applies: ruling due / ruling overdue since / response due /
 raised), the claim reason clamped to two lines, a meta evidence count, and a secondary outlined `sm`
 **Review**. A row carries a lifecycle `Tag` only on All live (elsewhere the tab already says it) and a
@@ -3700,7 +3710,8 @@ danger **Overdue** `Tag` when the review SLA has passed (a required disclosure).
 facts (claimant · provider · session · payment held · raised · response due · under review since ·
 ruling due), the attendance-audit line, the claim and every statement with its evidence links
 (`/api/media/proxy/:id`), then — while `canResolve` — the ruling form: a `SelectButton` (Pay the
-provider · Refund the attendee · Split) with a one-line hint, a `NumberInput` for the provider's share
+provider · Refund the attendee · Split; on a product case Pay the seller · Refund the buyer, never
+Split, `outcomesFor`) with a one-line hint, a `NumberInput` for the provider's share
 in % (0.01–99.99, sent as basis points) on a split, a `Textarea` (2,000) for the reasons both parties
 read, the form's first problem as meta text, and **Record ruling**, which opens an in-place confirm
 (warning `Message` naming what moves and that it is final, **Back** · danger **Confirm ruling**). A

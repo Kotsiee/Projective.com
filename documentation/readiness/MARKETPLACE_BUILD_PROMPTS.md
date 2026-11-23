@@ -59,7 +59,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | MK-27 | ⏸                  | — (#435, counsel)                       | Excluded                                                                                                                               |
 | MK-28 | 🟡 · Normal · PROD | FBP DB17 step 1 (🧑 vendor) → UI5       | A live feed with a staleness mark                                                                                                      |
 | MK-29 | 🟡 · Crit · UAT    | CK1 ✅ + the live run (§0.4)            | The live run is recorded                                                                                                               |
-| MK-31 | ❌ · Crit · UAT    | FBP DB21 (step 2) → MR3                 | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
+| MK-31 | 🟡 · Crit · UAT   | FBP MR3 (DB21 ✅, #543)                  | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
 
 Two rows of the **Listing view** section are left to live runs of prompts that landed here (§0.4):
 **MK-16** (a quote offer is paid at its price; CK7, #491) and **MK-12** (reserve a cohort seat; SC3,
@@ -88,7 +88,7 @@ Two rows of the **Listing view** section are left to live runs of prompts that l
 
 SC10 and SC12 each add a new MK row in the change that lands them (#525); SC11 added MK-63 (#541). Section scores live
 in USER_FLOWS' Scoreboard. What UAT still needs from these sections: the live runs (§0.4), the MK-31
-chain (DB21 → MR3), RV1's product arm, SC6 step 3, SCH-WP7 step 5, CK6's device runs and SBP S4.
+chain (MR3), RV1's product arm, SC6 step 3, SCH-WP7 step 5, CK6's device runs and SBP S4.
 
 ### 0.2 Run order
 
@@ -103,10 +103,10 @@ finance SQL lane (FINANCE §0); FINANCE's order wins on a conflict.
 
 1. CK2 — landed (#536).
 2. **SC10**'s money half — no wait (CK2 has landed, #536).
-3. FBP **DB21 → MR3** — DB21's cancel and forfeit refund landed (#542); its dispute step is open.
-4. **CK4** — ⏳ DB21 (a refund reverses the tax); ⚖️ counsel before the switch. LEGAL LG8 follows
+3. FBP **MR3** — DB21 has landed whole (#542, #543).
+4. **CK4** — runnable: DB21 has landed (#543), so both refund paths can reverse the tax; ⚖️ counsel before the switch. LEGAL LG8 follows
    it.
-5. **SC7** — ⏳ DB21 (a refund reverses the royalty too, #493 (D)); ⚖️ counsel before the grant
+5. **SC7** — runnable: DB21 has landed (#543; a refund reverses the royalty too, #493 (D)); ⚖️ counsel before the grant
    switch. The last change to the money path in this file.
 
 **Queue C — everything else**, as the second SQL session whenever its files are disjoint from what
@@ -125,13 +125,13 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 | File                                             | Writers here          | Writers elsewhere (never at the same time)                        |
 | :----------------------------------------------- | :-------------------- | :---------------------------------------------------------------- |
 | `00001210` (`place_wallet_order`, promo, orders) | CK4, SC7, SC10        | FBP DB10, DB11, DB13; SCH-WP6                                     |
-| `00000017` (finance tables)                      | CK4, SC7              | FBP DB21, MR3, MR5                                                |
+| `00000017` (finance tables)                      | CK4, SC7              | FBP MR3, MR5                                                      |
 | `00001170` (catalogue doors, `save_listing`)     | SC6, SC10, SC12       | —                                                                 |
 | `00001155` (sessions, cohorts)                   | SC10                  | every SCH package                                                 |
 | `00005060` (jobs)                                | RV2                   | MR5; PM-GH1                                                       |
 | `00002500` / `00002510` / `00002520` (grants)    | every SQL prompt here | one writer at a time across all tracks                            |
 | `supabase/seeds/gen/*` (+ `db:seed:generate`)    | RV1, RV2, RV3         | —                                                                 |
-| `features/checkout/**`, `live-orders.ts`         | CK4, SC10             | FBP DB21, UI5, UI6                                                |
+| `features/checkout/**`, `live-orders.ts`         | CK4, SC10             | FBP UI5, UI6                                                      |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`       | every prompt          | every readiness track: edit your rows and the computed lines only |
 
 ### 0.3 Human stops on this path
@@ -322,8 +322,8 @@ rows from §0.1.
 
 ### CK4 — Tax at checkout, built behind a switch that stays off
 
-> **Status 2026-11-23:** open; waits for FBP DB21's step 2, the product dispute (its cancel and
-> forfeit refund landed, #542): both refund paths must reverse the tax.
+> **Status 2026-11-23:** open and runnable: FBP DB21 has landed whole (#542, #543), so both refund
+> paths exist for the tax to reverse.
 
 Narrows MK-20 (it stays 🟡 until the switch is on); narrows PRD-M5.
 
@@ -605,8 +605,8 @@ closing #312 (a), (e).
 
 ### SC7 — Request to Sell, the client's grant, and the royalty
 
-> **Status 2026-11-23:** open; waits for FBP DB21's step 2, the product dispute (CK1, DB19 and DB21's
-> cancel have landed, #542): a refund on either path must reverse the royalty.
+> **Status 2026-11-23:** open and runnable: CK1, DB19 and FBP DB21 have landed (#542, #543), so a
+> refund on either path can reverse the royalty.
 
 Closes MK-46 (❌ → ✅).
 

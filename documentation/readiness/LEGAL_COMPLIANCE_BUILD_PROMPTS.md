@@ -115,7 +115,7 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 | 1    | — (LG1 done once LG7's commit lands) | —                                                                                        | —                        | Step 4 landed (#540); step 6's rest lands with LG7's commit (#529) |
 | 2    | —                   | LG3 (landed, §0.0) → **LG4** → **LG5**                                                   | (LG4/LG5's UI halves)    | LG4 builds once LG2's brief is sent and LG3 and FINANCE DB6 land (#530 (g)); counsel rules text |
 | 3    | —                   | LG7 (built, #529; its page check is left, §3)                                            | — (LG6 landed, §0.0)     | LG7's page check: a dev server and a seeded DB                                                  |
-| 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (which waits for DB21)                                                                      |
+| 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (runnable: DB21 landed, #543)                                                               |
 | Last | **LG9**             | —                                                                                        | —                        | Everything above that can land                                                                  |
 
 **Hot files.** LG4 and LG5 each edit
@@ -512,7 +512,7 @@ Readiness rows (§1.1): **PRD-M6** → ✅; **MW-58** → ✅.
 
 ### LG8 — Tax on the platform's own fees
 
-> **Status 2026-11-23:** open; waits for MARKETPLACE CK4, which waits for FBP DB21.
+> **Status 2026-11-23:** open; waits for MARKETPLACE CK4, runnable now that FBP DB21 has landed (#543).
 
 PRD-M7 → 🟡.
 

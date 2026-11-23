@@ -1284,6 +1284,8 @@ REVOKE ALL ON FUNCTION finance.fn_record_order_line_refund (uuid, bigint) FROM P
 REVOKE ALL ON FUNCTION finance.fn_record_line_refund (uuid, bigint) FROM PUBLIC, anon, authenticated;
 -- The refunds a buyer or provider starts (00001240 §1b, FBP DB21): the two user doors and their helper.
 REVOKE ALL ON FUNCTION finance.fn_line_sale_release (finance.order_lines) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_order_paying_wallet (uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_refund_product_line (uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.cancel_order_line (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.cancel_order_line (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION finance.refund_session_forfeit (uuid) FROM PUBLIC, anon;
@@ -2579,6 +2581,7 @@ REVOKE ALL ON FUNCTION finance.fn_escrow_has_open_dispute (uuid) FROM PUBLIC, an
 REVOKE ALL ON FUNCTION finance.fn_dispute_attendance_audit (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_split_seat_escrow (uuid, integer) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_settle_dispute (uuid, text, integer, uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_settle_order_line_dispute (uuid, text, uuid, text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_advance_dispute (uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_notify_dispute_escalated (uuid, uuid, text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_dispute_records_immutable () FROM PUBLIC, anon, authenticated, service_role;
@@ -2592,6 +2595,11 @@ REVOKE ALL ON FUNCTION finance.get_dispute (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.get_dispute (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION finance.resolve_dispute (uuid, text, integer, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.resolve_dispute (uuid, text, integer, text) TO authenticated;
+-- The product dispute (FBP DB21): a buyer reports a downloaded product while its sale clears; the history reads.
+REVOKE ALL ON FUNCTION finance.open_order_line_dispute (uuid, text, text, uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.open_order_line_dispute (uuid, text, text, uuid[]) TO authenticated;
+REVOKE ALL ON FUNCTION finance.order_line_disputes (uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.order_line_disputes (uuid[]) TO authenticated;
 -- The operator queue: signed-in callers reach it, and it refuses anyone but security.is_admin() (42501).
 REVOKE ALL ON FUNCTION finance.list_disputes_for_review (text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.list_disputes_for_review (text) TO authenticated;

@@ -3,12 +3,17 @@ import { useSignal } from "@preact/signals";
 import "../styles/checkout.css";
 import "../styles/checkout-confirmation.css";
 import "../styles/checkout-orders.css";
-import { itemKindMeta } from "@projective/types/finance";
+import {
+	type DisputeStatus,
+	itemKindMeta,
+	type OrderProblemReason,
+} from "@projective/types/finance";
 import { Icon } from "@projective/ui/icons";
 import { MetaLine } from "@projective/ui/display";
 import { CommitReview } from "@projective/ui/feedback";
 import { basketHref, checkoutStepHref, ordersHref } from "../core/basket-model.ts";
 import { Amount } from "../components/Amount.tsx";
+import { ReportProblemDialog } from "../components/ReportProblemDialog.tsx";
 import { CheckoutService } from "../core/CheckoutService.ts";
 import type {
 	OrderHistoryEntry,
@@ -21,13 +26,16 @@ import type {
  * CheckoutOrdersScreen — the `/checkout/orders` BODY: every past order of the acting account, newest
  * first, twenty to a page (MARKETPLACE CK3).
  *
- * **Everything here is a link, but one act.** The owner switch, each receipt and the pager are anchors
+ * **Everything here is a link, but two acts.** The owner switch, each receipt and the pager are anchors
  * whose hrefs come from `basket-model`'s builders, so every view of the history is a URL a buyer can
  * bookmark or be sent, and Back walks the pages. The page boundaries are the server's opaque tokens,
  * carried and never built. The one act is Cancel on a digital product whose sale is still clearing
  * (FBP DB21, the server's `line.cancel`): it opens the package {@link CommitReview} (§B.8) — the amount,
  * the purchase, where it goes back to, then "Cancel purchase", its one tier-1 commit — and once the door
- * has refunded the buyer the page re-reads, so the server-rendered history shows the refund.
+ * has refunded the buyer the page re-reads, so the server-rendered history shows the refund. The other
+ * is Report a problem on a downloaded product whose sale still clears (`line.problem.canReport`): it
+ * opens {@link ReportProblemDialog}, and once the case is open the page re-reads and the line says
+ * where its report stands, as meta text.
  *
  * **A history row reprints the receipt.** Its figures are server-formatted `MoneyView`s through
  * {@link Amount}; its facts are MetaLine text. Each line links to its home (the purchases view, the
@@ -53,6 +61,16 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
 	cancelled: "Cancelled",
 };
 
+/** Where a product line's problem report stands, as the line's meta says it (FBP DB21). */
+const PROBLEM_LABEL: Record<DisputeStatus, string> = {
+	open: "Problem under review",
+	awaiting_response: "Problem under review",
+	under_review: "Problem under review",
+	resolved_refund: "Refunded after review",
+	resolved_release: "Problem report dismissed",
+	resolved_split: "Problem report settled",
+};
+
 function itemsLabel(count: number): string {
 	return count === 1 ? "1 item" : `${count} items`;
 }
@@ -75,6 +93,23 @@ export default function CheckoutOrdersScreen(props: CheckoutOrdersScreenProps): 
 		if (!entitlement) return null;
 		const out = await CheckoutService.cancelPurchase(entitlement);
 		if (!out.ok) return out.message ?? "That purchase couldn't be cancelled just now.";
+		globalThis.location.reload();
+		return null;
+	};
+	const reportTarget = useSignal<OrderHistoryLine | null>(null);
+	const reportOpen = useSignal(false);
+	const report = (line: OrderHistoryLine) => {
+		reportTarget.value = line;
+		reportOpen.value = true;
+	};
+	const sendReport = async (
+		reason: OrderProblemReason,
+		statement: string,
+	): Promise<string | null> => {
+		const entitlement = reportTarget.value?.problem?.entitlement;
+		if (!entitlement) return null;
+		const out = await CheckoutService.reportProblem(entitlement, { reason, statement });
+		if (!out.ok) return out.message ?? "That report couldn't be sent just now.";
 		globalThis.location.reload();
 		return null;
 	};
@@ -112,7 +147,13 @@ export default function CheckoutOrdersScreen(props: CheckoutOrdersScreenProps): 
 				: (
 					<ol class="cko-orders__list" aria-label={`Orders for ${initial.ownerName}`}>
 						{entries.map((entry) => (
-							<OrderEntry key={entry.id} entry={entry} owner={ownerKey} onCancel={ask} />
+							<OrderEntry
+								key={entry.id}
+								entry={entry}
+								owner={ownerKey}
+								onCancel={ask}
+								onReport={report}
+							/>
 						))}
 					</ol>
 				)}
@@ -160,6 +201,17 @@ export default function CheckoutOrdersScreen(props: CheckoutOrdersScreenProps): 
 					/>
 				)
 				: null}
+
+			{reportTarget.value
+				? (
+					<ReportProblemDialog
+						key={reportTarget.value.id}
+						open={reportOpen}
+						title={reportTarget.value.title}
+						onSend={sendReport}
+					/>
+				)
+				: null}
 		</div>
 	);
 }
@@ -167,10 +219,11 @@ export default function CheckoutOrdersScreen(props: CheckoutOrdersScreenProps): 
 // #region Entry
 /** One past order: its reference opens the receipt, and each line links to where it lives now. */
 function OrderEntry(
-	{ entry, owner, onCancel }: {
+	{ entry, owner, onCancel, onReport }: {
 		entry: OrderHistoryEntry;
 		owner: string;
 		onCancel: (line: OrderHistoryLine) => void;
+		onReport: (line: OrderHistoryLine) => void;
 	},
 ): JSX.Element {
 	const receipt = checkoutStepHref("confirmation", null, owner, undefined, entry.id);
@@ -205,8 +258,14 @@ function OrderEntry(
 							<li key={line.id} class="cko-orders__line">
 								<div class="cko-orders__linebody">
 									<p class="cko-orders__linetitle">{line.title}</p>
-									<MetaLine size="xs" items={[itemKindMeta(line.itemType).label]} />
-									{line.home || line.reviewHref || line.cancel
+									<MetaLine
+										size="xs"
+										items={[
+											itemKindMeta(line.itemType).label,
+											line.problem?.status ? PROBLEM_LABEL[line.problem.status] : null,
+										]}
+									/>
+									{line.home || line.reviewHref || line.cancel || line.problem?.canReport
 										? (
 											<span class="cko-orders__links">
 												{line.home
@@ -236,6 +295,18 @@ function OrderEntry(
 															onClick={() => onCancel(line)}
 														>
 															Cancel
+														</button>
+													)
+													: null}
+												{line.problem?.canReport
+													? (
+														<button
+															type="button"
+															class="cko-orders__cancel"
+															aria-label={`Report a problem with ${line.title}`}
+															onClick={() => onReport(line)}
+														>
+															Report a problem
 														</button>
 													)
 													: null}
