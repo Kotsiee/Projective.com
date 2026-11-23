@@ -153,7 +153,7 @@ Why this order:
 - **LEGAL_COMPLIANCE LG7** edits `00001240`'s withdrawal path in this lane, never beside MR8a or
   MR8b.
 - **LEGAL_COMPLIANCE LG4** adds one enqueue line each to `fn_mature_pending_releases` and
-  `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6,
+  `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6 (landed, #532),
   whose clearing-window holds decide which escrows count as finally released (#530 (g)).
 - **Identity:** MFA's AAL2 step-up on withdrawals and payout-account changes, and IW-M13, wait for
   the finance SQL lane (`begin_payout`, `record_payout_account`). DB9's sign-up suggestion edits the
