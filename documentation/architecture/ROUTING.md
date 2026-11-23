@@ -669,7 +669,8 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   and the trail gains no entry. It lives under `/checkout` because a new top-level segment needs a
   reserved handle (`org.fn_is_reserved_handle` + `RESERVED_HANDLES`); the confirmation's _Your recent
   orders_ section links to it (_All orders_). `?order=` carries the order's **raw uuid**, which no
-  prefixed slug yet replaces (no `fn_slug_guard('ord')`): a Decision #88 gap, USER_FLOWS MK-61.
+  prefixed slug yet replaces (no `fn_slug_guard('ord')`): a Decision #88 gap, PRODUCTION_READINESS
+  PRD-J6.
 
   **`/basket` is retired to a `302`, and the file is kept.** `(dashboard)/basket/index.tsx`
   redirects to `/checkout` **preserving the query string** — `?basket=` and `?owner=` are

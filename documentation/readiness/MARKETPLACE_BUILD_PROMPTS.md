@@ -6,8 +6,8 @@
 > MK-12 and MK-16. The owner's rulings are Decisions #485–#506 (one per prompt), #525 for SC10–SC13
 > and #393 for the asset-delivery phases.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 12 open, 4 partly done, 8 done (§0 ledger).
-> Runnable now: CK2, CK3, RV1, RV2, SC4, SC9 (phase 1), SC10, SC11, SC12, SC13.
+> **Verified against code 2026-11-23 at `f2e25929`.** 12 open, 3 partly done, 9 done (§0 ledger).
+> Runnable now: CK2, RV1, RV2, SC4, SC9 (phase 1), SC10, SC11, SC12, SC13.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -33,6 +33,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | ID  | What landed                                                                                         | Commit                                    | Text at    |
 | :-- | :-------------------------------------------------------------------------------------------------- | :---------------------------------------- | :--------- |
 | CK1 | Entitlements, product versions frozen into `originals`, the download route, the A8 box, Purchases   | `322c4dc9`, `82cdd7b7`, `197b0d0c` (#488) | `f2e25929` |
+| CK3 | `/checkout/orders`, keyset-paged, each line linked home; a block's receipt lists every sitting      | `f3ba4c3b` (#517)                         | `10bb9b20` |
 | CK5 | `comms.fn_enqueue_basket_nudges`: one Marketing email per idle basket; Marketing opt-in at the root | `630468cb` (#492)                         | `f2e25929` |
 | CK6 | `deno task stripe:domains`, a redirect return lands once, the Apple Pay path (off), the runbook     | `322c4dc9`, `0d58d084` (#504)             | `f2e25929` |
 | CK7 | `place_wallet_order` prices an accepted quote offer into its engagement; its expiry bounds payment  | `667196d5`, `67a5c305`, `e0231287` (#491) | `f2e25929` |
@@ -55,7 +56,6 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | MK-27 | ⏸                  | — (#435, counsel)                       | Excluded                                                                                                                               |
 | MK-28 | 🟡 · Normal · PROD | FBP DB17 → UI5                          | A live feed with a staleness mark                                                                                                      |
 | MK-29 | 🟡 · Crit · UAT    | CK1 ✅ + the live run (§0.4)            | The live run is recorded                                                                                                               |
-| MK-30 | ✅ · High · UAT    | **CK3** (partly)                        | Every past order is findable; a block's receipt names every sitting (note clears)                                                      |
 | MK-31 | ❌ · Crit · UAT    | FBP DB6 → DB21 → MR3                    | A buyer cancels an undownloaded line, disputes a defective one, an operator refunds a card; lines and orders read refunded / cancelled |
 
 Two rows of the **Listing view** section are left to live runs of prompts that landed here (§0.4):
@@ -119,7 +119,7 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
    beside it.
 5. T&S **R1 → R2** (their track) → **SC8**; **SC9** once per #393 phase (phase 1 runs now).
 
-**App lane** (up to three at once, file-disjoint): **CK3** and **SC13** now; **MKZ** last.
+**App lane** (up to three at once, file-disjoint): **SC13** now; **MKZ** last.
 
 **Hot files across this file:**
 
@@ -132,7 +132,7 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 | `00005060` (jobs)                                | RV2, SC11             | FBP DB17, MR5; PM-GH1                                             |
 | `00002500` / `00002510` / `00002520` (grants)    | every SQL prompt here | one writer at a time across all tracks                            |
 | `supabase/seeds/gen/*` (+ `db:seed:generate`)    | RV1, RV2, RV3         | —                                                                 |
-| `features/checkout/**`, `live-orders.ts`         | CK3, CK4, SC10        | FBP DB21, UI5, UI6                                                |
+| `features/checkout/**`, `live-orders.ts`         | CK4, SC10             | FBP DB21, UI5, UI6                                                |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`       | every prompt          | every readiness track: edit your rows and the computed lines only |
 
 ### 0.3 Human stops on this path
@@ -384,40 +384,6 @@ documentation/database/finance/*; Zod; ROUTING.md; the decision row.
 ```
 
 §1.2 rows: **MK-26** 🟡 → ✅.
-
-### CK3 — Every past order, and a block's receipt names every sitting
-
-> **Status 2026-11-23:** steps 1–4 landed in `f3ba4c3b` (`/checkout/orders`, keyset-paged, each line
-> linked home, a block's every sitting; `order-history.test.ts`); step 5 and the paperwork below are
-> open. Decision #517 is an index line only, and USER_FLOWS MK-30 still carries the old note.
-> Unverified: whether the 25-order walk and the screenshots were run.
-
-Clears MK-30's note.
-
-```text
-PROMPT CK3: A buyer finds every past order, and a block's receipt names every sitting
-
-ROLE: Docs engineer, with one readiness row. App lane.
-
-CONTEXT (verified at f2e25929):
-  - f3ba4c3b built /checkout/orders (ROUTING.md's paragraph under the checkout steps;
-    packages/backend/services/finance/order-history.ts; CheckoutOrdersScreen.island.tsx) and the
-    block's sitting list (OrderLineRow.tsx, SittingList).
-  - That ROUTING paragraph says `?order=` carries the order's raw uuid, "a Decision #88 gap,
-    USER_FLOWS MK-61". MK-61 is #522's seat-sharing row, so the gap has no row.
-
-STEPS:
-  5. If `?order=` carries a raw uuid, that is a Decision #88 gap: add a row for it (USER_FLOWS or
-     PRODUCTION_READINESS) and point ROUTING's paragraph at its real ID. Do not mint slugs here:
-     00000017 belongs to Queue M.
-
-ACCEPTANCE: the gap has its own row and ROUTING names it; #517's row records what f3ba4c3b built,
-with the 25-order walk and the screenshots if they were not run.
-
-SAME CHANGE: ROUTING.md; the decision row #517 (its body in decisions-122-126.md) closing #453 (c).
-```
-
-§1.2 rows: **MK-30**'s note cleared (it stays ✅).
 
 ### CK4 — Tax at checkout, built behind a switch that stays off
 

@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
-| **UAT**          | **70%** |           69 | 42 |  9 | 18 |           4 |
-| **Production**   | **48%** |          152 | 54 | 27 | 71 |          14 |
+| **UAT**          | **70%** |           70 | 42 |  9 | 19 |           4 |
+| **Production**   | **48%** |          153 | 54 | 27 | 72 |          14 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -60,7 +60,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | G. Scheduled jobs & operations     |   10 |  5 |  2 |  3 |   63% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
-| J. Routing, URLs & SEO             |    5 |  3 |  1 |  1 |   75% |
+| J. Routing, URLs & SEO             |    6 |  3 |  1 |  2 |   67% |
 | K. Quality gates & testing         |    6 |  2 |  1 |  3 |   38% |
 | L. Design system & accessibility   |    6 |  1 |  2 |  3 |   33% |
 | M. Legal & compliance              |    7 |  1 |  1 |  5 |   25% |
@@ -284,6 +284,7 @@ Work orders for every open row, with the run order:
 | PRD-J3 | robots disallows every app path                 | ✅     | Normal | PROD | `robots.test.ts` pins `APP_PATHS` to the route tree                                                                                                                                                       | —     |
 | PRD-J4 | The sitemap lists listings and profiles         | ✅     | High   | PROD | #452: `/sitemap.xml` is an index; public listings and posts at canonical `/view/:slug`, public profiles at `/@handle`, via `ExploreSitemapService` (anon); `sitemap.test.ts` end to end                  | DS2   |
 | PRD-J5 | Board, inbox and roster filters are addressable | ❌     | Normal | PROD | Signals only (`ProjectBoard.island.tsx:213-217`, `MessagesSidebar.island.tsx:160-164`, `MemberRoster.island.tsx:153`)                                                                                     | —     |
+| PRD-J6 | An order routes by a prefixed `ord-` slug, not its uuid (#88) | ❌     | Normal | UAT  | Found by CK3 (#517), a PRD-J1 case: `/checkout/confirmation?order=` and every `/checkout/orders` receipt link carry the order's raw uuid (`CheckoutOrderQuerySchema`, `packages/types/finance/checkout.ts:1222`), as do `/api/checkout/order?order=` and `/api/checkout/calendar?order=&line=`. `finance.orders` has no `slug` column and there is no `fn_slug_guard('ord')`; the column is a `00000017` change, so it takes a Queue M turn (MARKETPLACE §0.2) | —     |
 
 ## K. Quality gates & testing
 
@@ -464,3 +465,4 @@ Work orders for every open row, with the run order:
 | 2026-11-19 | OPS3 (#519): PRD-G3 ❌ → ✅ (the workload-report expiry sweep locks, closes a settled ticket's report `acknowledged` with no penalty, and runs every 15 minutes; idle until PM-WP5a makes reports fileable); new PRD-G11 ❌ (a report's way out leaves an unfunded ticket suspended) | 76% | 70% |  47% |
 | 2026-11-19 | #522: PRD-F25 added ✅ (an agreed custom quote is charged at its frozen, hashed terms; an append-only record and quote cards both parties read; the engagement links the offer and a dispute shows the agreed terms; probe `quote_evidence`) | 76% | 70% | 48% |
 | 2026-11-23 | LG2 (#528): no row flips; the counsel brief for the legal library and every open ⚖️ item outside Part D is written (`FOUNDER_QUESTIONNAIRE.md` Part E), PRD-M1's evidence names it, and twelve ⚖️ items get rows under §Decisions awaiting a human | 76% | 70% | 48% |
+| 2026-11-23 | CK3 (#517): no row flips; new PRD-J6 ❌ (an order's receipt and history links carry its raw uuid, a Decision #88 gap; the `ord-` slug takes a Queue M turn on `00000017`) | 76% | 70% | 48% |
