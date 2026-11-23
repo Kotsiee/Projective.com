@@ -43,7 +43,7 @@
 | DB3  | Enterprise KYB, inbound-transfer capability, approval expiry, fee fallback, no release in a dispute       | `44382c08`             | `f2e25929` |
 | DB4  | Payout schedules run as withdrawals by their author; the cron route and job                               | `b61486be`             | `f2e25929` |
 | DB5  | Pots are earmarks: doors, allocation on matured income, `finance.pot_movements`                           | `bc35b27b`             | `f2e25929` |
-| DB6  | A card dispute freezes the payee's still-clearing rows it funded (`hold_chargeback_id`); lost recovers them first | #532                   | `f2e25929` |
+| DB6  | A card dispute freezes the payee's still-clearing rows it funded (`hold_chargeback_id`); lost recovers them first | `daae69b1` (#532)      | `f2e25929` |
 | DB7  | Checkout integrity: charge assert, atomic promo, key re-check, second tab, `invoiced`                     | `24cbab02`             | `f2e25929` |
 | DB10 | On-account limit and approval threshold per currency (`finance.fn_param_minor`)                           | `f408e708`             | `f2e25929` |
 | DB11 | A product sale pays the seller's Standing-tapered commission; the Agency contract ruled B (#252)          | `9d15fcd0`             | `f2e25929` |

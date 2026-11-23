@@ -125,6 +125,7 @@ DO $$
 DECLARE
     v_cur text; v_project uuid; v_stage uuid; v_payer uuid; v_payee uuid; v_member uuid; v_op uuid;
     v_t1 uuid; v_t2 uuid; v_cohort uuid; v_seat1 uuid; v_seat2 uuid; v_wallet uuid; v_source uuid;
+    v_case uuid;
 BEGIN
     SELECT c INTO v_cur
       FROM unnest(ARRAY['ZAR', 'CHF', 'SGD', 'JPY', 'CAD', 'AUD', 'EUR', 'GBP', 'USD']) WITH ORDINALITY AS u (c, n)
@@ -201,12 +202,16 @@ BEGIN
         SELECT w.id INTO v_wallet FROM finance.wallets w
          WHERE w.owner_type = 'freelancer' AND w.owner_id = v_payee AND w.currency = v_cur;
     END IF;
+    -- A frozen row names the card dispute that froze it (ck_pending_releases_hold_case, ruling M3).
+    INSERT INTO finance.chargebacks (wallet_id, provider_ref, amount_cents, currency)
+    VALUES (v_wallet, 'dp_probe_escrow_age', 1200, v_cur)
+    RETURNING id INTO v_case;
     INSERT INTO finance.pending_releases (escrow_id, wallet_id, reason, amount_cents, recovered_cents, currency,
-                                          released_at, available_at, state, matured_at)
-    VALUES (v_source, v_wallet, 'escrow_release', 1100, 100, v_cur, pg_temp.ago(3), pg_temp.ago(3) + interval '7 days', 'pending', NULL),
-           (v_source, v_wallet, 'escrow_release', 1200, 0, v_cur, pg_temp.ago(8), pg_temp.ago(8) + interval '7 days', 'on_hold', NULL),
-           (v_source, v_wallet, 'escrow_release', 50, 50, v_cur, pg_temp.ago(4), pg_temp.ago(4) + interval '7 days', 'pending', NULL),
-           (v_source, v_wallet, 'escrow_release', 70, 0, v_cur, pg_temp.ago(30), pg_temp.ago(23), 'available', pg_temp.ago(23));
+                                          released_at, available_at, state, matured_at, hold_chargeback_id)
+    VALUES (v_source, v_wallet, 'escrow_release', 1100, 100, v_cur, pg_temp.ago(3), pg_temp.ago(3) + interval '7 days', 'pending', NULL, NULL),
+           (v_source, v_wallet, 'escrow_release', 1200, 0, v_cur, pg_temp.ago(8), pg_temp.ago(8) + interval '7 days', 'on_hold', NULL, v_case),
+           (v_source, v_wallet, 'escrow_release', 50, 50, v_cur, pg_temp.ago(4), pg_temp.ago(4) + interval '7 days', 'pending', NULL, NULL),
+           (v_source, v_wallet, 'escrow_release', 70, 0, v_cur, pg_temp.ago(30), pg_temp.ago(23), 'available', pg_temp.ago(23), NULL);
 END $$;
 -- #endregion
 
