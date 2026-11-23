@@ -293,7 +293,7 @@ said nothing new, and X2's went to IDENTITY. Nothing is left here.
 ### LG1 — The six legal documents say what the product does
 
 > **Status 2026-11-23:** partly done. Steps 1–3 and 5 landed in `9325e5df` (Decision #531), step 4
-> in LG1S4_COMMIT (Decision #540: the Copyright & Notice Policy and the Marketplace Licence Terms).
+> in `23d6adb9` (Decision #540: the Copyright & Notice Policy and the Marketplace Licence Terms).
 > Step 6 landed except the monitoring-signals clause, which LG7 brings. Stop (b) is yours to supply. Contradictions waiting on you: #531 (A) card
 > processing costs and (B) stage-work disputes; #540 (A) what a commercial licence covers.
 
