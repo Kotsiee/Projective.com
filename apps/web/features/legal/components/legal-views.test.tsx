@@ -79,6 +79,8 @@ Deno.test("legal document: the rail is a 'Legal documents' nav of every document
 			"acceptable-use",
 			"escrow-terms",
 			"ip-transfer-deed",
+			"copyright",
+			"marketplace-licence",
 		]
 	) {
 		assert(html.includes(`href="/legal/${slug}"`), slug);
@@ -128,8 +130,8 @@ Deno.test("legal document: comparing marks changed clauses, ins/del with spoken 
 	const rail = html.slice(html.indexOf('<nav id="doc-toc"'), html.indexOf("</nav>"));
 	assert(rail.includes('href="#hiring"'));
 	assert(rail.includes('href="#opening-credit"'));
-	assertFalse(rail.includes('href="#about"'), "an unchanged clause is not in the rail");
-	assert(html.includes('<a class="ui-anchor-heading__link" href="#about">'));
+	assertFalse(rail.includes('href="#roles"'), "an unchanged clause is not in the rail");
+	assert(html.includes('<a class="ui-anchor-heading__link" href="#roles">'));
 	// A removed clause keeps the rail's text column: a dash where its number would be.
 	assertMatch(
 		rail,
@@ -202,7 +204,7 @@ Deno.test("legal hub: one h1, the library draft disclosure, every document as a 
 	}));
 	const html = tidy(renderToString(<LegalHubView groups={groups} draft />));
 	assertEquals(count(html, /<h1[\s>]/g), 1);
-	assertEquals(count(html, '<li class="lgl-hub__row">'), 6);
+	assertEquals(count(html, '<li class="lgl-hub__row">'), 8);
 	assertFalse(html.includes("ui-card"), "no cards");
 	assert(html.includes("Draft — pending legal review"));
 	assertMatch(html, /<nav class="lgl-hub__docs" aria-label="Legal documents">/);
@@ -214,7 +216,7 @@ Deno.test("legal hub: one h1, the library draft disclosure, every document as a 
 		html,
 		/<div class="lgl-facts"><ul class="lgl-facts__list"><li class="lgl-facts__item"><span class="lgl-facts__sep" aria-hidden="true">·<\/span>Version 2\.0/,
 	);
-	assertEquals(count(html, '<span class="lgl-facts__sep" aria-hidden="true">·</span>'), 6 * 4);
+	assertEquals(count(html, '<span class="lgl-facts__sep" aria-hidden="true">·</span>'), 8 * 4);
 	assertMatch(
 		html,
 		/<span class="lgl-facts__sep" aria-hidden="true">·<\/span>Updated <time datetime="\d{4}-\d{2}-\d{2}">/,

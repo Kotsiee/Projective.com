@@ -124,7 +124,7 @@ Deno.test("resolveLegalDocument: ?compare= diffs today's version against an olde
 Deno.test("resolveLegalDocument: Terms 1.0 → 2.0 shows every kind of change", () => {
 	const { diff } = view(resolveLegalDocument("terms", q("compare=1.0"), TODAY));
 	const status = Object.fromEntries(diff!.clauses.map((c) => [c.id, c.status]));
-	assertEquals(status["about"], "unchanged");
+	assertEquals(status["roles"], "unchanged");
 	assertEquals(status["age"], "changed");
 	assertEquals(status["hiring"], "added");
 	assertEquals(status["opening-credit"], "removed");

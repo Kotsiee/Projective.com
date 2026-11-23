@@ -14,8 +14,10 @@ import {
 import { type LegalVersionSummary, versionStatuses } from "./versions.ts";
 import { ACCEPTABLE_USE_VERSIONS } from "./content/acceptable-use.ts";
 import { COOKIES_VERSIONS } from "./content/cookies.ts";
+import { COPYRIGHT_VERSIONS } from "./content/copyright.ts";
 import { ESCROW_TERMS_VERSIONS } from "./content/escrow-terms.ts";
 import { IP_TRANSFER_DEED_VERSIONS } from "./content/ip-transfer-deed.ts";
+import { MARKETPLACE_LICENCE_VERSIONS } from "./content/marketplace-licence.ts";
 import { PRIVACY_VERSIONS } from "./content/privacy.ts";
 import { TERMS_VERSIONS } from "./content/terms.ts";
 
@@ -32,8 +34,10 @@ const VERSIONS: Readonly<Record<LegalSlug, readonly LegalDoc[]>> = {
 	privacy: PRIVACY_VERSIONS,
 	cookies: COOKIES_VERSIONS,
 	"acceptable-use": ACCEPTABLE_USE_VERSIONS,
+	copyright: COPYRIGHT_VERSIONS,
 	"escrow-terms": ESCROW_TERMS_VERSIONS,
 	"ip-transfer-deed": IP_TRANSFER_DEED_VERSIONS,
+	"marketplace-licence": MARKETPLACE_LICENCE_VERSIONS,
 };
 
 /** The library, in {@link LEGAL_DOCUMENT_SLUGS} order. */
@@ -52,9 +56,13 @@ export const LEGAL_GROUPS: ReadonlyArray<
 	{
 		id: "everyone",
 		label: "For everyone",
-		slugs: ["terms", "privacy", "cookies", "acceptable-use"],
+		slugs: ["terms", "privacy", "cookies", "acceptable-use", "copyright"],
 	},
-	{ id: "work", label: "For work and payments", slugs: ["escrow-terms", "ip-transfer-deed"] },
+	{
+		id: "work",
+		label: "For work and payments",
+		slugs: ["escrow-terms", "ip-transfer-deed", "marketplace-licence"],
+	},
 ];
 
 /**

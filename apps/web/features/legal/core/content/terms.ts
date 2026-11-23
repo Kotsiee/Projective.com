@@ -17,42 +17,6 @@
 import { defineLegalVersions, type LegalClause } from "./define.ts";
 
 // #region Shared clauses
-/** PRODUCT_SPEC.md §Features (Stage-Based Projects) · §Sitemap — what the agreement covers. */
-const ABOUT: LegalClause = {
-	id: "about",
-	heading: "About these terms",
-	tldr:
-		"These terms are the agreement between you and Projective whenever you use the platform, alongside the policies they link to.",
-	body: [
-		{
-			type: "p",
-			content:
-				"Projective is a platform where Clients commission work from Freelancers, Teams and Businesses. Work is organised into projects, stages and tickets, and each piece of work is paid through escrow: the money is held before work starts and released when the work is approved.",
-		},
-		{
-			type: "p",
-			content: [
-				"These terms apply to everyone who uses Projective, signed in or not. Together with the ",
-				{ type: "link", href: "/legal/privacy", text: "Privacy Policy" },
-				", the ",
-				{ type: "link", href: "/legal/cookies", text: "Cookie Policy" },
-				", the ",
-				{ type: "link", href: "/legal/acceptable-use", text: "Acceptable Use Policy" },
-				", the ",
-				{ type: "link", href: "/legal/escrow-terms", text: "Escrow Terms" },
-				" and the ",
-				{ type: "link", href: "/legal/ip-transfer-deed", text: "IP Transfer Deed" },
-				", they form the whole agreement between you and Projective.",
-			],
-		},
-		{
-			type: "p",
-			content:
-				"Each clause opens with a plain-English summary. The summary is there to help you read; where it and the clause text differ, the clause text applies.",
-		},
-	],
-};
-
 /** PRODUCT_SPEC.md §Settings (handle changes, email addresses) · §Authentication surfaces · §Identity, Taxes & Compliance 3 (Round-Tripping — hiring yourself through a second account). */
 const ACCOUNTS: LegalClause = {
 	id: "accounts",
@@ -184,6 +148,46 @@ const LIABILITY: LegalClause = {
 // #endregion
 
 // #region Version 2.0 clauses
+/** PRODUCT_SPEC.md §Features (Stage-Based Projects) · §Sitemap — what the agreement covers, with the Copyright & Notice Policy and the Marketplace Licence Terms (Decision #540). */
+const ABOUT_V2: LegalClause = {
+	id: "about",
+	heading: "About these terms",
+	tldr:
+		"These terms are the agreement between you and Projective whenever you use the platform, alongside the policies they link to.",
+	body: [
+		{
+			type: "p",
+			content:
+				"Projective is a platform where Clients commission work from Freelancers, Teams and Businesses. Work is organised into projects, stages and tickets, and each piece of work is paid through escrow: the money is held before work starts and released when the work is approved.",
+		},
+		{
+			type: "p",
+			content: [
+				"These terms apply to everyone who uses Projective, signed in or not. Together with the ",
+				{ type: "link", href: "/legal/privacy", text: "Privacy Policy" },
+				", the ",
+				{ type: "link", href: "/legal/cookies", text: "Cookie Policy" },
+				", the ",
+				{ type: "link", href: "/legal/acceptable-use", text: "Acceptable Use Policy" },
+				", the ",
+				{ type: "link", href: "/legal/copyright", text: "Copyright & Notice Policy" },
+				", the ",
+				{ type: "link", href: "/legal/escrow-terms", text: "Escrow Terms" },
+				", the ",
+				{ type: "link", href: "/legal/ip-transfer-deed", text: "IP Transfer Deed" },
+				" and the ",
+				{ type: "link", href: "/legal/marketplace-licence", text: "Marketplace Licence Terms" },
+				", they form the whole agreement between you and Projective.",
+			],
+		},
+		{
+			type: "p",
+			content:
+				"Each clause opens with a plain-English summary. The summary is there to help you read; where it and the clause text differ, the clause text applies.",
+		},
+	],
+};
+
 /** PRODUCT_SPEC.md §Account Creation, Age Guardrails & Onboarding — Age guardrails (Decisions #190, #192, #208). */
 const AGE: LegalClause = {
 	id: "age",
@@ -359,6 +363,42 @@ const CHANGES_V2: LegalClause = {
 // #endregion
 
 // #region Version 1.0 clauses
+/** PRODUCT_SPEC.md §Features (Stage-Based Projects) · §Sitemap — what the agreement covers (the six documents of 1 August). */
+const ABOUT_V1: LegalClause = {
+	id: "about",
+	heading: "About these terms",
+	tldr:
+		"These terms are the agreement between you and Projective whenever you use the platform, alongside the policies they link to.",
+	body: [
+		{
+			type: "p",
+			content:
+				"Projective is a platform where Clients commission work from Freelancers, Teams and Businesses. Work is organised into projects, stages and tickets, and each piece of work is paid through escrow: the money is held before work starts and released when the work is approved.",
+		},
+		{
+			type: "p",
+			content: [
+				"These terms apply to everyone who uses Projective, signed in or not. Together with the ",
+				{ type: "link", href: "/legal/privacy", text: "Privacy Policy" },
+				", the ",
+				{ type: "link", href: "/legal/cookies", text: "Cookie Policy" },
+				", the ",
+				{ type: "link", href: "/legal/acceptable-use", text: "Acceptable Use Policy" },
+				", the ",
+				{ type: "link", href: "/legal/escrow-terms", text: "Escrow Terms" },
+				" and the ",
+				{ type: "link", href: "/legal/ip-transfer-deed", text: "IP Transfer Deed" },
+				", they form the whole agreement between you and Projective.",
+			],
+		},
+		{
+			type: "p",
+			content:
+				"Each clause opens with a plain-English summary. The summary is there to help you read; where it and the clause text differ, the clause text applies.",
+		},
+	],
+};
+
 /** PRODUCT_SPEC.md §Escrow, Wallets & Finance #2 · finance-model.md §1.1 (as first written) · `security.platform_params.platform_fee_bp` (500). */
 const PAYMENTS_V1: LegalClause = {
 	id: "payments",
@@ -482,7 +522,7 @@ export const TERMS_VERSIONS = defineLegalVersions([
 		changeSummary:
 			"Adds the full under-18 rule set and the invitation cooldown, requires verification before earning rather than before payout, sets out account deletion, and removes the business opening credit.",
 		sections: [
-			ABOUT,
+			ABOUT_V2,
 			ACCOUNTS,
 			AGE,
 			ROLES,
@@ -509,7 +549,7 @@ export const TERMS_VERSIONS = defineLegalVersions([
 		changeSummary:
 			"A reconstructed baseline, never published: the rules as they stood on 1 August 2026, kept so later versions can be compared with it.",
 		sections: [
-			ABOUT,
+			ABOUT_V1,
 			ACCOUNTS,
 			AGE_V1,
 			ROLES,

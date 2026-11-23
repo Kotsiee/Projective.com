@@ -37,8 +37,10 @@ export const LEGAL_DOCUMENT_SLUGS = [
 	"privacy",
 	"cookies",
 	"acceptable-use",
+	"copyright",
 	"escrow-terms",
 	"ip-transfer-deed",
+	"marketplace-licence",
 ] as const;
 
 /** A legal document's slug. */

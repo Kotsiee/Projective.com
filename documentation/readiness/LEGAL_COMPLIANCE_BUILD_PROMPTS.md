@@ -7,7 +7,7 @@
 > checkout tax (#490).
 >
 > **Verified against code 2026-11-23 at `f2e25929`.** 6 open, 1 partly done, 3 done (§0 ledger).
-> Runnable now: LG7; LG1 once its stop (a) is answered.
+> Runnable now: LG7 (its commit also closes LG1).
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -43,7 +43,7 @@ A landed prompt gets its row here.
 
 | Row    | Gate | Crit     | Work order                           | The row flips when                                                                                                                                                           |
 | :----- | :--- | :------- | :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PRD-M1 | PROD | Critical | LG1 (steps 4, 6) → ⚖️ counsel → you | ✅ only when a human sets `reviewedAt` on every current version after counsel signs off, and the reconstructed 1.0 baselines are gone (#270 (b)). No agent sets `reviewedAt` |
+| PRD-M1 | PROD | Critical | LG1 (step 6's rest, LG7) → ⚖️ counsel → you | ✅ only when a human sets `reviewedAt` on every current version after counsel signs off, and the reconstructed 1.0 baselines are gone (#270 (b)). No agent sets `reviewedAt` |
 | PRD-M2 | PROD | Critical | — (✅, AU1 #446)                     | — (LG3 extends it to two more documents if you choose A)                                                                                                                     |
 | PRD-M3 | PROD | Normal   | OPS7 (OPERATIONS)                    | ✅ when `account-data-exports` returns a 2xx from the hosted scheduler                                                                                                       |
 | PRD-M4 | PROD | High     | (LG3) → **LG4** → **LG5**            | 🟡 on LG4 (a signed transfer record on each final release) · ✅ on LG5 (audit packs)                                                                                         |
@@ -109,7 +109,7 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 
 | Wave | Content / docs lane | SQL lane (serial)                                                                        | App lane                 | Waits for                                                                                       |
 | :--- | :------------------ | :--------------------------------------------------------------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------- |
-| 1    | **LG1** (steps 4, 6) | —                                                                                        | —                        | LG1 step 4: your answer to its stop (a); step 6's rest: LG7                   |
+| 1    | **LG1** (step 6's rest) | —                                                                                        | —                        | LG7's commit (the Privacy Policy's monitoring clause)                   |
 | 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                                           | (LG4/LG5's UI halves)    | LG4 builds once LG2's brief is sent and LG3 and FINANCE DB6 land (#530 (g)); counsel rules text |
 | 3    | —                   | **LG7** takes a turn in [the finance SQL lane](../architecture/FINANCE_BUILD_PROMPTS.md) | — (LG6 landed, §0.0)     | LG7: never beside MR8a/MR8b                                          |
 | 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (which waits for DB21)                                                                      |
@@ -140,10 +140,9 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
 
 1. **LG0:** ruled 2026-11-23 (owner): the unbuilt IP workspace's addresses answer 404, not a 308 to
    `/legal`. Landed (§0.0).
-2. **LG1:** which new legal documents to add. Recommended now: a Copyright & Notice Policy (#496)
-   and Marketplace Licence Terms (#493, product licences). A Data Processing Addendum with a
-   sub-processor list should wait until the first business client asks for one. Seller tax duties go
-   into the Terms. A new document widens the slug enum, so it needs your yes.
+2. **LG1 (ruled 2026-11-23, #540):** both recommended documents were added, a Copyright & Notice
+   Policy and Marketplace Licence Terms. A Data Processing Addendum with a sub-processor list waits
+   until the first business client asks for one; sellers' tax duty stays in the Terms.
 3. **LG1 (🖊 yours alone):** the data controller's identity: legal name, company number,
    registered address, ICO registration number and the data-protection contact. No agent invents
    them.
@@ -293,50 +292,35 @@ said nothing new, and X2's went to IDENTITY. Nothing is left here.
 
 ### LG1 — The six legal documents say what the product does
 
-> **Status 2026-11-23:** partly done. Steps 1–3 and 5 landed in `9325e5df` (Decision #531): the
-> drafts corrected in place, #270 (c), (d), (e), (g) and (o) settled, the drift left open in
-> FOUNDER_QUESTIONNAIRE E.1.7, new PRD-M8 and PRD-C37. Step 6 landed except the monitoring-signals
-> clause, which waits for LG7. Step 4 waits for your answer to stop (a); stop (b) is yours to supply.
-> Two contradictions wait on you: #531 flags (A) card processing costs and (B) stage-work disputes.
+> **Status 2026-11-23:** partly done. Steps 1–3 and 5 landed in `9325e5df` (Decision #531), step 4
+> in LG1S4_COMMIT (Decision #540: the Copyright & Notice Policy and the Marketplace Licence Terms).
+> Step 6 landed except the monitoring-signals clause, which LG7 brings. Stop (b) is yours to supply. Contradictions waiting on you: #531 (A) card
+> processing costs and (B) stage-work disputes; #540 (A) what a commercial licence covers.
 
 Prepares PRD-M1. Nothing flips to ✅.
 
 ```text
-PROMPT LG1 (the rest): Add the legal documents the owner approves, and the Privacy Policy's
-monitoring-signals use once LG7 lands
+PROMPT LG1 (the rest): Name the monitoring signals in the Privacy Policy once LG7 lands
 
-ROLE: Legal-content engineer. Content lane: apps/web/features/legal/core/content/*, their
-tests, the slug enum. Not beside another prompt that edits features/legal/**.
+ROLE: Legal-content engineer. Content lane: apps/web/features/legal/core/content/privacy.ts
+and its tests. Not beside another prompt that edits features/legal/**.
 
 CONTEXT:
-  - The six drafts match the product as built (#531). Corrections to an unpublished draft go in
-    place with `updatedAt` moved; a clause a reconstructed 1.0 baseline shares is split into
-    _V1 / _V2 constants (#531 (A)). No version is minted until one is published.
-  - Every new document widens LegalDocSchema's slug enum (packages/types/content/legal.ts),
-    LEGAL_DOCUMENT_SLUGS, the registry, the hub's groups and the Terms' `about` clause.
+  - The eight drafts match the product as built (#531, #540). Corrections to an unpublished
+    draft go in place with `updatedAt` moved; a clause an older version shares is split into
+    _V1 / _V2 constants (#531 (A)).
 
-🧑 STOPS (put to the owner 2026-11-23, #531 (C); unanswered):
-  (a) New documents. Recommended now: a Copyright & Notice Policy (#496's notice, counter-notice
-      and repeat-infringer rule, left as counsel's blanks behind its public-form switch), and
-      Marketplace Licence Terms (what a buyer of a digital product gets, and #493's licence
-      wording). Later: a Data Processing Addendum and a sub-processor list, when the first
-      business client asks. No separate seller terms: their tax duty is in the Terms (#531).
-  (b) The data controller's identity (#270 (h)): legal name, company number, registered
-      address, ICO registration number and a data-protection contact. Only the owner can supply
-      these. Until then the Privacy Policy keeps no placeholder text (E.5 item 1).
+🧑 STOP (yours alone, not blocking this step): (b) the data controller's identity (#270 (h)):
+legal name, company number, registered address, ICO registration number and a data-protection
+contact. Until then the Privacy Policy keeps no placeholder text (E.5 item 1).
 
 STEPS:
-  4. After (a): add the documents the owner approves, each at 1.0 with reviewedAt: null, its
-     clauses cited, linked from the hub and the Terms. For any blank that is counsel's, the
-     clause says what the platform does today and nothing more.
   6. (The rest.) Once LG7 lands, the Privacy Policy's `how-we-use` clause names the monitoring
      signals and their basis as LG7 records them, by #531's convention; E.1.7's row leaves.
 
-ACCEPTANCE: content.test.ts, legal-views.test.tsx and the diff tests are green. The hub and each
-new document render (1440 and 390 px, with the draft disclosure still shown). check, lint and
-test:unit are green.
-SAME CHANGE: FOUNDER_QUESTIONNAIRE E.1 (planned documents) and E.1.7; DESIGN_SYSTEM §C.1 only if
-a component changed.
+ACCEPTANCE: content.test.ts and legal-views.test.tsx are green; check, lint and test:unit are
+green.
+SAME CHANGE: FOUNDER_QUESTIONNAIRE E.1.7.
 ```
 
 Readiness rows (§1.1): **PRD-M1** stays ❌. Step 6's rest closes E.1.7's monitoring row.

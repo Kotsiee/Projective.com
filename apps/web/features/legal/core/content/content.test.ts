@@ -27,6 +27,8 @@ const MODULES = [
 	"acceptable-use.ts",
 	"escrow-terms.ts",
 	"ip-transfer-deed.ts",
+	"copyright.ts",
+	"marketplace-licence.ts",
 ];
 
 Deno.test("legal content: one family per slug, in the slug order, each version re-validating", () => {

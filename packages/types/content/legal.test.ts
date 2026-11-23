@@ -29,7 +29,7 @@ Deno.test("LegalDocSchema: a draft version parses", () => {
 	assert(LegalDocSchema.safeParse(VALID).success);
 });
 
-Deno.test("LegalDocSchema: the slug is one of the six documents", () => {
+Deno.test("LegalDocSchema: the slug is one of the legal documents", () => {
 	assertFalse(LegalDocSchema.safeParse({ ...VALID, slug: "refunds" }).success);
 	for (const slug of LEGAL_DOCUMENT_SLUGS) {
 		assert(LegalDocSchema.safeParse({ ...VALID, slug }).success, slug);

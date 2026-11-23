@@ -1439,10 +1439,13 @@ finding 1). LG3 builds that acceptance, once per version, on the owner's choice 
   to Sell grant creates (E2.14); PRODUCT_SPEC §Digital Marketplace 1 says a grant changes the IP
   status to Shared Ownership, which a partial grant cannot do (#493 (c)).
 
-**Planned documents** (LG1 stop (a), awaiting the owner): a Copyright & Notice Policy (#496; E2.10)
-and Marketplace Licence Terms (what a buyer of a digital product gets, and #493's licence wording;
-E2.14). A Data Processing Addendum with a sub-processor list is recommended to wait until the first
-business client asks for one.
+**Two more documents** (LG1 stop (a), ruled 2026-11-23, #540): the **Copyright & Notice Policy**
+(`copyright` 1.0: how to report a copy through the contact form until SC8's notice form opens, staff
+review, takedown, a review on request; the notice fields, counter-notice and repeat-infringer rule are
+E2.10) and the **Marketplace Licence Terms** (`marketplace-licence` 1.0: the licence the listing shows,
+delivery, the download notice, refunds through the contact form, price and tax; the licence wording
+and a Request to Sell grant are E2.14). Both are drafts for counsel with the rest. A Data Processing
+Addendum with a sub-processor list waits until the first business client asks for one.
 
 ### E.1.7 Drift found by LG1
 
@@ -1466,7 +1469,8 @@ unsettled or only counsel or the owner can answer:
 | AUP `consequences`                                   | Removal, suspension or closure                                      | The penalty ladder of PRODUCT_SPEC §Messaging 1.C (penalties into the Reliability Index and Standing) has no writer for a policy breach, and no suspension mechanism exists                                                               | `security.penalties`; SECURITY_MODERATION_AND_AI_GAPS               | Owner (T&S) |
 | AUP `keep-payments-on-projective`                    | Masks emails, phone numbers and payment or messaging links          | Bank numbers and IBANs are forbidden but not masked: `comms.mask_pii` has no pattern for them                                                                                                                                            | `00001300` `comms.mask_pii`                                         | Owner (T&S) |
 | IP Transfer Deed `shared-ip`                         | Ask; the Client agrees, wholly or in part; no sale without it      | What a grant gives the maker (#493: a right to sell at a royalty; the licence wording counsel's) and PRODUCT_SPEC §1's "changes to Shared Ownership"; Request to Sell is not built                                                       | #493 (c); E2.14                                                     | Counsel    |
-| IP Transfer Deed `the-projects-setting`              | `projective_partner`: "set out separately for each partner"         | The mode has no terms                                                                                                                                                                                                                     | #270 (f); E2.19                                                     | Counsel, owner |
+| Marketplace Licence Terms `the-licence` | The listing's licence terms apply; neither definition restated | The buyer's terms on `/view` (`licenceTerms`) keep client work to the extended licence; the seller's hint (`LICENCE_SUMMARY`) puts it under commercial | `packages/types/explore/stored.ts`; `features/catalogue/core/offer-model.ts`; #540 flag (A) | Owner |
+| IP Transfer Deed `the-projects-setting`              |              | `projective_partner`: "set out separately for each partner"         | The mode has no terms                                                                                                                                                                                                                     | #270 (f); E2.19                                                     | Counsel, owner |
 
 Product observations, no text change: every money door refuses a 13–17 account but
 `finance.fn_ensure_wallet` does not (PRODUCTION_READINESS §C); the 10-invitations-in-10-minutes cap is
@@ -1590,8 +1594,8 @@ Only the owner can supply these:
    the EU and the US too, decides which of E.3's regimes counsel must read (the DSA, DAC7, 17 U.S.C.
    §204(a), US state taxability in E2.22).
 3. **The VAT position:** whether the company is registered, and where, for E2.20–E2.23.
-4. **The answer to LG1 stop (a):** which new documents to add (the Copyright & Notice Policy and the
-   Marketplace Licence Terms are recommended now), so counsel reviews the whole library at once.
+4. ~~**The answer to LG1 stop (a):** which new documents to add.~~ Answered 2026-11-23 (#540): both
+   recommended documents are in the library, so counsel reviews all eight at once.
 5. **The drafts brought current:** LG1's changes and its drift table (E.1.7). That is agent work, in
    progress, not the owner's.
 
