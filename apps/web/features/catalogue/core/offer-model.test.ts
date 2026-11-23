@@ -6,6 +6,7 @@ import {
 	type OneOffOffer,
 	type PipelineOffer,
 } from "@projective/types/catalogue";
+import { licenceTerms } from "@projective/types/explore";
 import {
 	addAttachments,
 	addItem,
@@ -16,6 +17,7 @@ import {
 	deliveryLabel,
 	formatLabel,
 	insertItem,
+	LICENCE_SUMMARY,
 	moveItem,
 	nearestStop,
 	newMilestone,
@@ -196,4 +198,15 @@ Deno.test("attachments: one row per file, extension-derived labels, uuid-only fi
 	assertEquals(addAttachments(list, [fixture!], 24).length, 2);
 	assertEquals(bytesLabel(2_516_582), "2.4 MB");
 	assertEquals(bytesLabel(512), "512 B");
+});
+
+Deno.test("LICENCE_SUMMARY never tells a seller a licence covers client work the buyer's terms deny (Decision #540 (A))", () => {
+	for (const key of ["personal", "commercial", "extended"] as const) {
+		const clientWork = licenceTerms(key, false).permissions.find((p) =>
+			p.label === "Use in client deliverables"
+		)!;
+		const hint = LICENCE_SUMMARY[key];
+		const deniesClients = /Not for[^.]*client/.test(hint);
+		assertEquals(deniesClients, !clientWork.allowed, `${key}: ${hint}`);
+	}
 });

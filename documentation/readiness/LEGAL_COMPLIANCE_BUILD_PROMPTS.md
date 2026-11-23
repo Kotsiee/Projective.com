@@ -297,7 +297,7 @@ said nothing new, and X2's went to IDENTITY. Nothing is left here.
 > **Status 2026-11-23:** partly done. Steps 1–3 and 5 landed in `9325e5df` (Decision #531), step 4
 > in `23d6adb9` (Decision #540: the Copyright & Notice Policy and the Marketplace Licence Terms).
 > Step 6 landed, its monitoring-signals clause with LG7 (LG7_COMMIT, #529); once that commit lands, LG1 moves to §0.0. Stop (b) is yours to supply. Contradictions waiting on you: #531 (A) card
-> processing costs and (B) stage-work disputes; #540 (A) what a commercial licence covers.
+> processing costs and (B) stage-work disputes (#540 (A) was ruled the same day).
 
 Prepares PRD-M1. Nothing flips to ✅.
 

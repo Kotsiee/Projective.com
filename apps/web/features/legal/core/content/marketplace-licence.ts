@@ -9,8 +9,8 @@
  * Decision #488), the download notice at checkout (§Digital Marketplace 6, ruling A8), price and tax
  * (Decisions #435, #490) and promo codes (#511). The licence wording itself, and what a Request to
  * Sell grant lets a seller license (Decision #493), are counsel's (FOUNDER_QUESTIONNAIRE E2.14), so
- * the licence clause points at the terms the listing shows and restates neither of the two
- * definitions the code holds today (Decision #540 flag (A)).
+ * the licence clause points at the terms the listing shows rather than restating them; since the
+ * owner's ruling on Decision #540 (A) the seller's licence hint follows the same terms.
  *
  * @module
  */
