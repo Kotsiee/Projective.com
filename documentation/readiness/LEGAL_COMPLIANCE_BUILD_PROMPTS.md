@@ -36,7 +36,7 @@ A landed prompt gets its row here.
 | ID  | What landed | Commit | Text at |
 | :-- | :---------- | :----- | :------ |
 | LG2 | The counsel brief: FOUNDER_QUESTIONNAIRE Part E with the sign-off runbook (#528); E.1.7 filled from LG1's drift table (#531) | `b3148e47`, `9325e5df` | `dea66769` |
-| LG6 | Stripe first (#527): the operator seller tax-report CSV over the ledger, a private residence certificate shown to one client, finance-model §9 corrected | LG6_COMMIT | `a3a1ace4` |
+| LG6 | Stripe first (#527): the operator seller tax-report CSV over the ledger, a private residence certificate shown to one client, finance-model §9 corrected | `6e7487ea` | `a3a1ace4` |
 
 ### 0.1 Row → work order
 
