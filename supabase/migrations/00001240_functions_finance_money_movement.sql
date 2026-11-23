@@ -2710,22 +2710,8 @@ $$;
 -- stays the total, and the wallet's Available to spend is that balance minus its active pots. Nothing
 -- here moves money between wallets or writes finance.transactions; every change of a pot's balance is
 -- a finance.pot_movements row. What a wallet may spend is finance.fn_available_cents, and the earmark is
--- enforced in one place, finance.fn_wallet_debit (both 00001200).
-
--- The reasons earned money is credited under: every finance.pending_releases row carries one, and only
--- these are earmarked into pots as they mature. fn_wallet_credit_pending refuses any other, so a new
--- earning path has to be added here. Internal.
-CREATE OR REPLACE FUNCTION finance.fn_is_income_reason(p_reason text)
-RETURNS boolean
-LANGUAGE sql
-IMMUTABLE
-SET search_path = ''
-AS $$
-    SELECT COALESCE(p_reason IN (
-        'escrow_release', 'team_split', 'team_finder_fee', 'fair_exit_release', 'product_sale',
-        'escrow_release_vault_retention', 'fair_exit_release_vault_retention'
-    ), false);
-$$;
+-- enforced in one place, finance.fn_wallet_debit (both 00001200). Which credits are income, and so
+-- earmarked as they mature, is finance.fn_is_income_reason (00001200, beside the debit's lists).
 
 -- Earmark income that has just become Available: each active pot with auto_allocate_bp > 0 takes
 -- ⌊p_amount × bp / 10000⌋, in created_at order, and the dust stays Available. Income reasons only. Keyed

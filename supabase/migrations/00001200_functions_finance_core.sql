@@ -155,6 +155,24 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
 
+-- The reasons earned money is credited under: every finance.pending_releases row carries one, and only
+-- these are earmarked into pots as they mature. fn_wallet_credit_pending (00001240) refuses any other,
+-- so a new earning path has to be added here. With fn_wallet_debit's two lists above, it classifies
+-- the ledger's reason vocabulary, the finance.transactions.reason CHECK (00000017), and names nothing
+-- outside it (supabase/probes/currency_integrity.sql). Here, beside the primitives, because SQL
+-- functions in this file and later ones read it when they are created (fn_seller_tax_report). Internal.
+CREATE OR REPLACE FUNCTION finance.fn_is_income_reason(p_reason text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(p_reason IN (
+        'escrow_release', 'team_split', 'team_finder_fee', 'fair_exit_release', 'product_sale',
+        'escrow_release_vault_retention', 'fair_exit_release_vault_retention'
+    ), false);
+$$;
+
 -- What a wallet may spend: its balance minus what its active pots earmark (finance.wallet_pots,
 -- Decision #337, ruling M6). NULL for a wallet that does not exist. Here, beside the debit that enforces
 -- it, because SQL functions in later files read it when they are created (the payout-schedule claim's
