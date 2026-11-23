@@ -40,7 +40,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | SC1 | `CatalogueListingRowSchema` pins all 30 columns; `parseListingRow` is the one read boundary         | `5a95dbac`, `f2abf8e2` (#501)             | `f2e25929` |
 | SC2 | A bought Pipeline's stages keep the CREATE category; a tiered Pipeline and a session plan seeded    | `a0671fbe` (#503)                         | `f2e25929` |
 | SC3 | `projects.open_cohort` / `cancel_cohort`, the Cohorts block at `?cohort=`, one seeded cohort        | `322c4dc9`, `b87c276c` (#498)             | `f2e25929` |
-| SC4 | Only the definer door publishes; the post-publish locks on the tables; a product needs a file; the follower notice | `0cf50f7d`, SC4_FIX (#535) | `0cf50f7d` |
+| SC4 | Only the definer door publishes; the post-publish locks on the tables; a product needs a file; the follower notice | `0cf50f7d`, `fb7d7276` (#535) | `0cf50f7d` |
 | SC5 | `ListingViewBeacon` writes deduped views; the rollup derives view and order counts; 91 days seeded  | `322c4dc9` (#506)                         | `f2e25929` |
 
 ### 0.1 Row → work order
