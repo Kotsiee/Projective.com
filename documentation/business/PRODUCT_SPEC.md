@@ -3703,6 +3703,14 @@ While Projective's Stage-based architecture and "Digital Handshakes" minimize fr
 occur. Our resolution process is designed to be data-driven, objective, and prioritized toward
 mutual agreement.
 
+> **As built (Decision #531 (B), ruled 2026-11-23).** A dispute exists only on a session sitting: a
+> no-show claim, or a sitting with no attendance record. §3's attendance audit decides what it can;
+> the rest goes to the other side for 48 hours and then to an operator, who releases, refunds or
+> splits the escrow (`00001260_functions_finance_disputes.sql`). Stage work has no dispute door: it
+> ends through approval or a Fair Exit. **Not built yet:** the Evidence Vault snapshot of §1, the
+> mutual refund offer of §2 Phase 1, an auditor's review of stage work (§2 Phase 2 for stages), and
+> the Dispute Summary PDF of §5 (USER_FLOWS PJ-43).
+
 #### 1. The Evidence Vault (Immutable Audit)
 
 The moment a formal dispute is raised, the `DisputeService` creates an **Evidence Vault**. This is a

@@ -359,7 +359,8 @@ const FAIR_EXIT_V2: LegalClause = {
  * refunds a provider no-show (`projects.fn_session_presence`, `session_presence_minutes` 15) and dismisses
  * above `dispute_dismiss_presence_pct` (80) of the time actually in the room; an operator rules
  * release, refund or split (`resolve_dispute`) and both parties are notified (`dispute.resolved`).
- * Disputes on stage work are not built: see this change's decision row.
+ * Disputes on stage work are not built (PRODUCT_SPEC §Dispute Resolution, Decision #531 (B);
+ * USER_FLOWS PJ-43).
  */
 const DISPUTES_V2: LegalClause = {
 	id: "disputes",
