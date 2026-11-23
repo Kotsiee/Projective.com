@@ -217,7 +217,7 @@ Deno.test("legal hub: one h1, the library draft disclosure, every document as a 
 	assertEquals(count(html, '<span class="lgl-facts__sep" aria-hidden="true">·</span>'), 6 * 4);
 	assertMatch(
 		html,
-		/<span class="lgl-facts__sep" aria-hidden="true">·<\/span>Updated <time datetime="2026-10-17">/,
+		/<span class="lgl-facts__sep" aria-hidden="true">·<\/span>Updated <time datetime="\d{4}-\d{2}-\d{2}">/,
 	);
 	assert(html.includes('href="/contact?intent=support"'));
 });

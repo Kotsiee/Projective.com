@@ -47,9 +47,6 @@ import { AsyncLocalStorage } from "node:async_hooks";
 /** The cookie the currency switcher writes so a guest's choice survives navigation. Not HttpOnly. */
 export const CURRENCY_COOKIE = "pj.currency";
 
-/** The locale cookie companion, for a guest who has no `org.user_preferences` row. */
-export const LOCALE_COOKIE = "pj.locale";
-
 /** The resolved presentation context handed to `ctx.state.currency`. */
 export interface CurrencyContext {
 	displayCurrency: string;
@@ -111,9 +108,7 @@ export async function resolveCurrencyContext(
 			preferenceHints(acceptLanguageTags(req.headers.get("accept-language"))).displayCurrency ??
 			PLATFORM_BASE_CURRENCY,
 	);
-	const locale = (context?.userId ? context.locale : undefined) ??
-		cookies[LOCALE_COOKIE] ??
-		DEFAULT_LOCALE;
+	const locale = (context?.userId ? context.locale : undefined) ?? DEFAULT_LOCALE;
 
 	// Always quoted against the PLATFORM base, not the viewer's currency: one table serves every
 	// viewer, so it is cached once and shared, and `resolveRate` triangulates any pair through it.

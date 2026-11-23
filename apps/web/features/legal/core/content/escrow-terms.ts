@@ -105,45 +105,6 @@ const WHEN_ESCROW_LOCKS: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Ticket Lifecycle — Deletion Protocol · Freelancer Removal Mid-Ticket. */
-const REMOVAL: LegalClause = {
-	id: "removal-and-deletion",
-	heading: "Removing a Freelancer or deleting a ticket",
-	tldr:
-		"Removing a Freelancer from a ticket they hold, or deleting a ticket they claimed, pays them the escrow already held for it in full. A claim that simply lapses is different: see Refunds.",
-	body: [
-		{
-			type: "list",
-			items: [
-				"Deleting a ticket nobody has claimed moves no money: no escrow is held for it yet.",
-				"Deleting a ticket after it was claimed releases its held escrow to the Freelancer in full, and the payer is charged nothing more.",
-				"Removing a Freelancer from a stage or project while they hold a claimed ticket releases that ticket's escrow to them in full, and the ticket goes back to New for someone else to claim.",
-			],
-		},
-	],
-};
-
-/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 (card payments kept, Decision #200; chargebacks, Decision #126) · §The Claim-and-Commit Protocol (Pipelines) — Claim Expiry (TTL) (`claim_ttl_minutes` 1440, `projects.fn_release_expired_claims`). */
-const REFUNDS: LegalClause = {
-	id: "refunds-and-chargebacks",
-	heading: "Refunds and card disputes",
-	tldr:
-		"Refunds go back to the payer's wallet. A claim left unstarted for 24 hours lapses and is refunded. A card payment that arrives is always kept.",
-	body: [
-		{
-			type: "list",
-			ordered: true,
-			marker: "lower-alpha",
-			items: [
-				"A refund returns held escrow to the payer's wallet. No platform fee is charged on a refund.",
-				"If a Freelancer claims a ticket but does not start it within 24 hours, the claim lapses: the ticket goes back to the backlog, its escrow is refunded to the payer in full, and the Freelancer is paid nothing.",
-				"A card payment that arrives is always kept. If what it was for can no longer be completed — a price changed, or the stage moved on — the money stays in the payer's wallet and the payer is told so.",
-				"If a payer's bank wins a card dispute, the escrow that card payment funded (if still held) is refunded to the payer's wallet, and the disputed amount is then taken back from that wallet.",
-			],
-		},
-	],
-};
-
 /** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 (Business wallets; a short pool is refused — Decision #230 (c); one spend gate — Decision #240). */
 const BUSINESS: LegalClause = {
 	id: "business-wallets",
@@ -178,12 +139,90 @@ const WITHDRAWALS: LegalClause = {
 // #endregion
 
 // #region Version 2.0 clauses
-/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #2 (release triggers; the Chain Reaction — Decision #210; per-sitting sessions — Decision #211). */
+/**
+ * PRODUCT_SPEC.md §Ticket Lifecycle — Deletion Protocol · Freelancer Removal Mid-Ticket · Decision #474
+ * (an escrow nobody claimed binds nobody: `finance.fn_release_ticket_escrow` refunds a held escrow with
+ * no payee, `supabase/migrations/00001200_*`) · Decision #197 (prepaying) · finance-model.md §3 ("One
+ * ticket, not the whole stage": today either act pays the freelancer 100%).
+ */
+const REMOVAL_V2: LegalClause = {
+	id: "removal-and-deletion",
+	heading: "Removing a Freelancer or deleting a ticket",
+	tldr:
+		"Removing a Freelancer from a ticket they hold, or deleting a ticket they claimed, pays them the escrow already held for it in full. Deleting a ticket nobody claimed refunds anything prepaid for it.",
+	body: [
+		{
+			type: "list",
+			items: [
+				"Deleting a ticket nobody has claimed pays nobody: any escrow the payer prepaid for it is refunded to them in full, with no fee.",
+				"Deleting a ticket after it was claimed releases its held escrow to the Freelancer in full, and the payer is charged nothing more.",
+				"Removing a Freelancer from a stage or project while they hold a claimed ticket releases that ticket's escrow to them in full, and the ticket goes back to New for someone else to claim.",
+			],
+		},
+	],
+};
+
+/**
+ * Decision #479 (one settle-first door, `projects.fn_settle_project_escrow` in
+ * `supabase/migrations/00001150_functions_projects_stage_funding_submissions.sql`; `cancel_project`
+ * refuses an open dispute (PD409) and a session's held sitting escrow (PF409); `set_project_status`
+ * refuses Cancelled or Archived while escrow is held) · Decision #198 (the Fair Exit tiers).
+ */
+const CANCELLING_V2: LegalClause = {
+	id: "cancelling-a-project",
+	heading: "Cancelling a project",
+	tldr:
+		"A project holding escrow cannot be cancelled or archived until its money is settled, and cancelling settles it first.",
+	body: [
+		{
+			type: "list",
+			ordered: true,
+			marker: "lower-alpha",
+			items: [
+				"While any escrow is held for a project, it cannot be cancelled or archived on its own. Cancelling it settles the money first, as one step.",
+				"Escrow held for a ticket nobody has claimed, and anything prepaid for a later stage, is refunded to the payer in full.",
+				"Each stage with claimed work ends with a Fair Exit, at the tier the person cancelling chooses for that stage, after seeing what each tier would pay.",
+				"The project's open tickets and stages then close as cancelled.",
+				"A project cannot be cancelled this way while a dispute about it is open, or while a session sitting's escrow is still held.",
+			],
+		},
+	],
+};
+
+/**
+ * PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 (card payments kept, Decision #200; chargebacks,
+ * Decision #126) · §The Claim-and-Commit Protocol (Pipelines) — Claim Expiry (TTL) (`claim_ttl_minutes`
+ * 1440; Decision #516: `projects.fn_release_expired_claims` re-arms an escrow prepaid before the claim
+ * and refunds any other) · Decision #428 (`finance.fn_sweep_expired_prepaid_escrows`:
+ * `prepaid_project_ttl_hours` 168, `prepaid_service_ttl_hours` 120).
+ */
+const REFUNDS_V2: LegalClause = {
+	id: "refunds-and-chargebacks",
+	heading: "Refunds and card disputes",
+	tldr:
+		"Refunds go back to the payer's wallet. A claim left unstarted for 24 hours lapses. Money prepaid for a ticket nobody claims comes back after a week. A card payment that arrives is always kept.",
+	body: [
+		{
+			type: "list",
+			ordered: true,
+			marker: "lower-alpha",
+			items: [
+				"A refund returns held escrow to the payer's wallet. No platform fee is charged on a refund.",
+				"If a Freelancer claims a ticket but does not start it within 24 hours, the claim lapses and the Freelancer is paid nothing. If the payer had prepaid the ticket before it was claimed, the money stays held and the ticket goes back to the pool for someone else to claim; otherwise its escrow is refunded to the payer in full.",
+				"Money prepaid for a ticket nobody claims is refunded to the payer in full once it has waited 7 days unclaimed, or 5 days on a ticket of a bought service.",
+				"A card payment that arrives is always kept. If what it was for can no longer be completed — a price changed, or the stage moved on — the money stays in the payer's wallet and the payer is told so.",
+				"If a payer's bank wins a card dispute, the escrow that card payment funded (if still held) is refunded to the payer's wallet, and the disputed amount is then taken back from that wallet.",
+			],
+		},
+	],
+};
+
+/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #2 (release triggers; the Chain Reaction — Decision #210; per-sitting sessions — Decision #211) · §Session-Based B (a detected no-show refunds; no evidence, no automatic release — Decision #343 ruling C5 (a), Decision #383 ruling R6; `finance.auto_release_session_escrow` in `supabase/migrations/00001155_functions_projects_sessions.sql`). */
 const RELEASE_V2: LegalClause = {
 	id: "release",
 	heading: "When money is released",
 	tldr:
-		"Escrow is released when the Client approves the work, or 24 hours after a session sitting ends unless a no-show is claimed.",
+		"Escrow is released when the Client approves the work, or 24 hours after a session sitting ends unless a no-show is claimed or the sitting has no attendance record.",
 	body: [
 		{
 			type: "table",
@@ -198,7 +237,7 @@ const RELEASE_V2: LegalClause = {
 				],
 				[
 					"Session",
-					"24 hours after each sitting ends, unless a no-show is claimed for that sitting.",
+					"24 hours after each sitting ends, unless a no-show is claimed for that sitting or it has no attendance record.",
 				],
 			],
 		},
@@ -211,7 +250,7 @@ const RELEASE_V2: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 · finance-model.md §1.1 / §16.4 · Decision #198 (fee on the earned share only). */
+/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 · finance-model.md §1.1 / §16.4 · Decision #198 (fee on the earned share only). Card processing costs: no clause until the owner rules (`packages/backend/services/finance/stripe-rails.ts` charges no Stripe fee to anyone; see this change's decision row). */
 const FEES_V2: LegalClause = {
 	id: "fees",
 	heading: "The platform fee",
@@ -221,7 +260,6 @@ const FEES_V2: LegalClause = {
 			type: "list",
 			items: [
 				"The platform fee is 5% of each release, deducted from the payee at the moment of release. A rate agreed in writing with Projective may replace it for a particular payer.",
-				"Card processing costs are passed through at cost.",
 				"No fee is charged on a refund, and on a Fair Exit the fee is charged only on the share the payee earns.",
 			],
 		},
@@ -256,7 +294,7 @@ const PENDING_WINDOW: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Session-Based — Financial Integrity & The 24-Hour Rule (every sitting is its own transaction, Decision #211). */
+/** PRODUCT_SPEC.md §Session-Based — Financial Integrity & The 24-Hour Rule (every sitting is its own transaction, Decision #211) · §Session-Based B (the provider no-show refund; the no-evidence hold, Decisions #343 C5 (a), #383 R6, `session_review_hold_days` 7) · finance-model.md §4 (a late cancellation forfeits in full, Decision #343 ruling C2 (a)). */
 const SESSIONS_V2: LegalClause = {
 	id: "sessions",
 	heading: "Session bookings and cancellations",
@@ -273,6 +311,8 @@ const SESSIONS_V2: LegalClause = {
 				"If the Freelancer cancels, every sitting not yet started is refunded to the Client at once.",
 				"A cancellation never reaches back into a sitting that has already started. Cancelling a block can therefore leave the Client partly refunded.",
 				"A sitting's escrow is released 24 hours after it ends unless a no-show is claimed for it. A group seat is one payment for the whole cohort, timed from its first sitting and released after its last.",
+				"If the attendance records show the Freelancer did not come and the Client did, the sitting is refunded to the Client without anyone having to claim it.",
+				"A sitting with no attendance record is never paid out on its own: it is held, the Client is asked whether it happened, a yes releases it and a no is treated as a no-show claim. If the Client does not answer within 7 days, a Projective operator reviews it.",
 			],
 		},
 	],
@@ -310,44 +350,86 @@ const FAIR_EXIT_V2: LegalClause = {
 };
 
 /**
- * PRODUCT_SPEC.md §Dispute Resolution (the Evidence Vault, the resolution lifecycle, no-show claims) ·
- * Decision #212 · `dispute_response_hours` (48). The no-show item follows the attendance audit the
- * code runs (`finance.fn_dispute_attendance_audit`): a refund when `projects.fn_session_presence` finds
- * a provider no-show inside `session_presence_minutes` (15), a dismissal above
- * `dispute_dismiss_presence_pct` (80) of the time actually in the room.
+ * PRODUCT_SPEC.md §Dispute Resolution 2–3 (the resolution lifecycle, no-show claims) · §Session-Based B
+ * (the 15-minute rule) · Decision #212 · `dispute_response_hours` (48). As built in
+ * `supabase/migrations/00001260_functions_finance_disputes.sql`: a dispute contests one session seat
+ * escrow, opened only by `projects.claim_session_no_show` or the no-evidence sweep
+ * (`finance.auto_release_session_escrow`); the attendance audit (`finance.fn_dispute_attendance_audit`)
+ * refunds a provider no-show (`projects.fn_session_presence`, `session_presence_minutes` 15) and dismisses
+ * above `dispute_dismiss_presence_pct` (80) of the time actually in the room; an operator rules
+ * release, refund or split (`resolve_dispute`) and both parties are notified (`dispute.resolved`).
+ * Disputes on stage work are not built: see this change's decision row.
  */
 const DISPUTES_V2: LegalClause = {
 	id: "disputes",
 	heading: "Disputes and no-show claims",
 	tldr:
-		"A dispute freezes the evidence. The two sides get the first chance to settle it; if they cannot, a Projective auditor decides.",
+		"Today a dispute is a no-show claim about a session sitting. The attendance records decide it where they can; otherwise the other side answers and a Projective operator rules.",
 	body: [
 		{
 			type: "p",
 			content:
-				"When a dispute is raised, Projective takes an unchangeable snapshot of the work — the board, the messages, the submitted files and the session attendance records — so nothing can be changed afterwards.",
+				"A Client can claim that the Freelancer did not come to a session sitting. While the claim is open, that sitting's escrow is not released.",
 		},
 		{
 			type: "list",
 			ordered: true,
 			marker: "lower-alpha",
 			items: [
-				"The two sides first try to settle it between them, for example by agreeing a partial refund. If they agree, the split is carried out at once.",
-				"The other side has 48 hours to respond. If they do not, or the two cannot agree, the case goes to a Projective auditor.",
-				"The auditor reviews the snapshot against the stage's requirements and may release the escrow, refund it, or split it.",
-				"For a session, a no-show claim is checked against the attendance records first: if the Client joined within 15 minutes of the start and the Freelancer did not, the sitting is refunded; if both were in the room for more than 80% of it, the claim is dismissed; anything else goes to an auditor.",
+				"When the sitting ends, its attendance records are checked first. If the Freelancer was not in the room within the first 15 minutes and the Client came, or tried to join through Projective, the sitting is refunded. If both were in the room for more than 80% of its length, counting only the time each was actually in it, the claim is dismissed and the escrow released.",
+				"Anything else, including a sitting with no attendance record, goes to the other side, who has 48 hours to respond. Once they respond, either side escalates, or the 48 hours pass, a Projective operator reviews the case.",
+				"The operator may release the escrow, refund it, or split it between the two sides.",
 			],
 		},
 		{
 			type: "p",
 			content:
-				"An auditor's ruling is final on Projective. Both sides receive a summary of the dispute they can use as a record elsewhere.",
+				"Work on a stage is not disputed this way: it is paid when the Client approves it, or settled early through a Fair Exit. An operator's ruling is final on Projective, and both sides are told it.",
 		},
 	],
 };
 // #endregion
 
 // #region Version 1.0 clauses
+/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 (card payments kept, Decision #200; chargebacks, Decision #126) · §The Claim-and-Commit Protocol (Pipelines) — Claim Expiry (TTL) (`claim_ttl_minutes` 1440, as first written: every lapsed claim refunded). */
+const REFUNDS_V1: LegalClause = {
+	id: "refunds-and-chargebacks",
+	heading: "Refunds and card disputes",
+	tldr:
+		"Refunds go back to the payer's wallet. A claim left unstarted for 24 hours lapses and is refunded. A card payment that arrives is always kept.",
+	body: [
+		{
+			type: "list",
+			ordered: true,
+			marker: "lower-alpha",
+			items: [
+				"A refund returns held escrow to the payer's wallet. No platform fee is charged on a refund.",
+				"If a Freelancer claims a ticket but does not start it within 24 hours, the claim lapses: the ticket goes back to the backlog, its escrow is refunded to the payer in full, and the Freelancer is paid nothing.",
+				"A card payment that arrives is always kept. If what it was for can no longer be completed — a price changed, or the stage moved on — the money stays in the payer's wallet and the payer is told so.",
+				"If a payer's bank wins a card dispute, the escrow that card payment funded (if still held) is refunded to the payer's wallet, and the disputed amount is then taken back from that wallet.",
+			],
+		},
+	],
+};
+
+/** PRODUCT_SPEC.md §Ticket Lifecycle — Deletion Protocol · Freelancer Removal Mid-Ticket (as first written, before prepaying). */
+const REMOVAL_V1: LegalClause = {
+	id: "removal-and-deletion",
+	heading: "Removing a Freelancer or deleting a ticket",
+	tldr:
+		"Removing a Freelancer from a ticket they hold, or deleting a ticket they claimed, pays them the escrow already held for it in full. A claim that simply lapses is different: see Refunds.",
+	body: [
+		{
+			type: "list",
+			items: [
+				"Deleting a ticket nobody has claimed moves no money: no escrow is held for it yet.",
+				"Deleting a ticket after it was claimed releases its held escrow to the Freelancer in full, and the payer is charged nothing more.",
+				"Removing a Freelancer from a stage or project while they hold a claimed ticket releases that ticket's escrow to them in full, and the ticket goes back to New for someone else to claim.",
+			],
+		},
+	],
+};
+
 /** PRODUCT_SPEC.md §Escrow, Wallets & Finance #2 (release triggers as first written). */
 const RELEASE_V1: LegalClause = {
 	id: "release",
@@ -449,7 +531,7 @@ export const ESCROW_TERMS_VERSIONS = defineLegalVersions([
 		summary:
 			"How money for work is held, released, refunded and split on Projective: lock points, the platform fee, the pending window, sessions, Fair Exit and disputes.",
 		version: "2.0",
-		updatedAt: "2026-10-17",
+		updatedAt: "2026-11-23",
 		effectiveDate: "2026-10-17",
 		reviewedAt: null,
 		changeSummary:
@@ -463,9 +545,10 @@ export const ESCROW_TERMS_VERSIONS = defineLegalVersions([
 			PENDING_WINDOW,
 			SESSIONS_V2,
 			FAIR_EXIT_V2,
-			REMOVAL,
+			REMOVAL_V2,
+			CANCELLING_V2,
 			DISPUTES_V2,
-			REFUNDS,
+			REFUNDS_V2,
 			BUSINESS,
 			WITHDRAWALS,
 		],
@@ -490,9 +573,9 @@ export const ESCROW_TERMS_VERSIONS = defineLegalVersions([
 			FEES_V1,
 			SESSIONS_V1,
 			FAIR_EXIT_V1,
-			REMOVAL,
+			REMOVAL_V1,
 			DISPUTES_V1,
-			REFUNDS,
+			REFUNDS_V1,
 			BUSINESS,
 			WITHDRAWALS,
 		],

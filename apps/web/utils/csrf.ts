@@ -43,8 +43,8 @@
  * exactly when the `/api` door runs. An `/api/…` URL that no API route matches can fall through to a
  * page pattern (`/:handle/:tab`), where the `/api` middleware never runs, so the page door takes it.
  *
- * The `pj_csrf` double-submit cookie (`utils/storage-keys.ts`) was the earlier plan for this; the
- * Origin check makes it unnecessary, and it stays unset.
+ * A `pj_csrf` double-submit cookie was the earlier plan for this; the Origin check makes it
+ * unnecessary, so none is set.
  */
 
 // #region Policy

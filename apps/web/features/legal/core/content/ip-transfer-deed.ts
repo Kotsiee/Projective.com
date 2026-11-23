@@ -103,7 +103,7 @@ const PORTFOLIO: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Digital Marketplace & IP Governance 1 (The Shared IP Request) · 3 (The "Request to Sell" Workflow). */
+/** PRODUCT_SPEC.md §Digital Marketplace & IP Governance 1 (The Shared IP Request) · 3 (The "Request to Sell" Workflow). What a grant gives the maker (Decision #493: a right to sell at an agreed royalty, its licence wording counsel's; flag (c) on §1's "Shared Ownership") is unsettled and unbuilt, so the clause states only the rule. */
 const SHARED_IP: LegalClause = {
 	id: "shared-ip",
 	heading: "Asking to sell project work",
@@ -117,7 +117,7 @@ const SHARED_IP: LegalClause = {
 			items: [
 				"A Freelancer may ask the Client for the right to sell an asset made during the project on the Projective Marketplace.",
 				"The Client must agree explicitly, and may agree for the whole asset or only for parts of it — for example, the layout but not the logo.",
-				"Once agreed, ownership of what was agreed becomes shared, and the listing is linked back to the original project so its origin can be checked.",
+				"Without that agreement, the maker may not sell it.",
 			],
 		},
 	],
@@ -198,7 +198,7 @@ export const IP_TRANSFER_DEED_VERSIONS = defineLegalVersions([
 		summary:
 			"Who owns the work delivered through a Projective project, when ownership passes, and the record Projective keeps of it.",
 		version: "1.0",
-		updatedAt: "2026-10-17",
+		updatedAt: "2026-11-23",
 		effectiveDate: "2026-10-17",
 		reviewedAt: null,
 		changeSummary: "First published.",

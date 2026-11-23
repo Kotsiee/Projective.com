@@ -3013,8 +3013,8 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   but not JSON, and it cannot forge `Origin`. Exempt: webhooks (`/api/…/webhooks/…`) and scheduler
   endpoints (`/api/…/cron/…`), which are server-to-server and authenticate with a signature or a
   bearer secret; `/api/contact`, `/api/help/feedback` and `/api/auth/confirm` additionally accept
-  their plain HTML form bodies, still same-origin only. The `pj_csrf` double-submit cookie in
-  `utils/storage-keys.ts` is unnecessary under this check and stays unset.
+  their plain HTML form bodies, still same-origin only. A `pj_csrf` double-submit cookie is unnecessary
+  under this check, so none is set (its unused key left the catalogue with LG1).
 - **Page form posts are origin-checked too (PRD-C12, Decision #475):** the global
   `routes/_middleware.ts` runs `csrf.ts` `refuseCrossSitePageWrite` first, before it resolves the
   viewer, on every POST, PUT, PATCH and DELETE to a route outside `/api`: the same `Origin` /

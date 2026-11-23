@@ -23,20 +23,12 @@
  * round-trip but should NOT outlive the tab (return paths, in-progress onboarding, verify timers).
  */
 export const SessionKeys = {
-	/** The sanitised post-auth return path, persisted so an OAuth/SSO round-trip can restore it. */
-	REDIRECT_PATH: "pj.session.redirectPath",
 	/** Email awaiting confirmation, so `/verify` can render + poll it after a hard reload. */
 	PENDING_VERIFICATION_EMAIL: "pj.session.pendingVerificationEmail",
 	/** Epoch-ms deadline of the `/verify` (and reset) resend cooldown — survives a page refresh. */
 	VERIFY_RESEND_DEADLINE: "pj.session.verifyResendDeadline",
-	/** The `/join` wizard's current step id — lets a refresh land the user back where they were. */
-	ONBOARDING_STAGE: "pj.session.onboardingStage",
 	/** `"1"` once an under-13 date of birth was submitted in this tab — the join form stays closed. */
 	JOIN_AGE_LOCK: "pj.session.joinAgeLock",
-	/** Opaque anti-forgery value round-tripped through an OAuth/SSO `state` parameter. */
-	OAUTH_STATE: "pj.session.oauthState",
-	/** The last Explore search scope selected in-tab (restores the entity dropdown after a reload). */
-	EXPLORE_LAST_SCOPE: "pj.session.explore.scope",
 	/**
 	 * Unsaved Settings form drafts, `{ [section]: draft }` JSON — what lets "Expand to full page" carry a
 	 * half-edited form from the contextual modal to `/settings/[section]` without losing a keystroke.
@@ -65,12 +57,6 @@ export const SessionKeys = {
 	 * popover clears it.
 	 */
 	CHAT_POPOUT: "pj.session.chatPopout",
-	/**
-	 * A listing inquiry the buyer has typed but whose send has not yet been confirmed — `{ to, itemId,
-	 * body }`. Written before the create call and removed once it succeeds, so a failed send keeps the
-	 * text instead of discarding it. Session-scoped: an unsent question should not outlive the tab.
-	 */
-	VIEW_INQUIRY_DRAFT: "pj.session.view.inquiryDraft",
 	/**
 	 * The Explore tree's visit stack — a JSON array of `pathname + search` entries for `/explore`,
 	 * `/view/[id]` and the `/[handle]` namespace, with an empty string marking where the chain was
@@ -114,10 +100,6 @@ export const SessionKeys = {
  * tokens, or PII here — those belong in `HttpOnly` cookies (see {@link CookieKeys}).
  */
 export const LocalKeys = {
-	/** Explicit theme preference (`light` | `dark` | `system`) — mirrors `org.user_preferences.theme`. */
-	THEME_PREFERENCE: "pj.local.theme",
-	/** Last email typed at sign-in when "Keep me signed in" was checked (convenience prefill only). */
-	REMEMBER_EMAIL: "pj.local.rememberEmail",
 	/** The last active profile/context handle, so the app can rehydrate the switcher instantly. */
 	LAST_ACTIVE_CONTEXT: "pj.local.lastActiveContext",
 	/**
@@ -144,8 +126,6 @@ export const LocalKeys = {
 	 * account. Literal key MUST match `SCREEN_SHARE_PREPAINT_SCRIPT` in `utils/screen-share-context.ts`.
 	 */
 	SCREEN_SHARE: "pj.local.screenShare",
-	/** Durable cache of onboarding progress metadata (see {@link CacheKeys.ONBOARDING_STAGE_CACHE}). */
-	ONBOARDING_STAGE_CACHE: "pj.local.onboardingStageCache",
 	/**
 	 * The last account milestones THIS DEVICE has seen celebrated, keyed by the person's handle — a
 	 * JSON map `{ [handle]: { stamp, complete } }`. Only a raise past what is stored is celebrated, so
@@ -168,10 +148,6 @@ export const LocalKeys = {
 	 * empty "Continue" heading would be claiming a history the viewer does not have.
 	 */
 	EXPLORE_RECENT_VIEWS: "pj.local.explore.recentViews",
-	/** Preferred Explore results layout (grid | list) — remembered across sessions. */
-	EXPLORE_LAYOUT: "pj.local.explore.layout",
-	/** Preferred Explore results sort key — remembered across sessions. */
-	EXPLORE_SORT: "pj.local.explore.sort",
 	/**
 	 * The Explore Home promo slots this DEVICE has dismissed — a JSON array of slot ids
 	 * (`PromoSlot.id`, e.g. `cta-freelancer`). Read after hydration by `PromoGate`; the Dev Context
@@ -320,14 +296,6 @@ export const LocalKeys = {
 	 */
 	WORKSPACE_PEOPLE_READING: "pj.local.workspace.peopleReading",
 	/**
-	 * The workspace lane's "More" section memory — ONE JSON map from `<kind>.<viewer>` to `true` (open)
-	 * | `false` (closed), so the choice is kept per viewer and kind without minting a key per viewer
-	 * (`laneMorePartition` / `parseMoreOpen` / `withMoreOpen` in
-	 * `features/workspaces/core/lane-model.ts`). Collapsed by default; read after hydration only, so
-	 * it never diverges from the server-rendered closed section.
-	 */
-	WORKSPACE_LANE_MORE: "pj.local.workspace.laneMore",
-	/**
 	 * The project Members tab's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model
 	 * as the File Explorer, shared cross-island (the footer rig ↔ the roster body). One key across the
 	 * project, stage and conversation rosters: they are one surface over three scopes.
@@ -438,12 +406,6 @@ export const LocalKeys = {
 	/** Persisted width (px) of the middle-nav frame's right context panel — restored by `MiddleNavPanel`. */
 	CONTEXT_PANEL_WIDTH: "pj.local.shell.contextPanelWidth",
 	/**
-	 * The Message Settings (auto-responses + notification preferences) — a JSON `MessagingSettings` blob.
-	 * A client-side stub until `MESSAGING_BACKEND_LIVE` owns the write path; read after hydration to
-	 * hydrate the settings modal with the viewer's last-saved local edits over the SSR baseline.
-	 */
-	MESSAGING_SETTINGS: "pj.local.messages.settings",
-	/**
 	 * DEV-ONLY. Persisted screen position of the Dev Tools Context-Switcher window (`{x,y}` JSON), so it
 	 * reopens where the developer left it. Inert in production (the Dev Tools are build-excluded).
 	 */
@@ -492,15 +454,9 @@ export const LocalKeys = {
 // #region Cookies (some HttpOnly + server-owned — documented here for the whole team)
 /**
  * Cookie names. The session cookies themselves are `sb-access-token` / `sb-refresh-token`, owned by
- * `auth-cookies.ts` (HttpOnly, server-set, unreadable from JS). CSRF + active-context are app-owned.
+ * `auth-cookies.ts` (HttpOnly, server-set, unreadable from JS); the catalogue lane's memory is app-owned.
  */
 export const CookieKeys = {
-	/** App refresh token cookie (HttpOnly, server-set). */
-	AUTH_REFRESH_TOKEN: "pj_auth_refresh",
-	/** Double-submit CSRF token (readable, paired with a server-checked header). */
-	CSRF_TOKEN: "pj_csrf",
-	/** The acting profile/context id for the current dashboard session. */
-	ACTIVE_CONTEXT: "pj_active_context",
 	/**
 	 * The `/catalogue*` lane's memory — its filter, team selection and open sections
 	 * (`features/catalogue/core/lane-model.ts`). Readable, not HttpOnly: the lane writes it and the
@@ -513,10 +469,6 @@ export const CookieKeys = {
 // #region System caches (CacheStorage / IndexedDB store names)
 /** Named `CacheStorage` buckets and IndexedDB store names. */
 export const CacheKeys = {
-	/** Offline-tolerant cache of the multi-step onboarding draft + stage. */
-	ONBOARDING_STAGE_CACHE: "pj-cache-onboarding-stage",
-	/** Cached avatar/asset blobs keyed by file id. */
-	ASSET_CACHE: "pj-cache-assets",
 	/**
 	 * IndexedDB database holding writes made while offline, awaiting a connection.
 	 *

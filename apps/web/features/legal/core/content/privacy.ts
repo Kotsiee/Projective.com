@@ -35,7 +35,7 @@ const WHO_WE_ARE: LegalClause = {
 	],
 };
 
-/** Schema tables per the module header · PRODUCT_SPEC.md §Settings · §Assets & Attachments · §Messaging 1. */
+/** Schema tables per the module header · `org.legal_acceptances` (Decision #446) · `community.newsletter_subscriptions` (Decision #480) · `ops.contact_requests` (Decision #276) · web push subscriptions (`packages/backend/services/comms/transport-webpush.ts`) · PRODUCT_SPEC.md §Settings · §Assets & Attachments · §Messaging 1. */
 const WHAT_WE_COLLECT: LegalClause = {
 	id: "what-we-collect",
 	heading: "What we collect",
@@ -80,8 +80,23 @@ const WHAT_WE_COLLECT: LegalClause = {
 				],
 				[
 					"Preferences",
-					"Appearance, language and region, display currency, notification and messaging settings",
+					"Appearance, language and region, display currency, notification and messaging settings, and the browsers you turned device alerts on in",
 					"You, in Settings",
+				],
+				[
+					"Agreements",
+					"Which version of the Terms of Service and the Acceptable Use Policy you accepted, and which version of this policy you were shown, and when",
+					"You, when you sign up or accept a new version",
+				],
+				[
+					"Newsletter",
+					"Your email address and the newsletter topics you confirmed, whether or not you have an account",
+					"You, when you subscribe and confirm",
+				],
+				[
+					"Contact requests",
+					"What you send us through the contact form: your message, your email address if you give one, and any files you attach",
+					"You, when you contact us",
 				],
 				[
 					"Technical",
@@ -98,7 +113,7 @@ const WHAT_WE_COLLECT: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Messaging 1 (Platform Integrity) · §Identity, Taxes & Compliance 1–3 · §Reputation & Discovery · §Notifications. */
+/** PRODUCT_SPEC.md §Messaging 1 (Platform Integrity) · §Identity, Taxes & Compliance 1–3 · §Reputation & Discovery · §Notifications · Decisions #446 (acceptance records), #447 (bot check), #480 / #492 (newsletter double opt-in; Marketing opt-in at the root), #276 (contact requests). */
 const HOW_WE_USE: LegalClause = {
 	id: "how-we-use",
 	heading: "How we use it",
@@ -116,6 +131,10 @@ const HOW_WE_USE: LegalClause = {
 				"To protect the marketplace: during a protected project, contact details in messages are masked automatically.",
 				"To rank search results and recommendations. Signed-in adults' searches and views personalise what they see; nothing is personalised for an under-18 account.",
 				"To tell you what happened — notifications follow your settings, except the alerts about money, account security and system notices, which cannot be switched off.",
+				"To send the newsletter and marketing email only with your yes: a newsletter address gets nothing until it confirms the link we send it, each new topic is confirmed on its own, and marketing messages stay off until you switch them on. Unsubscribing stops them.",
+				"To answer what you send us through the contact form.",
+				"To keep a record of which version of our terms you accepted, so we can show what applied to you.",
+				"To stop automated sign-ups and sign-ins with a bot check on those forms.",
 				"To keep the service reliable, using error logs and page performance measurements.",
 			],
 		},
@@ -140,7 +159,7 @@ const YOUNG_PEOPLE: LegalClause = {
 	],
 };
 
-/** `.env.example` processors (Supabase, Stripe, Google Web Risk, Voyage AI, connected sign-in, storage — S3-compatible included — and calendar providers (`GOOGLE_/MICROSOFT_INTEGRATION_*`), Zoom) · `integrations.provider_kind` `calendar` / `freebusy` (seed `00005050`) · PRODUCT_SPEC.md §Settings (Connected accounts). */
+/** `.env.example` processors (Supabase; Resend, with the contacts sync behind `newsletter.provider_sync`, Decision #502; Stripe; Google Web Risk; Voyage AI; Cloudflare Turnstile, `TURNSTILE_*`, Decision #447; web push, `VAPID_*`, payloads encrypted per RFC 8291 in `packages/backend/services/comms/transport-webpush.ts`; calendar providers, `GOOGLE_/MICROSOFT_INTEGRATION_*`; Zoom) · sign-in: `supabase/config.toml` (Google on; Apple and SMS off) and SAML SSO (`routes/api/auth/sso.ts`) · storage: Google Drive, the one storage connector a person can reach (seed `00005050`) · `integrations.provider_kind` `calendar` / `freebusy` · PRODUCT_SPEC.md §Settings (Connected accounts). */
 const SHARING: LegalClause = {
 	id: "sharing",
 	heading: "Who we share it with",
@@ -158,7 +177,16 @@ const SHARING: LegalClause = {
 			rowHeaders: true,
 			rows: [
 				["Supabase", "Database, sign-in and file storage", "Always"],
-				["Resend", "Sending our email", "When we email you, or you are invited by email"],
+				[
+					"Resend",
+					"Sending our email; and, once newsletter sync is switched on, holding the newsletter's list of confirmed subscribers and their topics",
+					"When we email you, you are invited by email, or you subscribe to the newsletter",
+				],
+				[
+					"Cloudflare Turnstile",
+					"Checks that a sign-up, sign-in, account recovery or newsletter request comes from a person, using your IP address and browser signals",
+					"When you use one of those forms",
+				],
 				[
 					"Stripe",
 					"Card payments, payouts (Connect) and identity checks (Identity)",
@@ -176,12 +204,12 @@ const SHARING: LegalClause = {
 				],
 				[
 					"Sign-in providers",
-					"Google, Apple, Facebook, LinkedIn, Microsoft or Amazon confirm who you are",
+					"Google, or the single sign-on service of an organisation that has set one up with us, confirms who you are",
 					"Only if you sign in with one",
 				],
 				[
 					"Storage you connect",
-					"Google Drive, Dropbox, Frame.io, Microsoft or S3-compatible storage you link",
+					"A Google Drive you link",
 					"Only if you connect one",
 				],
 				[
@@ -193,6 +221,11 @@ const SHARING: LegalClause = {
 					"The people you invite by email",
 					"An address you add to an event goes to our email provider, and we write to that person on your behalf. They see your name and the event's title and time. We keep their address until 30 days after the event, and if they join a call on a Zoom host we also give that host their address",
 					"Only if you invite someone by email",
+				],
+				[
+					"Your browser's push service",
+					"Delivers alerts to a browser where you turned them on. It is run by your browser's maker, such as Google, Apple, Mozilla or Microsoft, and the alert itself is encrypted so it cannot read it",
+					"Only if you turn on device alerts",
 				],
 				[
 					"Meeting providers",
@@ -223,7 +256,7 @@ const IDENTITY_DATA: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Identity, Taxes & Compliance 5 (Retention Policies — typically 7 years) · §Settings (30-day erasure, 90-day freelancer removal) · §Content safety (report snapshots). */
+/** PRODUCT_SPEC.md §Identity, Taxes & Compliance 5 (Retention Policies — typically 7 years) · §Settings (30-day erasure, 90-day freelancer removal) · §Content safety (report snapshots) · `supabase/migrations/00001061_functions_org_data_export.sql` (an export archive expires after 7 days, Decision #450). */
 const RETENTION: LegalClause = {
 	id: "retention",
 	heading: "How long we keep it",
@@ -249,6 +282,10 @@ const RETENTION: LegalClause = {
 				[
 					"Attendance records for a session or call",
 					"13 months, or as long as a dispute about it needs them",
+				],
+				[
+					"A copy of your data you asked for",
+					"7 days from when it is ready, then deleted",
 				],
 				["A refused under-13 sign-up", "Nothing is kept"],
 			],
@@ -348,11 +385,11 @@ export const PRIVACY_VERSIONS = defineLegalVersions([
 		summary:
 			"What personal data Projective stores, why, who processes it for us, how long we keep it and the rights you have over it.",
 		version: "1.1",
-		updatedAt: "2026-11-18",
+		updatedAt: "2026-11-23",
 		effectiveDate: "2026-11-18",
 		reviewedAt: null,
 		changeSummary:
-			"Your rights: download a copy of your data yourself from Settings → Account instead of asking us for it.",
+			"Your rights: download a copy of your data yourself from Settings → Account instead of asking us for it. How we use it: the patterns we record when money moves, to detect fraud and money laundering.",
 		sections: [
 			WHO_WE_ARE,
 			WHAT_WE_COLLECT,
@@ -373,7 +410,7 @@ export const PRIVACY_VERSIONS = defineLegalVersions([
 		summary:
 			"What personal data Projective stores, why, who processes it for us, how long we keep it and the rights you have over it.",
 		version: "1.0",
-		updatedAt: "2026-10-30",
+		updatedAt: "2026-11-23",
 		effectiveDate: "2026-10-17",
 		reviewedAt: null,
 		changeSummary: "First published.",

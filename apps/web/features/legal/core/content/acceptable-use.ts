@@ -28,7 +28,7 @@ const PURPOSE: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Messaging 1 (the Protected Phase, Restricted Data, the Projective Unlock) · 1.A (Tier 2 masking, Decision #147). */
+/** PRODUCT_SPEC.md §Messaging 1 (the Protected Phase, Restricted Data, the Projective Unlock) · 1.A (Tier 2 masking, Decision #147) · `comms.mask_pii` (emails, phone-length digit runs, payment and messaging links, $cashtags; no bank-number pattern) in `supabase/migrations/00001300_*`. */
 const PAYMENTS_ON_PLATFORM: LegalClause = {
 	id: "keep-payments-on-projective",
 	heading: "Keep payments on Projective",
@@ -38,7 +38,7 @@ const PAYMENTS_ON_PLATFORM: LegalClause = {
 		{
 			type: "p",
 			content:
-				"From the first proposal until the final escrow release of a project, you must not share bank details, personal email addresses, phone numbers or external social or messaging handles in its messages. While the project is in this protected phase, Projective replaces them automatically with a placeholder such as “[email hidden]”.",
+				"From the first proposal until the final escrow release of a project, you must not share bank details, personal email addresses, phone numbers or external social or messaging handles in its messages. While the project is in this protected phase, Projective automatically replaces email addresses, phone numbers and payment or messaging links with a placeholder such as “[email hidden]”.",
 		},
 		{
 			type: "p",
@@ -73,12 +73,12 @@ const PUBLIC_COPY: LegalClause = {
 		{
 			type: "p",
 			content:
-				"This applies however long you have used Projective and however many projects you have completed. Copy that breaks it may be refused or removed.",
+				"This applies however long you have used Projective and however many projects you have completed. Copy that breaks it may be removed.",
 		},
 	],
 };
 
-/** PRODUCT_SPEC.md §Messaging 1.C (public zone — screen, then publish). */
+/** PRODUCT_SPEC.md §Messaging 1.C (public zone — screen, then publish; the automated image screen is planned, `documentation/architecture/SECURITY_MODERATION_AND_AI_GAPS.md` §3). */
 const PUBLIC_STANDARDS: LegalClause = {
 	id: "public-content",
 	heading: "Public content standards",
@@ -91,8 +91,7 @@ const PUBLIC_STANDARDS: LegalClause = {
 		},
 		{
 			type: "p",
-			content:
-				"Projective may refuse to publish, or remove, content that breaks this standard. A refused image stays in your private library, and you are told why.",
+			content: "Projective may remove content that breaks this standard.",
 		},
 	],
 };
@@ -146,7 +145,13 @@ const PROHIBITED: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Messaging 1.C (Reporting — an immutable snapshot, reporter never revealed). The in-product report surface is planned (Decision #148 flag (a)). */
+/**
+ * PRODUCT_SPEC.md §Messaging 1.C (Reporting — reporter never revealed). The in-product report surface
+ * is planned (Decision #148 flag (a)): `ops.reports` is built as the review sink (T&S R1, #533), but no
+ * page files into it until R2. Today a report is a contact request (`ops.contact_requests`,
+ * operator-read only; `/contact`, the `security` intent's `abuse` type,
+ * `packages/types/contact/intake.ts`, Decision #276).
+ */
 const REPORTING: LegalClause = {
 	id: "reporting",
 	heading: "Reporting",
@@ -156,33 +161,36 @@ const REPORTING: LegalClause = {
 		{
 			type: "p",
 			content: [
-				"Anyone who can see a message, submission, file or public page can report it, choosing a reason. Until reporting is available on each item, ",
-				{ type: "link", href: "/contact?intent=support", text: "contact us" },
-				".",
+				"To report a message, submission, file or public page that breaks this policy, ",
+				{ type: "link", href: "/contact?intent=security", text: "report it to us" },
+				" and say what you saw and where.",
 			],
 		},
 		{
 			type: "p",
 			content:
-				"When a report is filed, Projective keeps an unchangeable copy of what was reported, so editing or deleting it afterwards changes nothing. A reviewer either dismisses the report or confirms the breach. The reported person is never told who reported them.",
+				"Only Projective's own staff read a report. The person you report is never told who reported them.",
 		},
 	],
 };
 
-/** PRODUCT_SPEC.md §Messaging 1 (Consequences) · 1.C (penalties feed the Reliability Index and Standing; never deleted) · §Notifications rule 1. */
+/**
+ * PRODUCT_SPEC.md §Messaging 1 (Consequences) · the Terms' "Using Projective properly" and "Closing your
+ * account" clauses. The penalty ladder of §Messaging 1.C (penalties that feed the Reliability Index and
+ * Standing) is not wired to policy breaches yet: `security.penalties` has no writer for one
+ * (`documentation/architecture/SECURITY_MODERATION_AND_AI_GAPS.md`), so the clause promises none.
+ */
 const CONSEQUENCES: LegalClause = {
 	id: "consequences",
 	heading: "Consequences",
 	tldr:
-		"A confirmed breach brings a penalty sized to it. It can lower your Standing, and serious or repeated breaches end in suspension or a ban.",
+		"Content that breaks this policy may be removed, and serious or repeated breaches can end in suspension or a ban.",
 	body: [
 		{
 			type: "list",
 			items: [
-				"A confirmed breach issues a penalty sized to its severity. Active penalties lower your Reliability Index and can move your Standing down a rung, with the allowances that rung carries.",
-				"Serious or repeated breaches lead to a temporary suspension or a permanent ban.",
-				"You are always told about a moderation decision that affects you.",
-				"A penalty can expire or be reversed on review. It is never deleted from the record.",
+				"Projective may remove content that breaks this policy.",
+				"Depending on how serious a breach is and whether it is repeated, Projective may suspend an account for a time or close it for good.",
 			],
 		},
 	],
@@ -198,7 +206,7 @@ export const ACCEPTABLE_USE_VERSIONS = defineLegalVersions([
 		summary:
 			"What you may and may not do on Projective: keeping payments on the platform, what public pages may contain, the creative safe harbor for private work, and what happens when the rules are broken.",
 		version: "1.0",
-		updatedAt: "2026-10-17",
+		updatedAt: "2026-11-23",
 		effectiveDate: "2026-10-17",
 		reviewedAt: null,
 		changeSummary: "First published.",

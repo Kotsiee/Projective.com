@@ -3676,7 +3676,9 @@ For Session-Based Services, disputes are largely automated through our conferenc
 - **The Attendance Audit:** If a client claims a "No-Show," the system automatically
   cross-references the Zoom/Meet/Teams attendance logs in the Evidence Vault.
 - **Deterministic Ruling:**
-  - If the logs show the Freelancer never joined: **Instant Refund.**
+  - If the logs show the Freelancer was not in the room within the first 15 minutes while the
+    attendee came (the 15-minute rule and the no-show evidence of §Session-Based B, Decision #383
+    ruling R5): **Instant Refund.**
   - If the logs show both in the room for >80% of the duration: **Claim Dismissed.** Exactly 80% is
     not enough (Decision #343, ruling C5 (b)), and the figure is time actually in the room, not the
     span from first join to last leave (Decision #383 (b)).

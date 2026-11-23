@@ -6,8 +6,8 @@
 > PRD-A4. The rulings it builds on are the legal library's (#270), the AML posture (#336 I1) and
 > checkout tax (#490).
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 9 open, 1 partly done, 0 done (§0 ledger).
-> Runnable now: LG0, LG1, LG6, LG7.
+> **Verified against code 2026-11-23 at `f2e25929`.** 8 open, 1 partly done, 1 done (§0 ledger).
+> Runnable now: LG0, LG6, LG7; LG1 once its stop (a) is answered.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -31,16 +31,17 @@ agent turns one on, and no agent sets `reviewedAt`.
 
 ### 0.0 Done
 
-No LG prompt has landed (checked at `f2e25929`). A prompt that lands gets its row here.
+A landed prompt gets its row here.
 
-| ID | What landed | Commit | Text at |
-| :- | :---------- | :----- | :------ |
+| ID  | What landed | Commit | Text at |
+| :-- | :---------- | :----- | :------ |
+| LG2 | The counsel brief: FOUNDER_QUESTIONNAIRE Part E with the sign-off runbook (#528); E.1.7 filled from LG1's drift table (#531) | `b3148e47`, LG1_COMMIT | `dea66769` |
 
 ### 0.1 Row → work order
 
 | Row    | Gate | Crit     | Work order                           | The row flips when                                                                                                                                                           |
 | :----- | :--- | :------- | :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PRD-M1 | PROD | Critical | **LG1** → **LG2** → ⚖️ counsel → you | ✅ only when a human sets `reviewedAt` on every current version after counsel signs off, and the reconstructed 1.0 baselines are gone (#270 (b)). No agent sets `reviewedAt` |
+| PRD-M1 | PROD | Critical | LG1 (steps 4, 6) → ⚖️ counsel → you | ✅ only when a human sets `reviewedAt` on every current version after counsel signs off, and the reconstructed 1.0 baselines are gone (#270 (b)). No agent sets `reviewedAt` |
 | PRD-M2 | PROD | Critical | — (✅, AU1 #446)                     | — (LG3 extends it to two more documents if you choose A)                                                                                                                     |
 | PRD-M3 | PROD | Normal   | OPS7 (OPERATIONS)                    | ✅ when `account-data-exports` returns a 2xx from the hosted scheduler                                                                                                       |
 | PRD-M4 | PROD | High     | (LG3) → **LG4** → **LG5**            | 🟡 on LG4 (a signed transfer record on each final release) · ✅ on LG5 (audit packs)                                                                                         |
@@ -92,10 +93,10 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
    Express (#125), and finance-model §9 says "Stripe issues 1099/local tax forms per jurisdiction".
    Nobody has checked that for a GB platform. Seller reporting under the UK platform-operator rules
    (2023 regulations) and EU DAC7 appears only in the retention table (FOUNDER_QUESTIONNAIRE I1).
-7. **The library lags the product.** The words copyright, takedown, royalty, newsletter and
-   controller appear in none of the six content modules. That leaves #496's notice regime, #493's
-   royalty, #480's consent and #270 (h)'s data controller identity uncovered. #270's flags (c), (d),
-   (f), (g) and (o) are still open.
+7. **The library matches the product (#531).** LG1 corrected every newest draft and settled #270
+   (c), (d), (e), (g) and (o); newsletter consent is in the Privacy Policy. Still uncovered: #496's
+   notice regime and #493's royalty (they wait for LG1 stop (a)'s documents), #270 (h)'s data
+   controller identity (stop (b)) and #270 (f). The open rows are FOUNDER_QUESTIONNAIRE E.1.7.
 8. **No cancellation-right step at checkout.** Nothing in `features/checkout` or the legal content
    mentions a consumer's statutory right to cancel. Since #488, `/checkout/payment` shows
    `DeliveryTermsNotice` for a basket that delivers files: a notice and an unticked box before Pay,
@@ -106,7 +107,7 @@ These facts shape the prompts. Each prompt re-verifies the ones it relies on.
 
 | Wave | Content / docs lane | SQL lane (serial)                                                                        | App lane                 | Waits for                                                                                       |
 | :--- | :------------------ | :--------------------------------------------------------------------------------------- | :----------------------- | :---------------------------------------------------------------------------------------------- |
-| 1    | **LG1** → **LG2**   | —                                                                                        | **LG0**                  | Nothing. LG2's brief is written (#528); its E.1.7 waits for LG1's drift table                   |
+| 1    | **LG1** (steps 4, 6) | —                                                                                        | **LG0**                  | LG1 step 4: your answer to its stop (a); step 6's rest: LG7                   |
 | 2    | —                   | (**LG3**, if you choose A) → **LG4** → **LG5**                                           | (LG4/LG5's UI halves)    | LG4 builds once LG2's brief is sent and LG3 and FINANCE DB6 land (#530 (g)); counsel rules text |
 | 3    | —                   | **LG7** takes a turn in [the finance SQL lane](../architecture/FINANCE_BUILD_PROMPTS.md) | **LG6** (research first) | LG7: never beside MR8a/MR8b. LG6's reader after its 🧑                                          |
 | 4    | —                   | **LG8**, in Queue M after CK4                                                            | —                        | CK4 (which waits for DB21)                                                                      |
@@ -140,7 +141,7 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
    and Marketplace Licence Terms (#493, product licences). A Data Processing Addendum with a
    sub-processor list should wait until the first business client asks for one. Seller tax duties go
    into the Terms. A new document widens the slug enum, so it needs your yes.
-3. **LG1 / LG2 (🖊 yours alone):** the data controller's identity: legal name, company number,
+3. **LG1 (🖊 yours alone):** the data controller's identity: legal name, company number,
    registered address, ICO registration number and the data-protection contact. No agent invents
    them.
 4. **LG3 (⚖️):** does the maker accept the IP Transfer Deed, and the payer the Escrow Terms, when
@@ -166,6 +167,10 @@ line to `00001240` and LG7 edits its withdrawal path, so both take the finance S
 9. **LG8:** is the 5% fee VAT-inclusive (**A**, recommended: "flat 5%" stays true and payout maths
    is unchanged) or is VAT added on top (**B**: it changes finance-model, every payout preview and
    the landing's claims)?
+10. **#531 (A) and (B), found by LG1:** card processing costs are ruled passed through but built
+    absorbed: absorb (recommended at launch; the docs and the receipt change) or pass through (the
+    code changes). PRODUCT_SPEC §Dispute Resolution describes stage-work disputes that are not
+    built: mark them **Not built yet** (recommended) or build them.
 
 **Actions:**
 
@@ -328,124 +333,53 @@ its status stays ❌.
 
 ### LG1 — The six legal documents say what the product does
 
-> **Status 2026-11-23:** open; runs now.
+> **Status 2026-11-23:** partly done. Steps 1–3 and 5 landed in LG1_COMMIT (Decision #531): the
+> drafts corrected in place, #270 (c), (d), (e), (g) and (o) settled, the drift left open in
+> FOUNDER_QUESTIONNAIRE E.1.7, new PRD-M8 and PRD-C37. Step 6 landed except the monitoring-signals
+> clause, which waits for LG7. Step 4 waits for your answer to stop (a); stop (b) is yours to supply.
+> Two contradictions wait on you: #531 flags (A) card processing costs and (B) stage-work disputes.
 
 Prepares PRD-M1. Nothing flips to ✅.
 
 ```text
-PROMPT LG1: Bring every legal document's newest draft into line with the product as built and
-ruled, and make the Cookie Policy match what the code stores
+PROMPT LG1 (the rest): Add the legal documents the owner approves, and the Privacy Policy's
+monitoring-signals use once LG7 lands
 
 ROLE: Legal-content engineer. Content lane: apps/web/features/legal/core/content/*, their
-tests, and the storage-key files. Not beside another prompt that edits features/legal/**.
-
-CONTEXT (verified at 197b0d0c; re-check every line):
-  - Six documents, each a versioned content module (Decision #270): terms (2.0, 1.0),
-    escrow-terms (2.0, 1.0), privacy (1.1 dated 2026-11-18 + earlier), cookies, acceptable-use,
-    ip-transfer-deed (1.0). Every version has reviewedAt: null, so each page is a noindexed
-    "Draft — pending legal review", and the sitemap lists none (core/sitemap.ts:34).
-    content.test.ts pins a citation on every clause constant.
-  - #270's open flags: (b) the reconstructed 1.0 baselines of Terms and Escrow Terms must be
-    removed once a lawyer approves the first real version (owner ruling, a launch blocker,
-    #279); (c) Fair Exit: Escrow Terms 2.0 states the shipped 25/50/75% tier, while
-    finance-model §3 still has the old duration thresholds; (d) a late session cancellation
-    forfeits to the freelancer, not finance-model §4's 50%; (e) the AUP's planned enforcement
-    and its /contact link; (f) `projective_partner` has no terms; (g) cookie keys declared but
-    never set (pj_auth_refresh, pj_csrf, pj_active_context, pj.locale; CacheKeys
-    pj-cache-assets, pj-cache-onboarding-stage); (h) no data controller identity; (o) the
-    no-show rule's wording versus PRODUCT_SPEC §Dispute Resolution 3.
-  - Rulings since the documents were written that may not be reflected (grep each module):
-    #446 acceptance, #450 data export, #480 / #492 / #502 consent and the newsletter, #486
-    reviews (double-blind, the Client Trust Score), #490 tax (prices exclude tax; the seller is
-    responsible on services and sessions), #493 Request to Sell and its royalty, #496 copyright
-    notices and takedown holds, #435 FX quotes, #474 / #479 / #511 refunds and settle-first,
-    #498 cohorts. Today the words copyright, takedown, royalty, newsletter and controller appear
-    in none of the six modules.
-  - Versions are append-only once published (#270), and nothing has been published. Before you
-    edit, read `git log -p -- apps/web/features/legal/core/content` and follow how privacy 1.1
-    was added (a new version, or a correction to an unpublished draft).
-
-🧑 STOPS (put both to me before step 4):
-  (a) New documents. Each one widens LegalDocSchema's slug enum (packages/types/content/
-      legal.ts), the registry and the hub. Recommended now: a Copyright & Notice Policy (#496's
-      notice, counter-notice and repeat-infringer rule, left as counsel's blanks behind its
-      public-form switch), and Marketplace Licence Terms (what a buyer of a digital product
-      gets, and #493's licence wording). Later: a Data Processing Addendum and a sub-processor
-      list, when the first business client asks. No separate seller terms: their tax duty goes
-      into the Terms.
-  (b) The data controller's identity (#270 (h)): legal name, company number, registered
-      address, ICO registration number and a data-protection contact. Only I can supply these.
-      Until I do, the Privacy Policy keeps no placeholder text, and LG2's brief lists it as
-      missing.
-
-STEPS:
-  1. Drift table first, in your report and in LG2's brief: for every clause of every newest
-     version, check it against its cited source and the current code, and add a row for each
-     difference (document · clause id · what it says · what is true now · source file:line or
-     decision).
-  2. Fix the drift in the newest draft of each document, following the convention you found.
-     Each fixed clause cites its source. Never touch a clause's `id` (Compare matches on it).
-     Where the product rule itself is unsettled, write nothing new: list it in the drift table
-     for LG2.
-  3. Settle #270 (c), (d) and (o) at their source. Where finance-model.md or PRODUCT_SPEC.md is
-     the stale side, fix that doc in the same change. Where the code and the spec disagree, add
-     a decision row and ask me; don't pick a side.
-  4. After (a): add the documents I approve, each at 1.0 with reviewedAt: null, its clauses
-     cited, linked from the hub and the Terms. For any blank that is counsel's, the clause says
-     what the platform does today and nothing more.
-  5. Cookies and storage: list every cookie, localStorage / sessionStorage key, IndexedDB store
-     and service-worker cache the code actually sets (grep the setters, not the key catalogue).
-     Then remove each key that is declared but never set (#270 (g)), or wire it if a live
-     feature needs it, and make the Cookie Policy match. If anything non-essential is set
-     without consent, add a new PRD-M row (❌), and don't fix it here.
-  6. The Privacy Policy names every processor that is on in some environment, and every use of
-     personal data the product makes, including LG7's monitoring signals if LG7 has landed. If
-     LG7 hasn't landed, the clause waits, and the drift table records it.
-
-ACCEPTANCE: content.test.ts, legal-views.test.tsx and the diff tests are green. Every
-document's newest version has no drift row left that is not listed for LG2. The hub and each
-document render (1440 and 390 px, with the draft disclosure still shown). check, lint and
-test:unit are green.
-SAME CHANGE: finance-model.md / PRODUCT_SPEC.md where they were the stale side;
-DESIGN_SYSTEM §C.1 only if a component changed; a decision row for any contradiction found.
-```
-
-Readiness rows (§1.1): **PRD-M1** stays ❌, with the evidence "library brought current (LG1,
-<commit>); awaiting counsel". Add any new rows from step 5.
-
-### LG2 — One counsel brief for the legal library and every open ⚖️ item
-
-> **Status 2026-11-23:** partly done. Steps 2 and 3, and step 1 except Part E.1.7, landed in
-> `b3148e47` (FOUNDER_QUESTIONNAIRE Part E, Decision #528). Step 1's E.1.7 is open: it waits for
-> LG1's drift table. Sending the brief to counsel is yours.
-
-Prepares PRD-M1. Docs only.
-
-```text
-PROMPT LG2 (the rest): Fill FOUNDER_QUESTIONNAIRE.md Part E.1.7 from LG1's drift table
-
-ROLE: Compliance analyst. Docs only; no code. Runs once LG1 has landed.
+tests, the slug enum. Not beside another prompt that edits features/legal/**.
 
 CONTEXT:
-  - Part E is written (#528). E.1.7 is a slot that reads "Pending: LG1's drift table …".
-  - LG1's drift table has one row per difference: document · clause id · what it says · what
-    is true now · source. LG1 fixes what it can in the drafts and leaves the rows whose product
-    rule is unsettled for this brief.
+  - The six drafts match the product as built (#531). Corrections to an unpublished draft go in
+    place with `updatedAt` moved; a clause a reconstructed 1.0 baseline shares is split into
+    _V1 / _V2 constants (#531 (A)). No version is minted until one is published.
+  - Every new document widens LegalDocSchema's slug enum (packages/types/content/legal.ts),
+    LEGAL_DOCUMENT_SLUGS, the registry, the hub's groups and the Terms' `about` clause.
+
+🧑 STOPS (put to the owner 2026-11-23, #531 (C); unanswered):
+  (a) New documents. Recommended now: a Copyright & Notice Policy (#496's notice, counter-notice
+      and repeat-infringer rule, left as counsel's blanks behind its public-form switch), and
+      Marketplace Licence Terms (what a buyer of a digital product gets, and #493's licence
+      wording). Later: a Data Processing Addendum and a sub-processor list, when the first
+      business client asks. No separate seller terms: their tax duty is in the Terms (#531).
+  (b) The data controller's identity (#270 (h)): legal name, company number, registered
+      address, ICO registration number and a data-protection contact. Only the owner can supply
+      these. Until then the Privacy Policy keeps no placeholder text (E.5 item 1).
 
 STEPS:
-  1. (E.1.7 only.) Replace the slot with the rows LG1 left open, one line each, naming the
-     question each puts to counsel. A row that is the owner's product question, not counsel's,
-     gets a row in PRODUCTION_READINESS §Decisions awaiting a human instead. A new ⚖️ item
-     goes into E.2 at the next free E2 number, with its §Decisions row. If the owner has
-     answered LG1's stops, update E.1's planned documents and E.5 items 1 and 4.
+  4. After (a): add the documents the owner approves, each at 1.0 with reviewedAt: null, its
+     clauses cited, linked from the hub and the Terms. For any blank that is counsel's, the
+     clause says what the platform does today and nothing more.
+  6. (The rest.) Once LG7 lands, the Privacy Policy's `how-we-use` clause names the monitoring
+     signals and their basis as LG7 records them, by #531's convention; E.1.7's row leaves.
 
-ACCEPTANCE: E.1.7 has no "Pending" text. Every ⚖️ on the tracker is in Part D, in Part E, or
-ruled.
-SAME CHANGE: PRODUCTION_READINESS §Decisions awaiting a human, for any row added; #528's index
-line, if E.2 grows.
+ACCEPTANCE: content.test.ts, legal-views.test.tsx and the diff tests are green. The hub and each
+new document render (1440 and 390 px, with the draft disclosure still shown). check, lint and
+test:unit are green.
+SAME CHANGE: FOUNDER_QUESTIONNAIRE E.1 (planned documents) and E.1.7; DESIGN_SYSTEM §C.1 only if
+a component changed.
 ```
 
-Readiness rows (§1.1): **PRD-M1** stays ❌ (its evidence already names the brief). No score changes.
+Readiness rows (§1.1): **PRD-M1** stays ❌. Step 6's rest closes E.1.7's monitoring row.
 
 ### LG3 — The maker accepts the deed and the payer the Escrow Terms, once per version (conditional)
 

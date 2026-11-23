@@ -13,17 +13,25 @@
  * | `pj_join_age_lock`                  | `routes/api/auth/join.ts` (`JOIN_AGE_LOCK_COOKIE`, Decision #208)    |
  * | `pj.a11y`                           | `utils/a11y-context.ts` `a11ySetCookie` + `features/settings/core/appearance-state.ts` (1 year) |
  * | `pj.currency`                       | `features/shell/core/currency-state.ts` (1 year)                     |
+ * | `pj.screen_share`                   | `utils/screen-share-context.ts` `screenShareCookie` (1 year, Decision #297) |
+ * | `pj_catalogue_lane`                 | `features/catalogue/islands/CatalogueLane.island.tsx` (Path=/catalogue, 180 days) |
+ * | `pj_contact_receipt`                | `features/contact/core/contact-form.ts` `receiptCookie` (Path=/contact, HttpOnly, 10 minutes) |
  * | `pj.dev.*`                          | the Dev Context Switcher (`features/devtools/`), development only    |
  *
  * Browser storage (the "Storage in your browser" clause): `utils/storage-keys.ts` `LocalKeys` /
- * `SessionKeys`; the IndexedDB database `pj-offline` (`CacheKeys.OFFLINE_DB`, written by
+ * `SessionKeys`, and the design system's own layout keys (`packages/ui`: `theme`, splitter, calendar
+ * and table state); the IndexedDB database `pj-offline` (`CacheKeys.OFFLINE_DB`, written by
  * `features/projects/core/offline-queue.ts` and flushed to the server on reconnect); the service
- * worker's `pj-shell-v1` bucket (`CacheKeys.SHELL_CACHE`, `static/sw.js`). `pj-cache-assets` and
- * `pj-cache-onboarding-stage` are declared in `CacheKeys` but never opened, so they are not listed.
+ * worker's `pj-shell-v1` bucket (`CacheKeys.SHELL_CACHE`, `static/sw.js`); the `pj-thumbs-v1` bucket
+ * of file thumbnails (`features/files/core/thumbs/thumb-cache.ts`, purged at sign-out). The tab's
+ * discovery key (`SessionKeys.DISCOVERY_SESSION`, `features/explore/core/discovery-beacon.ts`) is sent
+ * with discovery events.
  *
- * Declared but never set, so not listed: `pj_auth_refresh`, `pj_csrf`, `pj_active_context`
- * (`utils/storage-keys.ts` `CookieKeys`) and `pj.locale` (read by `utils/currency-context.ts`, written
- * nowhere). Stripe's own cookies appear only where Stripe.js loads (the payment steps).
+ * Third-party frames, which set their own cookies under their own policies: Stripe.js on the payment
+ * steps, Cloudflare Turnstile on the auth forms (Decision #447), the article video embed
+ * (`www.youtube-nocookie.com`, loaded on play) and the file preview's provider viewers
+ * (`EMBED_FRAME_ORIGINS`, `packages/types/files/embed.ts`, Decision #401) — the `frame-src` list of
+ * `utils/csp.ts`.
  *
  * @module
  */
@@ -58,12 +66,12 @@ const WHAT_COOKIES_ARE: LegalClause = {
 	],
 };
 
-/** `apps/web/utils/auth-cookies.ts` · `routes/api/auth/join.ts` · Decisions #185, #205, #208. */
+/** `apps/web/utils/auth-cookies.ts` · `routes/api/auth/join.ts` · `features/contact/core/contact-form.ts` (`pj_contact_receipt`) · Decisions #185, #205, #208, #276. */
 const ESSENTIAL: LegalClause = {
 	id: "essential",
 	heading: "Cookies that keep you signed in",
 	tldr:
-		"These are strictly necessary. Without them you cannot sign in. Page scripts cannot read any of them.",
+		"These are strictly necessary. Without them you cannot sign in or send the contact form. Page scripts cannot read any of them.",
 	body: [
 		{
 			type: "dl",
@@ -98,17 +106,22 @@ const ESSENTIAL: LegalClause = {
 					"After an under-13 date of birth, stops that browser from trying to sign up again; it holds no personal data.",
 					"until you close the browser",
 				),
+				cookie(
+					"pj_contact_receipt",
+					"After you send the contact form, carries your request's reference to the page that confirms it; sent only to the contact page, and never holds your email address.",
+					"10 minutes, or until the confirmation has been shown",
+				),
 			],
 		},
 	],
 };
 
-/** `utils/a11y-context.ts` (Decision #150/#151) · `features/shell/core/currency-state.ts` · PRODUCT_SPEC.md §Settings (Accessibility follows the person). */
+/** `utils/a11y-context.ts` (Decision #150/#151) · `features/shell/core/currency-state.ts` · `utils/screen-share-context.ts` (Decision #297) · `features/catalogue/islands/CatalogueLane.island.tsx` · PRODUCT_SPEC.md §Settings (Accessibility follows the person). */
 const PREFERENCES: LegalClause = {
 	id: "preferences",
 	heading: "Cookies that remember your choices",
 	tldr:
-		"Two cookies remember your accessibility settings and display currency, so the very first screen of your next visit is right.",
+		"A few cookies remember choices you make — your accessibility settings, display currency, screen sharing mode and catalogue view — so the very first screen of your next visit is right.",
 	body: [
 		{
 			type: "dl",
@@ -119,12 +132,22 @@ const PREFERENCES: LegalClause = {
 					"1 year",
 				),
 				cookie("pj.currency", "The currency prices are displayed in.", "1 year"),
+				cookie(
+					"pj.screen_share",
+					"Whether screen sharing mode is on on this device, so sensitive details stay hidden from the first moment a page loads.",
+					"1 year",
+				),
+				cookie(
+					"pj_catalogue_lane",
+					"Your seller catalogue list's filter, team choice and open sections; sent only to catalogue pages.",
+					"180 days",
+				),
 			],
 		},
 		{
 			type: "p",
 			content:
-				"Neither holds anything that identifies you. If you block them, Projective uses its defaults and your device's own settings until you choose again.",
+				"None holds anything that identifies you. If you block them, Projective uses its defaults and your device's own settings until you choose again.",
 		},
 	],
 };
@@ -148,6 +171,29 @@ const PAYMENTS: LegalClause = {
 	],
 };
 
+/** `apps/web/utils/csp.ts` (`frame-src`) · Cloudflare Turnstile on the auth forms (Decision #447) · the article video embed (`features/view/islands/ArticleContent.island.tsx`) · the file preview's provider viewers (`packages/types/files/embed.ts`, Decision #401). */
+const OTHER_SERVICES: LegalClause = {
+	id: "other-services",
+	heading: "Frames from other services",
+	tldr:
+		"A few pages show a frame from another service, which may set its own cookies under that service's policy.",
+	body: [
+		{
+			type: "list",
+			items: [
+				"The sign-up, sign-in and account-recovery forms run Cloudflare Turnstile, a check that you are not a bot, in a frame from Cloudflare.",
+				"A video in an article loads from YouTube's privacy-enhanced address (youtube-nocookie.com) only once you press play.",
+				"A linked Google Drive or Google Docs file, or a YouTube, Vimeo, Loom or Figma link, can be shown in that provider's own viewer when you open its preview.",
+			],
+		},
+		{
+			type: "p",
+			content:
+				"Projective does not read those services' cookies, and it frames no other site apart from Stripe's payment form.",
+		},
+	],
+};
+
 /** `features/devtools/core/dev-context.ts` (the `pj.dev.*` override cookies), honoured in development only. */
 const DEVELOPMENT: LegalClause = {
 	id: "development",
@@ -167,8 +213,10 @@ const DEVELOPMENT: LegalClause = {
 };
 
 /**
- * `apps/web/utils/storage-keys.ts` (`pj.local.*` localStorage and `pj.session.*` sessionStorage keys;
- * `CacheKeys.OFFLINE_DB` `pj-offline` and `CacheKeys.SHELL_CACHE` `pj-shell-v1`) ·
+ * `apps/web/utils/storage-keys.ts` (`pj.local.*` localStorage and `pj.session.*` sessionStorage keys,
+ * the basket, checkout draft, recent searches and views among them; `CacheKeys.OFFLINE_DB` `pj-offline`
+ * and `CacheKeys.SHELL_CACHE` `pj-shell-v1`) · `features/explore/core/discovery-beacon.ts` (the tab's
+ * discovery key) · `features/files/core/thumbs/thumb-cache.ts` (`pj-thumbs-v1`, purged at sign-out) ·
  * `features/projects/core/offline-queue.ts` (offline setup writes, flushed on reconnect) ·
  * `static/sw.js` (registered by `features/shell/islands/ServiceWorkerBridge.island.tsx`, production only).
  */
@@ -176,21 +224,24 @@ const LOCAL_STORAGE: LegalClause = {
 	id: "local-storage",
 	heading: "Storage in your browser",
 	tldr:
-		"Some settings, drafts and an offline copy of pages are kept in your browser's own storage. Only changes you make while offline are sent to Projective, when you reconnect.",
+		"Some settings, drafts, your basket and an offline copy of pages are kept in your browser's own storage. Only offline changes and a tab's anonymous discovery key are ever sent to Projective.",
 	body: [
 		{
 			type: "list",
 			items: [
-				"Local storage remembers layout and display choices on this device — your theme, the sidebar and panel sizes, zoom levels, filters — and a copy of your accessibility settings.",
+				"Local storage remembers layout and display choices on this device — your theme, the sidebar and panel sizes, zoom levels, filters — and a copy of your accessibility settings and screen sharing mode.",
+				"It also keeps your basket and the choices of a checkout you have not finished (never an amount or card details), drafts you have not saved yet, your recent searches and the items you recently opened on this device.",
 				"Session storage keeps work in progress for one browser tab — a form you have not sent yet, where you were in a list — and is cleared when the tab closes.",
+				"Session storage also holds a random key for the tab. It is sent with the record of which search results and listings were shown and opened in that tab, so we can measure and improve search and recommendations; on its own it identifies no one.",
 				"An offline database (IndexedDB) holds changes you make to a project while you are offline. They wait there and are sent to Projective automatically when you reconnect, then removed.",
 				"On the live site, an offline cache keeps a copy of the pages you open and the files they load — scripts, styles and images — so a page you were working on still opens if your connection drops. Responses from Projective's API are never stored in it.",
+				"A thumbnail cache keeps the small previews of files you have looked at in Files, so they appear at once next time. It is emptied when you sign out.",
 			],
 		},
 		{
 			type: "p",
 			content:
-				"Apart from the offline changes, which are sent as described above, these entries are read only by the page in your browser and are not sent to Projective with your requests. Clearing your browser's site data removes all of them, including any offline changes not yet sent.",
+				"Apart from the offline changes and the tab's key, which are sent as described above, these entries are read only by the page in your browser and are not sent to Projective with your requests. Clearing your browser's site data removes all of them, including any offline changes not yet sent.",
 		},
 	],
 };
@@ -204,7 +255,7 @@ const NO_TRACKING: LegalClause = {
 		{
 			type: "p",
 			content:
-				"Projective sets no advertising or cross-site tracking cookies and uses no third-party analytics service. It measures errors and page speed with its own first-party reports, and sets no cookie to do so.",
+				"Projective sets no advertising or cross-site tracking cookies and uses no third-party analytics service. It measures errors and page speed with its own first-party reports, and how search and recommendations perform with its own first-party events, and sets no cookie to do either.",
 		},
 	],
 };
@@ -234,7 +285,7 @@ export const COOKIES_VERSIONS = defineLegalVersions([
 		summary:
 			"Every cookie Projective sets, what it is for and how long it lasts — and what the site keeps in your browser's own storage.",
 		version: "1.0",
-		updatedAt: "2026-10-17",
+		updatedAt: "2026-11-23",
 		effectiveDate: "2026-10-17",
 		reviewedAt: null,
 		changeSummary: "First published.",
@@ -243,6 +294,7 @@ export const COOKIES_VERSIONS = defineLegalVersions([
 			ESSENTIAL,
 			PREFERENCES,
 			PAYMENTS,
+			OTHER_SERVICES,
 			DEVELOPMENT,
 			LOCAL_STORAGE,
 			NO_TRACKING,

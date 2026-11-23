@@ -115,32 +115,6 @@ const ROLES: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #2 · finance-model.md §1.1 · `security.platform_params.platform_fee_bp` (500). */
-const PAYMENTS: LegalClause = {
-	id: "payments",
-	heading: "Payments and fees",
-	tldr:
-		"Work is paid through escrow under the Escrow Terms. Projective charges a 5% service fee when escrow is released.",
-	body: [
-		{
-			type: "p",
-			content: [
-				"Every payment for work goes through escrow, as the ",
-				{ type: "link", href: "/legal/escrow-terms", text: "Escrow Terms" },
-				" describe. Projective is the ledger of record; card payments and payouts run through Stripe.",
-			],
-		},
-		{
-			type: "list",
-			items: [
-				"Projective's service fee is 5% of each escrow release, deducted from the payee when the release happens. Card processing costs are passed through at cost.",
-				"No fee is charged on a refund.",
-				"A price is set in the seller's currency, and that is the currency it is charged and paid in; the seller receives it less the service fee above. You may see prices converted into your own currency; the conversion is for display and never changes what is charged or paid.",
-			],
-		},
-	],
-};
-
 /** PRODUCT_SPEC.md §Messaging, Collaboration & Connections 1 (Platform Integrity) · Decision #147. */
 const CONDUCT: LegalClause = {
 	id: "conduct",
@@ -207,25 +181,6 @@ const LIABILITY: LegalClause = {
 	],
 };
 
-/** Decision #270 — versions are append-only and every one stays readable and comparable. */
-const CHANGES: LegalClause = {
-	id: "changes",
-	heading: "Changes to these terms",
-	tldr:
-		"When these terms change, the new version is published here with what changed. Older versions stay readable.",
-	body: [
-		{
-			type: "p",
-			content:
-				"We publish each new version of these terms on this page with its version number, its effective date and a summary of what changed. Every earlier version stays available here, and you can compare any two versions clause by clause.",
-		},
-		{
-			type: "p",
-			content:
-				"If you keep using Projective after a new version takes effect, that version applies to you from its effective date.",
-		},
-	],
-};
 // #endregion
 
 // #region Version 2.0 clauses
@@ -268,7 +223,7 @@ const AGE: LegalClause = {
 	],
 };
 
-/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 (payout-ready before earning, Decision #196) · §Identity, Taxes & Compliance 1. */
+/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #5 (payout-ready before earning, Decision #196) · §Identity, Taxes & Compliance 1 (KYB gates spending, not top-ups — Decision #248 (k)) · `finance.fn_assert_payout_ready` (every application, `supabase/migrations/00001210_*`). */
 const VERIFICATION_V2: LegalClause = {
 	id: "verification-and-payouts",
 	heading: "Verification before you earn",
@@ -278,13 +233,13 @@ const VERIFICATION_V2: LegalClause = {
 		{
 			type: "p",
 			content:
-				"Before you can apply for or accept paid work, be assigned or claim a ticket, or create or join a Team, you must complete an identity check with Stripe Identity and connect a payout account that Stripe has verified.",
+				"Before you can apply for work, accept an invitation to it, be assigned or claim a ticket, or create or join a Team, you must complete an identity check with Stripe Identity and connect a payout account that Stripe has verified.",
 		},
 		{
 			type: "list",
 			items: [
 				"A Team is given work only when everyone with a share of its earnings has done both.",
-				"A Business must complete business verification (KYB) before it can operate its pooled wallet.",
+				"A Business must complete business verification (KYB) before it can spend from its pooled wallet, move money out of it or withdraw from it. Adding money needs none.",
 				"An individual Client can pay by card with no identity check and no wallet to set up.",
 				"Money leaves Projective only to a verified payout account in the name of its owner.",
 			],
@@ -342,9 +297,114 @@ const CLOSING_V2: LegalClause = {
 		},
 	],
 };
+/**
+ * PRODUCT_SPEC.md §Escrow, Wallets & Finance #2 · finance-model.md §1.1 · `security.platform_params.platform_fee_bp`
+ * (500) · finance-model.md §1.2 and Decision #337 ruling M1 (the seller pays the marketplace commission
+ * by Standing rung, `finance.place_wallet_order` / `finance.fn_effective_commission_bp`) · Decision #435
+ * (buyer-currency charging is built but switched off) · Decision #490 (no tax collected while
+ * `tax_collection_enabled` is off; services and sessions name the seller as responsible). Card processing
+ * costs: no clause until the owner rules (see this change's decision row).
+ */
+const PAYMENTS_V2: LegalClause = {
+	id: "payments",
+	heading: "Payments and fees",
+	tldr:
+		"Work is paid through escrow under the Escrow Terms. Projective charges a 5% service fee when escrow is released, and a marketplace commission on product sales.",
+	body: [
+		{
+			type: "p",
+			content: [
+				"Every payment for work goes through escrow, as the ",
+				{ type: "link", href: "/legal/escrow-terms", text: "Escrow Terms" },
+				" describe. Projective is the ledger of record; card payments and payouts run through Stripe.",
+			],
+		},
+		{
+			type: "list",
+			items: [
+				"Projective's service fee is 5% of each escrow release, deducted from the payee when the release happens.",
+				"A seller of a digital product pays a marketplace commission on each sale instead: 8%, falling to 6.5% as the seller's Standing rises. It is taken from the sale before the rest is credited to the seller.",
+				"No fee is charged on a refund.",
+				"A price is set in the seller's currency, and that is the currency it is charged and paid in; the seller receives it less the fee or commission above. You may see prices converted into your own currency; the conversion is for display and never changes what is charged or paid.",
+				"Projective does not add or collect tax at checkout today: you pay the price shown. If you sell a service or a session, you are responsible for any tax due on it.",
+			],
+		},
+	],
+};
+
+/** Decision #270 (versions stay readable and comparable) · Decision #446 (sign-up records the versions accepted; a `material` version must be accepted before the person carries on, `public.accept_current_terms`). */
+const CHANGES_V2: LegalClause = {
+	id: "changes",
+	heading: "Changes to these terms",
+	tldr:
+		"When these terms change, the new version is published here with what changed. An important change must be accepted before you carry on.",
+	body: [
+		{
+			type: "p",
+			content:
+				"When you sign up, you accept these terms and the Acceptable Use Policy, and we record which version of each you accepted.",
+		},
+		{
+			type: "p",
+			content:
+				"We publish each new version of these terms on this page with its version number, its effective date and a summary of what changed. Every earlier version stays available here, and you can compare any two versions clause by clause.",
+		},
+		{
+			type: "p",
+			content:
+				"When a new version changes something important, we ask you to accept it before you carry on using Projective. For any other new version, if you keep using Projective after it takes effect, it applies to you from its effective date.",
+		},
+	],
+};
 // #endregion
 
 // #region Version 1.0 clauses
+/** PRODUCT_SPEC.md §Escrow, Wallets & Finance #2 · finance-model.md §1.1 (as first written) · `security.platform_params.platform_fee_bp` (500). */
+const PAYMENTS_V1: LegalClause = {
+	id: "payments",
+	heading: "Payments and fees",
+	tldr:
+		"Work is paid through escrow under the Escrow Terms. Projective charges a 5% service fee when escrow is released.",
+	body: [
+		{
+			type: "p",
+			content: [
+				"Every payment for work goes through escrow, as the ",
+				{ type: "link", href: "/legal/escrow-terms", text: "Escrow Terms" },
+				" describe. Projective is the ledger of record; card payments and payouts run through Stripe.",
+			],
+		},
+		{
+			type: "list",
+			items: [
+				"Projective's service fee is 5% of each escrow release, deducted from the payee when the release happens. Card processing costs are passed through at cost.",
+				"No fee is charged on a refund.",
+				"A price is set in the seller's currency, and that is the currency it is charged and paid in; the seller receives it less the service fee above. You may see prices converted into your own currency; the conversion is for display and never changes what is charged or paid.",
+			],
+		},
+	],
+};
+
+/** Decision #270 — versions are append-only and every one stays readable and comparable (before acceptance was recorded). */
+const CHANGES_V1: LegalClause = {
+	id: "changes",
+	heading: "Changes to these terms",
+	tldr:
+		"When these terms change, the new version is published here with what changed. Older versions stay readable.",
+	body: [
+		{
+			type: "p",
+			content:
+				"We publish each new version of these terms on this page with its version number, its effective date and a summary of what changed. Every earlier version stays available here, and you can compare any two versions clause by clause.",
+		},
+		{
+			type: "p",
+			content:
+				"If you keep using Projective after a new version takes effect, that version applies to you from its effective date.",
+		},
+	],
+};
+
 /** PRODUCT_SPEC.md §Account Creation, Age Guardrails & Onboarding (as added 2026-07-13, Decisions #5–#7). */
 const AGE_V1: LegalClause = {
 	id: "age",
@@ -416,7 +476,7 @@ export const TERMS_VERSIONS = defineLegalVersions([
 		summary:
 			"The agreement between you and Projective: accounts, age, roles, verification, hiring, payments and how the agreement changes.",
 		version: "2.0",
-		updatedAt: "2026-10-17",
+		updatedAt: "2026-11-23",
 		effectiveDate: "2026-10-17",
 		reviewedAt: null,
 		changeSummary:
@@ -428,12 +488,12 @@ export const TERMS_VERSIONS = defineLegalVersions([
 			ROLES,
 			VERIFICATION_V2,
 			HIRING,
-			PAYMENTS,
+			PAYMENTS_V2,
 			CONDUCT,
 			CONTENT_AND_IP,
 			CLOSING_V2,
 			LIABILITY,
-			CHANGES,
+			CHANGES_V2,
 		],
 	},
 	{
@@ -454,13 +514,13 @@ export const TERMS_VERSIONS = defineLegalVersions([
 			AGE_V1,
 			ROLES,
 			VERIFICATION_V1,
-			PAYMENTS,
+			PAYMENTS_V1,
 			OPENING_CREDIT_V1,
 			CONDUCT,
 			CONTENT_AND_IP,
 			CLOSING_V1,
 			LIABILITY,
-			CHANGES,
+			CHANGES_V1,
 		],
 	},
 ]);

@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
 | **UAT**          | **70%** |           70 | 42 |  9 | 19 |           4 |
-| **Production**   | **48%** |          153 | 54 | 27 | 72 |          14 |
+| **Production**   | **47%** |          155 | 54 | 27 | 74 |          14 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -53,7 +53,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | :--------------------------------- | ---: | -: | -: | -: | ----: |
 | A. Product surfaces & navigation   |   10 |  3 |  0 |  7 |   31% |
 | B. Live data paths & feature flags |    8 |  4 |  1 |  3 |   73% |
-| C. Security & access control       |   35 | 18 |  4 | 13 |   60% |
+| C. Security & access control       |   36 | 18 |  4 | 14 |   59% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
 | E. Communications & delivery       |   18 |  3 |  7 |  8 |   42% |
 | F. Money, ledger & reconciliation  |   23 |  7 |  5 | 11 |   45% |
@@ -63,7 +63,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | J. Routing, URLs & SEO             |    6 |  3 |  1 |  2 |   67% |
 | K. Quality gates & testing         |    6 |  2 |  1 |  3 |   38% |
 | L. Design system & accessibility   |    6 |  1 |  2 |  3 |   33% |
-| M. Legal & compliance              |    7 |  1 |  1 |  5 |   25% |
+| M. Legal & compliance              |    8 |  1 |  1 |  6 |   22% |
 
 **Critical path per tier** (the open Critical rows, in suggested order):
 
@@ -152,6 +152,7 @@ order).
 | PRD-C34 | A team listing's write doors ask the team's `publish_listings`                            | ❌     | High     | UAT  | #500 (A): `save_listing`, `apply_listing_media`, `set_listing_status`, `duplicate_listing` and `delete_listing` ask only the creator (`00001170:317`, `:810`, `:914`, `:1149`, `:1336`) and `create_listing` any active member (`:58`), so a plain member creates and publishes for the team with their own JWT (only the app's `?team=` scope asks `publish_listings`); `delete_listing`, a definer, lets a creator who has left the team hard-delete its listings with no buyer history | SC6 (#500) |
 | PRD-C35 | A sign-in submitted before the page hydrates never puts the password in the URL           | ❌     | High     | UAT  | Found by CK5 (#492): `CredentialsForm.tsx:130` is `<form onSubmit={onSubmit} noValidate>` with no `method`, so a Sign in pressed before the island hydrates (a slow network, a bundle that failed) is the browser's own GET to `/login?identifier=…&password=…&remember=on`: the password lands in the address bar, the history, the server's access log and any later `Referer`. Seen on a dev server whose build sent no module script. Fix: `method="post"` with a route that answers a non-JS post, or no `name` on the fields until the island hydrates (the reset form's fields carry none, so it is safe) | —          |
 | PRD-C36 | Discovery telemetry is written only through the events route                              | ❌     | Normal   | PROD | Found by SC5 (#506 (a)): `anon` and `authenticated` hold INSERT on `search.interest_events` (`00002520:125`; policy `user_id = auth.uid() OR user_id IS NULL`), so a script posting to PostgREST with fresh session keys and any `created_at` inflates any listing's impressions, clicks and page views, which the seller's analytics (MK-43) and `listings.view_count` read. The route's rate limit and bot filter and the view trigger's 30-minute rule bound honest traffic only. Fix as SAC2 did for `query_logs` (#462): a door the route calls after its limiter, INSERT revoked | —          |
+| PRD-C37 | No wallet can exist for a 13–17 account                                                    | ❌     | Normal   | PROD | Found by LG1 (#531 (D)): every money door refuses a restricted account (`fn_assert_adult`), but `finance.fn_ensure_wallet` (`00001200`) and wallet inserts do not check age, so a wallet row is one missed check away; the Terms' `age` clause promises none | — |
 
 ## D. Trust, safety & moderation
 
@@ -315,13 +316,14 @@ Work orders for every open row, with the run order:
 
 | ID     | Requirement                                                             | Status | Crit     | Gate | Evidence / what's missing                                                                                                                    | Track      |
 | :----- | :---------------------------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------- | :--------- |
-| PRD-M1 | Every legal document reviewed by counsel                                | ❌     | Critical | PROD | Every version carries `reviewedAt: null`, so each reads "Draft — pending legal review" and is noindexed (`features/legal/core/content/*.ts`). Counsel brief written 2026-11-23 (`FOUNDER_QUESTIONNAIRE.md` Part E: the library E.1, the open questions E.2, the sign-off runbook E.4; LG2, `b3148e47`, #528); awaiting counsel. E.1.7 waits for LG1's drift table | 🧑 counsel |
+| PRD-M1 | Every legal document reviewed by counsel                                | ❌     | Critical | PROD | Every version carries `reviewedAt: null`, so each reads "Draft — pending legal review" and is noindexed (`features/legal/core/content/*.ts`). Counsel brief written 2026-11-23 (`FOUNDER_QUESTIONNAIRE.md` Part E: the library E.1, the open questions E.2, the sign-off runbook E.4; LG2, `b3148e47`, #528). Library brought current (LG1, #531): every newest draft matches the product as built, and the drift left open is E.1.7; awaiting counsel | 🧑 counsel |
 | PRD-M2 | Sign-up records acceptance of the current terms and privacy notice      | ✅     | Critical | PROD | Built (#446). Every `/join` final step has an unticked box (Terms · AUP · Privacy linked). `org.legal_acceptances` is written inside the profile's own transaction at versions the database re-checks; a forged version is refused, and under 13 records nothing. A material version re-asks (`termsDue` → `/join?complete=terms`). Proved live through GoTrue and by `legal_acceptance.sql`. The text itself is PRD-M1 | AU1        |
 | PRD-M3 | Self-serve personal data export                                         | 🟡     | Normal   | PROD | Built (#450): Settings → Account → Download your data; `org.request_data_export` (recent sign-in, one open, one a day, none during erasure); the `account-data-exports` job writes a ZIP of 15 schema-validated domains to the service-only `data_exports` bucket, downloadable 7 days through a per-read link; erasure reaches it. Proved live (marisdelacroix, kwamemensah) and by `data_export.sql`. Remaining: the job's hosted dispatch (`ACCOUNT_CRON_SECRET` + `CRON_APP_URL` in the Vault, PRD-G6) | ST6        |
 | PRD-M4 | The legal IP chain of title (deeds of transfer on release, audit packs) | ❌     | High     | PROD | Specified (PRODUCT_SPEC §Identity, Taxes & Compliance 4); no deed table, generator or signing; placeholder pages only (PRD-A4)               | —          |
 | PRD-M5 | Tax documents (invoice tax lines, 1099 / W-9, VAT reverse charge)       | ❌     | High     | PROD | Ruled #490: checkout and invoice tax through Stripe Tax, collected by the platform on digital products only, added at checkout, behind a switch off until counsel (CK4, after DB21). Nothing generates a tax document yet; 1099 / W-9 are payout-side (MARKETPLACE §0.5) | CK4 (#490) |
 | PRD-M6 | AML monitoring (round-tripping, churn, safety hold)                     | ❌     | Normal   | PROD | Signals not built; the programme stays off pending counsel (#336 I1)                                                                         | 🧑 counsel |
 | PRD-M7 | Tax on the platform's own fees (stage fee, commission, buyer fee)       | ❌     | High     | PROD | Found by CK4's ruling (#490 (a)): the 5% stage-completion fee, the marketplace commission and a `buyer_added` fee are supplies Projective itself makes, and no work order charges, records or invoices tax on them. CK4 taxes the buyer's order only | 🧑 counsel |
+| PRD-M8 | Non-essential browser storage waits for consent                          | ❌     | High     | PROD | Found by LG1 (#531 (D)): the tab's discovery key (`pj.session.explore.discoverySession`, `features/explore/core/discovery-beacon.ts`) is written for every reader, a guest or a 13–17 account included, with no consent and no consent surface, to measure and rank discovery. The Cookie Policy now discloses it. Counsel decides whether it, and the device's recent views and searches, are strictly necessary (`FOUNDER_QUESTIONNAIRE.md` E.1.7; E.3, PECR) | 🧑 counsel |
 
 ## Decisions awaiting a human (not scored)
 
@@ -368,6 +370,11 @@ Work orders for every open row, with the run order:
 | The assignor's signature, the word "deed", and a Fair Exit's IP                       | PRD-M4, USER_FLOWS MW-56 | ⚖️ Pending counsel. The owner chose A: each accepts once per version at the first paid claim or funding (LG3); LG4 stops (b), (d) are ruled (#530): no record on a Fair Exit, and "Transfer record" in the UI until counsel names it. Brief: Part E2.16–E2.18 (#528) |
 | `projective_partner`: define its terms, or retire the mode (#270 (f))                  | PRD-M1             | ⚖️ Pending counsel and the owner. Brief: Part E2.19 (#528) |
 | Seller tax documents: the spec's US framing (1099 / W-9) for a GB platform; UK and EU platform reporting | PRD-M5, USER_FLOWS MW-57 | ⚖️ Pending counsel (LEGAL_COMPLIANCE §0.2 finding 6; #527, LG6's research). Brief: Part E2.24 (#528) |
+| Card processing costs: absorbed (as built) or passed through (as ruled 2026-07-12)            | PRD-M1             | Open, the owner's (#531 flag (A)); recommended: absorb at launch. Brief: `FOUNDER_QUESTIONNAIRE.md` E.1.7 |
+| Stage-work disputes: mark PRODUCT_SPEC §Dispute Resolution 1, 2 and 5 Not built yet, or build them | PRD-M1          | Open, the owner's (#531 flag (B)); recommended: mark them. Brief: E.1.7 |
+| Which new legal documents to add (a Copyright & Notice Policy, Marketplace Licence Terms; a DPA later) | PRD-M1       | Open, the owner's (LEGAL LG1 stop (a), #531) |
+| The data controller's identity (legal name, company number, address, ICO number, contact) | PRD-M1             | 🖊 The owner's alone (LEGAL LG1 stop (b), #270 (h)). Brief: E.5 item 1 |
+| Non-essential browser storage: strictly necessary, or consent first                        | PRD-M8             | ⚖️ Pending counsel. Brief: Part E2.25 (#531) |
 
 ## Doc drift to sweep (not scored)
 
@@ -407,6 +414,8 @@ Work orders for every open row, with the run order:
   read live (`live-basket`, `live-orders`).
 - #422 flag (a) (a dead Reserve seat on `/view`) looks fixed by #424's seat dialog but is not
   closed.
+- `PRODUCT_SPEC.md` §Settings calls Screen sharing mode "specified … not yet built", yet its
+  `pj.screen_share` cookie is set (`features/shell/core/screen-share-state.ts`; found by LG1, #531).
 
 ## Score history
 
@@ -467,3 +476,4 @@ Work orders for every open row, with the run order:
 | 2026-11-23 | LG2 (#528): no row flips; the counsel brief for the legal library and every open ⚖️ item outside Part D is written (`FOUNDER_QUESTIONNAIRE.md` Part E), PRD-M1's evidence names it, and twelve ⚖️ items get rows under §Decisions awaiting a human | 76% | 70% | 48% |
 | 2026-11-23 | CK3 (#517): no row flips; new PRD-J6 ❌ (an order's receipt and history links carry its raw uuid, a Decision #88 gap; the `ord-` slug takes a Queue M turn on `00000017`) | 76% | 70% | 48% |
 | 2026-11-23 | R1 (#533): no row flips; PRD-D9 narrows (the reason vocabulary and the `ops.reports` sink with its filing doors and reports service are built; the reviewer, penalties, Standing link and report route remain) | 76% | 70% |  48% |
+| 2026-11-23 | LG1 (#531): no row flips; the six legal drafts brought in line with the product and the Cookie Policy with what the code stores (PRD-M1's evidence); new PRD-M8 ❌ (non-essential browser storage without consent) and PRD-C37 ❌ (a 13–17 account's wallet row is unguarded) | 76% | 70% | 47% |
