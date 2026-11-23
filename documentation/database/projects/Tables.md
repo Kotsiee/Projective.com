@@ -34,7 +34,7 @@ and high-level metadata.
 | `industry_category_id`      | uuid                          | No FK — there is no categories table (see Refactor Notes).                                              |
 | `visibility`                | visibility                    | NOT NULL `DEFAULT 'public'`. Where the row sits NOW. **Server-derived**, never a client value.          |
 | `publish_visibility`        | visibility                    | NOT NULL `DEFAULT 'public'`. Where the owner wants it once published — an INTENT.                       |
-| `currency`                  | text                          | NOT NULL `DEFAULT 'USD'`, CHECK `^[A-Z]{3}$` (FINANCE DB8).                                             |
+| `currency`                  | text                          | NOT NULL, no default: `projects.create_project` writes the payload's, else its owner's (`org.fn_entity_currency`, ruling M5 (b)). CHECK `^[A-Z]{3}$` (FINANCE DB8); `trg_projects_settlement_currency` refuses one outside `settlement_currencies` (22023, #423 (B), FINANCE DB9). |
 | `budget_type`               | budget_type                   | NOT NULL `DEFAULT 'fixed_price'`. `fixed_price` or `hourly_cap`.                                        |
 | `budget_amount_cents`       | bigint                        | CHECK `NULL` or `>= 0`. Minor units. `NULL` = not set, which is not the same as zero.                  |
 | `timeline_preset`           | timeline_preset               | NOT NULL `DEFAULT 'sequential'`. `sequential`, `simultaneous`, `staggered`, `custom`.                   |

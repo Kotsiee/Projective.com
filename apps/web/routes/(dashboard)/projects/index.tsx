@@ -29,7 +29,6 @@ export const handler = define.handlers({
 			ctx.url,
 			ctx.state.userContext ?? resolveRequestContext(ctx.req),
 			readActor(ctx),
-			ctx.state.currency?.displayCurrency,
 		);
 		ctx.state.title = "Projects · Projective";
 		return page(data);

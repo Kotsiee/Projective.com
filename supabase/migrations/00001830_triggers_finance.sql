@@ -222,3 +222,23 @@ CREATE TRIGGER trg_escrows_activate_funded_service
     WHEN (NEW.status = 'held' AND NEW.project_stage_id IS NOT NULL)
     EXECUTE FUNCTION projects.fn_activate_funded_service ();
 -- #endregion
+
+-- #region Priced only in a settlement currency (Decision #337, ruling M5 (a); #423 (B); FBP DB9)
+-- Every priced row, whoever writes it (a door, a direct write, the seed), is in a currency Projective
+-- settles in: org.trg_settlement_currency (00001020) refuses any other with 22023 `currency`.
+CREATE TRIGGER trg_projects_settlement_currency
+    BEFORE INSERT OR UPDATE OF currency ON projects.projects
+    FOR EACH ROW EXECUTE FUNCTION org.trg_settlement_currency ();
+
+CREATE TRIGGER trg_listings_settlement_currency
+    BEFORE INSERT OR UPDATE OF currency ON catalogue.listings
+    FOR EACH ROW EXECUTE FUNCTION org.trg_settlement_currency ();
+
+CREATE TRIGGER trg_products_settlement_currency
+    BEFORE INSERT OR UPDATE OF currency ON catalogue.products
+    FOR EACH ROW EXECUTE FUNCTION org.trg_settlement_currency ();
+
+CREATE TRIGGER trg_service_blueprints_settlement_currency
+    BEFORE INSERT OR UPDATE OF currency ON marketplace.service_blueprints
+    FOR EACH ROW EXECUTE FUNCTION org.trg_settlement_currency ();
+-- #endregion

@@ -1,6 +1,6 @@
 import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
-import { toDisplayCurrency } from "@projective/types/finance";
+import { PLATFORM_BASE_CURRENCY } from "@projective/types/finance";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { consoleParamsOf, resolveCataloguePage } from "../core/catalogue-ssr.ts";
@@ -40,7 +40,7 @@ export const handler = define.handlers({
 				listings,
 				error,
 				url: parseConsoleUrl(ctx.url),
-				defaultCurrency: toDisplayCurrency(context.displayCurrency),
+				defaultCurrency: context.homeCurrency ?? PLATFORM_BASE_CURRENCY,
 			},
 			error ? { status: 503 } : undefined,
 		);

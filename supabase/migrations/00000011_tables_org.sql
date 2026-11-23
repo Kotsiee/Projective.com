@@ -216,6 +216,11 @@ CREATE TABLE org.user_preferences (
     -- NULL follows the locale's own date order; a value is an explicit override that survives a
     -- language change (Settings → Language & region).
     date_format text,
+    -- The country the person confirmed at sign-up (ISO 3166-1 alpha-2), the one an entity they create
+    -- takes its currency from (org.fn_currency_for_country; Decision #337, ruling M5 (b)). The browser
+    -- only suggests it. NULL is "never confirmed", which maps to the platform base. Changing it later
+    -- re-prices nothing that already exists.
+    country char(2) CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
     CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id),
     CONSTRAINT user_preferences_date_format_check CHECK (date_format IS NULL OR date_format IN ('dmy', 'mdy', 'ymd')),
     CONSTRAINT user_preferences_theme_check CHECK (theme IN ('system', 'light', 'dark')),
@@ -288,7 +293,8 @@ CREATE TABLE org.business_profiles (
     bio jsonb NOT NULL DEFAULT '{}'::jsonb,
     languages text[] NOT NULL DEFAULT '{}'::text[],
     timezone text,
-    default_currency text DEFAULT 'USD' CHECK (default_currency ~ '^[A-Z]{3}$'),
+    -- Its owner's country's currency, set by org.create_workspace (ruling M5 (b)); no default.
+    default_currency text NOT NULL CHECK (default_currency ~ '^[A-Z]{3}$'),
     tax_id text,
     address_line_1 text,
     address_city text,
@@ -983,7 +989,8 @@ CREATE TABLE org.enterprises (
     verification_level org.enterprise_verification_level NOT NULL DEFAULT 'unverified',
     logo_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
     billing_email text,
-    default_currency text NOT NULL DEFAULT 'USD' CHECK (default_currency ~ '^[A-Z]{3}$'),
+    -- Its registered country's currency, set by public.create_enterprise (ruling M5 (b)); no default.
+    default_currency text NOT NULL CHECK (default_currency ~ '^[A-Z]{3}$'),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT enterprises_pkey PRIMARY KEY (id),

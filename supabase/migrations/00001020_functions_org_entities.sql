@@ -382,7 +382,7 @@ BEGIN
        AND btrim(p_payload->>'billingEmail') !~ v_email_re THEN
         RAISE EXCEPTION 'billingEmail is not an email address' USING ERRCODE = '22023';
     END IF;
-    IF p_payload ? 'defaultCurrency' AND upper(btrim(p_payload->>'defaultCurrency')) !~ '^[A-Z]{3}$' THEN
+    IF p_payload ? 'defaultCurrency' AND COALESCE(upper(btrim(p_payload->>'defaultCurrency')), '') !~ '^[A-Z]{3}$' THEN
         RAISE EXCEPTION 'defaultCurrency is a three-letter currency code' USING ERRCODE = '22023';
     END IF;
     IF COALESCE(btrim(p_payload->>'employeeScale'), '') <> ''
@@ -1149,6 +1149,94 @@ BEGIN
 END;
 $$;
 
+-- #region Entity currency (Decision #337, ruling M5 (a), (b); #423 (B))
+-- The currency a country's entities are priced and paid in: its own when the platform settles it
+-- (security.platform_params.settlement_currencies), else the platform base. ONE map, mirrored by
+-- currencyForCountry in @projective/types/finance (fx.ts) and pinned to it by
+-- entity-currency.contract.test.ts: a euro territory is EUR, and AED, INR and NGN, which a GB platform
+-- cannot settle, fall to the base. Never the display preference, which is presentational only.
+CREATE OR REPLACE FUNCTION org.fn_currency_for_country(p_country text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    WITH own AS (
+        SELECT CASE
+            WHEN x.code = ANY (ARRAY[
+                'AT', 'BE', 'BG', 'CY', 'DE', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'IE', 'IT', 'LT', 'LU',
+                'LV', 'MT', 'NL', 'PT', 'SI', 'SK', 'AD', 'MC', 'ME', 'SM', 'VA', 'XK']) THEN 'EUR'
+            ELSE CASE x.code
+                WHEN 'GB' THEN 'GBP' WHEN 'US' THEN 'USD' WHEN 'EU' THEN 'EUR' WHEN 'CA' THEN 'CAD'
+                WHEN 'AU' THEN 'AUD' WHEN 'JP' THEN 'JPY' WHEN 'IN' THEN 'INR' WHEN 'SG' THEN 'SGD'
+                WHEN 'CH' THEN 'CHF' WHEN 'ZA' THEN 'ZAR' WHEN 'NG' THEN 'NGN' WHEN 'AE' THEN 'AED'
+            END
+        END AS currency
+        FROM (SELECT pg_catalog.upper(pg_catalog.btrim(COALESCE(p_country, ''))) AS code) x
+    )
+    SELECT CASE
+        WHEN COALESCE((SELECT p.value ? own.currency FROM security.platform_params p WHERE p.key = 'settlement_currencies'), false)
+        THEN own.currency
+        ELSE COALESCE((SELECT p.value #>> '{}' FROM security.platform_params p WHERE p.key = 'base_currency'), 'GBP')
+    END
+    FROM own;
+$$;
+
+-- The currency a new priced thing defaults to when its door is given none: its owner's. A team's is its
+-- treasury wallet's, a business's or an enterprise's its default currency, and anything else the
+-- caller's own, from their confirmed country. DEFINER so an INVOKER door (catalogue.create_listing)
+-- reads it whatever RLS shows the caller; it answers only a currency code.
+CREATE OR REPLACE FUNCTION org.fn_entity_currency(
+    p_team uuid DEFAULT NULL,
+    p_business uuid DEFAULT NULL,
+    p_enterprise uuid DEFAULT NULL
+)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        CASE
+            WHEN p_team IS NOT NULL THEN (
+                SELECT w.currency FROM org.teams t JOIN finance.wallets w ON w.id = t.treasury_wallet_id
+                 WHERE t.id = p_team)
+            WHEN p_business IS NOT NULL THEN (
+                SELECT b.default_currency FROM org.business_profiles b WHERE b.id = p_business)
+            WHEN p_enterprise IS NOT NULL THEN (
+                SELECT e.default_currency FROM org.enterprises e WHERE e.id = p_enterprise)
+        END,
+        org.fn_currency_for_country(
+            (SELECT p.country FROM org.user_preferences p WHERE p.user_id = auth.uid()))
+    );
+$$;
+
+-- Nothing is priced outside the settlement currencies (#423 (B)): a payout transfers from a Stripe
+-- balance in its own currency (ruling M5 (a)), and AED, INR and NGN have none. BEFORE INSERT OR UPDATE OF
+-- currency on every priced row (00001830): projects, listings, products and service blueprints, so a
+-- door, a direct write and the seed meet the same refusal. DEFINER: it reads security.platform_params.
+CREATE OR REPLACE FUNCTION org.trg_settlement_currency()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_settle jsonb := COALESCE(
+        (SELECT p.value FROM security.platform_params p WHERE p.key = 'settlement_currencies'), '[]'::jsonb);
+BEGIN
+    IF NOT v_settle ? pg_catalog.upper(NEW.currency) THEN
+        RAISE EXCEPTION 'currency: Projective prices in %, not %',
+            (SELECT pg_catalog.string_agg(c, ', ') FROM pg_catalog.jsonb_array_elements_text(v_settle) c),
+            pg_catalog.upper(NEW.currency)
+            USING ERRCODE = '22023', DETAIL = 'currency';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+-- #endregion
+
 CREATE OR REPLACE FUNCTION org.create_workspace(p_kind text, p_name text, p_handle text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1206,10 +1294,9 @@ BEGIN
             END || ' — archive one or upgrade to create another';
     END IF;
 
-    v_currency := COALESCE(
-        (SELECT upper(p.preferred_display_currency) FROM org.user_preferences p WHERE p.user_id = v_uid),
-        'USD'
-    );
+    -- The owner's confirmed country, never their display currency (Decision #337, ruling M5 (b)).
+    v_currency := org.fn_currency_for_country(
+        (SELECT p.country FROM org.user_preferences p WHERE p.user_id = v_uid));
 
     IF p_kind = 'team' THEN
         INSERT INTO org.teams (owner_user_id, name, slug, status, headline, visibility)
@@ -3604,7 +3691,7 @@ BEGIN
     v_cap_default := COALESCE(v_cap_default, 10.00);
     IF p_kind = 'business' THEN
         -- The policy wallet is the one in the business's default currency (save_spend_policy's default).
-        v_currency := upper(COALESCE(v_e.currency, 'USD'));
+        v_currency := upper(v_e.currency);
         SELECT w.id INTO v_wallet FROM finance.wallets w
          WHERE w.owner_type = 'business' AND w.owner_id = v_e.id AND upper(w.currency) = v_currency;
         v_active := v_e.status = 'active';

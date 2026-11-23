@@ -68,8 +68,8 @@ BEGIN
      WHERE p.id = c.project_id AND p.source_blueprint_id = v_bp.id AND c.status = 'enrolling';
 
     INSERT INTO projects.projects (owner_user_id, title, format, session_kind, status, visibility,
-                                   publish_visibility, source_blueprint_id)
-    VALUES (v_bp.host, 'Probe waitlist cohort', 'session', 'group', 'active', 'unlisted', 'unlisted', v_bp.id)
+                                   publish_visibility, source_blueprint_id, currency)
+    VALUES (v_bp.host, 'Probe waitlist cohort', 'session', 'group', 'active', 'unlisted', 'unlisted', v_bp.id, 'USD')
     RETURNING id INTO v_project;
     INSERT INTO projects.project_stages (project_id, name, sort_order) VALUES (v_project, 'Sessions', 0)
     RETURNING id INTO v_stage;

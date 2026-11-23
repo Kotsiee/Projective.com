@@ -70,23 +70,78 @@ export function toSupportedLocale(tag: string | null | undefined): SupportedLoca
 /** What a browser suggests for a new account's preferences; each key is absent when unsupported. */
 export interface PreferenceHints {
 	locale?: SupportedLocale;
-	/** An offerable display currency (ISO-4217). */
+	/** An offerable display currency (ISO-4217): the suggested country's, when it has one. */
 	displayCurrency?: string;
+	/**
+	 * A SUGGESTED sign-up country (ISO 3166-1 alpha-2), for the person to confirm in the form. Never
+	 * applied unasked: the confirmed country, not this, decides an entity's currency (Decision #337,
+	 * ruling M5 (b)).
+	 */
+	country?: string;
 }
 
 /**
- * The preference hints in a browser's language list (`navigator.languages`, most preferred first):
- * the first offered locale, and the display currency of the first tag that names a region. A bare
- * language says nothing about where someone lives, so it never picks a currency.
+ * The country of the main IANA zones of the display-currency countries and the larger euro states.
+ * shortcut: a zone outside this list suggests nothing (the language's region is used instead, and the
+ * person picks); upgrade to the full IANA zone.tab map if sign-up suggestions need more.
  */
-export function preferenceHints(languages: readonly string[]): PreferenceHints {
+const ZONE_COUNTRY: Readonly<Record<string, string>> = {
+	"Europe/London": "GB",
+	"Europe/Dublin": "IE",
+	"America/New_York": "US",
+	"America/Chicago": "US",
+	"America/Denver": "US",
+	"America/Phoenix": "US",
+	"America/Los_Angeles": "US",
+	"America/Anchorage": "US",
+	"Pacific/Honolulu": "US",
+	"America/Toronto": "CA",
+	"America/Vancouver": "CA",
+	"America/Edmonton": "CA",
+	"America/Winnipeg": "CA",
+	"America/Halifax": "CA",
+	"Australia/Sydney": "AU",
+	"Australia/Melbourne": "AU",
+	"Australia/Brisbane": "AU",
+	"Australia/Adelaide": "AU",
+	"Australia/Perth": "AU",
+	"Asia/Tokyo": "JP",
+	"Asia/Kolkata": "IN",
+	"Asia/Calcutta": "IN",
+	"Asia/Singapore": "SG",
+	"Europe/Zurich": "CH",
+	"Africa/Johannesburg": "ZA",
+	"Africa/Lagos": "NG",
+	"Asia/Dubai": "AE",
+	"Europe/Berlin": "DE",
+	"Europe/Paris": "FR",
+	"Europe/Madrid": "ES",
+	"Europe/Rome": "IT",
+	"Europe/Amsterdam": "NL",
+	"Europe/Brussels": "BE",
+	"Europe/Vienna": "AT",
+	"Europe/Lisbon": "PT",
+	"Europe/Helsinki": "FI",
+	"Europe/Athens": "GR",
+};
+
+/**
+ * The preference hints in a browser's language list (`navigator.languages`, most preferred first) and
+ * its time zone: the first offered locale, a suggested country (the time zone's, else the first tag
+ * that names a region) and that country's display currency. A bare language says nothing about where
+ * someone lives, so it never picks a country or a currency. The server, which has no time zone, reads
+ * the same hint from `Accept-Language` for a guest's display currency.
+ */
+export function preferenceHints(languages: readonly string[], timeZone?: string): PreferenceHints {
 	const hints: PreferenceHints = {};
 	const locale = languages.map(toSupportedLocale).find((match) => match !== undefined);
 	if (locale) hints.locale = locale;
-	const region = languages
-		.map((tag) => parseLocale(tag.trim().replace(/_/g, "-"))?.region)
-		.find((match) => match !== undefined);
-	const currency = displayCurrencyForRegion(region);
+	const country = (timeZone ? ZONE_COUNTRY[timeZone] : undefined) ??
+		languages
+			.map((tag) => parseLocale(tag.trim().replace(/_/g, "-"))?.region)
+			.find((match) => match !== undefined);
+	if (country) hints.country = country;
+	const currency = displayCurrencyForRegion(country);
 	if (currency) hints.displayCurrency = currency;
 	return hints;
 }

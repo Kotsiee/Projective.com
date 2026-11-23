@@ -88,7 +88,7 @@ slug text NOT NULL,
 -- transition. `public` by default because somebody creating a project to hire against is asking to
 -- be found, which is safe to default precisely because it is intent and not state.
 publish_visibility visibility NOT NULL DEFAULT 'public'::visibility,
-  currency text NOT NULL DEFAULT 'USD'::text CHECK (currency ~ '^[A-Z]{3}$'),
+  currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   -- This project's auto-funding, overriding its client business's `auto_fund_mode`; NULL inherits it.
   -- Meaningless (and ignored) on a project with no client business: an individual is never auto-funded.
   auto_fund_override text CHECK (auto_fund_override IS NULL OR auto_fund_override IN ('off', 'add_to_basket', 'from_wallet')),

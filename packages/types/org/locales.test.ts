@@ -39,12 +39,34 @@ Deno.test("displayCurrencyForRegion: an offered currency by its territory, the e
 });
 
 Deno.test("preferenceHints: the first offered locale and the first stated region", () => {
-	assertEquals(preferenceHints(["en-US", "en"]), { locale: "en-US", displayCurrency: "USD" });
+	assertEquals(preferenceHints(["en-US", "en"]), {
+		locale: "en-US",
+		country: "US",
+		displayCurrency: "USD",
+	});
 	assertEquals(
 		preferenceHints(["en-NZ", "de-AT"]),
-		{},
-		"only the first stated region picks a currency",
+		{ country: "NZ" },
+		"only the first stated region is suggested, and NZ has no display currency",
 	);
+});
+
+Deno.test("preferenceHints: the time zone suggests the country before the language does", () => {
+	assertEquals(preferenceHints(["en-US"], "Europe/Berlin"), {
+		locale: "en-US",
+		country: "DE",
+		displayCurrency: "EUR",
+	});
+	assertEquals(
+		preferenceHints(["en-GB"], "Antarctica/Troll").country,
+		"GB",
+		"an unmapped zone falls back",
+	);
+	assertEquals(preferenceHints(["en"], "Asia/Tokyo"), {
+		locale: "en-US",
+		country: "JP",
+		displayCurrency: "JPY",
+	});
 });
 
 Deno.test("preferenceHints: an unsupported region leaves the currency to the default", () => {

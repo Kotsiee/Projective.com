@@ -28,7 +28,7 @@ import {
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
 import { publicFooterFor } from "@features/marketing/core/footer-slot.tsx";
 import { readActor } from "@web/utils/api-session.ts";
-import { toDisplayCurrency } from "@projective/types/finance";
+import { PLATFORM_BASE_CURRENCY } from "@projective/types/finance";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import {
 	resolveConsultationOffer,
@@ -280,7 +280,7 @@ export default define.page(async function ProfileLayout(ctx) {
 					authed={authed}
 					restricted={restricted}
 					hireProjects={hireProjects}
-					defaultCurrency={toDisplayCurrency(context?.displayCurrency)}
+					defaultCurrency={context?.homeCurrency ?? PLATFORM_BASE_CURRENCY}
 					scopeId={context?.contextId ?? ""}
 					ownerEdit={owned?.edit ?? null}
 					ownerModel={owned?.model ?? null}

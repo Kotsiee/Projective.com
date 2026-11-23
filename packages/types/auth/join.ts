@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isDisplayCurrency } from "../finance/fx.ts";
+import { countryCodeOf } from "../finance/countries.ts";
 import { toSupportedLocale } from "../org/locales.ts";
 import { bracketFromDob, isTimeZone, UNDER_MINIMUM_REFUSAL } from "./age.ts";
 import { passwordIssue, PasswordSchema } from "./password.ts";
@@ -74,6 +75,15 @@ const displayCurrency = z.string().trim().max(3).optional().transform((code) =>
 	isDisplayCurrency(code) ? code?.toUpperCase() : undefined
 );
 
+/**
+ * The country the person confirmed in the form; the browser only pre-fills it (`preferenceHints`). The
+ * currency of every team, business and listing they create comes from it (Decision #337, ruling
+ * M5 (b)). A value the country list does not know is dropped, never guessed.
+ */
+const country = z.string().trim().max(60).optional().transform((value) =>
+	countryCodeOf(value) ?? undefined
+);
+
 const dob = z.string().min(1, "Date of birth is required.").regex(
 	ISO_DATE_RE,
 	"Enter a real date of birth.",
@@ -120,6 +130,7 @@ export const IndividualJoinSchema = z.object({
 	timeZone,
 	locale,
 	displayCurrency,
+	country,
 	purpose: z.array(z.string().max(40)).max(20).default([]),
 	skills: z.array(z.string().max(40)).max(50).default([]),
 	acceptTerms,

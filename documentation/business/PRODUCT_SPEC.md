@@ -2159,17 +2159,24 @@ Projective is currency-global by design.
   currency rather than US dollars. Location and browser settings only _suggest_ a country at
   sign-up, for the person to confirm, and choose a guest's display currency; they never set an
   entity's currency (Decision #337, ruling M5 (b)).
-- **Money is held per currency.** The platform keeps a separate balance for each of the twelve
-  display currencies, so money settles in the currency it was earned in (ruling M5 (a)).
+- **Money is held per currency.** Money is priced, held and paid out in the nine currencies the
+  platform can settle (Decision #423 (B)); the other three display currencies are for viewing only,
+  and nothing is priced in them. The platform keeps a separate balance for each of the nine, so money
+  settles in the currency it was earned in (ruling M5 (a)). A payout the balance in its currency
+  cannot cover is returned to the wallet and alerts an operator. Each balance needs a human to enable
+  it, with its bank account, at the processor before live payouts in it.
 - **Converting a balance is disclosed.** A wallet holder may convert a balance into another of the
   twelve currencies at the mid-market rate plus a disclosed margin, paid by whoever converts; the
   margin is shown before the conversion is confirmed (rulings M5 (c), (d)).
 - **Rates are fresh, and say so.** Rates come from a daily feed, and every converted figure carries
   a mark when its rate is stale (ruling M5 (f)).
 
-Everything from "Your currency comes from your country" down is **Not built yet** (Decision #337,
-ruling M5). (The base-currency choice, rate-snapshot mechanics, display-conversion service, the
-conversion margin and the staleness rule are in `finance-model.md` §11 Multi-Currency & FX.)
+"Converting a balance is disclosed" and "Rates are fresh, and say so" are **Not built yet**
+(Decision #337, ruling M5): conversion is built only inside a purchase the payer confirms, switched
+off (Decision #435), and the daily feed runs without a provider, so rates are still the seeded ones
+(`finance-model.md` §11). (The base-currency choice, rate-snapshot
+mechanics, display-conversion service, the settlement currencies, the country map, the conversion
+margin and the staleness rule are in `finance-model.md` §11 Multi-Currency & FX.)
 
 #### 7. Subscriptions, Allowances & Entitlements
 

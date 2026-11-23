@@ -1,10 +1,17 @@
 import type { JSX } from "preact";
 import { CurrencySelect, FormControl, NumberInput } from "@projective/ui/fields";
 import type { FieldStatus } from "@projective/ui/fields";
-import { currencyExponent, DISPLAY_CURRENCIES } from "@projective/types/finance";
+import {
+	currencyExponent,
+	DISPLAY_CURRENCIES,
+	isSettlementCurrency,
+} from "@projective/types/finance";
 import { BASELINE_PRICE_HINT, BASELINE_PRICE_LABEL } from "../types/projects-types.ts";
 import type { ProjectCreateFormat } from "../types/projects-types.ts";
 import { minorUnit, MONEY_FIELD } from "./setup/setup-format.ts";
+
+/** The currencies a project can be priced in: the settlement ones (Decision #423 (B)). */
+const PRICING_CURRENCIES = DISPLAY_CURRENCIES.filter((c) => isSettlementCurrency(c.code));
 
 const CURRENCY_HINT = "Fixed to the project once it is created. Prices and escrow are held in it.";
 
@@ -37,8 +44,8 @@ export interface ProjectCreatePricingFieldsProps {
 /**
  * The create modal's currency selector and optional baseline price, side by side.
  *
- * The currency list is `DISPLAY_CURRENCIES`, the same set the workspace's Rules section offers and
- * the fat service accepts.
+ * The currency list is the settlement currencies (`DISPLAY_CURRENCIES` that Projective settles in),
+ * the set the fat service accepts and `org.trg_settlement_currency` enforces.
  */
 export function ProjectCreatePricingFields(props: ProjectCreatePricingFieldsProps): JSX.Element {
 	const { format, currency, amount } = props;
@@ -55,7 +62,7 @@ export function ProjectCreatePricingFields(props: ProjectCreatePricingFieldsProp
 					{({ id, describedBy }) => (
 						<CurrencySelect
 							id={id}
-							currencies={DISPLAY_CURRENCIES}
+							currencies={PRICING_CURRENCIES}
 							value={currency}
 							onValueChange={props.onCurrencyChange}
 							filter

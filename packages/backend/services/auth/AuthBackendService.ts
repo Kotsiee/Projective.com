@@ -195,6 +195,8 @@ export interface ProvisionIndividualInput {
 	locale?: string;
 	/** An offerable display currency → `org.user_preferences.preferred_display_currency`. */
 	displayCurrency?: string;
+	/** The confirmed country (alpha-2) → `org.user_preferences.country`, which prices what they create. */
+	country?: string;
 	/** The consent box (Decision #446); the versions are stamped here, never taken from the caller. */
 	acceptTerms: true;
 	/** Server-sanitised return path. */
@@ -513,6 +515,7 @@ export class AuthBackendService {
 				interests: input.interests ?? [],
 				locale: input.locale ?? null,
 				display_currency: input.displayCurrency ?? null,
+				country: input.country ?? null,
 				// The versions in effect today, re-checked by the database (Decision #446).
 				legal_acceptance: currentLegalVersions(),
 			};

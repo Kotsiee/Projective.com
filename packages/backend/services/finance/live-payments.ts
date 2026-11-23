@@ -1074,6 +1074,38 @@ export async function failPayout(payoutId: string, reason: string): Promise<Payo
 	);
 }
 
+/** Stripe's code for a Transfer the platform's available balance in its currency cannot cover. */
+export const BALANCE_INSUFFICIENT = "balance_insufficient";
+
+/**
+ * A withdrawal's Transfer was refused because the platform's Stripe balance in its currency is short
+ * (FINANCE_AUDIT C17; Decision #337, ruling M5 (a); Stripe "Understanding Connect account balances":
+ * a transfer the platform's available funds cannot cover fails and is not retried). The money is
+ * already back in the wallet through `finance.fail_payout`; this writes one `finance.settlement_balance`
+ * error to `ops.log_entries`, which the money alerts (MR4, `finance.%`) carry to a person. Never throws:
+ * an alert that cannot be stored is logged to the console, and the payout's failure stands.
+ */
+export async function alertSettlementBalance(
+	payout: { id: string; amountMinor: number; currency: string },
+): Promise<void> {
+	const currency = payout.currency.toUpperCase();
+	try {
+		const { error } = await getServiceClient().schema("ops").from("log_entries").insert({
+			client_id: `payout:${payout.id}:${BALANCE_INSUFFICIENT}`,
+			level: "error",
+			message: `Payout ${payout.id}: Stripe refused the ${currency} transfer because the platform's ${currency} ` +
+				`balance is short. The money is back in the wallet; fund the ${currency} balance or check its settlement account.`,
+			occurred_at: new Date().toISOString(),
+			source: "server",
+			scope: "finance.settlement_balance",
+			data: { payout_id: payout.id, currency, amount_minor: payout.amountMinor, code: BALANCE_INSUFFICIENT },
+		});
+		if (error) console.error("[payments:payout] settlement alert not stored", error.message);
+	} catch (error) {
+		console.error("[payments:payout] settlement alert not stored", error);
+	}
+}
+
 /** `transfer.reversed` → `finance.record_transfer_reversed` (credits only what is newly reversed). */
 export async function recordTransferReversed(args: {
 	eventId: string;

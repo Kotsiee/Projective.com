@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { DEFAULT_LOCALE, PLATFORM_BASE_CURRENCY, toDisplayCurrency } from "../finance/fx.ts";
+import {
+	currencyForCountry,
+	DEFAULT_LOCALE,
+	PLATFORM_BASE_CURRENCY,
+	toDisplayCurrency,
+} from "../finance/fx.ts";
 import { DateFormat } from "../org/preferences.ts";
 
 /**
@@ -136,6 +141,12 @@ export const UserContextSchema = z.object({
 	 * {@link locale}; only a value the column allows is ever carried.
 	 */
 	dateFormat: DateFormat.nullable().optional(),
+	/**
+	 * The currency of the person's confirmed country (`org.user_preferences.country` through
+	 * {@link currencyForCountry}; the platform base when none): what a create form pre-selects for a
+	 * project or listing they make. Never the display currency (Decision #337, ruling M5 (b)).
+	 */
+	homeCurrency: z.string().min(3).max(3).optional(),
 });
 export type UserContext = z.infer<typeof UserContextSchema>;
 // #endregion
@@ -204,6 +215,8 @@ export interface ActiveContextClaim {
 	locale?: string;
 	/** `org.user_preferences.date_format` — `dmy` · `mdy` · `ymd`, or `null` to follow the locale. */
 	dateFormat?: string | null;
+	/** `org.user_preferences.country` — the confirmed country (alpha-2), or `null` when none. */
+	country?: string | null;
 }
 // #endregion
 
@@ -351,6 +364,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 	const displayCurrency = toDisplayCurrency(str(active.displayCurrency));
 	const locale = str(active.locale) ?? str(user.locale) ?? DEFAULT_LOCALE;
 	const dateFormat = DateFormat.safeParse(active.dateFormat).data ?? null;
+	const homeCurrency = currencyForCountry(str(active.country));
 
 	return {
 		contextType,
@@ -370,6 +384,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 		displayCurrency,
 		locale,
 		dateFormat,
+		homeCurrency,
 	};
 }
 // #endregion

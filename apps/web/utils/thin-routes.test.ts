@@ -106,15 +106,16 @@ Deno.test("projects/create: 401 signed out, 422 keyed by control when malformed"
 	assertEquals(Object.keys(body?.errors as object), ["currency"]);
 });
 
-Deno.test("projects/create: an offered currency wins; an unoffered one falls back to the site currency", async () => {
-	const state = (display: string): State => ({
-		...signedIn,
-		currency: { displayCurrency: display, locale: "en-GB", table: {} as never },
+Deno.test("projects/create: a settlement currency wins; any other falls back to the caller's own (DB9)", async () => {
+	// The fallback is the caller's confirmed country's currency, never the display currency (ruling M5 (b)).
+	const state = (home: string): State => ({
+		userContext: { ...ALICE, homeCurrency: home },
+		currency: { displayCurrency: "JPY", locale: "en-GB", table: {} as never },
 	});
-	const currencyOf = async (sent: string, display: string) => {
+	const currencyOf = async (sent: string, home: string) => {
 		const { status, body } = await call(projectCreate, "POST", "/api/projects/create", {
 			body: { title: `Currency ${sent}`, format: "pipeline", currency: sent },
-			state: state(display),
+			state: state(home),
 		});
 		assertEquals(status, 201);
 		const slug = (body?.data as { slug: string }).slug;
@@ -127,6 +128,7 @@ Deno.test("projects/create: an offered currency wins; an unoffered one falls bac
 	};
 	assertEquals(await currencyOf("EUR", "GBP"), "EUR");
 	assertEquals(await currencyOf("ZZZ", "CAD"), "CAD");
+	assertEquals(await currencyOf("INR", "CAD"), "CAD", "INR is display-only, never priced in (#423 (B))");
 	assertEquals(await currencyOf("ZZZ", "XXX"), "GBP");
 });
 // #endregion

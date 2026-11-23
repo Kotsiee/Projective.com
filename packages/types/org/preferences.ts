@@ -239,6 +239,12 @@ export const UserPreferencesSchema = z.object({
 	motion: MotionPreference,
 	/** `null` = follow the locale's date order. */
 	dateFormat: DateFormat.nullable(),
+	/**
+	 * The country the person confirmed at sign-up (ISO 3166-1 alpha-2): the currency of every team,
+	 * business or listing they create comes from it, never from the display currency (Decision #337,
+	 * ruling M5 (b)). `null` = never confirmed, which maps to the platform base.
+	 */
+	country: z.string().regex(/^[A-Z]{2}$/).nullable(),
 });
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>;
 

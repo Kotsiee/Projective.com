@@ -16,8 +16,8 @@
 -- order, and by an order that would pass the limit (counting every earlier basket) being refused PF402.
 --
 -- The limit is per currency (FINANCE_AUDIT C15; Decision #337, ruling M5 (e)): `on_account_limit_cents`
--- is a map in each currency's minor units, read through finance.fn_param_minor, so an INR order is
--- judged against the INR entry, never GBP's figure or the default; a currency with no entry and no
+-- is a map in each currency's minor units, read through finance.fn_param_minor, so a CHF order is
+-- judged against the CHF entry, never GBP's figure or the default; a currency with no entry and no
 -- default is refused PF402 `limit_not_configured`, and its standing offers no headroom.
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated, seeded DB:
@@ -242,43 +242,43 @@ BEGIN
     END;
     -- #endregion
 
-    -- #region 7. An INR order is judged against the INR limit, never GBP's figure or the default (C15)
-    v_case := '7 INR judged against the INR limit';
-    UPDATE projects.projects SET currency = 'INR' WHERE id = v_project;
-    v_owed := finance.fn_on_account_owed(v_biz, 'INR');
-    -- One minor unit past the INR entry, while GBP's figure and the default would both allow it.
+    -- #region 7. A CHF order is judged against the CHF limit, never GBP's figure or the default (C15; CHF, because INR is display-only, #423 (B))
+    v_case := '7 CHF judged against the CHF limit';
+    UPDATE projects.projects SET currency = 'CHF' WHERE id = v_project;
+    v_owed := finance.fn_on_account_owed(v_biz, 'CHF');
+    -- One minor unit past the CHF entry, while GBP's figure and the default would both allow it.
     UPDATE security.platform_params
-       SET value = jsonb_build_object('GBP', 2500000, 'default', 999999999999, 'INR', v_owed + c_price - 1)
+       SET value = jsonb_build_object('GBP', 2500000, 'default', 999999999999, 'CHF', v_owed + c_price - 1)
      WHERE key = 'on_account_limit_cents';
-    v_line := pg_temp.line(v_project, v_biz, 'INR', c_price);
+    v_line := pg_temp.line(v_project, v_biz, 'CHF', c_price);
     v_basket := pg_temp.basket_of(v_line);
     BEGIN
-        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], 'INR',
+        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], 'CHF',
             jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-7a', c_price);
-        v_fail := v_fail || format('%s: accepted one unit past the INR entry', v_case);
+        v_fail := v_fail || format('%s: accepted one unit past the CHF entry', v_case);
     EXCEPTION WHEN OTHERS THEN
         IF SQLSTATE = 'PF402' AND SQLERRM NOT LIKE 'limit_not_configured%' THEN
-            RAISE NOTICE 'PASS %: one unit past the INR entry is refused % %', v_case, SQLSTATE, SQLERRM;
+            RAISE NOTICE 'PASS %: one unit past the CHF entry is refused % %', v_case, SQLSTATE, SQLERRM;
         ELSE
             v_fail := v_fail || format('%s: refused %s %s (expected PF402 past the limit)', v_case, SQLSTATE, SQLERRM);
         END IF;
     END;
-    -- Exactly the INR entry, while GBP's figure and the default would both refuse it.
+    -- Exactly the CHF entry, while GBP's figure and the default would both refuse it.
     UPDATE security.platform_params
-       SET value = jsonb_build_object('GBP', 1, 'default', 1, 'INR', v_owed + c_price)
+       SET value = jsonb_build_object('GBP', 1, 'default', 1, 'CHF', v_owed + c_price)
      WHERE key = 'on_account_limit_cents';
-    v_line := pg_temp.line(v_project, v_biz, 'INR', c_price);
+    v_line := pg_temp.line(v_project, v_biz, 'CHF', c_price);
     v_basket := pg_temp.basket_of(v_line);
     BEGIN
-        v_out := finance.place_on_account_order(v_basket, ARRAY[v_line], 'INR',
+        v_out := finance.place_on_account_order(v_basket, ARRAY[v_line], 'CHF',
             jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-7b', c_price);
         IF v_out ->> 'status' = 'invoiced'
-           AND (finance.get_on_account_standing(v_biz, 'INR') ->> 'limit_minor')::bigint = v_owed + c_price
-           AND (finance.get_on_account_standing(v_biz, 'INR') ->> 'headroom_minor')::bigint = 0 THEN
-            RAISE NOTICE 'PASS %: up to the INR entry pays, and the standing reads the INR limit', v_case;
+           AND (finance.get_on_account_standing(v_biz, 'CHF') ->> 'limit_minor')::bigint = v_owed + c_price
+           AND (finance.get_on_account_standing(v_biz, 'CHF') ->> 'headroom_minor')::bigint = 0 THEN
+            RAISE NOTICE 'PASS %: up to the CHF entry pays, and the standing reads the CHF limit', v_case;
         ELSE
             v_fail := v_fail || format('%s: answered %s, standing %s', v_case, v_out,
-                finance.get_on_account_standing(v_biz, 'INR'));
+                finance.get_on_account_standing(v_biz, 'CHF'));
         END IF;
     EXCEPTION WHEN OTHERS THEN v_fail := v_fail || format('%s: refused %s %s', v_case, SQLSTATE, SQLERRM);
     END;
@@ -287,12 +287,12 @@ BEGIN
     -- #region 8. A currency with no entry and no default is refused, never judged by a flat figure
     v_case := '8 no entry and no default refused';
     UPDATE security.platform_params SET value = '{"GBP": 2500000}'::jsonb WHERE key = 'on_account_limit_cents';
-    v_line := pg_temp.line(v_project, v_biz, 'INR', c_price);
+    v_line := pg_temp.line(v_project, v_biz, 'CHF', c_price);
     v_basket := pg_temp.basket_of(v_line);
     BEGIN
-        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], 'INR',
+        PERFORM finance.place_on_account_order(v_basket, ARRAY[v_line], 'CHF',
             jsonb_build_object(v_line::text, c_price), NULL, 'probe-oa-8', c_price);
-        v_fail := v_fail || format('%s: accepted with no INR limit set', v_case);
+        v_fail := v_fail || format('%s: accepted with no CHF limit set', v_case);
     EXCEPTION WHEN OTHERS THEN
         IF SQLSTATE = 'PF402' AND SQLERRM LIKE 'limit_not_configured:%' THEN
             RAISE NOTICE 'PASS %: % %', v_case, SQLSTATE, SQLERRM;
@@ -300,9 +300,9 @@ BEGIN
             v_fail := v_fail || format('%s: refused %s %s (expected PF402 limit_not_configured)', v_case, SQLSTATE, SQLERRM);
         END IF;
     END;
-    IF (finance.get_on_account_standing(v_biz, 'INR') ->> 'headroom_minor')::bigint <> 0 THEN
+    IF (finance.get_on_account_standing(v_biz, 'CHF') ->> 'headroom_minor')::bigint <> 0 THEN
         v_fail := v_fail || format('%s: the standing offers headroom (%s)', v_case,
-            finance.get_on_account_standing(v_biz, 'INR'));
+            finance.get_on_account_standing(v_biz, 'CHF'));
     END IF;
     -- #endregion
 

@@ -364,7 +364,8 @@ BEGIN
                    'objective', 'client',
                    'visibility', 'private',
                    'locale', a.raw_user_meta_data->>'locale',
-                   'display_currency', a.raw_user_meta_data->>'display_currency')
+                   'display_currency', a.raw_user_meta_data->>'display_currency',
+                   'country', a.raw_user_meta_data->>'country')
           INTO v_email, v_confirmed, v_meta
           FROM auth.users a
          WHERE a.id = p_owner;
@@ -388,7 +389,8 @@ BEGIN
         owner_user_id, legal_name, trading_name, handle, registration_number,
         corporate_email, corporate_phone, website,
         address_line_1, address_city, address_postcode, address_country,
-        employee_scale, primary_industry, industry_other, departments, purpose, billing_email
+        employee_scale, primary_industry, industry_other, departments, purpose, billing_email,
+        default_currency
     ) VALUES (
         p_owner,
         p_payload->>'legalName',
@@ -413,7 +415,9 @@ BEGIN
             (SELECT array_agg(v) FROM jsonb_array_elements_text(COALESCE(p_payload->'purpose', '[]'::jsonb)) v),
             '{}'::text[]
         ),
-        p_payload->>'corporateEmail'
+        p_payload->>'corporateEmail',
+        -- The country it registered, which the person confirmed in the form (ruling M5 (b)).
+        org.fn_currency_for_country(NULLIF(p_payload->>'addressCountry', ''))
     )
     RETURNING id INTO v_enterprise;
 
@@ -692,7 +696,10 @@ $$;
 -- The row starts from the browser's hints in the sign-up metadata (Decision #207): `locale` and
 -- `display_currency`, each kept only when the platform supports it — a locale listed in
 -- org.supported_locales, a display currency with seeded rates both ways in finance.fx_rates — and
--- otherwise left to the column default. A row that already exists is never touched.
+-- otherwise left to the column default. `country` is not a hint: it is the country the person
+-- confirmed in the form (the browser only pre-fills it), kept when it is an alpha-2 code; it decides
+-- the currency of every entity they create (Decision #337, ruling M5 (b)). A row that already exists
+-- is never touched.
 --
 -- An enterprise owner is provisioned like anyone else, inside public.create_enterprise (Decision #336,
 -- ruling I2), so these seeders cover them too.
@@ -781,7 +788,9 @@ BEGIN
            preferred_display_currency = COALESCE(
                org.fn_supported_display_currency(p_meta ->> 'display_currency'),
                preferred_display_currency
-           )
+           ),
+           country = CASE WHEN pg_catalog.upper(pg_catalog.btrim(p_meta ->> 'country')) ~ '^[A-Z]{2}$'
+               THEN pg_catalog.upper(pg_catalog.btrim(p_meta ->> 'country')) END
      WHERE user_id = p_user_id;
 END;
 $$;

@@ -55,7 +55,7 @@ export const handler = define.handlers({
 		}
 
 		return toProjectsResponse(
-			await ProjectBackendService.create(parsed.data, actor, ctx.state.currency?.displayCurrency),
+			await ProjectBackendService.create(parsed.data, actor, ctx.state.userContext?.homeCurrency),
 		);
 	},
 });

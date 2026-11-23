@@ -145,8 +145,8 @@ DECLARE
     v_ent uuid;
 BEGIN
     -- An owner whose enterprise predates step 1.6: an enterprise row and no profile.
-    INSERT INTO org.enterprises (owner_user_id, legal_name, handle, corporate_email)
-    VALUES (v_owner, 'Legacy ' || v_tag, 'legal-legacy-' || v_tag, 'legal-' || v_tag || '@projective.invalid')
+    INSERT INTO org.enterprises (owner_user_id, legal_name, handle, corporate_email, default_currency)
+    VALUES (v_owner, 'Legacy ' || v_tag, 'legal-legacy-' || v_tag, 'legal-' || v_tag || '@projective.invalid', 'USD')
     RETURNING id INTO v_ent;
     PERFORM pg_temp.act(v_owner);
     PERFORM public.complete_onboarding(pg_temp.onboarding(v_tag, 40, pg_temp.stamp()));

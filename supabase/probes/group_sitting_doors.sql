@@ -60,8 +60,8 @@ BEGIN
         RAISE EXCEPTION 'FAIL no fixture: need a published personal schedule and two more adults (deno task db:reset)';
     END IF;
 
-    INSERT INTO projects.projects (owner_user_id, title, format, session_kind, status, visibility, publish_visibility)
-    VALUES (v_host, 'Probe group session', 'session', 'group', 'active', 'unlisted', 'unlisted')
+    INSERT INTO projects.projects (owner_user_id, title, format, session_kind, status, visibility, publish_visibility, currency)
+    VALUES (v_host, 'Probe group session', 'session', 'group', 'active', 'unlisted', 'unlisted', 'USD')
     RETURNING id INTO v_group;
     INSERT INTO projects.project_stages (project_id, name, sort_order) VALUES (v_group, 'Sessions', 0)
     RETURNING id INTO v_group_stage;
@@ -74,8 +74,8 @@ BEGIN
     VALUES (v_cohort_sold, v_buyer, 1, 'active');
 
     -- A 1-1 engagement with one booked sitting and its rostered mirror, as fn_book_session_slot leaves them.
-    INSERT INTO projects.projects (owner_user_id, title, format, session_kind, status, visibility, publish_visibility)
-    VALUES (v_host, 'Probe 1-1 session', 'session', 'normal', 'active', 'unlisted', 'unlisted')
+    INSERT INTO projects.projects (owner_user_id, title, format, session_kind, status, visibility, publish_visibility, currency)
+    VALUES (v_host, 'Probe 1-1 session', 'session', 'normal', 'active', 'unlisted', 'unlisted', 'USD')
     RETURNING id INTO v_one;
     INSERT INTO projects.project_stages (project_id, name, sort_order) VALUES (v_one, 'Sessions', 0)
     RETURNING id INTO v_one_stage;

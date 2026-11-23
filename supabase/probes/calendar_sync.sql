@@ -801,8 +801,8 @@ BEGIN
         'and the host keeps theirs');
 
     -- A group sitting has no roster: its seat-holders hold it.
-    INSERT INTO projects.projects (owner_user_id, title, format, session_kind, status, visibility, publish_visibility)
-    VALUES (v_host, 'Probe group', 'session', 'group', 'active', 'unlisted', 'unlisted') RETURNING id INTO v_project;
+    INSERT INTO projects.projects (owner_user_id, title, format, session_kind, status, visibility, publish_visibility, currency)
+    VALUES (v_host, 'Probe group', 'session', 'group', 'active', 'unlisted', 'unlisted', 'USD') RETURNING id INTO v_project;
     INSERT INTO projects.project_stages (project_id, name, sort_order) VALUES (v_project, 'Sessions', 0) RETURNING id INTO v_stage;
     INSERT INTO projects.cohorts (project_id, project_stage_id, name, max_seats, status)
     VALUES (v_project, v_stage, 'Probe cohort', 10, 'enrolling') RETURNING id INTO v_cohort;

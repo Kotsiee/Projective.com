@@ -407,6 +407,13 @@ Breakdown: System Fee (5%) → £50 to the Fee Collection Account; Team Vault (1
   segregation this line states.
 - **Contract structure:** the contract is between Client and Freelancer/Team; Projective's ledger
   reflects a "right to payment," not a resale of services.
+- **Settlement currencies** (Decision #337, ruling M5 (a); #423 (B)): a charge presented in a currency
+  the platform account has enabled for settlement, with a bank account in it, settles into a balance
+  in that currency without conversion; any other converts into the default (GBP) (Stripe, "Receive
+  payouts", multiple bank accounts for different settlement currencies). So a payout in each of the
+  nine needs its currency enabled and its bank account added in the Dashboard: a human act, done
+  before live payouts in it (MR6's runbook, Decision #476). Until then a Transfer in that currency
+  can fail `balance_insufficient`, which returns the money and alerts (§11).
 - **Tax reporting** (Decision #527, ruling A: Stripe first): Stripe issues no 1099-K for these
   accounts, because the platform collects the fees (`fees_collector: application`). Any US 1099 duty
   would be Projective's, filed through Stripe's 1099 tool. W-9 / W-8 collection is a US-business
@@ -454,15 +461,26 @@ The abstract intent ("price and be paid in your own currency; see prices in your
 
 - **Store-in-origin.** Every amount is `(amount_minor, currency)`, stored and **settled** in the
   currency it was entered in. No priced entity is currency-less (all already carry `currency`).
-- **Settlement is per currency** (Decision #337, ruling M5 (a)) — **Not built yet**: the platform
-  holds a Stripe balance in each of the 12 display currencies, so a payout transfers in the wallet's
-  own currency from a same-currency balance and is never converted at payout.
-- **An entity's currency comes from its owner's country** (ruling M5 (b)) — **Not built yet**: one
-  country → currency map (`packages/types/finance/countries.ts`) sets a team's, business's or
-  enterprise's wallet currency, never the display preference, and a project defaults to its owner's
-  currency, never USD. Location and browser signals (IP country, locale) only **suggest** the
-  country at sign-up, for the person to confirm, and choose a guest's display currency; they never
-  set an entity's currency.
+- **Settlement is per currency** (Decision #337, ruling M5 (a), narrowed by #423 (B)). Money is
+  priced, held and paid out in the nine **settlement currencies** (`settlement_currencies`: GBP USD
+  EUR CAD AUD JPY SGD CHF ZAR); AED, INR and NGN are display-only. Nothing is priced outside the nine:
+  a project, listing, product or service blueprint in another currency is refused
+  (`org.trg_settlement_currency`, 22023). A payout transfers in the wallet's own currency, from the
+  platform's Stripe balance in that currency, and is never converted at payout. A Transfer Stripe
+  refuses because that balance is short (`balance_insufficient`) returns the money to the wallet
+  (`finance.fail_payout`) and raises a money alert (`finance.settlement_balance`, §13). The Stripe
+  side is a human's: each non-GBP currency must be enabled as a settlement currency, with its bank
+  account, in the Dashboard (§9).
+- **An entity's currency comes from its owner's country** (ruling M5 (b)). One map,
+  `org.fn_currency_for_country` (mirrored by `currencyForCountry` in `packages/types/finance/fx.ts`):
+  the country's currency when it is a settlement currency, else GBP. It sets a team's and a
+  business's wallet currency from the owner's **confirmed** country (`org.user_preferences.country`),
+  an enterprise's from its registered country, and is the default for a new project or listing
+  (`org.fn_entity_currency`: the owning team's, business's or enterprise's currency, else the
+  person's), never the display preference and never USD. Browser signals (time zone, then the
+  language's region) only **suggest** the country at sign-up, for the person to confirm, and choose a
+  guest's display currency; they never set an entity's currency. Changing one's country later
+  re-prices nothing that exists.
 - **Base currency = GBP** (`security.platform_params.base_currency`) for system accounts, fees, and
   cross-currency bridging. `PLATFORM_BASE_CURRENCY` (`packages/types/finance/fx.ts`) mirrors it, pinned
   by a contract test (FA C16).

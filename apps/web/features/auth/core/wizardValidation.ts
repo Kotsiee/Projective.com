@@ -85,6 +85,8 @@ function fieldErrors(store: JoinStore, id: StepId): Record<string, string | null
 					firstName: requiredError(store.firstName.value, "First name"),
 					lastName: requiredError(store.lastName.value, "Last name"),
 					username: usernameError(store.username.value),
+					// The person confirms their country; it prices what they create (ruling M5 (b)).
+					country: store.country.value ? null : "Select your country.",
 					// OAuth signups have no credentials step — DoB is captured here instead.
 					...(store.isOAuth ? { dob: dobError(store) } : {}),
 				};
@@ -125,8 +127,21 @@ export function hasErrors(errors: Record<string, string | null>): boolean {
 	return Object.values(errors).some(Boolean);
 }
 
-function browserPreferenceHints() {
-	return preferenceHints(navigator.languages?.length ? navigator.languages : [navigator.language]);
+/**
+ * The browser's hints: a locale, a display currency and a SUGGESTED country, which only pre-fills the
+ * country field for the person to confirm (Decision #337, ruling M5 (b)).
+ */
+export function browserPreferenceHints() {
+	return preferenceHints(
+		navigator.languages?.length ? navigator.languages : [navigator.language],
+		browserTimeZone(),
+	);
+}
+
+/** The locale and display-currency hints sent with a sign-up: the suggested country is not sent. */
+function signupHints() {
+	const { country: _suggested, ...hints } = browserPreferenceHints();
+	return hints;
 }
 
 /** Assemble the API payload from the completed wizard state. */
@@ -141,7 +156,7 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 			lastName: store.lastName.value.trim(),
 			dob: store.dob.value,
 			timeZone: browserTimeZone(),
-			...browserPreferenceHints(),
+			...signupHints(),
 			acceptTerms: store.acceptTerms.value,
 			redirectTo: store.redirectTo,
 		};
@@ -170,7 +185,7 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 			industryOther: store.industry.value === "other" ? store.industryOther.value.trim() : "",
 			departments: store.departments.value,
 			purpose: store.purpose.value,
-			...browserPreferenceHints(),
+			...signupHints(),
 			ownerFirstName: store.firstName.value.trim(),
 			ownerLastName: store.lastName.value.trim(),
 			dob: store.dob.value,
@@ -193,7 +208,8 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 		oauth: store.isOAuth,
 		purpose: store.purpose.value,
 		skills: store.skills.value,
-		...browserPreferenceHints(),
+		...signupHints(),
+		country: store.country.value,
 		acceptTerms: store.acceptTerms.value,
 		redirectTo: store.redirectTo,
 	};

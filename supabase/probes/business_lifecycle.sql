@@ -217,8 +217,8 @@ UPDATE org.business_profiles SET status = 'active' WHERE id = pg_temp.id('helia'
 -- #endregion
 
 -- #region B. Archive blockers
-INSERT INTO org.business_profiles (owner_user_id, name, slug, status, headline, visibility)
-VALUES (pg_temp.id('owner'), 'Probe BB5', 'probe-bb5', 'active', '', 'public');
+INSERT INTO org.business_profiles (owner_user_id, name, slug, status, headline, visibility, default_currency)
+VALUES (pg_temp.id('owner'), 'Probe BB5', 'probe-bb5', 'active', '', 'public', 'USD');
 INSERT INTO probe_ids VALUES ('biz', (SELECT id FROM org.business_profiles WHERE slug = 'probe-bb5'));
 SELECT org.fn_seed_preset_roles('business', pg_temp.id('biz'));
 INSERT INTO org.business_members (business_id, user_id, role_id, status)

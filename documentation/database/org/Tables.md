@@ -104,7 +104,7 @@ projects).
 | `created_at` / `updated_at` | timestamptz | `NOT NULL DEFAULT now()`.                                                                                                 |
 | `plan`             | text                 | Subscription tier (default: `free`).                                                                                      |
 | `billing_email`    | text                 | Primary contact for invoices.                                                                                             |
-| `default_currency` | text                 | Origin currency for the pooled fund (default `USD`), CHECK `^[A-Z]{3}$` (FINANCE DB8).                                    |
+| `default_currency` | text                 | Origin currency for the pooled fund, NOT NULL, no default: `org.create_workspace` writes its owner's confirmed country's currency (`org.fn_currency_for_country`, ruling M5 (b), FINANCE DB9). CHECK `^[A-Z]{3}$` (FINANCE DB8). |
 | `kyb_status`       | `finance.kyc_status` | **Additive (`20260723091000`).** `unverified` (default) → `verified`. **Required to spend from, pay invoices from or withdraw from the pooled Business Wallet** (`finance.fn_assert_business_spend`, `place_wallet_order`, `pay_invoice`, `place_on_account_order`, `begin_payout`; monthly invoicing terms too) — never to add money to it (Decision #248 (k)). |
 | `kyb_verified_at`  | timestamptz          | **Additive.** When KYB was granted.                                                                                       |
 | `kyb_provider_ref` | text                 | **Additive.** Stripe Connect account id (placeholder; **no PII**).                                                        |
@@ -711,6 +711,7 @@ source is `comms.notification_prefs` (Decision #204).
 | `cvd`                        | text                   | **2026-10-06.** `NOT NULL DEFAULT 'none'`, `CHECK IN ('none','protan','deutan','tritan')`. The colour-vision shift; mirrors `@projective/ui/system` `CvdMode`.                                                                                                                                                 |
 | `motion`                     | text                   | **2026-10-06.** `NOT NULL DEFAULT 'standard'`, `CHECK IN ('standard','reduced')`. `reduced` forces reduced motion on every device.                                                                                                                                                                            |
 | `date_format`                | text                   | **Decision #156.** Nullable, `CHECK IN ('dmy','mdy','ymd')` (`user_preferences_date_format_check`). `NULL` follows the locale's own numeric date order; a value is an explicit override that survives a language change. Stamped into the JWT (`active_context.dateFormat`) by `custom_access_token_hook`.             |
+| `country`                    | char(2)                | **FINANCE DB9 (ruling M5 (b)).** Nullable, `CHECK ~ '^[A-Z]{2}$'`. The country the person confirmed at sign-up (ISO 3166-1 alpha-2; the browser only pre-fills it), written by `org.fn_seed_user_preferences` from the sign-up metadata. Every team, business and listing they create is priced in `org.fn_currency_for_country(country)`; `NULL` maps to the platform base. Changing it re-prices nothing that exists. Stamped into the JWT (`active_context.country`, read as `UserContext.homeCurrency`). |
 
 > **The appearance overlays (`theme` · `contrast` · `font` · `cvd` · `motion`, 2026-10-06).**
 > `standard` / `sans` / `none` mean **no overlay**, not "force the default": the reader's OS media
@@ -778,7 +779,7 @@ column, because a user can belong to several enterprises.
 | `verification_level`  | `org.enterprise_verification_level` | `unverified` (default) → `email_verified` → `kyb_pending` → `verified`. KYB deferred. |
 | `logo_file_id`        | uuid                                  | FK → `files.items.id` (ON DELETE SET NULL).                                           |
 | `billing_email`       | text                                  | Invoicing contact.                                                                    |
-| `default_currency`    | text                                  | Default `USD`, CHECK `^[A-Z]{3}$` (FINANCE DB8).                                      |
+| `default_currency`    | text                                  | NOT NULL, no default: `public.create_enterprise` writes its registered country's currency (`org.fn_currency_for_country`, ruling M5 (b), FINANCE DB9). CHECK `^[A-Z]{3}$` (FINANCE DB8). |
 | `created_at` / `updated_at` | timestamptz                     | `NOT NULL DEFAULT now()`.                                                             |
 
 ### `org.enterprise_members`

@@ -159,6 +159,7 @@ export const handler = define.handlers({
 					interests: data.purpose,
 					locale: data.locale,
 					displayCurrency: data.displayCurrency,
+					country: data.country,
 					acceptTerms: data.acceptTerms,
 					redirectTo,
 				}),

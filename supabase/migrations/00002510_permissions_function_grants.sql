@@ -318,6 +318,12 @@ FROM PUBLIC, anon, authenticated;
 -- The first-commit gate (LG3, #534) records for auth.uid() inside a claim or funding door; called
 -- directly it would record an acceptance outside any commit, so it is no client's.
 REVOKE ALL ON FUNCTION org.fn_require_legal_acceptance (text, jsonb) FROM PUBLIC, anon, authenticated;
+-- Entity currency (FBP DB9, ruling M5 (b)): the map and the settlement trigger are internal to the
+-- definers and triggers that call them; the owner's-currency default is the INVOKER listing door's too.
+REVOKE ALL ON FUNCTION org.fn_currency_for_country (text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION org.trg_settlement_currency () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION org.fn_entity_currency (uuid, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION org.fn_entity_currency (uuid, uuid, uuid) TO authenticated;
 
 -- --- from 0309_business_finance_overview.sql ---
 

@@ -278,10 +278,13 @@ BEGIN
                 -- setup path and its footprint cap.
                 'unlisted'::visibility,
                 -- Upper-cased, not validated twice. `ck_projects_currency` is the authority on the
-                -- shape; case is the one difference between a code that is right and a code that is
-                -- right in lower case, and normalising it is ISO 4217's own convention rather than a
-                -- decision this function is taking on the caller's behalf.
-                upper(COALESCE(NULLIF(payload->>'currency', ''), 'USD')),
+                -- shape, and org.trg_settlement_currency refuses one Projective does not settle in;
+                -- case is the one difference between a code that is right and a code that is right in
+                -- lower case, and normalising it is ISO 4217's own convention rather than a decision
+                -- this function is taking on the caller's behalf. Unnamed, it is its owner's (the team,
+                -- business or enterprise, else the caller's own country's; ruling M5 (b)).
+                upper(COALESCE(NULLIF(payload->>'currency', ''),
+                               org.fn_entity_currency(v_team_id, v_business_id, v_enterprise_id))),
                 COALESCE(NULLIF(payload->>'timeline_preset', '')::timeline_preset, 'sequential'::timeline_preset),
                 NULLIF(payload->>'target_project_start_date', '')::timestamptz,
                 v_ip_mode,
@@ -1149,7 +1152,7 @@ BEGIN
     IF auth.uid() IS NULL THEN
         RETURN false;
     END IF;
-    SELECT COALESCE(p.client_user_id, p.owner_user_id), p.client_business_id, upper(COALESCE(p.currency, 'USD'))
+    SELECT COALESCE(p.client_user_id, p.owner_user_id), p.client_business_id, upper(p.currency)
       INTO v_owner, v_business, v_currency
       FROM projects.projects p WHERE p.id = p_project;
     IF NOT FOUND THEN

@@ -57,6 +57,8 @@ import { recordWebhookFailure } from "../ops/OpsHealthService.ts";
 import {
 	abandonCardPayment,
 	abandonIdentityVerification,
+	alertSettlementBalance,
+	BALANCE_INSUFFICIENT,
 	attachCardPayment,
 	attachCheckoutOrder,
 	attachIdentitySession,
@@ -145,6 +147,11 @@ import { paymentFundingState } from "./funding-state.ts";
 type Result<T> = ServiceResult<T>;
 
 // #region Plumbing
+/** The payout a settlement-balance alert names. */
+function payoutSent(payout: { id: string; amountCents: number; currency: string }) {
+	return { id: payout.id, amountMinor: payout.amountCents, currency: payout.currency };
+}
+
 /**
  * Send a begun payout's Stripe Transfer and close it: the ONE send a manual withdrawal and a scheduled
  * run share. The Transfer is idempotent on the payout (`payout_transfer:<payout id>`). A definitive
@@ -171,6 +178,7 @@ async function sendPayoutTransfer(
 		const failure = classifyStripeError(error);
 		if (failure.kind === "refused") {
 			await failPayout(payout.id, failure.code ?? "refused by the processor");
+			if (failure.code === BALANCE_INSUFFICIENT) await alertSettlementBalance(payoutSent(payout));
 			console.error("[payments:payout]", failure.code ?? "", failure.message);
 			return { kind: "refused", code: failure.code ?? null };
 		}
@@ -225,6 +233,7 @@ async function settleStalePayout(
 			if (failure.kind !== "refused") throw error;
 			const reason = failure.code ?? "refused by the processor";
 			await failPayout(payout.id, reason);
+			if (failure.code === BALANCE_INSUFFICIENT) await alertSettlementBalance(payoutSent(payout));
 			return result("failed", null, reason);
 		}
 	} catch (error) {

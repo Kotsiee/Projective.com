@@ -8,8 +8,8 @@
 > [`FOUNDER_QUESTIONNAIRE.md`](FOUNDER_QUESTIONNAIRE.md) Part C); the readiness rows add #423, #435
 > and #460–#472.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 17 open, 8 partly done, 26 done or superseded
-> (§0 ledger). Runnable now: DB14, DB9, SV8, DB13 and DB20 (SQL lane, one at a time); SV5, UI1
+> **Verified against code 2026-11-23 at `f2e25929`.** 17 open, 7 partly done, 27 done or superseded
+> (§0 ledger). Runnable now: DB14, SV8, DB13 and DB20 (SQL lane, one at a time); SV5, UI1
 > and UI3 (app lane). DB17's last step waits on the owner's vendor pick (#471).
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -46,6 +46,7 @@
 | DB6  | A card dispute freezes the payee's still-clearing rows it funded (`hold_chargeback_id`); lost recovers them first | `daae69b1` (#532)      | `f2e25929` |
 | DB7  | Checkout integrity: charge assert, atomic promo, key re-check, second tab, `invoiced`                     | `24cbab02`             | `f2e25929` |
 | DB8  | ISO-code CHECKs on every currency column; escrow status, owner type and reason CHECKed; one exponent      | #538                   | `de8ec700` |
+| DB9  | Priced only in the nine settlement currencies; an entity's currency from its owner's confirmed country; a short-balance alert | this commit | `c1ba2353` |
 | DB10 | On-account limit and approval threshold per currency (`finance.fn_param_minor`)                           | `f408e708`             | `f2e25929` |
 | DB11 | A product sale pays the seller's Standing-tapered commission; the Agency contract ruled B (#252)          | `9d15fcd0`             | `f2e25929` |
 | DB12 | A non-zero deadline bonus is refused (`ck_escrows_bonus_unfunded`)                                        | `4ff0ede2`             | `f2e25929` |
@@ -80,14 +81,14 @@ file-disjoint. Inside a wave, §0.2 and §0.3 still decide what may overlap.
 | :------ | :--------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
 | 2 (UAT) | PM **PM-GH1** (F23) → **DB14** (F6)                                                                                                 | **SV5** (F20) · **UI1**                                                                                   |
 | ✔       | **UAT checkpoint:** F6, F14, F20 and F23 closed (F5: DB6, #532); re-score (MR9 step 1)                                               |                                                                                                           |
-| 3       | **DB9** (F7) → **SV8** (F11) → **DB13** → **DB20** (F13) → **DB21** → **MR3** (F12) → **MR5** (F8)                | **UI2** → **UI6** · **UI4** (both after UI1) · **UI3** · **SV7** · **UI5** (after SV5) · **DB17 step 1** (F21, after the owner's vendor pick)              |
+| 3       | **SV8** (F11) → **DB13** → **DB20** (F13) → **DB21** → **MR3** (F12) → **MR5** (F8)                | **UI2** → **UI6** · **UI4** (both after UI1) · **UI3** · **SV7** · **UI5** (after SV5) · **DB17 step 1** (F21, after the owner's vendor pick)              |
 | 4       | **MR8a → MR8b** (F16), alone: nothing else runs in the SQL lane beside them                                                        | —                                                                                                         |
 | Later   | **DB18** (after its 🧑 and DB17 step 1) · **E3** (after SCH-WP6)                                                                          | **E1** (after PRD-K3, the SQL lane through MR3, UI2, UI3, UI5) → **E2** (after every UI prompt)           |
 | Last    | **MR9** re-scores §F → **Z1** sweeps the docs                                                                                      |                                                                                                           |
 
 **SBP S1 → S2 (to its stop) → S3 → S4** (F14, UAT) run in Waves 2–3 as the second SQL session from
 another track: before each starts, check that its FILES are disjoint from the SQL-lane prompt
-running then. S4 never runs beside DB9, MR3 or MR5 (`00001230` + `stripe-webhook.ts`).
+running then. S4 never runs beside MR3 or MR5 (`00001230` + `stripe-webhook.ts`).
 
 Why this order:
 
@@ -98,18 +99,18 @@ Why this order:
   (card refunds reuse DB21, DB19's line states and `/admin/ledger`).
 - **Currency follows ruling M5:** the CHECKs and the exponent list (DB8, done: #538), settlement and
   entity currency (DB9), fresh rates (DB17), then the own-wallet conversion, if it is wanted (DB18).
-- **External reconciliation (MR5) runs after DB9 and MR3:** it reuses DB16's terms and DB9's
+- **External reconciliation (MR5) runs after MR3:** it reuses DB16's terms and DB9's (landed)
   settlement currencies, and it has to recognise MR3's refunds.
 - **The journal runs last and alone:** it touches every money definer.
 
 ### 0.2 Prompts in this file that may not run in parallel
 
 - `00001240`: DB18, DB21, SV8, MR8b.
-- `00001210`: DB9, DB13, MR8b. `00001200`: DB13, DB20, MR8a.
+- `00001210`: DB13, MR8b. `00001200`: DB13, DB20, MR8a.
 - `00000017`: DB13, DB18, DB21, MR3, MR5, MR8a.
-- `00001230` + `stripe-webhook.ts`: DB9, MR3, MR5, MR8b.
+- `00001230` + `stripe-webhook.ts`: MR3, MR5, MR8b.
 - `00002510`: DB14, DB18, DB21, MR3, MR5 (SV7 if it adds a read).
-- `00005060`: MR5. `00005001`: DB9, DB13, DB18. `00001830`: DB18, MR3, MR8a. `00003004`: DB18, MR5,
+- `00005060`: MR5. `00005001`: DB13, DB18. `00001830`: DB18, MR3, MR8a. `00003004`: DB18, MR5,
   MR8a. `00001150`: DB13, DB14, MR8b.
 - `/admin/ledger` (`features/admin`, `LedgerHealthService`): MR3, MR5 and MR8b each add a section,
   one at a time.
@@ -129,9 +130,9 @@ Why this order:
 | `00005060` (jobs)                    | MR5                                                      | PM-GH1; comms, PM, scheduling and security packages that add a job |
 | `00001150` (stage funding)           | DB13, DB14, MR8b                                         | PM-GH1 and every P-track SQL step on it                            |
 | `00001155` (sessions)                | MR8b                                                     | every SCH work package                                             |
-| `00001020` (workspaces)              | DB9 (entity wallet currency)                             | identity rank, archive and seat items; SA G4                       |
+| `00001020` (workspaces)              | — (DB9 done)                                             | identity rank, archive and seat items; SA G4                       |
 | `00002510` (grants)                  | DB14, DB18, DB21, MR3, MR5 (SV7 if it adds a read)       | many                                                               |
-| `stripe-webhook.ts` + `00001230`     | DB9, MR3, MR5, MR8b                                      | SBP S4                                                             |
+| `stripe-webhook.ts` + `00001230`     | MR3, MR5, MR8b                                           | SBP S4                                                             |
 | `live-wallet.ts` / `wallet-scope.ts` | SV5, SV8, DB18                                           | RED WP2                                                            |
 | `features/devtools` + `dev-seam.ts`  | UI3                                                      | SBP S4, S6; IDG F6                                                 |
 
@@ -146,7 +147,7 @@ Why this order:
 - **DB14** runs while no P-track SQL step edits `00001110`, `00001150` or `00001850`. **DB13**
   changes the project setup copy (`apps/web/features/projects/components/setup/*`): tell the P
   track.
-- **SBP S4** never runs beside DB9, MR3 or MR5 (`stripe-webhook.ts`, `00001230`).
+- **SBP S4** never runs beside MR3 or MR5 (`stripe-webhook.ts`, `00001230`).
 - **RED WP2 / WP11** (the wallet read path, SQL aggregates) wait for SV5. **RED WP4** (keyboard on
   money paths) waits for UI2, UI3 and UI5. **RED WP7** (the money sweep and its lint ban) waits for
   UI5 (and SBP S5).
@@ -155,9 +156,9 @@ Why this order:
   `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6 (landed, #532),
   whose clearing-window holds decide which escrows count as finally released (#530 (g)).
 - **Identity:** MFA's AAL2 step-up on withdrawals and payout-account changes, and IW-M13, wait for
-  the finance SQL lane (`begin_payout`, `record_payout_account`). DB9's sign-up suggestion edits the
-  identity track's wizard files (`apps/web/features/auth/core/*`): coordinate with
-  `IDENTITY_BUILD_PROMPTS.md`.
+  the finance SQL lane (`begin_payout`, `record_payout_account`). DB9 (done) added the confirmed
+  country to the identity track's sign-up wizard (`StepForm.tsx`, `wizardValidation.ts`): an identity
+  prompt that edits those files keeps it.
 - **Comms:** SV8's fan-out uses `comms.fn_notify` as it stands; a catalogue row it adds goes in
   `00005010`.
 
@@ -170,7 +171,7 @@ Why this order:
 | DB18   | Whether to offer a free-standing own-wallet Convert at all: #435 built conversion only inside a purchase the payer confirms, and ruling M5 (c) asked for the own-wallet one | None yet: counsel's answer to #435 (d) comes first |
 | DB17   | #539 (a): a once-a-day feed against the 24-hour window leaves conversion quotes refused (`fx_rate_stale`) from each day's fix + 24 h until the next run, for a whole day after one failed run, and from Saturday afternoon to Monday's run every weekend (no fix is published then). Keep it (A), run the feed hourly (B), or age a rate in market time, so the weekend closure (Fri 22:00 – Sun 22:00 UTC) does not count (C)? | B + C, before `fx_checkout_enabled` is switched on |
 
-**Ruled, and written into their prompts as steps:** DB9 step 3 (#423 (B)), DB13 (#468), DB17 (#471;
+**Ruled, and written into their prompts as steps:** DB13 (#468), DB17 (#471;
 the vendor is still the owner's pick), DB18's margin (#435 (C)), DB21 (#470), MR3 (#464), MR5 (#460)
 and MR8a (#463).
 
@@ -223,8 +224,8 @@ Readiness rules). A row stays 🟡 while a hosted or human step is left, named i
 | PRD-F1–F4 | Critical/High · MVP–UAT | ✅  | —                                                                       | —                               |
 | PRD-F5    | Critical · UAT          | ✅  | DB6 done (#532; the freeze and the payee clawback)                      | —                               |
 | PRD-F6    | High · UAT              | 🟡  | **DB14** (the remainder; DB15 done)                                     | —                               |
-| PRD-F7    | High · PROD             | 🟡  | **DB9** (DB16 done, #483; DB8 done, #538)                               | ruled (#423)                    |
-| PRD-F8    | Critical · PROD         | ❌  | **MR5** (after DB9, MR3)                                                | ruled (#460)                    |
+| PRD-F7    | High · PROD             | 🟡  | No prompt: DB16, DB8 and DB9 done; a human enables the non-GBP settlement currencies | human Dashboard act (#423 (B))  |
+| PRD-F8    | Critical · PROD         | ❌  | **MR5** (after MR3; DB9 done)                                            | ruled (#460)                    |
 | PRD-F9    | High · PROD             | 🟡  | No prompt: a hosted send on both channels (DB16 done, MR4 done; PRD-G6) | ruled (#507 (E)(3))             |
 | PRD-F10   | High · PROD             | ✅  | DB8 done (#538; N24)                                                    | —                               |
 | PRD-F11   | High · PROD             | ❌  | **SV8**                                                                 | ⚖️ M9 as built (no flag needed) |
@@ -404,75 +405,6 @@ commit as the work:
 ---
 
 ## 3. Phase 1 — Database RPCs, ledger gaps & webhook hardening
-
-### DB9 — Settlement per currency, and an entity's currency from its owner's country (M5 (a), (b))
-
-> **Status 2026-11-23:** step 0 was done read-only on 2026-11-12 (the platform account is GB,
-> default `gbp`, GBP balance only), and step 1 landed in `1d8fc3e6` (Decision #435:
-> `currencyForCountry`, `packages/types/finance/fx.ts`, clamped to the nine `settlement_currencies`,
-> else GBP; it decides a buyer's billing currency today); steps 2–4 below are open. Ruled #423 (B):
-> Stripe's GB spec cannot settle AED, INR or NGN (FA N37), so `settlement_currencies` is GBP USD EUR
-> CAD AUD JPY SGD CHF ZAR and those three are display-only; a human adds the eight non-GBP
-> settlement bank accounts in the Dashboard before live payouts in them (MR6's runbook). DB17 still
-> quotes all 12 display currencies.
-
-```text
-PROMPT DB9: Money settles per currency, and an entity's currency comes from its owner's country
-
-ROLE: Payments architect + Postgres engineer.
-
-CONTEXT: FA C17, C1 and C16 (FCA: team and business wallets take the creator's DISPLAY currency;
-projects default to USD; Stripe settles into one GBP balance); FDD X21, D-8. Decision #337, ruling
-M5 (a): per-currency Stripe balances for the nine settlement currencies (#423 (B)), so a payout
-transfers in the wallet's currency from a same-currency balance. Ruling M5 (b): an entity's currency
-comes from its owner's country through one map (currencyForCountry, #435), and a project defaults to
-its owner's currency;
-location and browser signals only SUGGEST the sign-up country, for the person to confirm, and choose
-a guest's display currency. These replace the decision DB9 used to stop on.
-
-FILES:
-  - supabase/migrations/00001020_functions_org_entities.sql (team, business and enterprise wallet
-    creation, :1146-1171 and its siblings): HOT
-  - supabase/migrations/00001210_functions_finance_kyc_wallet.sql and 00001230 (the
-    COALESCE(…, 'USD') sites)
-  - supabase/migrations/00000015_tables_projects.sql (:84 DEFAULT 'USD'), 00000011_tables_org.sql
-    (:253, :945), 00000023_tables_catalogue.sql (:84, :209)
-  - supabase/migrations/00005001_seed_platform_params.sql (settlement_currencies)
-  - packages/types/finance/fx.ts (currencyForCountry: reuse it); packages/types/org preferenceHints
-  - apps/web/features/auth/core/wizardValidation.ts (the identity track's wizard: coordinate) and
-    apps/web/utils/currency-context.ts (a guest's display currency)
-  - packages/backend/services/finance/stripe-rails.ts (:180-200, :381-385)
-  - supabase/probes/entity_currency.sql (new)
-  - finance-model.md §9 and §11, PRODUCT_SPEC.md §6 (the M5 (a), (b) markers),
-    documentation/database/{finance,org,projects,catalogue}/Tables.md
-
-STEPS:
-  2. An entity's wallet currency at creation = currencyForCountry(the owner's confirmed country),
-     never the display preference. A project takes its owner's currency in the create door; the
-     'USD' column defaults go, in place (each writer sets the value): projects, business_profiles,
-     enterprises and catalogue listings alike.
-  3. settlement_currencies (the nine, seeded, #423 (B)): a listing or a project cannot
-     be priced in a currency outside it (SV5 narrows packages/types/catalogue/catalogue.ts:147 to
-     it). A Transfer Stripe refuses for an insufficient balance in its currency returns the money
-     through the existing transfer-failure path and writes an ops.log_entries alert (C17).
-  4. A suggestion only (the owner's M5 (b) note): preferenceHints proposes a sign-up country from
-     the browser's languages and time zone (and an edge country header only if the host sets one),
-     and the person confirms it. A guest's display currency comes from the same hint. Neither ever
-     sets an entity's currency.
-
-ACCEPTANCE: entity_currency.sql: a team created by a user whose confirmed country maps to EUR gets
-an EUR wallet whatever their display currency; a JPY owner's new project is in JPY; a listing priced
-outside settlement_currencies is refused. finance_invariants.sql and conservation_identity.sql
-pass. Readiness: completes PRD-F7 (DB8 done, #538).
-
-SQL SESSION: run probes with `deno task test:probes`; at most 2 SQL sessions at once on the one
-local DB, on disjoint migration files, each reset announced first; finish with your own clean
-`deno task test:probes:fresh`.
-SAME CHANGE: migrations edited in place; Zod + database docs with every default and column change;
-the PRODUCT_SPEC.md §6 and finance-model.md §11 markers removed for what this builds.
-HOT: 00001020, 00001230 + stripe-webhook.ts (never beside SBP S4), and the identity track's
-wizard files.
-```
 
 ### DB13 — Deadline bonuses held with the escrow (M7, step A)
 
@@ -904,7 +836,7 @@ of the dialog at 1440 and 390. conservation_identity.sql passes.
 
 SAME CHANGE: Zod + database docs; PRD-F12 narrowed. F12 flips to ✅ only once DB21 has landed too.
 USER_FLOWS MK-31's operator half; both scoreboards; one Score history line.
-HOT: 00001230 + stripe-webhook.ts (never beside SBP S4 or DB9), 00000017, 00002510.
+HOT: 00001230 + stripe-webhook.ts (never beside SBP S4), 00000017, 00002510.
 ```
 
 ### MR5 — The Stripe balance matches the ledger (PRD-F8)
@@ -930,7 +862,7 @@ Facts the design must respect:
     automatic bank payout (bankPayoutContents assumes automatic payouts). A failed bank payout
     stays there (M9).
   - stripe-mock is stateless, so it can prove the calls but never the identity.
-DB16's terms have landed (85e7d4e4). It needs DB9 (the settlement currencies) and MR3 (card
+DB16's terms have landed (85e7d4e4). DB9 (the settlement currencies) has landed; it needs MR3 (card
 refunds).
 
 Taking L6 out of Planned (ruled: Decision #460, A): build it now, read-only and independent of the
@@ -999,7 +931,7 @@ test-mode run is recorded. A wrong bearer gets a 404.
 
 SAME CHANGE: PRD-F8 ❌ → ✅ (test mode proven; the live run belongs to F17's runbook); USER_FLOWS
 MW-62; both scoreboards; one Score history line.
-HOT: 00000017, 00001230 (never beside SBP S4 or DB9), 00003004, 00005060, 00002510,
+HOT: 00000017, 00001230 (never beside SBP S4), 00003004, 00005060, 00002510,
 stripe-rails.ts.
 ```
 
@@ -1102,7 +1034,7 @@ ROLE: Backend + types engineer.
 CONTEXT: FA C10, C13 (P0), C6, C9, C11, C12 and C20; FCA N33 (the personal "spent this month"
 converts each row, then sums). Decision #337, ruling M5 (f): every converted figure carries a
 staleness mark. It no longer waits for DB8 or DB9: fn_currency_exponent exists (#435), and
-settlement_currencies is seeded (#423), so step 5's narrowing can run before DB9's SQL refusal.
+settlement_currencies is seeded (#423), and DB9's SQL refusal has landed.
 C13 is the point, and PRD-F20 is UAT-gated, so this runs in Wave 2: wallet-scope.ts still skips a
 currency that has no rate (PRD-F20 cites :324).
 

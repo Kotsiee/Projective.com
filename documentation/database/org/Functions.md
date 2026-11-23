@@ -156,7 +156,7 @@ owner-membership trigger that seeded them while owners had no profile (`on_enter
 | `org.fn_supported_locale(p_locale text) → text` | The `org.supported_locales` tag `p_locale` names, ignoring case and `_` / `-`; else `NULL`. `STABLE`. |
 | `org.fn_supported_display_currency(p_code text) → text` | `p_code` upper-cased when it is the platform base (`security.platform_params.base_currency`) or has a seeded `finance.fx_rates` row both ways against it — the `DISPLAY_CURRENCIES` rule; else `NULL`. `STABLE`. |
 | `org.fn_signup_meta(p_user_id uuid) → jsonb` | The metadata a person is provisioned from: the payload `public.provision_user_profile` publishes for the transaction (setting `projective.signup_meta`, keyed by user — `complete_onboarding`'s payload never reaches `auth.users`), else `auth.users.raw_user_meta_data`; `'{}'` when neither. `SECURITY DEFINER`. |
-| `org.fn_seed_user_preferences(p_user_id uuid, p_meta jsonb) → void` | Inserts the row and, only when it is new, applies the supported hints. Called by `org.seed_user_preferences`. |
+| `org.fn_seed_user_preferences(p_user_id uuid, p_meta jsonb) → void` | Inserts the row and, only when it is new, applies the supported hints. It also writes `country`, upper-cased, when the metadata carries an alpha-2 code: the country the person CONFIRMED in the form, which the browser only pre-filled (FINANCE DB9). Called by `org.seed_user_preferences`. |
 
 None is granted to a client role (`org` is deny-by-default, `00002510`). The notification side is
 `comms.fn_seed_notification_prefs` ([comms/Functions.md](../comms/Functions.md#triggers)). Probe:
@@ -187,7 +187,9 @@ applies); seeds the owner's `org.enterprise_members` row (`role = 'owner'`); poi
 `security.session_context` at the new enterprise; and writes an `enterprise.created` entry to
 `security.audit_logs` (definer context, because that table isn't granted to `authenticated` — cf.
 `provision_user_profile` in 0304). `p_payload` is the camelCase `@projective/types`
-`CreateEnterprise` shape. Returns the new org id.
+`CreateEnterprise` shape. The enterprise's `default_currency` is its registered country's,
+`org.fn_currency_for_country(addressCountry)` (ruling M5 (b), FINANCE DB9; GBP when it is not a
+settlement currency's country). Returns the new org id.
 
 **The owner is a person** (Decision #336, ruling I2; IW-H2, IW-M7). `p_payload.owner` —
 `{ firstName, lastName, username, dob, timeZone }` (`EnterpriseOwnerSchema`) — is provisioned FIRST
@@ -891,11 +893,23 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   `fn_footprint_usage`) → `55000` when full. In one transaction: the entity row at **`draft`** and
   `visibility = 'invite_only'` (out of the directory until the owner chooses, Decision #230 (h); set
   through `update_workspace`), the
-  preset roles, the owner's owner-preset seat, a wallet in the owner's
-  `preferred_display_currency` (else `USD`) — whose insert trigger projects the owner's vault
+  preset roles, the owner's owner-preset seat, a wallet (and for a business its `default_currency`)
+  in the owner's confirmed country's currency, `fn_currency_for_country(user_preferences.country)`,
+  never the display currency (ruling M5 (b), FINANCE DB9; §10b) — whose insert trigger projects the owner's vault
   authority — and for a team `treasury_wallet_id` + the owner's **100% payout stake**
   (`finance.contribution_agreements`, `10000` bp). Audits `{kind}.created`. **No wallet is credited**
   (the demo opening credit is gone — `../finance/Functions.md`).
+
+### §10b — Entity currency (Decision #337, ruling M5 (a), (b); #423 (B); FINANCE DB9)
+
+An entity's currency comes from its owner's confirmed country through ONE map, and nothing is priced
+outside the nine settlement currencies. Probe: `supabase/probes/entity_currency.sql`.
+
+| Function | Role |
+| :-- | :-- |
+| `org.fn_currency_for_country(p_country text) → text` | The country's own currency when `settlement_currencies` holds it (a euro territory is EUR), else `base_currency` (GBP): AE, IN and NG fall to GBP. Mirrors `currencyForCountry` (`packages/types/finance/fx.ts`), pinned by `entity-currency.contract.test.ts`. `STABLE`; internal to the definers that call it (`create_workspace`, `public.create_enterprise`, `fn_entity_currency`). |
+| `org.fn_entity_currency(p_team uuid, p_business uuid, p_enterprise uuid) → text` | The currency a new priced thing defaults to when its door names none: a team's treasury wallet's, a business's or an enterprise's `default_currency`, else the caller's own (`fn_currency_for_country` of their `user_preferences.country`). `SECURITY DEFINER`, `authenticated` (the INVOKER `catalogue.create_listing` reads it); read by `projects.create_project` too. |
+| `org.trg_settlement_currency() → trigger` | BEFORE INSERT OR UPDATE OF `currency` on `projects.projects`, `catalogue.listings`, `catalogue.products` and `marketplace.service_blueprints` (`00001830`): refuses a currency outside `settlement_currencies` with 22023 `currency` ("Projective prices in …"), for a door, a direct write and the seed alike. `SECURITY DEFINER` (reads `security.platform_params`). |
 
 ### §11 — Lifecycle: draft → active → archived (nothing is hard-deleted)
 

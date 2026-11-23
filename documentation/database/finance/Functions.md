@@ -2116,7 +2116,11 @@ touched. The outcome reports `recovered_cents` (all three parts), `recovered_pay
   sweep found no transfer: `failed`, a `payout_reversal` credit returns the money, and a person owner is
   told (`payout.failed`). Only a `pending` payout can fail. A payout a schedule made (`schedule_id`)
   counts once against that schedule (`fn_payout_schedule_strike`, "Stripe couldn't send the payout
-  (<reason>)."); a replay counts nothing.
+  (<reason>)."); a replay counts nothing. A Transfer refused `balance_insufficient` (the platform's
+  Stripe balance in that currency is short; ruling M5 (a) settles each currency in its own balance)
+  also gets one `finance.settlement_balance` error in `ops.log_entries`, written by the service
+  (`alertSettlementBalance`, `live-payments.ts`) after this door returned the money, which the money
+  alerts (`finance.%`, MR4) carry to a person (FA C17, FINANCE DB9).
 - `finance.record_transfer_reversed(p_event_id, p_transfer_ref, p_destination, p_amount, p_amount_reversed, p_currency, p_payout_id, p_livemode)`
   (processor, Decision #202) — `transfer.reversed`. Finds the payout by its bound transfer, else the
   metadata id; the transfer must agree with it as in `record_transfer_created`. Credits only what is

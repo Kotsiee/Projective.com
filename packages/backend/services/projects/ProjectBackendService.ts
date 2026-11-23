@@ -210,7 +210,7 @@ import {
 } from "@projective/types/projects";
 import { intakeRefusal, normaliseIntakeAnswers } from "@projective/types/services";
 import { plainTextToHtml, sanitizeRichText } from "@projective/types/richtext";
-import { isDisplayCurrency, toDisplayCurrency } from "@projective/types/finance";
+import { isSettlementCurrency, PLATFORM_BASE_CURRENCY } from "@projective/types/finance";
 import { allowanceRefusal } from "./apply-gate.ts";
 import {
 	AllowanceAccessError,
@@ -3704,10 +3704,12 @@ export class ProjectBackendService {
 	 * rooms land together or not at all; the stub writes the same shape into the per-process store.
 	 * Callers navigate by the returned `slug`, the only project address that routes (Decision #88).
 	 *
-	 * **The currency is the client's choice from the modal's selector**, held to `DISPLAY_CURRENCIES`.
-	 * Anything outside it falls back to `fallbackCurrency` — the site-wide money context the global
-	 * middleware resolves — narrowed to the platform base rather than refused, because a currency the
-	 * caller never typed is not a field they can correct.
+	 * **The currency is the client's choice from the modal's selector**, held to the settlement
+	 * currencies (Decision #423 (B)), which `org.trg_settlement_currency` enforces anyway. Anything
+	 * outside them falls back to `fallbackCurrency` — the caller's own currency, from their confirmed
+	 * country (`UserContext.homeCurrency`; never the display currency, ruling M5 (b)) — then the
+	 * platform base, rather than refused, because a currency the caller never typed is not a field
+	 * they can correct.
 	 *
 	 * The invitation is a follow-up through {@link hire}, never part of the create: a refused invite
 	 * (the seller's required intake, a cooldown, the rate limit) leaves the draft in place and is
@@ -3719,7 +3721,12 @@ export class ProjectBackendService {
 		fallbackCurrency?: string | null,
 	): Promise<ServiceResult<CreatedProject>> {
 		const chosen = body.currency.toUpperCase();
-		const currency = isDisplayCurrency(chosen) ? chosen : toDisplayCurrency(fallbackCurrency);
+		const fallback = fallbackCurrency?.trim().toUpperCase();
+		const currency = isSettlementCurrency(chosen)
+			? chosen
+			: fallback && isSettlementCurrency(fallback)
+			? fallback
+			: PLATFORM_BASE_CURRENCY;
 		const input: CreateProject = { ...body, currency };
 
 		const denied = requireIdentity<CreatedProject>(actor, "create a project");

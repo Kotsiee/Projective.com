@@ -48,7 +48,7 @@
 - **S1 → S2 (to its stop) → S3 → S4 close PRD-F14** (High · UAT; USER_FLOWS MW-27, MW-20, MW-25,
   MK-07, MK-24). They run as the second SQL session beside `FINANCE_BUILD_PROMPTS.md` §0.1's finance
   SQL lane, in its Waves 2–3: before each starts, check that its FILES are disjoint from the
-  SQL-lane prompt running then. S4 never runs beside FBP DB9, MR3 or MR5 (`00001230` +
+  SQL-lane prompt running then. S4 never runs beside FBP MR3 or MR5 (`00001230` +
   `stripe-webhook.ts`).
 - Prompts that may **not** run in parallel because they edit the same files: S1/S2 (`00001220`,
   `00005030`, `entitlements.ts`) · S5/S6 (`features/pricing/`, `PlanBlock.tsx`). S7 needs S6.
@@ -374,7 +374,7 @@ S1 switched the business plan gates off for UAT; this change switches business_p
 back to 'true' in 00005001 and shows a gated control unlocking by purchase.
 
 HANDLED_STRIPE_EVENTS gains the subscription events; FINANCE_BUILD_PROMPTS MR6's preflight reads
-that list, so it needs no edit. Never run beside FBP DB9, MR3 or MR5 (00001230 +
+that list, so it needs no edit. Never run beside FBP MR3 or MR5 (00001230 +
 stripe-webhook.ts); its old wait, FBP DB2, has landed (dd3986e5).
 
 SPEC:

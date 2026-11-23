@@ -20,7 +20,13 @@ import { formatContentDate } from "@projective/types/content/text";
 import type { ReacceptDocument } from "@features/legal/core/reaccept.ts";
 import { GoogleGlyph, InfoIcon, WarnIcon } from "./icons.tsx";
 import type { JoinStore } from "../core/wizardStore.ts";
-import { buildPayload, hasErrors, validateStep } from "../core/wizardValidation.ts";
+import {
+	browserPreferenceHints,
+	buildPayload,
+	hasErrors,
+	validateStep,
+} from "../core/wizardValidation.ts";
+import { COUNTRIES as ALL_COUNTRIES } from "@projective/types/finance";
 import { chainUnitOf, ENTER_CHAIN_SELECTOR, resolveEnterMove } from "../core/enter-chain.ts";
 import {
 	AGE_MESSAGES,
@@ -56,6 +62,9 @@ import { armResendCooldown } from "../core/resend-cooldown.ts";
  * follows: the first field of a newly-entered step, or the first invalid field when a step refuses.
  */
 type Err = Record<string, string | null>;
+
+/** Every assigned country, for the person's own country (the enterprise step keeps its short list). */
+const SIGNUP_COUNTRIES = ALL_COUNTRIES.map((c) => ({ value: c.code, label: c.name }));
 
 /** Max interactive tags a person can pick per cluster (purpose / skills). */
 const MAX_TAGS = 5;
@@ -582,7 +591,7 @@ function StepFields(
 							required
 						/>
 					</div>
-					<Row>
+					<div class="auth-form__grid auth-form__grid--pair">
 						<TextRow
 							label="Username"
 							value={store.username}
@@ -591,7 +600,14 @@ function StepFields(
 							autoComplete="username"
 							required
 						/>
-					</Row>
+						<PickRow
+							label="Country"
+							value={store.country}
+							options={SIGNUP_COUNTRIES}
+							error={e.country}
+							placeholder="Select a country…"
+						/>
+					</div>
 					{store.isOAuth ? <DobField store={store} dobDate={dobDate} /> : null}
 				</div>
 			);
@@ -752,6 +768,17 @@ export function StepForm(
 	const stepRef = useRef<HTMLDivElement>(null);
 	/** The step id the focus effect last saw; `null` until the first render has settled. */
 	const seenStep = useRef<string | null>(null);
+
+	// The browser SUGGESTS a person's country (time zone, then language region); it only pre-fills the
+	// field, which the person confirms or changes (Decision #337, ruling M5 (b)). `navigator` is a
+	// browser API, so this runs once after hydration.
+	useEffect(() => {
+		if (store.isEnterprise.peek() || store.country.peek()) return;
+		const suggested = browserPreferenceHints().country;
+		if (suggested && SIGNUP_COUNTRIES.some((c) => c.value === suggested)) {
+			store.country.value = suggested;
+		}
+	}, []);
 
 	// Intelligent handle autofill (individuals): derive the username from First + Last name, and keep
 	// it in sync until the user edits the handle directly. `peek()` reads the current handle WITHOUT

@@ -124,7 +124,7 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 
 | File                                             | Writers here          | Writers elsewhere (never at the same time)                        |
 | :----------------------------------------------- | :-------------------- | :---------------------------------------------------------------- |
-| `00001210` (`place_wallet_order`, promo, orders) | CK4, SC7, SC10        | FBP DB9, DB10, DB11, DB13; SCH-WP6                                |
+| `00001210` (`place_wallet_order`, promo, orders) | CK4, SC7, SC10        | FBP DB10, DB11, DB13; SCH-WP6                                     |
 | `00000017` (finance tables)                      | CK4, SC7              | FBP DB21, MR3, MR5                                                |
 | `00001170` (catalogue doors, `save_listing`)     | SC6, SC10, SC12       | —                                                                 |
 | `00001155` (sessions, cohorts)                   | SC10                  | every SCH package                                                 |

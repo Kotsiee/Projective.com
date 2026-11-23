@@ -3,7 +3,7 @@
  * skills, languages, preferences and verification cases.
  */
 
-import { isDisplayCurrency } from "@projective/types/finance";
+import { countryCodeOf, isDisplayCurrency } from "@projective/types/finance";
 import {
 	type AcceptedLegalSlug,
 	COMMIT_LEGAL_DOCUMENTS,
@@ -255,16 +255,17 @@ export function emitIdentities(world: World): string {
 			throw new Error(`world: ${p.handle}'s display currency ${p.displayCurrency} is not offerable`);
 		}
 	}
+	// The persona's confirmed country prices what they create (Decision #337, ruling M5 (b)).
 	out.push(
-		"INSERT INTO org.user_preferences (user_id, preferred_display_currency, locale, theme)\nVALUES",
+		"INSERT INTO org.user_preferences (user_id, preferred_display_currency, locale, theme, country)\nVALUES",
 	);
 	out.push(
 		personas.map((p) =>
-			`  (${id(p.userId)}, ${q(p.displayCurrency ?? "GBP")}, ${q(localeFor(p.country))}, 'system')`
+			`  (${id(p.userId)}, ${q(p.displayCurrency ?? "GBP")}, ${q(localeFor(p.country))}, 'system', ${q(countryCodeOf(p.country))})`
 		).join(",\n"),
 	);
 	out.push(
-		"ON CONFLICT (user_id) DO UPDATE SET preferred_display_currency = EXCLUDED.preferred_display_currency, locale = EXCLUDED.locale;\n",
+		"ON CONFLICT (user_id) DO UPDATE SET preferred_display_currency = EXCLUDED.preferred_display_currency, locale = EXCLUDED.locale, country = EXCLUDED.country;\n",
 	);
 
 	const freelancers = personas.filter((p) => p.role === "freelancer");

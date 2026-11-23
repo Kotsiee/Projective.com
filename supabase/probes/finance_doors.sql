@@ -87,8 +87,8 @@ DECLARE
     v_ew uuid;
     v_out text;
 BEGIN
-    INSERT INTO org.enterprises (owner_user_id, legal_name, handle, corporate_email, status, verification_level)
-    VALUES (v_user, 'Probe Enterprise Ltd', 'probe-db3-ent', 'probe@example.invalid', 'active', 'kyb_pending')
+    INSERT INTO org.enterprises (owner_user_id, legal_name, handle, corporate_email, status, verification_level, default_currency)
+    VALUES (v_user, 'Probe Enterprise Ltd', 'probe-db3-ent', 'probe@example.invalid', 'active', 'kyb_pending', 'USD')
     RETURNING id INTO v_ent;
     v_ew := finance.fn_ensure_wallet('enterprise', v_ent, v_cur);
     INSERT INTO finance.vault_permissions (wallet_id, member_user_id, capabilities)

@@ -65,7 +65,7 @@ The tiered vault. One row per `(owner_type, owner_id, currency)`.
 | `id`            | uuid   | PK.                                                                      |
 | `owner_type`    | text   | CHECK `user` / `freelancer` / `business` / `team` / `enterprise` (`WalletOwnerType`; FCA N24). |
 | `owner_id`      | uuid   | The owning entity.                                                       |
-| `currency`      | text   | ISO-4217 origin currency, CHECK `^[A-Z]{3}$`.                            |
+| `currency`      | text   | ISO-4217 origin currency, CHECK `^[A-Z]{3}$`. A team's or business's first wallet is in its owner's confirmed country's currency, never their display currency (`org.fn_currency_for_country`, ruling M5 (b), FINANCE DB9); a payout transfers in it from the Stripe balance in the same currency (ruling M5 (a)). |
 | `balance_cents` | bigint | **Materialised** Available balance (`CHECK >= 0`).                       |
 | `approval_threshold_cents` | bigint | This vault's own spend-approval threshold; `NULL` = no local override (the platform `vault_approval_threshold_cents` applies). |
 | UNIQUE          | —      | `(owner_type, owner_id, currency)`.                                      |

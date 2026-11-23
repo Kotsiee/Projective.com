@@ -81,8 +81,8 @@ BEGIN
 
     -- #region A minor's project is personal, private and free of money
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_teen, 'role', 'authenticated')::text, true);
-    INSERT INTO projects.projects (owner_user_id, title, visibility, publish_visibility, budget_amount_cents, auto_fund_override, session_kind)
-    VALUES (v_teen, 'Revision planner', 'public', 'public', 50000, 'from_wallet', 'group')
+    INSERT INTO projects.projects (owner_user_id, title, visibility, publish_visibility, budget_amount_cents, auto_fund_override, session_kind, currency)
+    VALUES (v_teen, 'Revision planner', 'public', 'public', 50000, 'from_wallet', 'group', 'USD')
     RETURNING * INTO v_row;
     v_project := v_row.id;
     IF v_row.is_personal AND v_row.visibility = 'invite_only' AND v_row.publish_visibility = 'invite_only'
@@ -110,8 +110,8 @@ BEGIN
     SELECT b.id INTO v_business FROM org.business_profiles b LIMIT 1;
     IF v_business IS NOT NULL THEN
         BEGIN
-            INSERT INTO projects.projects (owner_user_id, title, client_business_id)
-            VALUES (v_teen, 'Business work', v_business);
+            INSERT INTO projects.projects (owner_user_id, title, client_business_id, currency)
+            VALUES (v_teen, 'Business work', v_business, 'USD');
             RAISE EXCEPTION 'FAIL a minor filed a project under a business';
         EXCEPTION WHEN SQLSTATE 'PM403' THEN
             RAISE NOTICE 'PASS a personal project cannot belong to a business (PM403)';
@@ -172,7 +172,7 @@ BEGIN
 
     -- #region Minors stay out of other people's projects; adults are unaffected
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_adult, 'role', 'authenticated')::text, true);
-    INSERT INTO projects.projects (owner_user_id, title) VALUES (v_adult, 'Brand refresh') RETURNING * INTO v_row;
+    INSERT INTO projects.projects (owner_user_id, title, currency) VALUES (v_adult, 'Brand refresh', 'USD') RETURNING * INTO v_row;
     v_adult_project := v_row.id;
     IF NOT v_row.is_personal THEN
         RAISE NOTICE 'PASS an adult''s project is not personal';

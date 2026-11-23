@@ -238,7 +238,10 @@ staffing roles, the participant record and a readable unique slug in a single tr
 payload built by `createProjectPayload` — title, `format` / `structure_variation`, the optional brief,
 `currency`, the `fixed_price` budget pair, and ONE explicit root stage carrying the baseline price —
 so the root stage, its room and the Discussion room commit with the row or not at all (Decision #195).
-`live-create.test.ts` holds every payload key against the keys this body reads.
+`live-create.test.ts` holds every payload key against the keys this body reads. A payload with no
+`currency` takes its owner's (`org.fn_entity_currency`: the team's, business's or enterprise's, else
+the caller's confirmed country's; never USD, ruling M5 (b)), and `trg_projects_settlement_currency`
+refuses one outside `settlement_currencies` (22023, FINANCE DB9).
 
 **Why an RPC rather than four table writes.** PostgREST gives the application one statement per
 round trip and no transaction around them, so a TypeScript create would be four calls with no way to

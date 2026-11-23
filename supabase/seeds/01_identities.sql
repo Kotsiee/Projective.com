@@ -234,27 +234,27 @@ VALUES
   ('68f2d822-6ee5-4175-ad75-722c668a4aaf', 'd568b6e7-1194-445a-a50e-f3a594be7688', 'rosalindqvist@projective.dev', true, now() - interval '12960 hours', now() - interval '12960 hours')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO org.user_preferences (user_id, preferred_display_currency, locale, theme)
+INSERT INTO org.user_preferences (user_id, preferred_display_currency, locale, theme, country)
 VALUES
-  ('6ce1906f-caab-4708-a19e-df3d8960666e', 'GBP', 'en-GB', 'system'),
-  ('bdff9d38-7124-4a49-af5d-c88eb4fe8b57', 'EUR', 'de-DE', 'system'),
-  ('45a4c6ae-d818-45fd-a62b-db44f1f69eab', 'EUR', 'pt-PT', 'system'),
-  ('1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'AED', 'en-GB', 'system'),
-  ('2bdebf14-f7dc-40af-acd8-fe22cb9916fd', 'USD', 'pt-BR', 'system'),
-  ('9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', 'EUR', 'pt-PT', 'system'),
-  ('c7173d3f-8b15-4876-afbf-499d17513a44', 'GBP', 'en-GB', 'system'),
-  ('c859a726-490c-4f6d-a184-8984de3994d3', 'EUR', 'en-GB', 'system'),
-  ('de29f2ce-0f36-4db5-a417-4edc88cedf83', 'GBP', 'en-GB', 'system'),
-  ('292e1827-f189-4f34-ab35-27c9f0320926', 'CAD', 'en-CA', 'system'),
-  ('3fc3da04-549b-4239-aca3-fa82f713dbaf', 'EUR', 'de-DE', 'system'),
-  ('2e4274fb-e76b-4640-ad31-c66d7fbea842', 'EUR', 'pl-PL', 'system'),
-  ('0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', 'JPY', 'ja-JP', 'system'),
-  ('5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'USD', 'en-GB', 'system'),
-  ('35ce4987-15b3-4c38-a438-2bb9c35df15a', 'GBP', 'en-GB', 'system'),
-  ('b30145ef-f693-439c-a2c4-8b3db32a54a2', 'CAD', 'en-CA', 'system'),
-  ('950d68d1-8777-4bbe-ae59-3343e3e7f858', 'GBP', 'en-GB', 'system'),
-  ('d568b6e7-1194-445a-a50e-f3a594be7688', 'EUR', 'en-GB', 'system')
-ON CONFLICT (user_id) DO UPDATE SET preferred_display_currency = EXCLUDED.preferred_display_currency, locale = EXCLUDED.locale;
+  ('6ce1906f-caab-4708-a19e-df3d8960666e', 'GBP', 'en-GB', 'system', 'GB'),
+  ('bdff9d38-7124-4a49-af5d-c88eb4fe8b57', 'EUR', 'de-DE', 'system', 'DE'),
+  ('45a4c6ae-d818-45fd-a62b-db44f1f69eab', 'EUR', 'pt-PT', 'system', 'PT'),
+  ('1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'AED', 'en-GB', 'system', 'AE'),
+  ('2bdebf14-f7dc-40af-acd8-fe22cb9916fd', 'USD', 'pt-BR', 'system', 'BR'),
+  ('9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', 'EUR', 'pt-PT', 'system', 'PT'),
+  ('c7173d3f-8b15-4876-afbf-499d17513a44', 'GBP', 'en-GB', 'system', 'GB'),
+  ('c859a726-490c-4f6d-a184-8984de3994d3', 'EUR', 'en-GB', 'system', 'IE'),
+  ('de29f2ce-0f36-4db5-a417-4edc88cedf83', 'GBP', 'en-GB', 'system', 'GB'),
+  ('292e1827-f189-4f34-ab35-27c9f0320926', 'CAD', 'en-CA', 'system', 'CA'),
+  ('3fc3da04-549b-4239-aca3-fa82f713dbaf', 'EUR', 'de-DE', 'system', 'DE'),
+  ('2e4274fb-e76b-4640-ad31-c66d7fbea842', 'EUR', 'pl-PL', 'system', 'PL'),
+  ('0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', 'JPY', 'ja-JP', 'system', 'JP'),
+  ('5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', 'USD', 'en-GB', 'system', 'NG'),
+  ('35ce4987-15b3-4c38-a438-2bb9c35df15a', 'GBP', 'en-GB', 'system', 'GB'),
+  ('b30145ef-f693-439c-a2c4-8b3db32a54a2', 'CAD', 'en-CA', 'system', 'CA'),
+  ('950d68d1-8777-4bbe-ae59-3343e3e7f858', 'GBP', 'en-GB', 'system', 'GB'),
+  ('d568b6e7-1194-445a-a50e-f3a594be7688', 'EUR', 'en-GB', 'system', 'SE')
+ON CONFLICT (user_id) DO UPDATE SET preferred_display_currency = EXCLUDED.preferred_display_currency, locale = EXCLUDED.locale, country = EXCLUDED.country;
 
 INSERT INTO org.freelancer_profiles (user_id, skills, availability_status, current_workload_intensity, max_workload_intensity, available_since, kyc_status, kyc_tier, kyc_verified_at, payout_ready, identity_provider_ref, created_at)
 VALUES

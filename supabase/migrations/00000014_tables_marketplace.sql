@@ -60,7 +60,7 @@ CREATE TABLE marketplace.service_blueprints (
     price_cents bigint NOT NULL CHECK (price_cents >= 0),
     ticket_price_cents bigint CHECK (ticket_price_cents IS NULL OR ticket_price_cents >= 0),
     session_price_cents bigint CHECK (session_price_cents IS NULL OR session_price_cents >= 0),
-    currency text NOT NULL DEFAULT 'USD'::text CHECK (currency ~ '^[A-Z]{3}$'),
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
 
     -- The discovery taxonomy the `?cat=` facet filters on and every card prints. Defaulted to the
     -- empty string rather than a literal like 'other': '' reads as "the seller has not categorised

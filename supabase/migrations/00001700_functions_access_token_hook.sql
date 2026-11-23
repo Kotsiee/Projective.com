@@ -70,6 +70,9 @@ DECLARE
   v_display_currency text;
   v_locale text;
   v_date_format text;
+  -- The person's confirmed country (org.user_preferences.country): what a create form pre-selects as
+  -- the currency of what they make (ruling M5 (b)). NULL until they confirm one.
+  v_country text;
 
   -- Resolved chrome context.
   v_type text := 'personal';
@@ -119,8 +122,8 @@ BEGIN
   -- Presentation preferences. A row may not exist yet (the seed trigger runs AFTER INSERT on
   -- org.users_public), so both fall back to the platform defaults rather than a NULL claim.
   SELECT UPPER(NULLIF(TRIM(pr.preferred_display_currency), '')), NULLIF(TRIM(pr.locale), ''),
-         pr.date_format
-    INTO v_display_currency, v_locale, v_date_format
+         pr.date_format, pr.country
+    INTO v_display_currency, v_locale, v_date_format, v_country
   FROM org.user_preferences pr
   WHERE pr.user_id = v_user_id;
 
@@ -261,7 +264,8 @@ BEGIN
       'businessHeadroom', v_business_headroom,
       'displayCurrency', v_display_currency,
       'locale', v_locale,
-      'dateFormat', v_date_format
+      'dateFormat', v_date_format,
+      'country', v_country
     ),
     true
   );

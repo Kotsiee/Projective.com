@@ -44,13 +44,11 @@ export async function resolvePortfolio(
 	url: URL,
 	context: UserContext,
 	actor: ReadActor,
-	displayCurrency?: string | null,
 ): Promise<PortfolioBootstrap> {
 	const feed = await resolveProjectsFeed(
 		new URL("/projects?scope=global", url),
 		context,
 		actor,
-		displayCurrency,
 	);
 	// The portfolio is the work the viewer commissioned, a service they bought included (#427).
 	const items = feed.payload.items.filter((it) => feedViewOf(it) === "projects");

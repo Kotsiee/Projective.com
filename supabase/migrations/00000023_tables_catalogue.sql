@@ -81,7 +81,7 @@ CREATE TABLE catalogue.products (
     -- float, and never the pre-formatted string the discovery fixtures carry: parsing a localised
     -- currency string back into a number is how "$1,800" becomes 1.8.
     price_cents bigint NOT NULL DEFAULT 0 CHECK (price_cents >= 0),
-    currency text NOT NULL DEFAULT 'USD'::text CHECK (currency ~ '^[A-Z]{3}$'),
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
 
     -- Licence terms the /view product template renders as its permission ledger (Decision #217(i)).
     licence catalogue.product_licence NOT NULL DEFAULT 'personal'::catalogue.product_licence,
@@ -208,7 +208,7 @@ CREATE TABLE catalogue.listings (
     ticket_price_cents bigint CHECK (ticket_price_cents IS NULL OR ticket_price_cents >= 0),
     session_price_cents bigint CHECK (session_price_cents IS NULL OR session_price_cents >= 0),
     seats_per_session integer CHECK (seats_per_session IS NULL OR (seats_per_session BETWEEN 1 AND 500)),
-    currency text NOT NULL DEFAULT 'USD'::text CHECK (currency ~ '^[A-Z]{3}$'),
+    currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
 
     -- Revision policy. NULL free_revisions means the seller declared nothing and the corpus default
     -- applies; 0 is the distinct claim that no rounds are included.

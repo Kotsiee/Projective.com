@@ -444,9 +444,9 @@ DECLARE
     v_one uuid;
 BEGIN
     INSERT INTO projects.projects (owner_user_id, title, format, session_kind, status, visibility,
-                                   publish_visibility, source_blueprint_id)
+                                   publish_visibility, source_blueprint_id, currency)
     VALUES (current_setting('probe.host')::uuid, 'Probe 1-1', 'session', 'normal', 'active', 'unlisted', 'unlisted',
-            current_setting('probe.bp')::uuid)
+            current_setting('probe.bp')::uuid, 'USD')
     RETURNING id INTO v_project;
     INSERT INTO projects.project_stages (project_id, name, sort_order) VALUES (v_project, 'Sessions', 0)
     RETURNING id INTO v_stage;

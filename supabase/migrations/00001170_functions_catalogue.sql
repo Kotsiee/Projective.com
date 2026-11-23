@@ -44,7 +44,7 @@ DECLARE
     v_subject uuid;
     v_slug text;
     v_listing uuid;
-    v_currency text := pg_catalog.upper(COALESCE(NULLIF(pg_catalog.btrim(p_currency), ''), 'USD'));
+    v_currency text := pg_catalog.upper(COALESCE(NULLIF(pg_catalog.btrim(p_currency), ''), org.fn_entity_currency(p_team)));
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to create a listing' USING ERRCODE = '42501';
@@ -98,7 +98,7 @@ $$;
 
 COMMENT ON FUNCTION catalogue.create_listing(text, text, text, uuid, text, text) IS
 'Create a DRAFT listing and its subject (a product, or a service blueprint for a freelancer) in one
-transaction, as the caller, in p_currency (default USD) and, optionally, a CREATE category. Returns
+transaction, as the caller, in p_currency (default: its owner''s currency, org.fn_entity_currency; only a currency Projective settles in, org.trg_settlement_currency) and, optionally, a CREATE category. Returns
 { listing_id, slug } — the slug is the listing''s console and public address. Refusals: 42501 not
 signed in / not a freelancer / not a member of the team · 22023 bad title, kind, delivery model or
 currency · 22P02 unknown CREATE category.';
