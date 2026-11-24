@@ -590,7 +590,7 @@ Deno.test("committing never invents escrow", async () => {
 // #endregion
 
 // #region Setup patch reconciliation
-Deno.test("setupPatchFrom creates, updates and removes stages by id", () => {
+Deno.test("setupPatchFrom creates and updates stages by id, and keeps the ones it omits", () => {
 	const base = findProjectSetup(SLUG)!;
 	const keep = base.stages[0];
 
@@ -601,7 +601,9 @@ Deno.test("setupPatchFrom creates, updates and removes stages by id", () => {
 		],
 	}, base);
 
-	assertEquals(patch.stages!.length, 2);
+	// A PATCH never removes a stage, as the live reconcile does not: the omitted ones follow.
+	assertEquals(patch.stages!.length, base.stages.length + 1);
+	assertEquals(patch.stages!.slice(2).map((s) => s.id), base.stages.slice(1).map((s) => s.id));
 	// An UPDATE merges over the base row: a section that sends only a price must not blank the scope
 	// prose beside it.
 	assertEquals(patch.stages![0].id, keep.id);
@@ -610,7 +612,6 @@ Deno.test("setupPatchFrom creates, updates and removes stages by id", () => {
 	// A CREATE gets a minted id, never the caller's absent one.
 	assertNotEquals(patch.stages![1].id, "");
 	assertEquals(patch.stages![1].name, "A brand new stage");
-	// Every base stage the array omitted is a REMOVE, which needs no branch — it is simply gone.
 	assert(base.stages.length > 2);
 });
 

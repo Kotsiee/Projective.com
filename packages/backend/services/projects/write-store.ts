@@ -1651,10 +1651,11 @@ function mintId(prefix: string): string {
 /**
  * Turn the PATCH body into the store's patch shape, resolving each partial row against the base.
  *
- * The wire lets a stage arrive three ways and the difference is entirely in its id: absent or
- * `stage-draft-…` is a CREATE, a known id is an UPDATE, and a base row missing from the array is a
- * REMOVE — which needs no branch here, because the array the client sent IS the list after their own
- * reconciliation and it simply omits the removed row.
+ * The wire lets a stage arrive two ways and the difference is entirely in its id: absent or
+ * `stage-draft-…` is a CREATE, a known id is an UPDATE. A base row missing from the array is KEPT,
+ * after the named ones in its stored order, exactly as the live reconcile keeps it
+ * (`reconcileStages`): a PATCH never removes a stage. Removal is its own write,
+ * `ProjectBackendService.deleteStage` (PROJECTS ST2).
  *
  * An UPDATE merges over the base row rather than replacing it, so a section that sends only a new
  * price does not blank the scope prose beside it.
@@ -1712,8 +1713,14 @@ export function setupPatchFrom(input: UpdateProject, base: ProjectSetup): Projec
 				allowedFileKinds: stage.allowedFileKinds ?? base.allowedFileKinds,
 				ndaRequired: stage.ndaRequired !== undefined ? stage.ndaRequired : base.ndaRequired,
 				chainReaction: stage.chainReaction ?? base.chainReaction,
+				// A stage created here is stored, so it gets the address Remove's DELETE names.
+				slug: existing ? base.slug : mintSlug("stage"),
 			};
 		});
+		const named = new Set(patch.stages.map((stage) => stage.id));
+		for (const kept of base.stages.filter((stage) => !named.has(stage.id))) {
+			patch.stages.push({ ...kept, order: patch.stages.length });
+		}
 	}
 
 	if (input.roles) {

@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 25 open, 0 partly done, 1 done (§0 ledger).
-> Runnable now: ST1–ST4, ST6, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 24 open, 0 partly done, 2 done (§0 ledger).
+> Runnable now: ST1, ST3, ST4, ST6, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -55,6 +55,7 @@ A prompt that lands gets a row here.
 | ID  | What landed                                                                                                                                                                                    | Commit            | Text at    |
 | :-- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------- | :--------- |
 | ST5 | Seats and participant rows are written only by their definer doors: the owner's two `FOR ALL` policies dropped, client `INSERT` / `UPDATE` / `DELETE` revoked; probe `seat_insert_consent.sql` | `70b0d8c5` (#554) | `f398cd9f` |
+| ST2 | The setup form's Remove reaches a door: `projects.delete_stage` refuses a stage with history `55000` before anything moves and deletes an untouched one; `projects.stage_removability` gives the setup DTO its `removable` flag; `DELETE /api/projects/:id/stages/:stageId`; a touched stage's Remove opens `StageLockedDialog`; the stub PATCH keeps an omitted stage as live does; probe `stage_removal.sql` | ST2_COMMIT (#553) | `4fed9f01` |
 
 ### 0.1 Row → work order
 
@@ -74,7 +75,7 @@ PJ-14 and PJ-74 are ⏸ (§0.4).
 | Row   | Now · Crit · Gate | Work order                   | The row flips (or its note clears) when                                                                         |
 | :---- | :---------------- | :--------------------------- | :-------------------------------------------------------------------------------------------------------------- |
 | PJ-07 | ✅ · High · MVP   | PM-WP5a step 1               | `categoryWeight` is gone; $W_i$ reads intensity alone (note clears)                                             |
-| PJ-09 | 🟡 · High · UAT   | **ST2** → PM-WP4b steps 4, 6 | Still 🟡 after ST2 (Remove persists for a pristine stage); ✅ after WP4b (a touched stage archives and settles) |
+| PJ-09 | 🟡 · High · UAT   | PM-WP4b steps 4, 6 (ST2 landed, #553) | ✅ after WP4b (a touched stage archives and settles) |
 | PJ-10 | ❌ · High · UAT   | PM-D7a → PM-D7b              | 🟡 after D7a (no loops, no cross-project routes); ✅ after D7b (a waiting stage opens)                          |
 | PJ-11 | 🟡 · High · UAT   | **ST4**                      | The freelancer's own gauge renders from a self-only read                                                        |
 | PJ-13 | ❌ · Normal · UAT | **ST3**                      | A client pins a ticket to a seat holder through a granted door                                                  |
@@ -189,7 +190,7 @@ after PM-WP1. The paths follow §0.2's order:
 (+ CD2), and the chat chain (MS3, MS5, CH1, P2d, SN3, the T&S P-chain).
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX2 → EX3) and PJ-60 (NO2 + CD2).
-Those are the Critical · UAT rows. Below them come the High · UAT rows: ST2, ST3, ST4, WP5a, EX1,
+Those are the Critical · UAT rows. Below them come the High · UAT rows: ST3, ST4, WP5a, EX1,
 CH2, FL3, FL4, CFG2 and LP1.
 
 ### 0.2 Run order
@@ -240,7 +241,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 
 **App lane** (up to three at once, file-disjoint):
 
-- **PM-WP8** and **ST2** now.
+- **PM-WP8** now.
 - **ST1** now. It moves to Queue S if `apply_write_batch` needs a version op.
 - **ST6** now.
 - **TK2** (⏳ TK1).
@@ -270,7 +271,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | File                                                     | Writers here                                                 | Writers elsewhere (never at the same time)                        |
 | :------------------------------------------------------- | :----------------------------------------------------------- | :---------------------------------------------------------------- |
 | `00001150` (stage funding, submissions, cancel, approve) | TK1, EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | FBP DB13, DB14                                                    |
-| `00001130` (stages, members, `apply_write_batch`)        | ST1?, ST2?, CH2; PM D7a, WP4a, WP4b, S3, D7b                 | —                                                                 |
+| `00001130` (stages, members, `apply_write_batch`)        | ST1?, CH2; PM D7a, WP4a, WP4b, S3, D7b                       | —                                                                 |
 | `00001110` / `00001120` (ticket guards and doors)        | TK1; PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
 | `00001140` (claims, capacity, workload)                  | ST3, ST4; PM WP5a, D7b                                       | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
@@ -529,56 +530,6 @@ status code is documented there; the decision row.
 ```
 
 §1.2 rows: **PJ-02**'s note cleared.
-
-### ST2 — Removing a stage in setup does what the control says
-
-Narrows PJ-09; WP4b finishes it.
-
-```text
-PROMPT ST2: The setup form's Remove stage reaches a door: a pristine stage is deleted, and a
-touched stage is refused with its reason until PM-WP4b gives it an archive
-
-ROLE: Full-stack engineer. App lane (plus one comment and one spec line).
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - No product path deletes a stage. SetupStagesSection.tsx (:146-150, :234-237) drops the stage
-    client-side; the client only ever sends PATCH (features/projects/core/api.ts:57;
-    ProjectSidebarService.ts:109); delete_stage is called only when `replace` (a PUT,
-    live-writes.ts:1413-1418); and a PATCH appends every omitted stage back (:1436). So the stage
-    reappears after a save that reported success.
-  - projects.delete_stage (00001130:589-662) refuses a stage with any escrow row (:654-657). That
-    raise rolls back the releases its step 1 made, so the comment at :584-587 ("funds are still
-    released") is wrong. It detaches tickets without changing their status (:630-632).
-  - The rule: #338 P2 (b). Hard-delete only a stage never claimed, funded or submitted against;
-    archive everything else (PM-WP4b builds that archive). fn_stage_has_history (00001130:681)
-    is the SQL test.
-  - The direct-DELETE hole (the FOR ALL policy at 00002011:287, the cascade trigger at :128-156)
-    is PM-WP4b step 6's. Leave it.
-
-STEPS:
-  1. Red first: a test that removes a pristine stage in setup, saves and reloads, and finds it
-     back.
-  2. A thin route, DELETE /api/projects/:id/stages/:stageSlug (stg- slug; ROUTING.md), calls the
-     service, which calls delete_stage for a stage fn_stage_has_history says is pristine.
-     Afterwards the form's PATCH omits it legitimately: make reconcileStages stop re-appending a
-     stage the server has deleted, and prove it.
-  3. The setup DTO carries a server flag per stage, `removable` (state-dependent, so a DTO flag,
-     not a client rule). For a touched stage, Remove opens LockedDialog: "This stage has work or
-     money on it. It can be archived once archiving ships." After PM-WP4b lands, that control
-     archives instead; leave a JSDoc note naming WP4b as its owner.
-  4. Fix delete_stage's comment (:584-587), and PRODUCT_SPEC.md:3081-3084 (a touched stage is
-     refused and nothing moves).
-  5. Remove sits where it is today; if it moves, it keeps one tier-4 control per region (#157).
-
-ACCEPTANCE: as the seeded client, remove a pristine stage and it stays gone after reload; a
-funded stage's Remove explains why; a direct API call on a touched stage is refused; screenshots.
-
-SAME CHANGE: ROUTING.md; PRODUCT_SPEC.md:3081-3084; PRODUCT_MANAGEMENT.md if the stage lifecycle
-text names deletion; the decision row.
-```
-
-§1.2 rows: **PJ-09** stays 🟡 (the note narrows to "a touched stage waits for PM-WP4b's archive";
-its stale "hard-deleted" text corrected).
 
 ### ST3 — A client pins a ticket to a seat holder (manual assignment)
 

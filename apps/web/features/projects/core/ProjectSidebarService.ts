@@ -113,6 +113,25 @@ export const ProjectSidebarService = {
 	},
 
 	/**
+	 * Remove one SAVED stage (PROJECTS ST2): `DELETE /api/projects/:slug/stages/:stageSlug`. The door
+	 * deletes a stage nobody claimed, funded or submitted against and refuses any other `409
+	 * stage_has_history`; a stage that exists only in the draft never reaches this.
+	 */
+	deleteStage(
+		slug: string,
+		stageSlug: string,
+		sim?: string,
+	): Promise<ProjectsResult<{ stageId: string }>> {
+		return deleteProjects<{ stageId: string }>(
+			withSim(
+				`/api/projects/${encodeURIComponent(slug)}/stages/${encodeURIComponent(stageSlug)}`,
+				sim,
+			),
+			{},
+		);
+	},
+
+	/**
 	 * Archive an engagement. A soft archive — the project leaves circulation, the row stays (root
 	 * CLAUDE.md §5) — which is why the caller gets back the moment it happened rather than a bare
 	 * confirmation.

@@ -906,8 +906,12 @@ Decision #163 (§3.5 row "Stage / project room retirement").
 yet**. A ticket or stage that was never claimed, funded or submitted against may be hard-deleted;
 anything else archives, tickets through a new `tickets.archived_at`. A project is never hard-deleted
 (`archived` is its soft delete, so its DELETE policy and the stage hard-DELETE go), and calendar
-events archive too. Today `delete_ticket`, `delete_stage` and the project DELETE policy hard-delete,
-and `ticket_history` and `ticket_workload_reports` cascade away with a ticket.
+events archive too. Today `delete_ticket` and the project DELETE policy hard-delete, and
+`ticket_history` and `ticket_workload_reports` cascade away with a ticket. `delete_stage` already
+refuses a stage with history (`fn_stage_has_history`) before anything moves, and hard-deletes only
+an untouched one; the setup form's Remove reaches it for a saved stage and explains a refusal. A
+touched stage waits for its archive, and a direct DELETE through the stages policy still
+hard-deletes until PM-WP4b step 6 (PROJECTS ST2, Decision #553).
 
 **The product offers only the pristine half** (Decision #409): the board's right-click **Delete
 ticket** is enabled only while `ticketDeletable` holds — never claimed (`claimed`, `claimed_at`),

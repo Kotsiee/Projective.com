@@ -576,30 +576,25 @@ COMMENT ON FUNCTION projects.create_stage (uuid, text, jsonb, text, bigint, json
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.delete_stage(p_project_id, p_stage_id)
--- Deleting an active stage:
---   1. Releases escrow for every actively-claimed ticket currently in the stage.
---   2. Detaches those tickets (they fall back to the backlog pool).
---   3. Clears the stage from every ticket's `required_stages` dependency array.
---   4. Nulls any sibling stage that depended on this one (start_dependency_stage_id).
---   5. Deletes the stage — UNLESS it carries escrow history (finance.escrows.project_stage_id
---      is ON DELETE RESTRICT + NOT NULL): funds are still released, but the stage cannot be
---      hard-deleted and the caller is told to archive it instead. This preserves the finance
---      audit trail rather than silently orphaning it.
+-- Hard-deletes a stage nobody has claimed, funded or submitted against, and refuses every other
+-- stage before anything moves (Decision #338 P2 (b)). projects.fn_stage_has_history is asked first,
+-- so a touched stage keeps its tickets, its escrow and its history exactly as they were: 55000,
+-- with the sentence the setup form's Remove shows. Until PM-WP4b gives a touched stage its archive,
+-- that refusal is the whole answer (PROJECTS ST2, Decision #553).
+--
+-- A pristine stage holds no ticket, no escrow and no room with history, so what goes with it is its
+-- own definition: its empty rooms, its staffing roles and budget rules, and the start dependency of
+-- any sibling that waited for it. The same steps sanitize_single_room_topology takes for a stage
+-- with no history.
 -- ---------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION projects.delete_stage(p_project_id uuid, p_stage_id uuid)
 RETURNS void AS $$
 DECLARE
-  r record;
+  v_room uuid;
 BEGIN
-  -- 🚨 This block is the whole security of the function, and it is strictly more load-bearing here
-  -- than on `reorder_stages` below: this one RELEASES ESCROW to freelancers and then hard-deletes the
-  -- stage. It is SECURITY DEFINER with the default PUBLIC EXECUTE, so without a caller check any
-  -- signed-in account could wipe an unrelated project's pipeline — and, once a stage reconciler
-  -- reached it over HTTP, could do so in one request.
-  --
-  -- Review authority (the owner, or an active member of the paying client business) rather than
-  -- `has_project_access`: an assigned freelancer legitimately reads the pipeline and must never be
-  -- able to delete the stage their own escrow is held against.
+  -- Review authority (the owner, or an active member of the paying client business), or a service's
+  -- seller (can_edit_project_details), rather than has_project_access: an assigned freelancer reads
+  -- the pipeline and must never be able to delete it.
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Sign in to delete a stage.' USING ERRCODE = 'insufficient_privilege';
   END IF;
@@ -618,48 +613,24 @@ BEGIN
       USING ERRCODE = 'check_violation';
   END IF;
 
-  -- 1. Release escrow for claimed tickets sitting in this stage.
-  FOR r IN
-    SELECT id FROM projects.tickets
-    WHERE current_stage_id = p_stage_id AND current_assignee_id IS NOT NULL
-  LOOP
-    PERFORM finance.fn_release_ticket_escrow(r.id);
-  END LOOP;
-
-  -- 2. Detach tickets pointing at this stage back into the backlog pool.
-  UPDATE projects.tickets
-  SET current_stage_id = NULL, updated_at = now()
-  WHERE current_stage_id = p_stage_id;
-
-  -- 3. Clear this stage from every ticket's required_stages dependency array.
-  UPDATE projects.tickets
-  SET required_stages = COALESCE((
-        SELECT jsonb_agg(elem)
-        FROM jsonb_array_elements(required_stages) elem
-        WHERE elem->>'stage_id' <> p_stage_id::text
-      ), '[]'::jsonb),
-      updated_at = now()
-  WHERE project_id = p_project_id
-    AND EXISTS (
-      SELECT 1 FROM jsonb_array_elements(required_stages) e
-      WHERE e->>'stage_id' = p_stage_id::text
-    );
-
-  -- 4. Null sibling stages that used this stage as a start dependency.
-  UPDATE projects.project_stages
-  SET start_dependency_stage_id = NULL
-  WHERE start_dependency_stage_id = p_stage_id;
-
-  -- 5. Guard the finance audit trail before hard-deleting.
-  IF EXISTS (SELECT 1 FROM finance.escrows WHERE project_stage_id = p_stage_id) THEN
-    RAISE EXCEPTION 'Stage % has escrow history: its funds were released but the stage must be archived, not deleted.', p_stage_id
-      USING ERRCODE = 'foreign_key_violation';
+  IF projects.fn_stage_has_history(p_stage_id) THEN
+    RAISE EXCEPTION 'This stage has work or money on it. It can be archived once archiving ships.'
+      USING ERRCODE = 'object_not_in_prerequisite_state';
   END IF;
+
+  FOR v_room IN SELECT c.id FROM comms.project_channels c WHERE c.stage_id = p_stage_id LOOP
+    DELETE FROM comms.project_channel_participants WHERE channel_id = v_room;
+    DELETE FROM comms.project_channels WHERE id = v_room;
+  END LOOP;
+  DELETE FROM projects.stage_staffing_roles WHERE project_stage_id = p_stage_id;
+  DELETE FROM projects.stage_budget_rules WHERE project_stage_id = p_stage_id;
+  UPDATE projects.project_stages
+     SET start_dependency_stage_id = NULL
+   WHERE start_dependency_stage_id = p_stage_id;
 
   DELETE FROM projects.project_stages WHERE id = p_stage_id AND project_id = p_project_id;
 END;
--- `auth` on the path so `auth.uid()` resolves for the ownership guard above.
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, auth;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.fn_room_has_history(p_channel_id) / projects.fn_stage_has_history(p_stage_id)
@@ -704,6 +675,28 @@ RETURNS boolean AS $$
         WHERE c.stage_id = p_stage_id AND projects.fn_room_has_history(c.id)
       );
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- ---------------------------------------------------------------------------------------------
+-- projects.stage_removability(p_project_id)
+-- The setup form's Remove control, answered for each live stage of a project: `removable` is true
+-- for a stage delete_stage would hard-delete and false for one it refuses (Decision #338 P2 (b)).
+-- fn_stage_has_history answers for any id and stays revoked, so this is the one way a caller reads
+-- it: for a project it configures (can_edit_project_details), and no rows for anyone else
+-- (PROJECTS ST2, Decision #553).
+-- ---------------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION projects.stage_removability(p_project_id uuid)
+RETURNS TABLE (stage_id uuid, removable boolean)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT ps.id, NOT projects.fn_stage_has_history(ps.id)
+    FROM projects.project_stages ps
+   WHERE ps.project_id = p_project_id
+     AND ps.archived_at IS NULL
+     AND projects.can_edit_project_details(p_project_id);
+$$;
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.sanitize_single_room_topology(p_project_id)

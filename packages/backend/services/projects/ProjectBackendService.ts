@@ -44,6 +44,7 @@ import {
 	applyProjectUpdate,
 	archiveProjectRow,
 	commitTicketRow,
+	deleteSetupStage,
 	fetchProjectSetup,
 	insertProject,
 	insertSubmission,
@@ -155,12 +156,14 @@ import type {
 import {
 	type ClaimTicket,
 	composeWorkspace,
+	type DeleteStage,
 	type DeleteTicket,
 	isSelfClaimable,
 	NEW_LANE_REFUSAL_MESSAGE,
 	type ProjectWorkspace,
 	SERVICE_STAGE_REFUSAL_MESSAGE,
 	STAGE_NOT_INCLUDED_MESSAGE,
+	STAGE_REMOVAL_LOCKED_MESSAGE,
 	STALE_MOVE_MESSAGE,
 	TICKET_MANAGER_ROLES,
 	ticketDeletable,
@@ -3011,6 +3014,62 @@ export class ProjectBackendService {
 			{ setup: applyOnboardingSim(reconcileSetup(base, merged), simulate) },
 			{ message: "Project saved." },
 		);
+	}
+
+	/**
+	 * Remove one saved stage from the setup form — `DELETE /api/projects/:id/stages/:stageId`
+	 * (PROJECTS ST2).
+	 *
+	 * Live: `projects.delete_stage` hard-deletes a stage nobody claimed, funded or submitted against and
+	 * refuses any other 409 before anything moves (Decision #338 P2 (b)). Stub: the same refusal, read
+	 * from the stage's own `removable` flag — the one the form drew — and the stage dropped from the
+	 * stored configuration as the door drops it, siblings that waited for it freed. Answers with the
+	 * stage's slug; a later PATCH that omits the stage is then simply true.
+	 */
+	static async deleteStage(
+		input: DeleteStage,
+		actor: ReadActor,
+		/** The DEV-ONLY simulation the setup read took, so the stub refuses what the form drew locked. */
+		sim?: string | null,
+	): Promise<ServiceResult<{ stageId: string }>> {
+		const denied = requireIdentity<{ stageId: string }>(actor, "remove a stage");
+		if (denied) return denied;
+		const message = "Stage removed.";
+
+		const live = await liveWrite<{ stageId: string }>(
+			"deleteStage",
+			actor,
+			input.projectId,
+			message,
+			(a) => deleteSetupStage(a, input.projectId, input.stageId),
+		);
+		if (live) return live;
+
+		const owner = writeOwnerOf(actor);
+		const base = storedCreatedProject(owner, input.projectId) ?? findProjectSetup(input.projectId);
+		if (!base) return noSuchProject(input.projectId);
+		const stored = overlaySetup(base, actor);
+		const stage = applyOnboardingSim(stored, effectiveOnboardingSim(sim)).stages
+			.find((s) => s.slug === input.stageId);
+		if (!stage) return fail(404, { message: "This project has no such stage." });
+		if (!stored.viewerIsClient) {
+			return fail(403, { message: "Only the side that configures this project may delete a stage." });
+		}
+		if (!stage.removable) {
+			return fail(409, {
+				message: STAGE_REMOVAL_LOCKED_MESSAGE,
+				errors: { stage: "stage_has_history" },
+			});
+		}
+		mergeSetupPatch(owner, base, {
+			stages: stored.stages.filter((s) => s.id !== stage.id).map((s, order) => ({
+				...s,
+				order,
+				startsWithId: s.startsWithId === stage.id ? null : s.startsWithId,
+			})),
+		});
+		invalidateProjects(actor);
+		return ok({ stageId: input.stageId }, { message });
 	}
 
 	/**

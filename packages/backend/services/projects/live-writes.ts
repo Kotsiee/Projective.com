@@ -13,6 +13,7 @@ import {
 	NEW_LANE_REFUSAL_MESSAGE,
 	SERVICE_STAGE_REFUSAL_MESSAGE,
 	STAGE_NOT_INCLUDED_MESSAGE,
+	STAGE_REMOVAL_LOCKED_MESSAGE,
 	STALE_MOVE_MESSAGE,
 	isSingleRoomEngagement,
 	isTaskProject,
@@ -219,6 +220,7 @@ interface SetupStageRow {
 	allowed_file_kinds?: string[] | null;
 	nda_required?: boolean | null;
 	chain_reaction?: boolean | null;
+	slug?: string | null;
 }
 
 /**
@@ -298,6 +300,7 @@ const SETUP_STAGE_COLUMNS = [
 	"allowed_file_kinds",
 	"nda_required",
 	"chain_reaction",
+	"slug",
 ].join(", ");
 
 /** The staffing-role columns, named once for the same reason the two lists above are. */
@@ -420,6 +423,8 @@ function toStageSetup(
 	row: SetupStageRow,
 	roles: readonly StaffingRoleRow[],
 	onboardedCount: number,
+	/** `projects.stage_removability`'s answer for this stage — see {@link fetchRemovableStages}. */
+	removable: boolean,
 ): StageSetup {
 	// The seat pair is normalised through the SSOT rather than read field-by-field, so a row that
 	// somehow carries `unlimited` WITH a count — which the bidirectional CHECK forbids but an
@@ -467,6 +472,8 @@ function toStageSetup(
 		// not otherwise touch and one query answers it for every stage at once (see
 		// {@link fetchOnboardedCounts}).
 		onboardedCount,
+		slug: row.slug ?? null,
+		removable,
 	};
 }
 
@@ -570,6 +577,7 @@ function toSetup(
 	viewerCanConfigure: boolean,
 	onboarded: OnboardedCounts,
 	autoFundInherited: AutoFundMode | null = null,
+	removable: ReadonlySet<string> = new Set(),
 ): ProjectSetup {
 	const rolesByStage = groupRolesByStage(roles);
 	return reconcileSetup({
@@ -604,7 +612,12 @@ function toSetup(
 		stages: [...stages]
 			.sort((a, b) => a.sort_order - b.sort_order)
 			.map((stage) =>
-				toStageSetup(stage, rolesByStage.get(stage.id) ?? [], onboarded.byStage.get(stage.id) ?? 0)
+				toStageSetup(
+					stage,
+					rolesByStage.get(stage.id) ?? [],
+					onboarded.byStage.get(stage.id) ?? 0,
+					removable.has(stage.id),
+				)
 			),
 		roles: roles.map(toRoleSetup),
 		// The project TOTAL, not the sum of the line above. A Direct Deliverable is staffed by roles and
@@ -837,14 +850,78 @@ async function composeSetup(
 	// Sequential because the role and assignment reads are keyed on the stage ids the previous read
 	// returned; the attachment read is independent, so it runs alongside them rather than after.
 	const stageIds = stages.map((s) => s.id);
-	const [roles, attachments, onboarded, viewerCanConfigure, autoFundInherited] = await Promise.all([
-		fetchStaffingRoles(actor, stageIds),
-		fetchProjectAttachments(actor, row.id),
-		fetchOnboardedCounts(actor, stageIds),
-		resolveConfigureAuthority(actor, row.owner_user_id, row.client_user_id, row.client_business_id),
-		inheritedAutoFund(actor, row.client_business_id),
-	]);
-	return toSetup(row, stages, roles, attachments, viewerCanConfigure, onboarded, autoFundInherited);
+	const [roles, attachments, onboarded, viewerCanConfigure, autoFundInherited, removable] =
+		await Promise.all([
+			fetchStaffingRoles(actor, stageIds),
+			fetchProjectAttachments(actor, row.id),
+			fetchOnboardedCounts(actor, stageIds),
+			resolveConfigureAuthority(
+				actor,
+				row.owner_user_id,
+				row.client_user_id,
+				row.client_business_id,
+			),
+			inheritedAutoFund(actor, row.client_business_id),
+			fetchRemovableStages(actor, row.id),
+		]);
+	return toSetup(
+		row,
+		stages,
+		roles,
+		attachments,
+		viewerCanConfigure,
+		onboarded,
+		autoFundInherited,
+		removable,
+	);
+}
+
+/**
+ * The project's stages that Remove may delete — `projects.stage_removability`, which answers
+ * `fn_stage_has_history` for the configuring side only (PROJECTS ST2). A failed read, or a caller who
+ * cannot configure the project, yields the empty set: every Remove then explains itself rather than
+ * offering a delete `delete_stage` would refuse.
+ */
+async function fetchRemovableStages(
+	actor: ReadActor & { accessToken: string },
+	projectRowId: string,
+): Promise<ReadonlySet<string>> {
+	const { data, error } = await projectsDb(actor).rpc("stage_removability", {
+		p_project_id: projectRowId,
+	});
+	if (error || !Array.isArray(data)) return new Set();
+	return new Set(
+		(data as ReadonlyArray<{ stage_id?: unknown; removable?: unknown }>)
+			.filter((r) => r.removable === true && typeof r.stage_id === "string")
+			.map((r) => r.stage_id as string),
+	);
+}
+
+/**
+ * Delete one saved stage from the setup form, through `projects.delete_stage` (PROJECTS ST2).
+ *
+ * The door decides and nothing here pre-checks it: `delete_stage` hard-deletes a stage nobody
+ * claimed, funded or submitted against, and refuses any other with
+ * {@link STAGE_REMOVAL_LOCKED_MESSAGE} before anything moves (a 409 `stage_has_history`). `null`
+ * when the project, or a live stage with that slug on it, is not visible to the caller (a 404).
+ */
+export async function deleteSetupStage(
+	actor: ReadActor & { accessToken: string },
+	projectSlug: string,
+	stageSlug: string,
+): Promise<WriteOutcome<{ stageId: string }>> {
+	const row = await fetchSetupProject(actor, projectSlug);
+	if (!row) return null;
+	const db = projectsDb(actor);
+	const { data: stage } = await db.from("project_stages").select("id")
+		.eq("project_id", row.id).eq("slug", stageSlug).is("archived_at", null).maybeSingle();
+	if (!stage) return null;
+	const { error } = await db.rpc("delete_stage", {
+		p_project_id: row.id,
+		p_stage_id: (stage as { id: string }).id,
+	});
+	if (error) return { refusal: refusalFrom(error.message ?? "", "stage") };
+	return { data: { stageId: stageSlug } };
 }
 
 /**
@@ -935,6 +1012,16 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 				"This project still holds escrow. Cancel it, which settles it first.",
 			),
 			errors: field ? { [field]: "settle_first" } : undefined,
+		};
+	}
+
+	// A stage with work or money on it (PROJECTS ST2): `delete_stage` refuses it 55000 before anything
+	// moves. A conflict the owner resolves by archiving once PM-WP4b ships it, not a rule they broke.
+	if (message.includes(STAGE_REMOVAL_LOCKED_MESSAGE)) {
+		return {
+			status: 409,
+			message: STAGE_REMOVAL_LOCKED_MESSAGE,
+			errors: field ? { [field]: "stage_has_history" } : undefined,
 		};
 	}
 
@@ -1307,6 +1394,33 @@ export function stageTermsPatch(
 }
 
 /**
+ * The full permutation a stage reconcile sends `reorder_stages`, and whether the order moved at all.
+ *
+ * `reorder_stages` takes a FULL permutation of the live stages (audit X17). A PATCH names only the
+ * stages it touched, so the stored ones it left out keep their relative order after the ones it
+ * placed: a PATCH never removes a stage. `stored` is the list read AT SAVE TIME, so a stage the
+ * server has deleted (Remove, PROJECTS ST2) is not in it and is never named again.
+ *
+ * The orders are compared as joined lists. The separator only has to be a character a uuid cannot
+ * contain, so two different orders can never render as one string; a comma is enough and, unlike a
+ * NUL, it leaves the file readable to grep and to a diff.
+ */
+export function stageOrderPlan(
+	stored: readonly string[],
+	ordered: readonly BatchId[],
+	keep: ReadonlySet<string>,
+	replace: boolean,
+): { full: BatchId[]; reordered: boolean } {
+	const asKey = (ids: readonly BatchId[]) =>
+		ids.map((id) => (typeof id === "string" ? id : `ref:${id.$ref}`)).join(",");
+	const reordered = replace
+		? asKey(ordered) !== asKey(stored)
+		: asKey(ordered) !== asKey(stored.filter((id) => keep.has(id)));
+	const full = replace ? [...ordered] : [...ordered, ...stored.filter((id) => !keep.has(id))];
+	return { full, reordered };
+}
+
+/**
  * Reconcile the form's stage list against the stored one.
  *
  * Create, update, remove and reorder, in that order, and the order matters: a stage created in this
@@ -1422,18 +1536,7 @@ async function reconcileStages(
 	// unconditionally makes every save on a live project fail — including a save that never touched
 	// the stage list. Comparing first means the lock is only ever met by a caller who really is
 	// trying to reorder, which is the case it exists to refuse.
-	const currentOrder = existing.map((row) => row.id);
-	// Compared as joined lists. The separator only has to be a character a uuid cannot contain, so
-	// two different orders can never render as one string; a comma is enough and, unlike a NUL, it
-	// leaves the file readable to grep and to a diff.
-	const asKey = (ids: readonly BatchId[]) =>
-		ids.map((id) => (typeof id === "string" ? id : `ref:${id.$ref}`)).join(",");
-	const reordered = replace
-		? asKey(ordered) !== asKey(currentOrder)
-		: asKey(ordered) !== asKey(currentOrder.filter((id) => keep.has(id)));
-	// `reorder_stages` takes a FULL permutation of the live stages (audit X17). A PATCH names only the
-	// stages it touched, so the ones it left out keep their relative order after the ones it placed.
-	const full = replace ? ordered : [...ordered, ...currentOrder.filter((id) => !keep.has(id))];
+	const { full, reordered } = stageOrderPlan(existing.map((row) => row.id), ordered, keep, replace);
 	if (ordered.length > 0 && reordered) {
 		// A refusal here is the started-stage lock, which is a rule the owner can act on rather than a
 		// fault. It is reported against `stages` so the form can say which section did not land.

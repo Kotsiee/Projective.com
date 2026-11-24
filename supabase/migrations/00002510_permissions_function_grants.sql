@@ -655,6 +655,11 @@ service_role;
 REVOKE ALL ON FUNCTION projects.fn_room_has_history (uuid) FROM public, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_stage_has_history (uuid) FROM public, anon, authenticated, service_role;
 
+-- The stage probe's one public face (PROJECTS ST2): it re-asks can_edit_project_details and answers
+-- only for the caller's own project, so the setup form can draw Remove from the database's answer.
+REVOKE ALL ON FUNCTION projects.stage_removability (uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION projects.stage_removability (uuid) TO authenticated;
+
 -- --- from 20260724104000_scheduling_booking_engine.sql ---
 
 GRANT

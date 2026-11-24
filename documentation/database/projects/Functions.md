@@ -652,19 +652,21 @@ stage whose position actually changes has already started.
 
 ### `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`
 
-Releases escrow for claimed tickets in the stage, detaches its tickets to the backlog, scrubs the
-stage from every `required_stages` array and from sibling `start_dependency_stage_id`, then deletes
-— **unless** the stage carries `finance.escrows` history, in which case it raises
-`foreign_key_violation` (`23503`) telling the caller to archive instead. `finance.escrows.project_stage_id`
-is `NOT NULL` + `ON DELETE RESTRICT`, so the alternative would be orphaning the finance audit trail.
-⚠️ That refusal is a `RAISE`, so it rolls back the **whole call** — the escrow releases, detaches and
-scrubs before it included. The function's own comment (and this doc, until 2026-10-05) said the funds
-"are still released"; they are not. Any stage that ever held escrow therefore cannot be deleted here
-at all.
+`00001130` (PROJECTS ST2, Decision #553; the setup form's Remove reaches it through
+`DELETE /api/projects/:id/stages/:stageId`). Hard-deletes a stage nobody claimed, funded or submitted
+against, and **refuses every other stage before anything moves** (Decision #338 P2 (b)):
+`fn_stage_has_history(p_stage_id)` is asked first, and a touched stage raises
+`object_not_in_prerequisite_state` (`55000`) "This stage has work or money on it. It can be archived
+once archiving ships." Its tickets, escrow and history stay exactly as they were. Until 2026-11-24 it
+released held escrow to the freelancers, detached the stage's tickets and only then raised on escrow
+history, so a touched stage without escrow was hard-deleted with its tickets cut loose. A pristine
+stage takes its own definition with it, as the sanitizer's delete does: its empty rooms (participants
+first), its staffing roles and budget rules, and siblings' `start_dependency_stage_id`. PM-WP4b
+replaces the refusal with an archive.
 
-`SECURITY DEFINER`, `search_path = public, projects, finance, auth`; `EXECUTE`: `authenticated`,
-`service_role`. Guard, in order: `auth.uid() IS NULL` → `42501`; not `can_review_project(p_project_id)` → `42501` (owner only
-before Decision #163); stage not in the project → `check_violation` (`23514`).
+`SECURITY DEFINER`, `search_path = ''`; `EXECUTE`: `authenticated` (`00002510`). Guard, in order:
+`auth.uid() IS NULL` → `42501`; not `can_edit_project_details(p_project_id)` → `42501`; stage not in
+the project → `check_violation` (`23514`); stage has history → `55000`. Probe `stage_removal.sql`.
 
 ### `projects.sanitize_single_room_topology(p_project_id uuid) → jsonb`
 
@@ -692,7 +694,18 @@ has a submission, assignment, open seat, invitation, invite link, escrow, invoic
 line or inbound payment — or any of its rooms has history. Staffing roles and budget rules are
 configuration, not history. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = public`.
 **`EXECUTE`: owner only** (`00002510`; no client role and no `service_role`): they answer for any id,
-so only the sanitizer (which re-asks review authority) calls them, as their owner.
+so only the definers that re-ask authority call them, as their owner: the sanitizer, `delete_stage`
+and `stage_removability`.
+
+### `projects.stage_removability(p_project_id uuid) → TABLE (stage_id uuid, removable boolean)`
+
+`00001130` (PROJECTS ST2, Decision #553). One row per live (unarchived) stage of the project:
+`removable` is `NOT fn_stage_has_history(stage)`, so it is true exactly when `delete_stage` would
+delete the stage. The setup read (`live-writes.ts` `fetchRemovableStages`) carries it as
+`StageSetup.removable`, the server DTO flag the form's Remove reads. No rows unless the caller passes
+`can_edit_project_details(p_project_id)`, so the history probe answers only for a project the caller
+configures. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = ''`; `EXECUTE`:
+`authenticated` (`00002510`, revoked from `public` and `anon`). Probe `stage_removal.sql`.
 
 ### `projects.fn_stage_reorder_lock() → trigger`
 
@@ -1083,7 +1096,8 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled`; the tickets left on it → `cancelled`; both sides notified (#198) | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.cancel_project(p_project_id uuid, p_tiers jsonb, p_reason text) → jsonb` (and its bought-service wrapper `cancel_service`) | `00001150` | Any engagement, through `fn_settle_project_escrow`: unclaimed escrow back whole, each stage holding claimed work through `cancel_stage_fair_exit` at its tier, reservations refunded, project → `cancelled`; an open dispute refuses it (`PD409`) (#456, #467; § Cancelling an engagement) | `authenticated`        | signed in + `can_review_project`; project row locked; not blocked (no open dispute, no sitting escrow, no stage mid-payment); a tier for every stage holding claimed work |
 | `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done; a claimed ticket from `claimed` / `in_progress` not even then (#94, `fn_assert_ticket_move`, #293) |
-| `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | `authenticated`, `service_role`  | signed in + `can_review_project` (Decision #163)             |
+| `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Deletes a pristine stage; refuses a touched one `55000` first  | `authenticated`                  | signed in + `can_edit_project_details` (ST2, Decision #553)  |
+| `projects.stage_removability(p_project_id uuid) → TABLE (stage_id, removable)`   | `00001130` | Reads which stages `delete_stage` would delete                 | `authenticated`                  | `can_edit_project_details`, else no rows (ST2)              |
 | `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`, `service_role`  | project owner                                                |
 | `projects.release_ticket_to_backlog(p_ticket_id uuid) → void`                    | `00001120` | Releases a ticket's escrow, resets it to New                   | **none** (owner-only, internal)  | none — reachable only through `remove_project_member`        |
 | `projects.fn_release_expired_claims(p_now timestamptz DEFAULT now(), p_limit integer DEFAULT 200) → integer` | `00001140` | **Refunds** or **re-arms** every claim older than the TTL | **`service_role`** only | none — a cron job |

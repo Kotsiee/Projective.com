@@ -337,8 +337,30 @@ export const StageSetupSchema = z.object({
 	 * reprices somebody's agreed work.
 	 */
 	onboardedCount: z.number().int().min(0).default(0),
+	/**
+	 * The stage's route address — its `stg-…` slug, which `DELETE /api/projects/:id/stages/:stageId`
+	 * names (Decision #88). SERVER-derived; `null` for a stage that exists only in this draft, which is
+	 * also how the form tells a saved stage from one Remove can simply drop.
+	 */
+	slug: z.string().min(1).max(80).nullable().default(null),
+	/**
+	 * Whether Remove may delete this saved stage — `projects.stage_removability`, the database's
+	 * `fn_stage_has_history` answer (Decision #338 P2 (b); PROJECTS ST2, Decision #553). A server DTO
+	 * flag rather than a client rule because it reads tickets, seats, money and rooms the form never
+	 * sees. False opens {@link STAGE_REMOVAL_LOCKED_MESSAGE}; `.default(false)` errs toward that
+	 * explanation, never toward a delete the door would refuse anyway. Ignored on a patch.
+	 */
+	removable: z.boolean().default(false),
 });
 export type StageSetup = z.infer<typeof StageSetupSchema>;
+
+/**
+ * Why Remove does not delete a stage with work or money on it — the sentence `projects.delete_stage`
+ * refuses with (55000) and the setup form's locked dialog shows, word for word, so the service can
+ * recognise the refusal (PROJECTS ST2). PM-WP4b turns this refusal into an archive.
+ */
+export const STAGE_REMOVAL_LOCKED_MESSAGE =
+	"This stage has work or money on it. It can be archived once archiving ships.";
 
 /** A staffing role on a stage-less (Direct Deliverable) engagement. */
 export const ProjectRoleSetupSchema = z.object({
@@ -459,6 +481,9 @@ export function blankStage(id: string, name: string, order: number): StageSetup 
 		// the schema default, because {@link DEFAULT_STAGE_SETUP} is derived from this literal and a
 		// missing key there would spread `undefined` over a real count.
 		onboardedCount: 0,
+		// Not saved yet: no address, and nothing on it, so Remove drops it from the draft.
+		slug: null,
+		removable: true,
 	};
 }
 

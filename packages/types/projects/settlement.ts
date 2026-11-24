@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SubmissionStatus } from "./submissions.ts";
 import { EngagementKind } from "./summary.ts";
+import { STAGE_SLUG_RE } from "./rows.ts";
 
 /**
  * projects.settlement — the Zod SSOT for the client decisions that move deliverables and money:
@@ -108,6 +109,18 @@ export const ApproveStageSchema = z.object({
 	stageId: StageRef,
 });
 export type ApproveStage = z.infer<typeof ApproveStageSchema>;
+
+/**
+ * Remove a stage from the setup form — `DELETE /api/projects/:id/stages/:stageId`, through
+ * `projects.delete_stage`, which deletes a pristine stage and refuses a touched one (PROJECTS ST2).
+ * Unlike {@link StageRef} this takes the `stg-…` slug only: a new route, so no uuid caller to keep
+ * (Decision #88).
+ */
+export const DeleteStageSchema = z.object({
+	projectId: ProjectRef,
+	stageId: z.string().regex(STAGE_SLUG_RE),
+});
+export type DeleteStage = z.infer<typeof DeleteStageSchema>;
 
 /**
  * The settlement `projects.approve_stage` reports.

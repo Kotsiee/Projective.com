@@ -3174,10 +3174,14 @@ Ordering) is preserved independently of where the stage sits in the overall proj
 
 - **Only an untouched stage is deleted.** A stage that was never claimed, funded or submitted
   against is deleted outright; any other stage is **archived** (Decision #338, ruling P2 (b)).
+  **Not built yet: the archive.** Until it ships, a touched stage is refused and nothing moves: its
+  tickets, its escrow and its history stay as they were, and the setup form's Remove says why
+  ("This stage has work or money on it. It can be archived once archiving ships."). The untouched
+  case is built: Remove deletes it, and it stays gone (Decision #553).
 - **Active Tickets:** each held escrow on an archived stage settles as a deleted ticket's does
   (§Resource Allocation & Ticketing 5, Deletion Protocol): refunded to the client before work
-  starts, split under the ticket's Fair Exit once it is in progress. **Not built yet:** today such a
-  stage can still be hard-deleted, and deleting it releases every escrow to the freelancer(s).
+  starts, split under the ticket's Fair Exit once it is in progress. **Not built yet**, with the
+  archive.
 - **Dangling Requirements:** If the deleted stage was listed as a required stage on any other
   tickets (per the Multi-Stage Initialization rule above), it is automatically removed from those
   tickets' stage requirements rather than leaving a broken reference.

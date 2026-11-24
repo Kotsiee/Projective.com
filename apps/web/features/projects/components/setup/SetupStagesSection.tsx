@@ -25,6 +25,8 @@ import {
 import type { ProjectSetup, StageCapacity, StageSetup } from "../../types/projects-types.ts";
 import { staffingSectionLabel } from "../../core/setup-sections.ts";
 import { patchSetup, setupReveal } from "../../core/setup-state.ts";
+import { removeSetupStage } from "../../core/setup-stage-removal.ts";
+import { StageLockedDialog } from "./StageLockedDialog.tsx";
 import {
 	arrayMove,
 	Field,
@@ -86,6 +88,8 @@ function StageRow(props: {
 	onToggle: () => void;
 	onPatch: (patch: Partial<StageSetup>) => void;
 	onRemove: () => void;
+	/** A removal of this row is on its way to the server. */
+	removing: boolean;
 }): JSX.Element {
 	const { stage, itemLabel } = props;
 	const sortable = useSortable({
@@ -145,6 +149,8 @@ function StageRow(props: {
 					type="button"
 					class="psu-stage__remove"
 					aria-label={`Remove ${stage.name || itemLabel}`}
+					aria-busy={props.removing || undefined}
+					disabled={props.removing}
 					onClick={props.onRemove}
 				>
 					<Icon name="trash" />
@@ -231,9 +237,25 @@ export function StageListSection(
 		patchSetup({ stages: setup.stages.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 	};
 
-	const remove = (id: string) => {
-		patchSetup({ stages: setup.stages.filter((s) => s.id !== id) });
-		if (open.value === id) open.value = null;
+	/*
+	 * Remove reaches the server for a saved stage (PROJECTS ST2): a PATCH never removes one, so dropping
+	 * it from the draft alone brought it back on the next save. A stage with work or money on it is
+	 * refused by the door and explained here; PM-WP4b turns that branch into an archive.
+	 */
+	const removing = useSignal<string | null>(null);
+	const locked = useSignal(false);
+	const lockedName = useSignal("");
+	const remove = async (stage: StageSetup) => {
+		if (removing.value) return;
+		removing.value = stage.id;
+		const outcome = await removeSetupStage(stage.id);
+		removing.value = null;
+		if (outcome === "locked") {
+			lockedName.value = stage.name || `This ${itemLabel}`;
+			locked.value = true;
+		} else if (outcome !== "failed" && open.value === stage.id) {
+			open.value = null;
+		}
 	};
 
 	const reorder = (activeId: string | null, overId: string | null) => {
@@ -280,7 +302,8 @@ export function StageListSection(
 							open={open.value === stage.id}
 							onToggle={() => (open.value = open.value === stage.id ? null : stage.id)}
 							onPatch={(patch) => patchRow(stage.id, patch)}
-							onRemove={() => remove(stage.id)}
+							onRemove={() => void remove(stage)}
+							removing={removing.value === stage.id}
 						/>
 					))}
 					{setup.stages.length === 0 && (
@@ -304,6 +327,7 @@ export function StageListSection(
 						Add {itemLabel}
 					</button>
 				)}
+			<StageLockedDialog visible={locked} name={lockedName.value} />
 		</Section>
 	);
 }

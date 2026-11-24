@@ -174,6 +174,7 @@ const WRITES = new Set([
 	"hire",
 	"inviteMemberToStages",
 	"createStage",
+	"deleteStage",
 	"inviteMember",
 	"updateMemberRole",
 	"updateTicketManager",
@@ -326,6 +327,8 @@ const WRITE_CASES: Record<string, (c: Corpus, a: ReadActor) => Promise<ServiceRe
 		),
 	createStage: (c, a) =>
 		ProjectBackendService.createStage(c.slug, { name: "Stage", unitPriceCents: 100 } as never, a),
+	deleteStage: (c, a) =>
+		ProjectBackendService.deleteStage({ projectId: c.slug, stageId: "stg-2222222222" }, a),
 	inviteMember: (c, a) =>
 		ProjectBackendService.inviteMember(c.slug, { recipients: [], stageId: null } as never, a),
 	updateMemberRole: (c, a) => ProjectBackendService.updateMemberRole(c.slug, "m-1", "manager", a),

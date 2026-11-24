@@ -67,7 +67,7 @@ the rows its session updates (§1's readiness duty).
 | WP4a, WP4b                                  | F·DB6 merged ✅ (#532)                    | DB6 freezes a payee's pending rows on a dispute. (DB3 landed in `44382c08`: `finance.fn_assert_no_open_dispute` makes the release and Fair Exit doors refuse an open dispute.) While these run they hold `00001200` and `00001240`; F's later serial money prompts on those files go before them or after them, never beside them. |
 | GH1                                         | its turn in the money lane               | It releases through `fn_release_ticket_escrow` (`00001200`) into the pending window (`00001240`). DB3 and the comms worker (`comms-process-queue`) have landed. The lane runs GH1 before DB6, which supersedes the DB6 wait this file once gave it: record that as a resolved contradiction in your decision row.                  |
 | WP4a step 6 (the contest)                   | PROJECTS EX2                             | EX2 designs the dispute subject (`subject_kind`) and widens the dispute doors; the contest reuses them and adds none of its own.                                                                                                                                                                                                   |
-| WP4b                                        | PROJECTS ST2                             | ST2 wires setup's Remove to a door for a pristine stage; WP4b gives a touched stage its archive through the same control.                                                                                                                                                                                                          |
+| WP4b                                        | PROJECTS ST2 ✅ (#553)                    | ST2 wired setup's Remove to `delete_stage`, which deletes a pristine stage and refuses a touched one first; WP4b turns that refusal into the archive.                                                                                                                                                                                                          |
 | O·WP5b, O·WP6                               | WP6                                      | WP6 owns the move matrix end to end (RED L-03): the SQL rule, its TS mirror in `board.ts` with the parity test, and the board's `canMove` flag. O·WP5b (`fn_is_work_status`, `00001110` / `00001140`) and O·WP6 (claimable, the funding rollup, walletCovers) share its files and reuse its rule.                                  |
 | M·search (the load and reliability weights) | WP5b                                     | finance-model §16.7's "Load and reliability" row needs the efficiency terms                                                                                                                                                                                                                                                        |
 | T·P2 hardening triggers                     | WP4b                                     | they touch ticket text (B.3)                                                                                                                                                                                                                                                                                                       |
@@ -544,8 +544,11 @@ once step 6's contest runs (EX4 closes it).
 > **Status 2026-11-23:** the product half of steps 3 and 7 landed in `8a3fd595` (#409 (F): Delete
 > ticket only on a pristine ticket, through `ticketDeletable`, `DeleteTicketSchema`,
 > `POST /api/projects/ticket/delete` and `DeleteTicketDialog`), and step 8's column and readers in
-> `a80ce2f5` (#328 (a)). Every SQL step (1–6, 7's readers and server flag, 8's policy, 9) is open.
-> Waits for PM-WP4a and PROJECTS ST2 (F·DB6 landed, #532).
+> `a80ce2f5` (#328 (a)), and step 4's first half in PROJECTS ST2 (#553): `delete_stage` refuses a
+> stage with history `55000` before anything moves and hard-deletes an untouched one, so what is left
+> of step 4 is the archive-and-settle branch in place of that refusal. Every other SQL step (1–3, 5, 6,
+> 7's readers and server flag, 8's policy, 9) is open. Waits for PM-WP4a (F·DB6 landed, #532; ST2
+> landed, #553).
 
 ```text
 PROMPT PM-WP4b: Removal and deletion follow the work; nothing with history is destroyed
@@ -561,17 +564,17 @@ full. The payment is fn_ticket_escrow_sync's removal branch (00001110:432-435): 
 current_assignee_id releases every held escrow to the freelancer, on every path, an owner's direct
 write under "Manage tickets" included. delete_ticket hard-deletes, and ticket_history and
 ticket_workload_reports cascade away with the row; a ticket with a submission cannot be deleted at
-all (23503). delete_stage releases escrow and
-then raises when escrow history exists, so the releases roll back, and it can leave a ticket
-in_progress with no stage (X16, S5); MR1's PF402 gate (00001110:414-425) already narrows that to
-escrow-less tickets (for example, personal projects). The project DELETE policy (00002011:176) and
+all (23503). delete_stage (00001130) refuses a stage with history first (55000, PROJECTS ST2,
+#553), so it no longer releases escrow or strands a ticket; but a direct DELETE still runs
+fn_stage_delete_cascade, which releases every held escrow on the stage to the freelancer and can
+leave a ticket in_progress with no stage (X16, S5). The project DELETE policy (00002011:176) and
 the stages FOR ALL policy (:287) hard-delete. A refund writes payment_status 'unpaid'
 (fn_refund_ticket_escrow, 00001200:1649, 'unpaid' at :1670; the lost chargeback, 00001240:131); the
 documented 'refunded' is never written (S13). delete_ticket is granted to authenticated
 (00002510:1387-1388), so a PostgREST call bypasses the product's ticketDeletable gate. The setup
-form never sends PUT, so delete_stage is unreachable from the product: PROJECTS ST2 wires Remove to
-a door for a pristine stage first, and this prompt gives a touched stage its archive through the
-same control. Depends on PM-WP4a (the ticket-level door). It edits 00001200 and 00001240, so it
+form's Remove reaches delete_stage through DELETE /api/projects/:id/stages/:stageId (PROJECTS ST2,
+#553); a touched stage's Remove opens StageLockedDialog, and this prompt makes that control archive
+it instead (setup-stage-removal.ts's `locked` branch). Depends on PM-WP4a (the ticket-level door). It edits 00001200 and 00001240, so it
 runs in the money lane (PM_BUILD_PROMPTS §0.2); F·DB6 has landed (#532). DB19 (#511, 3041e5ef) made
 fn_refund_ticket_escrow call fn_record_order_line_refund: keep that call and its line states.
 

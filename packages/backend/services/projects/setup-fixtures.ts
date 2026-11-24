@@ -210,6 +210,10 @@ function toStageSetup(stage: BoardStageRef, onboarded: boolean): StageSetup {
 		// about the count is invented here; a project that has never been published simply has not
 		// onboarded anybody.
 		onboardedCount: onboarded ? stage.members.length : 0,
+		slug: stage.slug,
+		// The stub's reading of `fn_stage_has_history`: nobody seated and no ticket on the stage. The
+		// fixtures hold no money, submissions or messages of their own beyond those (PROJECTS ST2).
+		removable: (onboarded ? stage.members.length : 0) === 0 && stage.ticketCount === 0,
 	};
 }
 
@@ -380,12 +384,14 @@ const SIMULATED_PROVIDERS = 1;
 export function applyOnboardingSim(setup: ProjectSetup, sim: OnboardingSim): ProjectSetup {
 	if (sim === "auto") return setup;
 
-	const stages = setup.stages.map((stage, index) => ({
-		...stage,
-		onboardedCount: sim === "all_stages" || (sim === "first_stage" && index === 0)
+	const stages = setup.stages.map((stage, index) => {
+		const onboardedCount = sim === "all_stages" || (sim === "first_stage" && index === 0)
 			? SIMULATED_PROVIDERS
-			: 0,
-	}));
+			: 0;
+		// A simulated seat is history, so it locks Remove too; zeroing the seats never unlocks a stage
+		// that holds tickets.
+		return { ...stage, onboardedCount, removable: stage.removable && onboardedCount === 0 };
+	});
 	// The sum of the stages, FLOORED at one. The floor is not a rounding — it is the role-staffed
 	// engagement, which renders no stage list at all, so a total derived purely from stages would
 	// leave the one shape whose price lives on the project row permanently unlocked whatever the
