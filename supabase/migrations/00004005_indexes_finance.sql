@@ -68,6 +68,13 @@ WHERE status = 'under_review';
 CREATE INDEX IF NOT EXISTS idx_dispute_evidence_message ON finance.dispute_evidence (message_id);
 CREATE INDEX IF NOT EXISTS idx_dispute_evidence_file ON finance.dispute_evidence (file_id);
 CREATE INDEX IF NOT EXISTS idx_dispute_evidence_dispute ON finance.dispute_evidence (dispute_id);
+-- A ticket's disputes, for the move and claim guard and the board's Disputed tag (PROJECTS EX2).
+CREATE INDEX IF NOT EXISTS idx_disputes_ticket ON finance.disputes (ticket_id)
+WHERE ticket_id IS NOT NULL;
+-- A case's offers, newest first (the standing offer), and at most one accepted per case.
+CREATE INDEX IF NOT EXISTS idx_dispute_offers_dispute ON finance.dispute_offers (dispute_id, created_at DESC, id DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_dispute_offers_accepted ON finance.dispute_offers (dispute_id)
+WHERE accepted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ratings_ratee ON finance.ratings (ratee_type, ratee_id);
 CREATE INDEX IF NOT EXISTS idx_ratings_project ON finance.ratings (project_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_profile ON finance.subscriptions (profile_id, status);

@@ -37,7 +37,7 @@ import {
  * a ticket REPLACES the ticket rather than covering it, so one backdrop blur is ever composited, and
  * dismissing the review restores the ticket at the tab and scroll offset it was left at.
  */
-export type TicketFrameKind = "ticket" | "review" | "file" | "picker" | "buy";
+export type TicketFrameKind = "ticket" | "review" | "file" | "picker" | "buy" | "dispute";
 
 /** Open-time input for a frame. Live UI state lives in the stack's cache, not here. */
 export interface TicketFrameInput {
@@ -68,6 +68,16 @@ export interface TicketFrameInput {
 	 * nobody has created.
 	 */
 	mode?: TicketMode;
+	/**
+	 * For a `dispute` frame (PROJECTS EX2): the case to read, or — absent — the stage whose money a new
+	 * one would contest and where that money stands, as `finance.ticket_dispute_state` said.
+	 */
+	dispute?: {
+		disputeId: string | null;
+		stageId: string | null;
+		window: "held" | "pending" | null;
+		ticketTitle: string;
+	};
 }
 
 /**
@@ -105,7 +115,7 @@ export function addressingFrame<K extends string, I>(
 ): ModalFrame<K, I> | null {
 	for (let i = frames.length - 1; i >= 0; i--) {
 		const k = frames[i].kind;
-		if (k !== "file" && k !== "picker" && k !== "buy") return frames[i];
+		if (k !== "file" && k !== "picker" && k !== "buy" && k !== "dispute") return frames[i];
 	}
 	return null;
 }
@@ -159,6 +169,23 @@ export function pushTicketBuy(): boolean {
 	if (top.input?.slug) input.slug = top.input.slug;
 	if (top.input?.standalone) input.standalone = true;
 	ticketStack.push("buy", "buy-now", input);
+	return true;
+}
+// #endregion
+
+/**
+ * Replace the ticket with its dispute (PROJECTS EX2; §B.10.9 — a second modal replaces the first): the
+ * case dialog, or the form that raises one, is the frame's one surface, and closing it goes back to the
+ * ticket. It carries the ticket's address so `?tkv=` stays. Refuses unless a ticket is on top.
+ */
+export function pushTicketDispute(dispute: NonNullable<TicketFrameInput["dispute"]>): boolean {
+	const top = ticketStack.top.peek();
+	if (!top || top.kind !== "ticket") return false;
+	const input: TicketFrameInput = { dispute };
+	if (top.input?.ticketId) input.ticketId = top.input.ticketId;
+	if (top.input?.slug) input.slug = top.input.slug;
+	if (top.input?.standalone) input.standalone = true;
+	ticketStack.push("dispute", "dispute", input);
 	return true;
 }
 // #endregion

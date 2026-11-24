@@ -659,6 +659,10 @@ ALTER TABLE finance.dispute_messages ENABLE ROW LEVEL SECURITY;
 -- finance.respond_to_dispute (00001260).
 ALTER TABLE finance.dispute_evidence ENABLE ROW LEVEL SECURITY;
 
+-- A ticket dispute's offers (PROJECTS EX2): no client policy, so no client reads or writes them; the
+-- parties read them through finance.get_dispute and write them through its offer doors (00001260).
+ALTER TABLE finance.dispute_offers ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE finance.promo_codes ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.ratings ENABLE ROW LEVEL SECURITY;

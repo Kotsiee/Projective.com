@@ -837,6 +837,12 @@ export const BoardCardSchema = z.object({
 	activity: StageActivity.nullable().optional(),
 	/** `reported_hidden` overlay — a 48h "Frozen" workload-report card, shown striped in New. */
 	frozen: z.boolean(),
+	/**
+	 * A live dispute stands on the ticket's money (PROJECTS EX2, Decision #549): the card wears a
+	 * Disputed lifecycle Tag, derived from the dispute row, and the ticket neither moves nor is claimed
+	 * until it settles. Absent → none the viewer can see.
+	 */
+	disputed: z.boolean().optional(),
 	commentCount: z.number().int().min(0),
 	attachmentCount: z.number().int().min(0),
 	checklistDone: z.number().int().min(0),

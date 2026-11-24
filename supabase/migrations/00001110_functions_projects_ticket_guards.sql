@@ -342,6 +342,15 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    -- A live dispute freezes the ticket's work until it settles (Decision #549): no status or stage
+    -- change from a client statement while it stands.
+    IF current_user IN ('anon', 'authenticated')
+        AND (NEW.status IS DISTINCT FROM OLD.status OR NEW.current_stage_id IS DISTINCT FROM OLD.current_stage_id)
+        AND finance.fn_ticket_has_live_dispute(OLD.id) THEN
+        RAISE EXCEPTION 'This ticket is in a dispute; it moves again once the dispute settles.'
+            USING ERRCODE = 'PD409';
+    END IF;
+
     -- A statement PostgREST runs directly moves a claimed ticket by the rule move_ticket applies
     -- (Decision #293). A change of assignee is not a move: the doors that reassign or release work
     -- own it, and fn_ticket_claim_before has already reset such a row's status.

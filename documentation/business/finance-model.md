@@ -343,6 +343,17 @@ Projective uses a tiered ledger, not a single monolithic wallet:
 > before. The published line: _"Money that has cleared is yours; money still clearing can be held
 > while a payment dispute is open."_ Each person whose money freezes, clears again or is taken back
 > is told.
+>
+> **A ticket dispute inside the window** (PROJECTS EX2, Decision #548 ruling 1). Either side may also
+> dispute a stage's released money while it still clears: the dispute freezes every clearing row the
+> release wrote (the freelancer's, or each team share, finder fee and vault cut) until it settles. A
+> release ruling returns them to clearing at their own dates. A refund or a split recomputes the
+> freelancer's due with Fair Exit's arithmetic (§3: the share floored, the 5% fee on the share only)
+> and takes the rest back from the frozen rows in proportion to what each still holds, floored, the
+> remainder from the rows taken last (no ledger line: that money never cleared). The client gets back
+> what was taken plus the fee on the share no longer earned (`escrow_refund`; the dispute's
+> `settlement.fee_returned_minor`, netted from the escrow fees in the conservation identity). An
+> agreed offer settles the same way. Money that has cleared is still never clawed back.
 
 **Worked example — £1,000 stage approval with a 10% team vault cut:**
 

@@ -207,8 +207,10 @@ BEGIN
     -- #region 4. An open dispute refuses the cancel (PD409) instead of settling around it
     BEGIN
         PERFORM set_config('request.jwt.claims', '', true);
-        INSERT INTO finance.disputes (escrow_id, opened_by_profile, reason)
-        VALUES (v_claimed_escrow, v_owner, 'Probe 467: the work in review is disputed');
+        INSERT INTO finance.disputes (subject_kind, escrow_id, ticket_id, stage_id, claimant_side, opened_by_profile, reason)
+        SELECT 'ticket_escrow', e.id, e.ticket_id, e.project_stage_id, 'payer', v_owner,
+               'Probe 467: the work in review is disputed'
+          FROM finance.escrows e WHERE e.id = v_claimed_escrow;
         PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
         v_preview := projects.preview_project_cancel(v_project);
         IF (v_preview->>'cancellable')::boolean OR v_preview->>'blocked' <> 'dispute' THEN

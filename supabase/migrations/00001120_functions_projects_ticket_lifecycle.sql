@@ -577,6 +577,11 @@ BEGIN
     IF NOT projects.has_project_access(v_project) THEN
         RAISE EXCEPTION 'You do not have access to this ticket.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    -- A live dispute freezes the ticket's work until it settles (Decision #549).
+    IF finance.fn_ticket_has_live_dispute(p_ticket_id) THEN
+        RAISE EXCEPTION 'This ticket is in a dispute; it moves again once the dispute settles.'
+            USING ERRCODE = 'PD409';
+    END IF;
 
     -- After the access check, so a stranger learns nothing about when the row last changed. Compared
     -- to the millisecond: the board carries the timestamp through JSON, which keeps three places.
@@ -715,6 +720,11 @@ BEGIN
 
     IF NOT projects.has_project_access(v_project) THEN
         RAISE EXCEPTION 'You are not a participant of this project.' USING ERRCODE = '42501';
+    END IF;
+    -- A live dispute freezes the ticket's work until it settles (Decision #549).
+    IF finance.fn_ticket_has_live_dispute(p_ticket_id) THEN
+        RAISE EXCEPTION 'This ticket is in a dispute; it can be claimed once the dispute settles.'
+            USING ERRCODE = 'PD409';
     END IF;
 
     IF v_stage IS NOT NULL THEN

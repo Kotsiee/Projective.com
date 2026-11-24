@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **84%** |            61 | 43 |  17 |  1 |              14 |
-| **UAT**          | **73%** |           193 | 103 |  77 | 13 |              25 |
-| **Production**   | **66%** |           251 | 109 | 108 | 34 |              36 |
+| **UAT**          | **73%** |           193 | 103 |  78 | 12 |              25 |
+| **Production**   | **67%** |           251 | 109 | 109 | 33 |              36 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,13 +45,13 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 25 |  7 |  2 |   70% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 31 | 35 |  9 |  2 |   65% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 31 | 36 |  8 |  2 |   66% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 26 | 14 |  3 |   61% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
 - **MVP:** ID-31 ❌ · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
-- **UAT:** ID-16, 20 · MK-29, MK-31 · PJ-21, 31 ❌, 39, 43 ❌, 60 · MW-14, 59
+- **UAT:** ID-16, 20 · MK-29, MK-31 · PJ-21, 31 ❌, 39, 43, 60 · MW-14, 59
 - **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62
 
 ## What breaks the most flows
@@ -322,9 +322,9 @@ PRODUCTION_READINESS.md.
 
 | ID    | Flow                                                         | Persona            | Entry                                | Status | Crit     | Gate | What's missing                                                                                    |
 | :---- | :----------------------------------------------------------- | :----------------- | :----------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------ |
-| PJ-43 | Raise a stage or ticket dispute (offer, Evidence Vault, PDF) | Client, Freelancer | —                                    | ❌     | Critical | UAT  | Only session no-show cases exist (#212); no raise door, split tool, vault snapshot or summary PDF |
+| PJ-43 | Raise a stage or ticket dispute (offer, Evidence Vault, PDF) | Client, Freelancer | DisputeCaseDialog (ticket view)      | 🟡     | Critical | UAT  | The Evidence Vault snapshot and the summary PDF (EX3). Built by EX2 (#548, #549): either side raises on a ticket's held or still-clearing stage money, offers and accepts a split, an auditor rules through the ticket doors, and the ticket is frozen and tagged Disputed meanwhile |
 | PJ-44 | No-show claim → attendance audit                             | Buyer              | `/api/sessions/sittings/:id/no-show` | 🟡     | High     | UAT  | Never run on live Zoom or Teams (#386, #392)                                                      |
-| PJ-45 | Respond with evidence; escalate                              | Client, Freelancer | DisputeCaseDialog                    | ✅     | High     | UAT  | — (`finance-dispute-sweep` registered)                                                            |
+| PJ-45 | Respond with evidence; escalate                              | Client, Freelancer | DisputeCaseDialog                    | ✅     | High     | UAT  | — (`finance-dispute-sweep` registered); covers ticket cases too since EX2 (#548)                  |
 | PJ-46 | Contest a Fair Exit or workload verdict                      | Freelancer         | —                                    | ❌     | Normal   | UAT  | PM-WP4a step 6; W8                                                                                |
 
 The operator's ruling is MW-59.
@@ -578,3 +578,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-24 | ST6 (#555): no row flips; PJ-04's (i) closed (a write by either side to a shared project shows on the other's next read, in every isolate) and its (b) corrected (closed by #456); ✅ waits on 🧑 #427 (a) | 83% | 72% | 66% |
 | 2026-11-24 | ST6 (#555): PJ-04 🟡 → ✅ (#427 (a) confirmed: the client creates every ticket and the seller's details exclude them; either side's write shows on the other's next read) | 84% | 73% | 66% |
 | 2026-11-24 | ST3 (#547): PJ-13 ❌ → ✅ (a Manual stage's client pins a Ready ticket to a live-seat holder, who accepts it by claiming or declines it; nothing binds until then) | 84% | 73% | 66% |
+| 2026-11-24 | EX2 (#548, #549): PJ-43 ❌ → 🟡 (either side raises a dispute on a ticket's held or still-clearing stage money; offers, acceptance and rulings through the ticket doors; the ticket frozen and tagged Disputed; the vault and PDF are EX3's) | 84% | 73% | 67% |

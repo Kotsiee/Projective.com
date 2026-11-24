@@ -2,7 +2,8 @@
 -- 00001260_functions_finance_disputes.sql — the platform dispute lifecycle (Decision #212).
 --
 -- A `finance.disputes` row contests ONE held escrow, or one digital product line whose seller's
--- earnings are still clearing (`subject_kind` order_line, FBP DB21, §6b). Until this file nothing ever
+-- earnings are still clearing (`subject_kind` order_line, FBP DB21, §6b), or a ticket's money on one
+-- stage, held or still clearing (`subject_kind` ticket_escrow, PROJECTS EX2, §6c). Until this file nothing ever
 -- moved an escrow's: a
 -- no-show claim (`projects.claim_session_no_show`, 00001155) opened a row, the session sweep refused
 -- to release a seat with an open claim, and no function, route or person could close it — the seat's
@@ -32,6 +33,8 @@
 --   5. Advance              fn_advance_dispute — open → audit → ruling or awaiting_response
 --   6. User doors           respond_to_dispute · escalate_dispute · get_dispute
 --   6b. Product dispute     open_order_line_dispute · order_line_disputes · fn_settle_order_line_dispute
+--   6c. Ticket dispute      open_ticket_dispute · propose_dispute_offer · accept_dispute_offer ·
+--                           fn_settle_ticket_dispute · fn_ticket_has_live_dispute (Decisions #548, #549)
 --   7. Operator doors       list_disputes_for_review · resolve_dispute — security.is_admin() only
 --   8. The sweep            sweep_disputes — scheduled every 15 minutes (00005060)
 --   9. Immutability         fn_dispute_records_immutable (trigger function)
@@ -58,8 +61,11 @@ $$;
 
 -- Everything a dispute's doors need about what it contests, in one row: for an escrow, its project, the
 -- project's owner (the respondent of record), the claimant and the sitting's title; for a digital product
--- line (FBP DB21), the product's owner and owning team and the line's title. The two links are where
--- each side follows the case: the project, or the buyer's orders and the seller's wallet.
+-- line (FBP DB21), the product's owner and owning team and the line's title; for a ticket's money
+-- (PROJECTS EX2), the other side from the one that raised it (the client person, or the freelancer, a
+-- team payee's owner standing for the team) and the ticket's title. The two links are where each side
+-- follows the case: the project (a ticket case opens the ticket, `?tkv=`), or the buyer's orders and
+-- the seller's wallet.
 CREATE OR REPLACE FUNCTION finance.fn_dispute_context(p_dispute_id uuid)
 RETURNS TABLE (
     dispute_id uuid,
@@ -82,15 +88,26 @@ SET search_path = ''
 AS $$
 BEGIN
     RETURN QUERY
-    SELECT d.id, d.escrow_id, p.id, p.slug, COALESCE(p.owner_user_id, cp.owner_user_id), d.opened_by_profile,
-           COALESCE(se.title, p.title, ol.title), d.subject_kind, d.order_line_id,
+    SELECT d.id, d.escrow_id, p.id, p.slug,
+           CASE WHEN d.subject_kind <> 'ticket_escrow' THEN COALESCE(p.owner_user_id, cp.owner_user_id)
+                WHEN d.claimant_side = 'payee' THEN COALESCE(p.client_user_id, p.owner_user_id)
+                WHEN e.payee_type = 'team' THEN pt.owner_user_id
+                ELSE e.payee_id END,
+           d.opened_by_profile,
+           COALESCE(se.title, tk.title, p.title, ol.title), d.subject_kind, d.order_line_id,
            COALESCE(p.owner_team_id, cp.owner_team_id),
-           CASE WHEN d.order_line_id IS NOT NULL THEN '/checkout/orders' ELSE '/projects/' || p.slug END,
-           CASE WHEN d.order_line_id IS NOT NULL THEN '/wallet/transactions' ELSE '/projects/' || p.slug END
+           CASE WHEN d.order_line_id IS NOT NULL THEN '/checkout/orders'
+                WHEN tk.id IS NOT NULL THEN '/projects/' || p.slug || '?tkv=' || tk.slug
+                ELSE '/projects/' || p.slug END,
+           CASE WHEN d.order_line_id IS NOT NULL THEN '/wallet/transactions'
+                WHEN tk.id IS NOT NULL THEN '/projects/' || p.slug || '?tkv=' || tk.slug
+                ELSE '/projects/' || p.slug END
       FROM finance.disputes d
       LEFT JOIN finance.escrows e ON e.id = d.escrow_id
       LEFT JOIN projects.project_stages ps ON ps.id = e.project_stage_id
       LEFT JOIN projects.projects p ON p.id = ps.project_id
+      LEFT JOIN projects.tickets tk ON tk.id = d.ticket_id
+      LEFT JOIN org.teams pt ON pt.id = e.payee_id AND e.payee_type = 'team'
       LEFT JOIN projects.session_events se ON se.id = d.session_event_id
       LEFT JOIN finance.order_lines ol ON ol.id = d.order_line_id
       LEFT JOIN catalogue.products cp ON cp.id = ol.item_id
@@ -98,8 +115,40 @@ BEGIN
 END;
 $$;
 
+-- Which side of a ticket's money a user is on (PROJECTS EX2): `payer` (review authority over the
+-- project: the client person, or an active member of the paying client business — what
+-- projects.can_review_project asks of the caller, asked here of any user) or `payee` (the escrow's
+-- freelancer, or an active member of its team), else NULL. Payer is asked first.
+CREATE OR REPLACE FUNCTION finance.fn_ticket_escrow_side(p_escrow_id uuid, p_user_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN p_user_id IS NULL THEN NULL
+        WHEN COALESCE(p.client_user_id, p.owner_user_id) = p_user_id
+          OR (p.client_business_id IS NOT NULL AND EXISTS (
+                SELECT 1 FROM org.business_members bm
+                 WHERE bm.business_id = p.client_business_id AND bm.user_id = p_user_id AND bm.status = 'active'))
+          THEN 'payer'
+        WHEN (e.payee_type = 'freelancer' AND e.payee_id = p_user_id)
+          OR (e.payee_type = 'team' AND EXISTS (
+                SELECT 1 FROM org.team_members tm
+                 WHERE tm.team_id = e.payee_id AND tm.user_id = p_user_id AND tm.status = 'active'))
+          THEN 'payee'
+    END
+      FROM finance.escrows e
+      JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+      JOIN projects.projects p ON p.id = ps.project_id
+     WHERE e.id = p_escrow_id;
+$$;
+
 -- Which side of a dispute a user is on: `claimant` (who opened it), `respondent` (who delivers the
--- engagement, or sold the product: its owner or an active member of the owning team), or NULL. A platform operator is not
+-- engagement, or sold the product: its owner or an active member of the owning team), or NULL. On a
+-- ticket's money the sides are the client's and the freelancer's: anyone on the side that raised it
+-- (`claimant_side`) is the claimant, anyone on the other the respondent. A platform operator is not
 -- a party; callers check security.is_admin() separately.
 CREATE OR REPLACE FUNCTION finance.fn_dispute_party(p_dispute_id uuid, p_user_id uuid)
 RETURNS text
@@ -110,6 +159,7 @@ SET search_path = ''
 AS $$
 DECLARE
     v_ctx record;
+    v_side text;
 BEGIN
     IF p_user_id IS NULL THEN
         RETURN NULL;
@@ -120,6 +170,13 @@ BEGIN
     END IF;
     IF v_ctx.claimant = p_user_id THEN
         RETURN 'claimant';
+    END IF;
+    IF v_ctx.subject_kind = 'ticket_escrow' THEN
+        v_side := finance.fn_ticket_escrow_side(v_ctx.escrow_id, p_user_id);
+        RETURN CASE WHEN v_side IS NULL THEN NULL
+                    WHEN v_side = (SELECT d.claimant_side FROM finance.disputes d WHERE d.id = p_dispute_id)
+                        THEN 'claimant'
+                    ELSE 'respondent' END;
     END IF;
     IF v_ctx.subject_kind = 'order_line' THEN
         IF v_ctx.owner_user_id = p_user_id OR (v_ctx.owner_team_id IS NOT NULL AND EXISTS (
@@ -352,6 +409,9 @@ BEGIN
     IF v_d.subject_kind = 'order_line' THEN
         RETURN finance.fn_settle_order_line_dispute(v_d.id, p_outcome, p_actor, p_notes);
     END IF;
+    IF v_d.subject_kind = 'ticket_escrow' THEN
+        RETURN finance.fn_settle_ticket_dispute(v_d.id, p_outcome, p_bp, p_actor, p_notes);
+    END IF;
     IF p_outcome = 'split' AND (p_bp IS NULL OR p_bp NOT BETWEEN 1 AND 9999) THEN
         RAISE EXCEPTION 'A split gives the provider between 0.01 %% and 99.99 %%' USING ERRCODE = '22023';
     END IF;
@@ -562,7 +622,8 @@ BEGIN
          WHERE id = v_d.id
         RETURNING status INTO v_status;
         IF v_d.status = 'awaiting_response' THEN
-            PERFORM finance.fn_notify_dispute_escalated(v_d.id, v_uid, 'The provider responded');
+            PERFORM finance.fn_notify_dispute_escalated(v_d.id, v_uid,
+                CASE WHEN v_d.subject_kind = 'ticket_escrow' THEN 'The other side responded' ELSE 'The provider responded' END);
         END IF;
     END IF;
     RETURN pg_catalog.jsonb_build_object('dispute_id', v_d.id, 'status', v_status, 'message_id', v_message,
@@ -659,6 +720,8 @@ DECLARE
     v_ctx record;
     v_role text;
     v_live boolean;
+    v_escrows uuid[];
+    v_ticket_minor bigint;
 BEGIN
     SELECT * INTO v_d FROM finance.disputes WHERE id = p_dispute_id;
     IF NOT FOUND OR v_uid IS NULL THEN
@@ -675,10 +738,15 @@ BEGIN
     SELECT * INTO v_l FROM finance.order_lines WHERE id = v_d.order_line_id;
     SELECT * INTO v_ctx FROM finance.fn_dispute_context(v_d.id);
     v_live := v_d.status IN ('open', 'awaiting_response', 'under_review');
+    IF v_d.subject_kind = 'ticket_escrow' THEN
+        v_escrows := finance.fn_ticket_dispute_escrows(v_d.id);
+        SELECT pg_catalog.sum(e.amount_cents)::bigint INTO v_ticket_minor FROM finance.escrows e WHERE e.id = ANY (v_escrows);
+    END IF;
 
     RETURN pg_catalog.jsonb_build_object(
         'id', v_d.id,
         'kind', CASE WHEN v_d.subject_kind = 'order_line' THEN 'product'
+                     WHEN v_d.subject_kind = 'ticket_escrow' THEN 'ticket'
                      WHEN v_d.session_event_id IS NOT NULL THEN 'no_show' ELSE 'general' END,
         'status', v_d.status,
         'role', v_role,
@@ -700,13 +768,45 @@ BEGIN
               FROM scheduling.rooms r
              WHERE r.session_event_id = v_d.session_event_id
         ) END,
-        -- What the claimant paid: the escrow, or the product line less its promo.
-        'amount_minor', COALESCE(v_e.amount_cents, GREATEST(v_l.line_total_minor - v_l.promo_discount_minor, 0)),
+        -- What is at stake: a ticket case's contested escrows, the escrow, or the product line less its promo.
+        'amount_minor', COALESCE(v_ticket_minor, v_e.amount_cents,
+            GREATEST(v_l.line_total_minor - v_l.promo_discount_minor, 0)),
         'currency', COALESCE(v_e.currency, v_l.currency),
         'project', CASE WHEN v_ctx.project_id IS NOT NULL THEN
             pg_catalog.jsonb_build_object('id', v_ctx.project_id, 'slug', v_ctx.project_slug) END,
         'purchase', CASE WHEN v_l.id IS NOT NULL THEN
             pg_catalog.jsonb_build_object('line_id', v_l.id, 'title', v_l.title) END,
+        -- A ticket case (PROJECTS EX2): the ticket and stage, which side raised it, and whether its
+        -- money is still held or was already released into the pending window (frozen there).
+        'ticket', CASE WHEN v_d.subject_kind = 'ticket_escrow' THEN (
+            SELECT pg_catalog.jsonb_build_object('id', tk.id, 'slug', tk.slug, 'title', tk.title,
+                       'stage_id', ps.id, 'stage_name', ps.name, 'claimant_side', v_d.claimant_side,
+                       'window', CASE WHEN EXISTS (SELECT 1 FROM finance.pending_releases pr
+                                                    WHERE pr.hold_dispute_id = v_d.id) THEN 'pending' ELSE 'held' END,
+                       -- What an offer's preview needs to mirror fn_dispute_offer_split: each contested
+                       -- escrow's principal and the payer's fee rate.
+                       'fee_bp', finance.fn_escrow_fee_bp(v_e.payer_business_id, v_e.payer_user_id),
+                       'escrow_amounts', (SELECT COALESCE(pg_catalog.jsonb_agg(x.amount_cents ORDER BY x.id), '[]'::jsonb)
+                                            FROM finance.escrows x WHERE x.id = ANY (v_escrows)))
+              FROM projects.tickets tk
+              JOIN projects.project_stages ps ON ps.id = v_d.stage_id
+             WHERE tk.id = v_d.ticket_id
+        ) END,
+        -- Phase 1's offers, oldest first, each with what it would move; the newest is the standing one,
+        -- and only the other side may accept it.
+        'offers', CASE WHEN v_d.subject_kind = 'ticket_escrow' THEN COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'id', o.id, 'party', o.party, 'payee_share_bp', o.payee_share_bp, 'note', o.note,
+                       'created_at', o.created_at, 'accepted_at', o.accepted_at, 'mine', o.proposed_by = v_uid,
+                       'standing', o.rn = 1 AND o.accepted_at IS NULL AND v_live,
+                       'can_accept', o.rn = 1 AND o.accepted_at IS NULL AND v_live
+                                     AND v_role IN ('claimant', 'respondent') AND v_role <> o.party,
+                       'payee_minor', sp.payee_minor, 'fee_minor', sp.fee_minor, 'refund_minor', sp.refund_minor
+                   ) ORDER BY o.created_at, o.id)
+              FROM (SELECT x.*, pg_catalog.row_number() OVER (ORDER BY x.created_at DESC, x.id DESC) AS rn
+                      FROM finance.dispute_offers x WHERE x.dispute_id = v_d.id) o
+              CROSS JOIN LATERAL finance.fn_dispute_offer_split(v_escrows, o.payee_share_bp) sp
+        ), '[]'::jsonb) END,
         'sitting', (
             SELECT pg_catalog.jsonb_build_object('id', se.id, 'slug', se.slug, 'title', se.title,
                        'starts_at', se.start_time, 'ends_at', se.end_time)
@@ -751,6 +851,8 @@ BEGIN
         ),
         'can_respond', v_live AND v_role IN ('claimant', 'respondent'),
         'can_escalate', v_d.status = 'awaiting_response' AND v_role IN ('claimant', 'respondent'),
+        'can_offer', v_live AND v_d.subject_kind = 'ticket_escrow' AND v_d.status <> 'open'
+                     AND v_role IN ('claimant', 'respondent'),
         'can_resolve', v_live AND v_role = 'operator'
     );
 END;
@@ -1001,6 +1103,645 @@ END;
 $$;
 -- #endregion
 
+-- #region 6c. The ticket dispute (PROJECTS EX2; Decisions #548, #549)
+-- Either side of a ticket raises a dispute about its money on one stage (ruling 1): money still HELD
+-- while the work waits for the client's verdict (the ticket in review, or the stage submitted), or money
+-- already RELEASED into the 7-day pending window after approval, whose clearing rows the dispute then
+-- freezes (`on_hold`, keyed by pending_releases.hold_dispute_id, as a product dispute's are). Either
+-- party may raise it (ruling 2): the client side through review authority (a business member holding
+-- `hire`), or the freelancer side (the escrow's freelancer, or an active member of its team).
+-- The other side has `dispute_response_hours` (48) to respond, the built deadline kept as Phase 1
+-- (ruling 4); inside it, and until a ruling, either side may offer the freelancer's share in basis points
+-- and the other may accept (ruling 3), which settles the case at once. A statement from the respondent,
+-- an escalation or the deadline sends it to an auditor as any case. While it is live the ticket neither
+-- moves nor is claimed (ruling 5, Decision #549: projects.fn_assert_ticket_move, projects.claim_ticket).
+
+-- The escrows a ticket case contests. While its money is held: every held escrow of the ticket on the
+-- stage, a paid revision's (#167) included, because the ticket primitives settle a ticket whole, plus
+-- the escrow the case names. Once released into the pending window: the escrows whose clearing rows the
+-- case froze. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_ticket_dispute_escrows(p_dispute_id uuid)
+RETURNS uuid[]
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.hold_dispute_id = d.id) THEN
+            ARRAY(SELECT DISTINCT pr.escrow_id FROM finance.pending_releases pr
+                   WHERE pr.hold_dispute_id = d.id AND pr.escrow_id IS NOT NULL ORDER BY 1)
+        ELSE ARRAY(SELECT e.id FROM finance.escrows e
+                    WHERE e.ticket_id = d.ticket_id AND e.project_stage_id = d.stage_id
+                      AND (e.status = 'held' OR e.id = d.escrow_id)
+                    ORDER BY e.id)
+    END
+      FROM finance.disputes d
+     WHERE d.id = p_dispute_id AND d.subject_kind = 'ticket_escrow';
+$$;
+
+-- What a share of p_bp basis points of these escrows would move: the freelancer's payout, the platform
+-- fee on that share and the rest back to the client, through Fair Exit's arithmetic
+-- (finance.fn_fair_exit_split), so an offer's preview and its settlement agree. 10000 is a release and
+-- 0 a refund. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_dispute_offer_split(p_escrow_ids uuid[], p_bp integer)
+RETURNS TABLE (payee_minor bigint, fee_minor bigint, refund_minor bigint)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(pg_catalog.sum(s.payout_cents), 0)::bigint,
+           COALESCE(pg_catalog.sum(s.fee_cents), 0)::bigint,
+           COALESCE(pg_catalog.sum(s.refund_cents), 0)::bigint
+      FROM finance.escrows e
+     CROSS JOIN LATERAL finance.fn_fair_exit_split(e.amount_cents, p_bp,
+         finance.fn_escrow_fee_bp(e.payer_business_id, e.payer_user_id)) s
+     WHERE e.id = ANY (COALESCE(p_escrow_ids, '{}'::uuid[]));
+$$;
+
+-- Whether a ticket has a live dispute — what the move and claim guards ask (ruling 5) and the board
+-- reads for its Disputed tag. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_ticket_has_live_dispute(p_ticket_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM finance.disputes d
+         WHERE d.ticket_id = p_ticket_id AND d.status IN ('open', 'awaiting_response', 'under_review')
+    );
+$$;
+
+-- A ticket's dispute state for its reader (read): the live case on it, if any (its id and status), and
+-- whether the caller may raise one now on the ticket's current stage, with what open_ticket_dispute
+-- would contest there (`held`, or `pending` once released into the clearing window). What the door
+-- checks short of the statement, so the ticket view and the stage menu offer Raise a dispute only where
+-- it works; the door re-checks everything under its locks. NULL for anyone who is neither side.
+CREATE OR REPLACE FUNCTION finance.ticket_dispute_state(p_ticket_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    tk projects.tickets;
+    ps projects.project_stages;
+    v_side text;
+    v_live finance.disputes;
+    v_window text;
+    v_may boolean := true;
+BEGIN
+    SELECT * INTO tk FROM projects.tickets WHERE id = p_ticket_id;
+    IF NOT FOUND OR v_uid IS NULL THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO ps FROM projects.project_stages WHERE id = tk.current_stage_id;
+    v_side := COALESCE(
+        (SELECT finance.fn_ticket_escrow_side(e.id, v_uid) FROM finance.escrows e
+          WHERE e.ticket_id = tk.id AND finance.fn_ticket_escrow_side(e.id, v_uid) IS NOT NULL
+          ORDER BY e.created_at DESC, e.id LIMIT 1),
+        CASE WHEN projects.can_review_project(tk.project_id) THEN 'payer' END);
+    IF v_side IS NULL THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO v_live FROM finance.disputes d
+     WHERE d.ticket_id = tk.id AND d.status IN ('open', 'awaiting_response', 'under_review')
+     ORDER BY d.created_at DESC LIMIT 1;
+    IF v_live.id IS NULL AND ps.id IS NOT NULL THEN
+        IF EXISTS (SELECT 1 FROM finance.escrows e
+                    WHERE e.ticket_id = tk.id AND e.project_stage_id = ps.id AND e.status = 'held'
+                      AND e.payee_id IS NOT NULL)
+           AND (tk.status = 'in_review' OR ps.status = 'submitted') THEN
+            v_window := 'held';
+        ELSIF NOT EXISTS (SELECT 1 FROM finance.escrows e
+                           WHERE e.ticket_id = tk.id AND e.project_stage_id = ps.id
+                             AND e.status IN ('held', 'disputed'))
+              AND EXISTS (SELECT 1 FROM finance.escrows e
+                           JOIN finance.pending_releases pr ON pr.escrow_id = e.id
+                          WHERE e.ticket_id = tk.id AND e.project_stage_id = ps.id AND e.status = 'released')
+              AND NOT EXISTS (SELECT 1 FROM finance.escrows e
+                               JOIN finance.pending_releases pr ON pr.escrow_id = e.id
+                              WHERE e.ticket_id = tk.id AND e.project_stage_id = ps.id AND e.status = 'released'
+                                AND (pr.state <> 'pending' OR pr.recovered_cents > 0)) THEN
+            v_window := 'pending';
+        END IF;
+    END IF;
+    -- On a business project the client side raises it as a `hire` decision, as the door asks.
+    IF v_window IS NOT NULL AND v_side = 'payer' THEN
+        BEGIN
+            PERFORM projects.fn_assert_business_actor(tk.project_id, 'hire');
+        EXCEPTION WHEN OTHERS THEN
+            v_may := false;
+        END;
+    END IF;
+    RETURN pg_catalog.jsonb_build_object(
+        'side', v_side,
+        'dispute_id', v_live.id,
+        'status', v_live.status,
+        'stage_id', ps.id,
+        'can_raise', v_window IS NOT NULL AND v_may,
+        'window', v_window
+    );
+END;
+$$;
+
+-- Raise a dispute on a ticket's money on one stage (user door). p_reason names what is disputed
+-- (3–200 characters), p_statement is the claimant's account (up to 4,000), with up to ten of their own
+-- uploaded files. Refused: anyone but the two sides (P0002, as if the ticket did not exist); held money
+-- before the work is submitted, or anything already settled or cleared (PS409); a payment a card
+-- dispute froze (PS409); a second live dispute on the same money (PD409).
+CREATE OR REPLACE FUNCTION finance.open_ticket_dispute(
+    p_ticket_id uuid,
+    p_stage_id uuid,
+    p_reason text,
+    p_statement text,
+    p_file_ids uuid[] DEFAULT '{}'::uuid[]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    tk projects.tickets;
+    ps projects.project_stages;
+    p projects.projects;
+    v_side text;
+    v_reason text := pg_catalog.btrim(COALESCE(p_reason, ''));
+    v_body text := pg_catalog.btrim(COALESCE(p_statement, ''));
+    v_files uuid[] := COALESCE(p_file_ids, '{}'::uuid[]);
+    v_escrows uuid[];
+    v_window text;
+    v_amount bigint;
+    v_currency text;
+    v_respond_by timestamptz;
+    v_id uuid;
+    v_message uuid;
+    v_ctx record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to raise a dispute' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO tk FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
+    IF FOUND THEN
+        SELECT * INTO p FROM projects.projects WHERE id = tk.project_id;
+        SELECT * INTO ps FROM projects.project_stages WHERE id = p_stage_id AND project_id = tk.project_id;
+    END IF;
+    IF tk.id IS NULL OR ps.id IS NULL OR p.format = 'session' THEN
+        RAISE EXCEPTION 'That ticket doesn''t exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF projects.can_review_project(p.id) THEN
+        PERFORM projects.fn_assert_business_actor(p.id, 'hire');
+        v_side := 'payer';
+    ELSIF EXISTS (SELECT 1 FROM finance.escrows e
+                   WHERE e.ticket_id = tk.id AND e.project_stage_id = ps.id
+                     AND finance.fn_ticket_escrow_side(e.id, v_uid) = 'payee') THEN
+        v_side := 'payee';
+    ELSE
+        RAISE EXCEPTION 'That ticket doesn''t exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF pg_catalog.length(v_reason) NOT BETWEEN 3 AND 200 THEN
+        RAISE EXCEPTION 'Say what is disputed in 3 to 200 characters' USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.length(v_body) NOT BETWEEN 1 AND 4000 THEN
+        RAISE EXCEPTION 'Give your account in up to 4,000 characters' USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.cardinality(v_files) > 10 THEN
+        RAISE EXCEPTION 'Attach at most ten files' USING ERRCODE = '22023';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM pg_catalog.unnest(v_files) f(id)
+         WHERE NOT EXISTS (
+             SELECT 1 FROM files.items i
+              WHERE i.id = f.id AND i.owner_user_id = v_uid AND i.deleted_at IS NULL AND i.status = 'uploaded'
+         )
+    ) THEN
+        RAISE EXCEPTION 'Evidence must be your own uploaded files' USING ERRCODE = '22023';
+    END IF;
+
+    -- Held money first: the work waits for the client's verdict on this stage.
+    SELECT pg_catalog.array_agg(e.id ORDER BY e.created_at, e.id) INTO v_escrows
+      FROM finance.escrows e
+     WHERE e.ticket_id = tk.id AND e.project_stage_id = ps.id AND e.status IN ('held', 'disputed')
+       AND e.payee_id IS NOT NULL;
+    IF v_escrows IS NOT NULL THEN
+        IF EXISTS (SELECT 1 FROM finance.escrows e WHERE e.id = ANY (v_escrows) AND e.status = 'disputed') THEN
+            RAISE EXCEPTION 'A card dispute has frozen this payment; it settles first' USING ERRCODE = 'PS409';
+        END IF;
+        IF tk.current_stage_id IS DISTINCT FROM ps.id
+           OR NOT (tk.status = 'in_review' OR ps.status = 'submitted') THEN
+            RAISE EXCEPTION 'A dispute can be raised once the work on this stage is submitted for review'
+                USING ERRCODE = 'PS409';
+        END IF;
+        v_window := 'held';
+    ELSE
+        -- Else money released from this stage into the pending window, every clearing row untouched.
+        SELECT pg_catalog.array_agg(e.id ORDER BY e.created_at, e.id) INTO v_escrows
+          FROM finance.escrows e
+         WHERE e.ticket_id = tk.id AND e.project_stage_id = ps.id AND e.status = 'released'
+           AND EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.escrow_id = e.id);
+        IF v_escrows IS NULL THEN
+            RAISE EXCEPTION 'Nothing on this stage is held or still clearing, so there is nothing to dispute'
+                USING ERRCODE = 'PS409';
+        END IF;
+        IF EXISTS (SELECT 1 FROM finance.pending_releases pr
+                    WHERE pr.escrow_id = ANY (v_escrows) AND (pr.state <> 'pending' OR pr.recovered_cents > 0)) THEN
+            RAISE EXCEPTION 'This stage''s payment has cleared or is part of a card dispute, so it can''t be disputed here. Contact support.'
+                USING ERRCODE = 'PS409';
+        END IF;
+        v_window := 'pending';
+    END IF;
+    IF EXISTS (SELECT 1 FROM finance.disputes d
+                WHERE d.escrow_id = ANY (v_escrows) AND d.status IN ('open', 'awaiting_response', 'under_review')) THEN
+        RAISE EXCEPTION 'A dispute about this payment is already open' USING ERRCODE = 'PD409';
+    END IF;
+    SELECT pg_catalog.sum(e.amount_cents)::bigint, pg_catalog.max(e.currency) INTO v_amount, v_currency
+      FROM finance.escrows e WHERE e.id = ANY (v_escrows);
+
+    v_respond_by := pg_catalog.now() + pg_catalog.make_interval(
+        hours => projects.fn_session_param('dispute_response_hours', 48));
+    INSERT INTO finance.disputes (subject_kind, escrow_id, ticket_id, stage_id, claimant_side, opened_by_profile,
+                                  reason, status, respond_by)
+    VALUES ('ticket_escrow', v_escrows[1], tk.id, ps.id, v_side, v_uid, v_reason, 'awaiting_response', v_respond_by)
+    RETURNING id INTO v_id;
+    IF v_window = 'pending' THEN
+        UPDATE finance.pending_releases SET state = 'on_hold', hold_dispute_id = v_id
+         WHERE escrow_id = ANY (v_escrows) AND state = 'pending';
+    END IF;
+    INSERT INTO finance.dispute_messages (dispute_id, sender_user_id, party, body)
+    VALUES (v_id, v_uid, 'claimant', v_body)
+    RETURNING id INTO v_message;
+    INSERT INTO finance.dispute_evidence (dispute_id, message_id, file_id, submitted_by)
+    SELECT DISTINCT v_id, v_message, f.id, v_uid FROM pg_catalog.unnest(v_files) f(id);
+
+    SELECT * INTO v_ctx FROM finance.fn_dispute_context(v_id);
+    IF v_ctx.owner_user_id IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            v_ctx.owner_user_id, 'dispute.opened',
+            CASE v_side WHEN 'payer' THEN 'The client raised a dispute' ELSE 'The freelancer raised a dispute' END,
+            pg_catalog.format('A dispute was raised about "%s": %s. %s Respond or make an offer by %s, or it goes to a Projective auditor.',
+                tk.title, v_reason,
+                CASE v_window WHEN 'held' THEN 'The payment stays held until it is settled.'
+                     ELSE 'The payment''s clearing earnings are held until it is settled.' END,
+                pg_catalog.to_char(v_respond_by AT TIME ZONE 'UTC', 'DD Mon YYYY HH24:MI "UTC"')),
+            'finance.disputes', v_id,
+            pg_catalog.jsonb_build_object('respond_by', v_respond_by, 'window', v_window),
+            v_uid, 'project', p.id, NULL, v_ctx.respondent_href
+        );
+    END IF;
+    RETURN pg_catalog.jsonb_build_object('dispute_id', v_id, 'status', 'awaiting_response',
+        'respond_by', v_respond_by, 'window', v_window, 'amount_minor', v_amount, 'currency', v_currency);
+END;
+$$;
+
+-- Offer a settlement on a live ticket case (user door; ruling 3): the freelancer's share of the contested
+-- money in basis points, 0 to 10000, with an optional note. Either side, any number of times; the newest
+-- offer is the one standing. The other side is told. Returns what it would move.
+CREATE OR REPLACE FUNCTION finance.propose_dispute_offer(
+    p_dispute_id uuid,
+    p_payee_share_bp integer,
+    p_note text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_d finance.disputes;
+    v_party text;
+    v_note text := NULLIF(pg_catalog.btrim(COALESCE(p_note, '')), '');
+    v_id uuid;
+    v_split record;
+    v_ctx record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to make an offer' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO v_d FROM finance.disputes WHERE id = p_dispute_id FOR UPDATE;
+    v_party := CASE WHEN FOUND THEN finance.fn_dispute_party(v_d.id, v_uid) END;
+    IF v_party IS NULL THEN
+        RAISE EXCEPTION 'That dispute does not exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_d.subject_kind <> 'ticket_escrow' THEN
+        RAISE EXCEPTION 'Only a dispute about a ticket''s payment is settled by an offer' USING ERRCODE = '22023';
+    END IF;
+    IF v_d.status NOT IN ('awaiting_response', 'under_review') THEN
+        RAISE EXCEPTION 'This dispute is closed' USING ERRCODE = 'PS409';
+    END IF;
+    IF p_payee_share_bp IS NULL OR p_payee_share_bp NOT BETWEEN 0 AND 10000 THEN
+        RAISE EXCEPTION 'An offer gives the freelancer between 0 %% and 100 %% of the payment' USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.length(COALESCE(v_note, '')) > 1000 THEN
+        RAISE EXCEPTION 'Keep the note to 1,000 characters' USING ERRCODE = '22023';
+    END IF;
+
+    INSERT INTO finance.dispute_offers (dispute_id, proposed_by, party, payee_share_bp, note)
+    VALUES (v_d.id, v_uid, v_party, p_payee_share_bp, v_note)
+    RETURNING id INTO v_id;
+    SELECT * INTO v_split FROM finance.fn_dispute_offer_split(finance.fn_ticket_dispute_escrows(v_d.id), p_payee_share_bp);
+
+    SELECT * INTO v_ctx FROM finance.fn_dispute_context(v_d.id);
+    PERFORM comms.fn_notify(
+        CASE v_party WHEN 'claimant' THEN v_ctx.owner_user_id ELSE v_ctx.claimant END,
+        'dispute.offer_made', 'A settlement offer on your dispute',
+        pg_catalog.format('An offer on the dispute about "%s" gives the freelancer %s %% of the payment. Accept it to settle the case now, or answer with your own.',
+            v_ctx.event_title, pg_catalog.trim_scale(p_payee_share_bp / 100.0)),
+        'finance.disputes', v_d.id,
+        pg_catalog.jsonb_build_object('offer_id', v_id, 'payee_share_bp', p_payee_share_bp),
+        v_uid, 'project', v_ctx.project_id, NULL, v_ctx.claimant_href
+    );
+    RETURN pg_catalog.jsonb_build_object('offer_id', v_id, 'dispute_id', v_d.id, 'payee_share_bp', p_payee_share_bp,
+        'payee_minor', v_split.payee_minor, 'fee_minor', v_split.fee_minor, 'refund_minor', v_split.refund_minor);
+END;
+$$;
+
+-- Accept the standing offer (user door; ruling 3): the other side from whoever made it, while the case is
+-- live and no newer offer stands; on the client side it is a money decision, so a business member needs
+-- `hire`. The case settles at once on the offer's terms (finance.fn_settle_ticket_dispute), as agreed,
+-- with no operator.
+CREATE OR REPLACE FUNCTION finance.accept_dispute_offer(p_offer_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    o finance.dispute_offers;
+    v_d finance.disputes;
+    v_party text;
+    v_ctx record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to accept an offer' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO o FROM finance.dispute_offers WHERE id = p_offer_id;
+    IF FOUND THEN
+        SELECT * INTO v_d FROM finance.disputes WHERE id = o.dispute_id FOR UPDATE;
+        SELECT * INTO o FROM finance.dispute_offers WHERE id = p_offer_id FOR UPDATE;
+        v_party := finance.fn_dispute_party(v_d.id, v_uid);
+    END IF;
+    IF v_party IS NULL THEN
+        RAISE EXCEPTION 'That offer doesn''t exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_d.status NOT IN ('awaiting_response', 'under_review') THEN
+        RAISE EXCEPTION 'This dispute is closed' USING ERRCODE = 'PS409';
+    END IF;
+    IF o.accepted_at IS NOT NULL THEN
+        RAISE EXCEPTION 'This offer was already accepted' USING ERRCODE = 'PS409';
+    END IF;
+    IF EXISTS (SELECT 1 FROM finance.dispute_offers x
+                WHERE x.dispute_id = o.dispute_id AND (x.created_at, x.id) > (o.created_at, o.id)) THEN
+        RAISE EXCEPTION 'A newer offer replaced this one' USING ERRCODE = 'PS409';
+    END IF;
+    IF v_party = o.party THEN
+        RAISE EXCEPTION 'Your side made this offer; the other side accepts it' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO v_ctx FROM finance.fn_dispute_context(v_d.id);
+    IF finance.fn_ticket_escrow_side(v_d.escrow_id, v_uid) = 'payer' THEN
+        PERFORM projects.fn_assert_business_actor(v_ctx.project_id, 'hire');
+    END IF;
+
+    UPDATE finance.dispute_offers SET accepted_at = pg_catalog.now(), accepted_by = v_uid WHERE id = o.id;
+    RETURN finance.fn_settle_ticket_dispute(
+        v_d.id,
+        CASE o.payee_share_bp WHEN 10000 THEN 'release' WHEN 0 THEN 'refund' ELSE 'split' END,
+        o.payee_share_bp, NULL,
+        pg_catalog.format('Settled by agreement: %s %% of the payment to the freelancer.',
+            pg_catalog.trim_scale(o.payee_share_bp / 100.0)),
+        o.id
+    );
+END;
+$$;
+
+-- A ticket case's settlement, the one writer of its resolved_* status: an operator's ruling (through
+-- finance.fn_settle_dispute) or an accepted offer, giving the freelancer p_bp basis points (release
+-- 10000, refund 0, split between). The case is closed FIRST, because the ticket's money doors refuse
+-- while it is live (DB3), then:
+--   held     a release pays the stage's held escrow (finance.fn_release_ticket_escrow) and accepts the
+--            submission awaiting review; the ticket stays on its stage for the client to move on,
+--            because moving on holds the next stage's money from the client's wallet (the Chain
+--            Reaction, projects.force_complete_stage), which only the client decides. A refund
+--            (finance.fn_refund_ticket_escrow) or a split (finance.fn_fair_exit_release) ends the ticket
+--            `cancelled`, as a Fair Exit does (Decision #198), its later reservations going back by the
+--            prepay sync.
+--   pending  the frozen clearing rows: a release returns them to clearing at their own dates; a refund
+--            or split takes back what the freelancer is no longer due, from each row in proportion,
+--            floored, the remainder from the rows taken last (the smallest), and returns it to the
+--            client with the platform fee no longer earned (`fee_returned_minor`, a conservation term,
+--            finance.v_conservation_identity) as `escrow_refund`.
+--   by fact  the money settled on another path first: the case closes as it settled.
+-- Then records what moved (`settlement`) and tells both sides. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_settle_ticket_dispute(
+    p_dispute_id uuid,
+    p_outcome text,
+    p_bp integer,
+    p_actor uuid,
+    p_notes text,
+    p_offer_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+-- Not '' like its sibling doors: it UPDATEs projects.tickets, and the ticket triggers resolve their enum
+-- types unqualified through the caller's search_path (the trap 00001240's record_dispute_closed notes).
+-- Every name this body writes is still schema-qualified.
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+    v_d finance.disputes;
+    tk projects.tickets;
+    v_bp integer;
+    v_status public.dispute_status;
+    v_window text;
+    v_escrows uuid[];
+    v_amount bigint;
+    v_currency text;
+    v_payee bigint := 0;
+    v_fee bigint := 0;
+    v_refund bigint := 0;
+    v_fee_back bigint := 0;
+    v_rows bigint;
+    v_due bigint;
+    v_fee_due bigint;
+    v_recover bigint;
+    v_left_rows bigint;
+    v_left_recover bigint;
+    v_take bigint;
+    v_settlement jsonb;
+    v_ctx record;
+    v_how text;
+    v_title text;
+    v_party uuid;
+    e record;
+    r record;
+BEGIN
+    SELECT * INTO v_d FROM finance.disputes WHERE id = p_dispute_id AND subject_kind = 'ticket_escrow' FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That dispute does not exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_d.status::text LIKE 'resolved\_%' THEN
+        RAISE EXCEPTION 'This dispute is already resolved' USING ERRCODE = 'PS409';
+    END IF;
+    v_bp := CASE p_outcome WHEN 'release' THEN 10000 WHEN 'refund' THEN 0 WHEN 'split' THEN p_bp END;
+    IF p_outcome IS NULL OR p_outcome NOT IN ('release', 'refund', 'split') THEN
+        RAISE EXCEPTION 'A ruling is release, refund or split' USING ERRCODE = '22023';
+    END IF;
+    IF p_outcome = 'split' AND (p_bp IS NULL OR p_bp NOT BETWEEN 1 AND 9999) THEN
+        RAISE EXCEPTION 'A split gives the freelancer between 0.01 %% and 99.99 %%' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO tk FROM projects.tickets WHERE id = v_d.ticket_id FOR UPDATE;
+    v_window := CASE WHEN EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.hold_dispute_id = v_d.id)
+                     THEN 'pending' ELSE 'held' END;
+    v_escrows := finance.fn_ticket_dispute_escrows(v_d.id);
+    PERFORM 1 FROM finance.escrows x WHERE x.id = ANY (v_escrows) ORDER BY x.id FOR UPDATE;
+    SELECT pg_catalog.sum(x.amount_cents)::bigint, pg_catalog.max(x.currency) INTO v_amount, v_currency
+      FROM finance.escrows x WHERE x.id = ANY (v_escrows);
+    IF (v_window = 'held' AND NOT EXISTS (SELECT 1 FROM finance.escrows x
+                                           WHERE x.id = ANY (v_escrows) AND x.status = 'held'))
+       OR (v_window = 'pending' AND NOT EXISTS (SELECT 1 FROM finance.pending_releases pr
+                                                 WHERE pr.hold_dispute_id = v_d.id AND pr.state = 'on_hold')) THEN
+        v_window := 'by_fact';
+        v_status := CASE WHEN (SELECT x.status FROM finance.escrows x WHERE x.id = v_d.escrow_id) = 'refunded'
+                         THEN 'resolved_refund' ELSE 'resolved_release' END;
+    ELSE
+        v_status := CASE v_bp WHEN 10000 THEN 'resolved_release' WHEN 0 THEN 'resolved_refund' ELSE 'resolved_split' END;
+    END IF;
+
+    UPDATE finance.disputes
+       SET status = v_status,
+           resolved_at = pg_catalog.now(),
+           resolved_by = p_actor,
+           resolution_notes = NULLIF(pg_catalog.btrim(COALESCE(p_notes, '')), ''),
+           payee_share_bp = CASE WHEN v_status = 'resolved_split' THEN v_bp END,
+           updated_at = pg_catalog.now()
+     WHERE id = v_d.id;
+
+    IF v_window = 'held' THEN
+        IF v_bp = 10000 THEN
+            PERFORM finance.fn_release_ticket_escrow(tk.id);
+            UPDATE projects.stage_submissions
+               SET status = 'accepted', reviewed_at = pg_catalog.now(), updated_at = pg_catalog.now()
+             WHERE ticket_id = tk.id AND project_stage_id = v_d.stage_id AND status = 'pending_review';
+        ELSE
+            IF v_bp = 0 THEN
+                PERFORM finance.fn_refund_ticket_escrow(tk.id);
+            ELSE
+                PERFORM finance.fn_fair_exit_release(tk.id, v_bp);
+            END IF;
+            UPDATE projects.tickets SET status = 'cancelled'::public.ticket_status, hidden_until = NULL
+             WHERE id = tk.id AND status NOT IN ('completed'::public.ticket_status, 'cancelled'::public.ticket_status);
+            IF FOUND AND auth.uid() IS NOT NULL THEN
+                INSERT INTO projects.ticket_history
+                    (ticket_id, actor_id, action_type, previous_stage_id, new_stage_id, previous_status, new_status, changes)
+                VALUES
+                    (tk.id, auth.uid(), 'status_changed', tk.current_stage_id, tk.current_stage_id, tk.status,
+                     'cancelled'::public.ticket_status,
+                     pg_catalog.jsonb_build_object('from_status', tk.status, 'to_status', 'cancelled',
+                         'reason', 'dispute', 'dispute_id', v_d.id, 'payee_share_bp', v_bp));
+            END IF;
+        END IF;
+        SELECT COALESCE(pg_catalog.sum(pr.amount_cents), 0)::bigint INTO v_payee
+          FROM finance.pending_releases pr WHERE pr.escrow_id = ANY (v_escrows);
+        SELECT COALESCE(pg_catalog.sum(x.platform_fee_cents), 0)::bigint INTO v_fee
+          FROM finance.escrows x WHERE x.id = ANY (v_escrows) AND x.status = 'released';
+        v_refund := v_amount - v_payee - v_fee;
+    ELSIF v_window = 'pending' THEN
+        FOR e IN SELECT x.* FROM finance.escrows x WHERE x.id = ANY (v_escrows) ORDER BY x.id LOOP
+            SELECT COALESCE(pg_catalog.sum(pr.amount_cents - pr.recovered_cents), 0)::bigint INTO v_rows
+              FROM finance.pending_releases pr
+             WHERE pr.escrow_id = e.id AND pr.hold_dispute_id = v_d.id AND pr.state = 'on_hold';
+            IF v_bp = 10000 THEN
+                v_due := v_rows;
+                v_fee_due := e.platform_fee_cents;
+            ELSE
+                SELECT s.payout_cents, s.fee_cents INTO v_due, v_fee_due
+                  FROM finance.fn_fair_exit_split(e.amount_cents, v_bp,
+                           finance.fn_escrow_fee_bp(e.payer_business_id, e.payer_user_id)) s;
+                v_due := LEAST(v_due, v_rows);
+                v_fee_due := LEAST(v_fee_due, e.platform_fee_cents);
+            END IF;
+            v_recover := v_rows - v_due;
+            v_left_rows := v_rows;
+            v_left_recover := v_recover;
+            FOR r IN
+                SELECT pr.id, pr.amount_cents - pr.recovered_cents AS left_cents
+                  FROM finance.pending_releases pr
+                 WHERE pr.escrow_id = e.id AND pr.hold_dispute_id = v_d.id AND pr.state = 'on_hold'
+                 ORDER BY pr.amount_cents - pr.recovered_cents DESC, pr.id
+                   FOR UPDATE
+            LOOP
+                v_take := CASE WHEN v_left_rows <= 0 THEN 0 ELSE (r.left_cents * v_left_recover) / v_left_rows END;
+                v_left_rows := v_left_rows - r.left_cents;
+                v_left_recover := v_left_recover - v_take;
+                UPDATE finance.pending_releases
+                   SET recovered_cents = recovered_cents + v_take,
+                       state = CASE WHEN recovered_cents + v_take = amount_cents
+                                    THEN 'available'::finance.fund_state ELSE 'pending'::finance.fund_state END,
+                       matured_at = CASE WHEN recovered_cents + v_take = amount_cents THEN pg_catalog.now() END
+                 WHERE id = r.id;
+            END LOOP;
+            PERFORM finance.fn_refund_escrow_to_payer(e.id, v_recover + e.platform_fee_cents - v_fee_due, 'escrow_refund');
+            v_payee := v_payee + v_due;
+            v_fee := v_fee + v_fee_due;
+            v_refund := v_refund + v_recover + e.platform_fee_cents - v_fee_due;
+            v_fee_back := v_fee_back + e.platform_fee_cents - v_fee_due;
+        END LOOP;
+    END IF;
+
+    v_settlement := CASE WHEN v_window = 'by_fact' THEN
+            pg_catalog.jsonb_build_object('by_fact', true,
+                'escrow_status', (SELECT x.status FROM finance.escrows x WHERE x.id = v_d.escrow_id),
+                'currency', v_currency)
+        ELSE pg_catalog.jsonb_build_object('payee_minor', v_payee, 'fee_minor', v_fee, 'refund_minor', v_refund,
+                'currency', v_currency, 'window', v_window)
+             || CASE WHEN v_fee_back > 0 THEN pg_catalog.jsonb_build_object('fee_returned_minor', v_fee_back)
+                     ELSE '{}'::jsonb END
+        END
+        || CASE WHEN p_offer_id IS NOT NULL THEN pg_catalog.jsonb_build_object('offer_id', p_offer_id)
+                ELSE '{}'::jsonb END;
+    UPDATE finance.disputes SET settlement = v_settlement, updated_at = pg_catalog.now() WHERE id = v_d.id;
+
+    SELECT * INTO v_ctx FROM finance.fn_dispute_context(v_d.id);
+    v_how := CASE WHEN p_offer_id IS NOT NULL THEN 'by agreement'
+                  WHEN p_actor IS NOT NULL THEN 'by a Projective auditor'
+                  ELSE 'as its payment settled' END;
+    v_title := CASE v_status WHEN 'resolved_refund' THEN 'Dispute closed — refunded to the client'
+                             WHEN 'resolved_split' THEN 'Dispute settled — payment split'
+                             ELSE 'Dispute closed — paid to the freelancer' END;
+    FOREACH v_party IN ARRAY ARRAY[v_ctx.claimant, v_ctx.owner_user_id] LOOP
+        CONTINUE WHEN v_party IS NULL;
+        PERFORM comms.fn_notify(
+            v_party, 'dispute.resolved', v_title,
+            pg_catalog.format('The dispute about "%s" was settled %s. %s', v_ctx.event_title, v_how, CASE v_status
+                WHEN 'resolved_refund' THEN 'The payment went back to the client.'
+                WHEN 'resolved_split' THEN pg_catalog.format('The freelancer was paid %s %% of it and the rest went back to the client.',
+                    pg_catalog.trim_scale(v_bp / 100.0))
+                ELSE 'The payment goes to the freelancer.' END),
+            'finance.disputes', v_d.id,
+            pg_catalog.jsonb_build_object('status', v_status, 'settlement', v_settlement),
+            p_actor, 'project', v_ctx.project_id, NULL, v_ctx.claimant_href
+        );
+    END LOOP;
+    RETURN pg_catalog.jsonb_build_object('dispute_id', v_d.id, 'status', v_status, 'settlement', v_settlement);
+END;
+$$;
+-- #endregion
+
+
 -- #region 7. The operator doors
 -- The operator queue (`/admin/disputes`): every LIVE dispute, or those in one live status, with what a
 -- reviewer triages on — the parties, the money at stake, the sitting, the deadline that applies and
@@ -1048,6 +1789,7 @@ BEGIN
                              'id', d.id,
                              'status', d.status,
                              'kind', CASE WHEN d.subject_kind = 'order_line' THEN 'product'
+                                          WHEN d.subject_kind = 'ticket_escrow' THEN 'ticket'
                                           WHEN d.session_event_id IS NOT NULL THEN 'no_show' ELSE 'general' END,
                              'reason', d.reason,
                              'opened_at', d.created_at,
@@ -1055,13 +1797,18 @@ BEGIN
                              'escalated_at', d.escalated_at,
                              'review_by', d.review_by,
                              'overdue', d.status = 'under_review' AND d.review_by <= v_now,
-                             'amount_minor', COALESCE(e.amount_cents,
-                                 GREATEST(ol.line_total_minor - ol.promo_discount_minor, 0)),
+                             'amount_minor', COALESCE(
+                                 CASE WHEN d.subject_kind = 'ticket_escrow' THEN (
+                                     SELECT pg_catalog.sum(x.amount_cents)::bigint FROM finance.escrows x
+                                      WHERE x.id = ANY (finance.fn_ticket_dispute_escrows(d.id))) END,
+                                 e.amount_cents, GREATEST(ol.line_total_minor - ol.promo_discount_minor, 0)),
                              'currency', COALESCE(e.currency, ol.currency),
                              'project', CASE WHEN p.id IS NOT NULL THEN
                                  pg_catalog.jsonb_build_object('slug', p.slug, 'title', p.title) END,
                              'purchase', CASE WHEN ol.id IS NOT NULL THEN
                                  pg_catalog.jsonb_build_object('title', ol.title) END,
+                             'ticket', CASE WHEN tk.id IS NOT NULL THEN
+                                 pg_catalog.jsonb_build_object('title', tk.title, 'slug', tk.slug) END,
                              'sitting', CASE WHEN se.id IS NOT NULL THEN pg_catalog.jsonb_build_object(
                                  'title', se.title, 'starts_at', se.start_time, 'ends_at', se.end_time) END,
                              'claimant', pg_catalog.jsonb_build_object(
@@ -1082,8 +1829,10 @@ BEGIN
                     LEFT JOIN projects.session_events se ON se.id = d.session_event_id
                     LEFT JOIN finance.order_lines ol ON ol.id = d.order_line_id
                     LEFT JOIN catalogue.products cp ON cp.id = ol.item_id
+                    LEFT JOIN projects.tickets tk ON tk.id = d.ticket_id
+                    LEFT JOIN LATERAL finance.fn_dispute_context(d.id) ctx ON true
                     LEFT JOIN org.users_public cu ON cu.user_id = d.opened_by_profile
-                    LEFT JOIN org.users_public ou ON ou.user_id = COALESCE(p.owner_user_id, cp.owner_user_id)
+                    LEFT JOIN org.users_public ou ON ou.user_id = ctx.owner_user_id
                    WHERE d.status IN ('open', 'awaiting_response', 'under_review')
                      AND (p_status IS NULL OR d.status::text = p_status)
                    ORDER BY 2, 3, d.id
@@ -1157,6 +1906,8 @@ BEGIN
           JOIN finance.escrows e ON e.id = d.escrow_id
          WHERE d.status IN ('open', 'awaiting_response', 'under_review')
            AND e.status IN ('released', 'refunded')
+           -- A ticket case on money already released holds its clearing rows: the ruling settles it.
+           AND NOT EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.hold_dispute_id = d.id)
     LOOP
         PERFORM finance.fn_settle_dispute(r.id, CASE WHEN r.escrow_status = 'refunded' THEN 'refund' ELSE 'release' END,
             NULL, NULL, 'The payment settled outside the dispute.');
@@ -1248,10 +1999,26 @@ BEGIN
     IF TG_OP IN ('DELETE', 'TRUNCATE') THEN
         RAISE EXCEPTION '% rows are never deleted', TG_TABLE_NAME USING ERRCODE = '42501';
     END IF;
+    -- An offer (PROJECTS EX2) is stamped accepted once; nothing else about it ever changes.
+    IF TG_TABLE_NAME = 'dispute_offers' THEN
+        IF OLD.accepted_at IS NULL AND NEW.accepted_at IS NOT NULL
+           AND (pg_catalog.to_jsonb(NEW) - 'accepted_at' - 'accepted_by')
+             = (pg_catalog.to_jsonb(OLD) - 'accepted_at' - 'accepted_by') THEN
+            RETURN NEW;
+        END IF;
+        RAISE EXCEPTION 'An offer is never changed once made' USING ERRCODE = '42501';
+    END IF;
     IF TG_TABLE_NAME <> 'disputes' THEN
         RAISE EXCEPTION '% rows are never changed once filed', TG_TABLE_NAME USING ERRCODE = '42501';
     END IF;
     IF OLD.status::text LIKE 'resolved\_%' THEN
+        -- A ticket's money doors refuse while its case is live (DB3), so a ticket ruling closes the case
+        -- first and records what moved after them, once, inside the ruling's own transaction.
+        IF OLD.settlement IS NULL AND NEW.settlement IS NOT NULL AND OLD.resolved_at = pg_catalog.now()
+           AND (pg_catalog.to_jsonb(NEW) - 'settlement' - 'updated_at')
+             = (pg_catalog.to_jsonb(OLD) - 'settlement' - 'updated_at') THEN
+            RETURN NEW;
+        END IF;
         RAISE EXCEPTION 'A resolved dispute is final' USING ERRCODE = '42501';
     END IF;
     RETURN NEW;

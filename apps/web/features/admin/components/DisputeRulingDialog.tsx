@@ -22,6 +22,7 @@ import { DisputeDeskService } from "../core/DisputeDeskService.ts";
 import {
 	caseTitle,
 	confirmSentence,
+	deskSides,
 	isPreviewCase,
 	operatorSentence,
 	outcomeHint,
@@ -138,6 +139,9 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 	const d = dispute.value;
 	const item = props.item;
 	const overdue = !!item?.overdue && d?.status === "under_review";
+	const sides = deskSides(d?.kind ?? item?.kind ?? "no_show", d?.ticket?.claimantSide);
+	const sideName = (party: DisputeParty): string =>
+		party === "operator" ? PARTY_NAMES.operator : `The ${sides[party].toLowerCase()}`;
 
 	return (
 		<Dialog
@@ -195,12 +199,12 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 
 							<dl class="ddesk-dlg__facts">
 								<div class="ddesk-dlg__fact">
-									<dt class="ddesk-dlg__term">Attendee (claimant)</dt>
-									<dd class="ddesk-dlg__value">{partyLabel(item.claimant, "Attendee")}</dd>
+									<dt class="ddesk-dlg__term">{sides.claimant} (claimant)</dt>
+									<dd class="ddesk-dlg__value">{partyLabel(item.claimant, sides.claimant)}</dd>
 								</div>
 								<div class="ddesk-dlg__fact">
-									<dt class="ddesk-dlg__term">Provider (respondent)</dt>
-									<dd class="ddesk-dlg__value">{partyLabel(item.respondent, "Provider")}</dd>
+									<dt class="ddesk-dlg__term">{sides.respondent} (respondent)</dt>
+									<dd class="ddesk-dlg__value">{partyLabel(item.respondent, sides.respondent)}</dd>
 								</div>
 								{d.sitting
 									? (
@@ -252,7 +256,7 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 							<section class="ddesk-dlg__section" aria-label="Statements and evidence">
 								<h3 class="ddesk-dlg__heading">Statements &amp; evidence</h3>
 								<p class="ddesk-dlg__text">
-									<span class="ddesk-dlg__who">{PARTY_NAMES.claimant} · claim:</span> {d.reason}
+									<span class="ddesk-dlg__who">{sideName("claimant")} · claim:</span> {d.reason}
 								</p>
 								{d.messages.length
 									? (
@@ -260,7 +264,7 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 											{d.messages.map((m) => (
 												<li key={m.id} class="ddesk-dlg__msg">
 													<span class="ddesk-dlg__who">
-														{PARTY_NAMES[m.party]} · {disputeTimeLabel(m.createdAt)}
+														{sideName(m.party)} · {disputeTimeLabel(m.createdAt)}
 													</span>
 													<p class="ddesk-dlg__text">{m.body}</p>
 													{m.files.length
@@ -341,7 +345,7 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 											? (
 												<div class="ddesk-dlg__confirm" role="alert">
 													<Message severity="warning" variant="subtle" size="sm">
-														{confirmSentence(chosen, share.value, d.amountLabel)}
+														{confirmSentence(chosen, share.value, d.amountLabel, d.kind)}
 													</Message>
 													<div class="ddesk-dlg__actions">
 														<Button

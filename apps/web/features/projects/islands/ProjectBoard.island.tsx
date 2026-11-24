@@ -72,6 +72,7 @@ import { recentPress } from "@web/features/files/core/press-point.ts";
 import { usePressTracking } from "@web/features/files/hooks/use-press-tracking.ts";
 import { type BoardWarningKind, BoardWarnings } from "../components/BoardWarnings.tsx";
 import { TicketView } from "../components/ticket/TicketView.tsx";
+import { TicketDisputeFrame } from "../components/TicketDisputeFrame.tsx";
 import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
 import { TicketFileFrame } from "../components/ticket/TicketFileFrame.tsx";
 import { TicketPickerFrame } from "../components/ticket/TicketPickerFrame.tsx";
@@ -88,6 +89,7 @@ import {
 	firstUnitUnder,
 	openTicketFile,
 	pushTicketBuy,
+	pushTicketDispute,
 	registerTicketFileHost,
 	reviewForPath,
 	type TicketMode,
@@ -1490,6 +1492,21 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 							? (stageId, mode) => void routeStage(stageId, mode)
 							: undefined}
 						routingStageId={routingStage.value}
+						onDispute={(dispute) => void pushTicketDispute(dispute)}
+					/>
+				)
+				: null}
+
+			{frame?.kind === "dispute" && viewing && frame.input?.dispute && !frame.input?.standalone
+				? (
+					<TicketDisputeFrame
+						key={frame.uid}
+						ticketId={viewing.id}
+						dispute={frame.input.dispute}
+						onClose={() => {
+							if (ticketStack.top.peek()?.kind === "dispute") ticketStack.back();
+						}}
+						onChanged={() => void reread(viewing)}
 					/>
 				)
 				: null}

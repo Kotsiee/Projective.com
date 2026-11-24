@@ -1,14 +1,18 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
 import { refuseUnlessMoneyLive } from "./money-gate.ts";
-import type {
-	DisputeCase,
-	DisputeQueue,
-	DisputeQueueQuery,
-	DisputeResolveInput,
-	DisputeRespondInput,
-	DisputeStatus,
-	ReportOrderProblemInput,
+import {
+	type DisputeCase,
+	type DisputeOfferInput,
+	type DisputeQueue,
+	type DisputeQueueQuery,
+	type DisputeResolveInput,
+	type DisputeRespondInput,
+	type DisputeStatus,
+	type OpenTicketDisputeInput,
+	type ReportOrderProblemInput,
+	type TicketDisputeState,
+	TicketDisputeStateSchema,
 } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
 import { type RawDispute, type RawQueue, toDisputeCase, toDisputeQueue } from "./dispute-model.ts";
@@ -20,8 +24,10 @@ import { type RawDispute, type RawQueue, toDisputeCase, toDisputeQueue } from ".
  * It decides nothing. Every rule — who is a party, when a case escalates, what a ruling moves, the
  * attendance audit — is a definer in `00001260_functions_finance_disputes.sql`, called AS the caller
  * (`auth.uid()` and RLS are the gates; the operator door checks `security.is_admin()` itself). A no-show
- * claim is opened through `SessionBackendService.claimNoShow`, and a buyer's report on a downloaded
- * product here ({@link DisputeBackendService.reportOrderProblem}, FBP DB21); the sweep that audits and auto-escalates
+ * claim is opened through `SessionBackendService.claimNoShow`, a buyer's report on a downloaded
+ * product here ({@link DisputeBackendService.reportOrderProblem}, FBP DB21), and either side's dispute on
+ * a ticket's money here too ({@link DisputeBackendService.open}, with its offers, PROJECTS EX2); the
+ * sweep that audits and auto-escalates
  * runs in the database (`finance-dispute-sweep`). Evidence files are served by the files pipeline
  * (`/api/media/proxy/:id`), which `files.fn_can_read` opens to a dispute's parties.
  *
@@ -45,6 +51,7 @@ function refusal<T>(
 			return fail(404, { message: missing });
 		case "PS409":
 		case "PO409":
+		case "PD409":
 			return fail(409, { message });
 		default:
 			return fail(502, { message: "That couldn't be done just now. Please try again." });
@@ -79,6 +86,28 @@ async function guarded<T>(
 	}
 }
 // #endregion
+
+/**
+ * The tickets among these with a live dispute the viewer can see (PROJECTS EX2): the board's derived
+ * Disputed tag (Decision #549 — no ticket status, a tag from the dispute row). RLS admits a case to its
+ * parties and the escrow's readers; anyone else, and a failed read, sees no tag rather than a fault.
+ */
+export async function liveDisputedTicketIds(
+	accessToken: string,
+	ticketIds: readonly string[],
+): Promise<Set<string>> {
+	if (ticketIds.length === 0 || !isFinanceBackendLive()) return new Set();
+	const { data, error } = await getUserClient(accessToken).schema("finance").from("disputes")
+		.select("ticket_id")
+		.in("ticket_id", ticketIds as string[])
+		.in("status", ["open", "awaiting_response", "under_review"]);
+	if (error) return new Set();
+	return new Set(
+		((data ?? []) as { ticket_id: string | null }[]).flatMap((r) =>
+			r.ticket_id ? [r.ticket_id] : []
+		),
+	);
+}
 
 export class DisputeBackendService {
 	/** The case as the caller may see it (a party or an operator); 404 for anyone else. */
@@ -158,6 +187,113 @@ export class DisputeBackendService {
 			const out = data as { dispute_id: string; status: DisputeStatus };
 			return ok({ disputeId: out.dispute_id, status: out.status }, {
 				message: "Reported. The seller's earnings are held while Projective reviews it.",
+			});
+		});
+	}
+
+	/**
+	 * A ticket's dispute state for its reader (PROJECTS EX2): the live case on it, and whether the caller
+	 * may raise one now (`finance.ticket_dispute_state`, which mirrors the door's checks). 404 for anyone
+	 * who is neither side.
+	 */
+	static ticketState(
+		ticketId: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ state: TicketDisputeState }>> {
+		return guarded("ticket-state", async () => {
+			const blocked = gate<{ state: TicketDisputeState }>(actor);
+			if (blocked) return blocked;
+			const { data, error } = await getUserClient(actor.accessToken!).schema("finance").rpc(
+				"ticket_dispute_state",
+				{ p_ticket_id: ticketId },
+			);
+			if (error) return refusal(error, "That ticket doesn't exist.");
+			const raw = data as Record<string, unknown> | null;
+			const state = raw && TicketDisputeStateSchema.safeParse({
+				side: raw.side,
+				disputeId: raw.dispute_id ?? null,
+				status: raw.status ?? null,
+				stageId: raw.stage_id ?? null,
+				canRaise: raw.can_raise === true,
+				window: raw.window ?? null,
+			});
+			if (!state?.success) return fail(404, { message: "That ticket doesn't exist." });
+			return ok({ state: state.data });
+		});
+	}
+
+	/**
+	 * Either side raises a dispute on a ticket's money on one stage (`finance.open_ticket_dispute`): held
+	 * money once the work is submitted, or money still clearing after approval, which it freezes. A money
+	 * write, so the switch comes first.
+	 */
+	static open(
+		input: OpenTicketDisputeInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ disputeId: string; status: DisputeStatus }>> {
+		return guarded("open", async () => {
+			const blocked = refuseUnlessMoneyLive<{ disputeId: string; status: DisputeStatus }>(actor);
+			if (blocked) return blocked;
+			const { data, error } = await getUserClient(actor.accessToken!).schema("finance").rpc(
+				"open_ticket_dispute",
+				{
+					p_ticket_id: input.ticketId,
+					p_stage_id: input.stageId,
+					p_reason: input.reason,
+					p_statement: input.statement,
+					p_file_ids: input.fileIds,
+				},
+			);
+			if (error) return refusal(error, "That ticket doesn't exist.");
+			const out = data as { dispute_id: string; status: DisputeStatus };
+			return ok({ disputeId: out.dispute_id, status: out.status }, {
+				message: "Dispute raised. The other side has 48 hours to respond or make an offer.",
+			});
+		});
+	}
+
+	/** Offer the freelancer's share of a ticket case's money (`finance.propose_dispute_offer`). */
+	static offer(
+		disputeId: string,
+		input: DisputeOfferInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ offerId: string }>> {
+		return guarded("offer", async () => {
+			const blocked = refuseUnlessMoneyLive<{ offerId: string }>(actor);
+			if (blocked) return blocked;
+			const { data, error } = await getUserClient(actor.accessToken!).schema("finance").rpc(
+				"propose_dispute_offer",
+				{
+					p_dispute_id: disputeId,
+					p_payee_share_bp: input.payeeShareBp,
+					p_note: input.note ?? null,
+				},
+			);
+			if (error) return refusal(error);
+			return ok({ offerId: (data as { offer_id: string }).offer_id }, {
+				message: "Offer sent. The other side can accept it to settle the case.",
+			});
+		});
+	}
+
+	/**
+	 * Accept the other side's standing offer (`finance.accept_dispute_offer`): the case settles at once on
+	 * its terms, through the ticket's money doors.
+	 */
+	static accept(
+		offerId: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ status: DisputeStatus }>> {
+		return guarded("accept", async () => {
+			const blocked = refuseUnlessMoneyLive<{ status: DisputeStatus }>(actor);
+			if (blocked) return blocked;
+			const { data, error } = await getUserClient(actor.accessToken!).schema("finance").rpc(
+				"accept_dispute_offer",
+				{ p_offer_id: offerId },
+			);
+			if (error) return refusal(error, "That offer doesn't exist.");
+			return ok({ status: (data as { status: DisputeStatus }).status }, {
+				message: "Settled. The payment moves as agreed.",
 			});
 		});
 	}

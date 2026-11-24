@@ -134,11 +134,108 @@ export const DisputeAgreedTermsSchema = z.object({
 export type DisputeAgreedTerms = z.infer<typeof DisputeAgreedTermsSchema>;
 
 /**
- * What a dispute contests: a no-show claim on a seat's sitting, any other engagement escrow, or a
- * digital product line whose sale is still clearing (`product`, FBP DB21).
+ * What a dispute contests: a no-show claim on a seat's sitting, any other engagement escrow, a
+ * digital product line whose sale is still clearing (`product`, FBP DB21), or a ticket's money on one
+ * stage (`ticket`, PROJECTS EX2).
  */
-export const DisputeKind = z.enum(["no_show", "general", "product"]);
+export const DisputeKind = z.enum(["no_show", "general", "product", "ticket"]);
 export type DisputeKind = z.infer<typeof DisputeKind>;
+
+/** A ticket case's two sides (PROJECTS EX2): the client's (`payer`) and the freelancer's (`payee`). */
+export const TicketDisputeSide = z.enum(["payer", "payee"]);
+export type TicketDisputeSide = z.infer<typeof TicketDisputeSide>;
+
+/**
+ * Where a ticket case's money stands: still `held` in escrow while the work waits for a verdict, or
+ * released and frozen in its 7-day clearing window (`pending`, Decision #548 ruling 1).
+ */
+export const TicketDisputeWindow = z.enum(["held", "pending"]);
+export type TicketDisputeWindow = z.infer<typeof TicketDisputeWindow>;
+
+/** The ticket a ticket case is about, and what an offer's preview needs (`finance.get_dispute.ticket`). */
+export const DisputeTicketSchema = z.object({
+	id: uuid,
+	slug: z.string().min(1).max(40),
+	title: z.string().min(1).max(300),
+	stageId: uuid,
+	stageName: z.string().max(200),
+	claimantSide: TicketDisputeSide,
+	window: TicketDisputeWindow,
+	/** The payer's platform fee rate, so a share's preview mirrors the settlement. */
+	feeBp: basisPoints,
+	/** Each contested escrow's principal, in minor units. */
+	escrowAmounts: z.array(minorUnitsNonNeg).min(1).max(20),
+});
+export type DisputeTicket = z.infer<typeof DisputeTicketSchema>;
+
+/**
+ * One Phase-1 offer on a ticket case (Decision #548 ruling 3): the freelancer's share in basis points
+ * (0 = all back to the client, 10000 = all to the freelancer) and what it would move. The newest offer
+ * on a live case is the standing one, and only the other side may accept it.
+ */
+export const DisputeOfferSchema = z.object({
+	id: uuid,
+	party: z.enum(["claimant", "respondent"]),
+	payeeShareBp: z.number().int().min(0).max(10000),
+	note: z.string().max(1000).nullable(),
+	createdAt: timestamp,
+	acceptedAt: timestamp.nullable(),
+	mine: z.boolean(),
+	standing: z.boolean(),
+	canAccept: z.boolean(),
+	payeeMinor: minorUnitsNonNeg,
+	feeMinor: minorUnitsNonNeg,
+	refundMinor: minorUnitsNonNeg,
+});
+export type DisputeOffer = z.infer<typeof DisputeOfferSchema>;
+
+/** What a share moves: the freelancer's payout, the fee on that share, the rest back to the client. */
+export interface DisputeOfferSplit {
+	payeeMinor: number;
+	feeMinor: number;
+	refundMinor: number;
+}
+
+/**
+ * The TS mirror of `finance.fn_dispute_offer_split` over `fn_fair_exit_split` (00001260, 00001200):
+ * per escrow, the share is `amount × bp / 10000` floored, the fee `share × feeBp / 10000` floored, the
+ * payout the share less its fee, and the rest of the principal goes back. Summed over the escrows.
+ * Pinned by `disputes.test.ts`; the probe `ticket_dispute.sql` pins the SQL side.
+ */
+export function disputeOfferSplit(
+	escrowAmounts: readonly number[],
+	payeeShareBp: number,
+	feeBp: number,
+): DisputeOfferSplit {
+	const bp = Math.min(10000, Math.max(0, Math.trunc(payeeShareBp)));
+	return escrowAmounts.reduce<DisputeOfferSplit>((sum, amount) => {
+		const share = Math.floor((amount * bp) / 10000);
+		const fee = Math.floor((share * feeBp) / 10000);
+		return {
+			payeeMinor: sum.payeeMinor + Math.max(share - fee, 0),
+			feeMinor: sum.feeMinor + fee,
+			refundMinor: sum.refundMinor + Math.max(amount - share, 0),
+		};
+	}, { payeeMinor: 0, feeMinor: 0, refundMinor: 0 });
+}
+
+/** How a share settles: all to the freelancer is a release, none a refund, anything between a split. */
+export function offerOutcome(payeeShareBp: number): "release" | "refund" | "split" {
+	return payeeShareBp >= 10000 ? "release" : payeeShareBp <= 0 ? "refund" : "split";
+}
+
+/** The side a role on a ticket case is, given which side raised it. */
+export function ticketDisputeSideOf(
+	role: "claimant" | "respondent",
+	claimantSide: TicketDisputeSide,
+): TicketDisputeSide {
+	return role === "claimant" ? claimantSide : claimantSide === "payer" ? "payee" : "payer";
+}
+
+/** A side's name on a ticket case. */
+export function ticketDisputeSideLabel(side: TicketDisputeSide): string {
+	return side === "payer" ? "The client" : "The freelancer";
+}
 
 /** A dispute as its reader may see it — `finance.get_dispute`, mapped. */
 export const DisputeCaseSchema = z.object({
@@ -191,8 +288,14 @@ export const DisputeCaseSchema = z.object({
 	messages: z.array(DisputeMessageSchema).max(500),
 	/** The custom quote the engagement was bought on, or `null` (Decision #522). */
 	agreedTerms: DisputeAgreedTermsSchema.nullable().optional(),
+	/** A ticket case's ticket (PROJECTS EX2); null on any other. */
+	ticket: DisputeTicketSchema.nullable().optional(),
+	/** A ticket case's offers, oldest first; empty on any other. */
+	offers: z.array(DisputeOfferSchema).max(200).optional(),
 	canRespond: z.boolean(),
 	canEscalate: z.boolean(),
+	/** The caller may make an offer (a party, on a live ticket case). */
+	canOffer: z.boolean().optional(),
 	canResolve: z.boolean(),
 });
 export type DisputeCase = z.infer<typeof DisputeCaseSchema>;
@@ -244,6 +347,8 @@ export const DisputeQueueItemSchema = z.object({
 	projectTitle: z.string().max(200),
 	/** The purchase a product dispute is about (FBP DB21); null on any other. */
 	purchaseTitle: z.string().max(200).nullable(),
+	/** The ticket a ticket case is about (PROJECTS EX2); null on any other. */
+	ticketTitle: z.string().max(300).nullable().optional(),
 	sitting: z.object({
 		title: z.string().min(1).max(200),
 		startsAt: timestamp,
@@ -320,6 +425,41 @@ export const ReportOrderProblemInputSchema = z.object({
 	fileIds: z.array(uuid).max(10).default([]),
 });
 export type ReportOrderProblemInput = z.infer<typeof ReportOrderProblemInputSchema>;
+
+/**
+ * `POST /api/finance/disputes` — either side raises a dispute on a ticket's money on one stage
+ * (`finance.open_ticket_dispute`, PROJECTS EX2), with up to ten of their own uploaded files.
+ */
+export const OpenTicketDisputeInputSchema = z.object({
+	ticketId: uuid,
+	stageId: uuid,
+	reason: z.string().trim().min(3, "Say what is disputed.").max(200),
+	statement: z.string().trim().min(1, "Give your account of what happened.").max(4000),
+	fileIds: z.array(uuid).max(10).default([]),
+});
+export type OpenTicketDisputeInput = z.infer<typeof OpenTicketDisputeInputSchema>;
+
+/** `POST /api/finance/disputes/:id/offers` — offer the freelancer's share of the money, 0–100 %. */
+export const DisputeOfferInputSchema = z.object({
+	payeeShareBp: z.number().int().min(0).max(10000),
+	note: z.string().trim().max(1000).optional(),
+});
+export type DisputeOfferInput = z.infer<typeof DisputeOfferInputSchema>;
+
+/**
+ * `GET /api/finance/disputes/ticket/:ticketId` — a ticket's dispute state for its reader
+ * (`finance.ticket_dispute_state`): the live case, if any, and whether the caller may raise one now on
+ * the ticket's current stage. 404 for anyone who is neither side.
+ */
+export const TicketDisputeStateSchema = z.object({
+	side: TicketDisputeSide,
+	disputeId: uuid.nullable(),
+	status: DisputeStatus.nullable(),
+	stageId: uuid.nullable(),
+	canRaise: z.boolean(),
+	window: TicketDisputeWindow.nullable(),
+});
+export type TicketDisputeState = z.infer<typeof TicketDisputeStateSchema>;
 
 /** `POST /api/finance/disputes/:id/resolve` — a platform operator's ruling. */
 export const DisputeResolveInputSchema = z.object({

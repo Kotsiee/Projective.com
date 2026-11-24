@@ -66,7 +66,7 @@ the rows its session updates (§1's readiness duty).
 | :------------------------------------------ | :--------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | WP4a, WP4b                                  | F·DB6 merged ✅ (#532)                    | DB6 freezes a payee's pending rows on a dispute. (DB3 landed in `44382c08`: `finance.fn_assert_no_open_dispute` makes the release and Fair Exit doors refuse an open dispute.) While these run they hold `00001200` and `00001240`; F's later serial money prompts on those files go before them or after them, never beside them. |
 | GH1                                         | its turn in the money lane               | It releases through `fn_release_ticket_escrow` (`00001200`) into the pending window (`00001240`). DB3 and the comms worker (`comms-process-queue`) have landed. The lane runs GH1 before DB6, which supersedes the DB6 wait this file once gave it: record that as a resolved contradiction in your decision row.                  |
-| WP4a step 6 (the contest)                   | PROJECTS EX2                             | EX2 designs the dispute subject (`subject_kind`) and widens the dispute doors; the contest reuses them and adds none of its own.                                                                                                                                                                                                   |
+| WP4a step 6 (the contest)                   | PROJECTS EX2 ✅ (#548, #549)             | EX2 built the ticket escrow on the dispute subject (`subject_kind` `ticket_escrow`) and widened the dispute doors; the contest reuses them and adds none of its own.                                                                                                                                                                                                   |
 | WP4b                                        | PROJECTS ST2 ✅ (#553)                    | ST2 wired setup's Remove to `delete_stage`, which deletes a pristine stage and refuses a touched one first; WP4b turns that refusal into the archive.                                                                                                                                                                                                          |
 | O·WP5b, O·WP6                               | WP6                                      | WP6 owns the move matrix end to end (RED L-03): the SQL rule, its TS mirror in `board.ts` with the parity test, and the board's `canMove` flag. O·WP5b (`fn_is_work_status`, `00001110` / `00001140`) and O·WP6 (claimable, the funding rollup, walletCovers) share its files and reuse its rule.                                  |
 | M·search (the load and reliability weights) | WP5b                                     | finance-model §16.7's "Load and reliability" row needs the efficiency terms                                                                                                                                                                                                                                                        |
@@ -403,8 +403,8 @@ Evidence Vault; with no stage deadline, a submission on file earns 50 % and an a
 the owner and the acting reviewer are told (as built); a multi-stage ticket on the ended stage is
 cancelled (as built). Ruling P2 (a) needs a ticket-level door, which this prompt builds and PM-WP4b
 uses. F·DB3 has landed (44382c08: fn_fair_exit_release refuses an open dispute through
-finance.fn_assert_no_open_dispute), and F·DB6 has (#532). WAIT for PROJECTS EX2 before step 6. It runs in
-the money lane (PM_BUILD_PROMPTS §0.2), after EX2.
+finance.fn_assert_no_open_dispute), and F·DB6 has (#532), and so has PROJECTS EX2 (#548, #549), which
+step 6 waited for. It runs in the money lane (PM_BUILD_PROMPTS §0.2).
 
 🧑 DECISION — how a contest holds money (STOP before step 6; PM §0.5 #3). The dispute engine acts
 only on held escrow (PRODUCT_MANAGEMENT §3.8: one row contests ONE held escrow; PRODUCT_SPEC
@@ -499,9 +499,9 @@ STEPS:
      instead of settling. projects.contest_fair_exit(p_window_id, p_statement), by the payee or an
      active member of the payee team inside the window, opens a finance.disputes row through
      PROJECTS EX2's doors, as one more subject_kind. finance.disputes.subject_kind exists (FBP
-     DB21, #543); fn_settle_dispute still settles only a seat escrow or an order line, and
-     fn_dispute_party knows session hosts and a product's seller: EX2 widens both for the ticket
-     escrow, and this step adds no subject design of its own.
+     DB21, #543), and EX2 (#548) widened fn_settle_dispute (finance.fn_settle_ticket_dispute) and
+     fn_dispute_party (finance.fn_ticket_escrow_side) for the ticket escrow; this step adds no
+     subject design of its own.
      projects.fn_settle_fair_exit_windows() settles
      every uncontested window past ends_at (registered in 00005060, every 15 minutes); a contested
      escrow settles only through resolve_dispute. First verify that no ticket trigger

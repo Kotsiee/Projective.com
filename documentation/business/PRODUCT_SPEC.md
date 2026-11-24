@@ -3757,13 +3757,21 @@ While Projective's Stage-based architecture and "Digital Handshakes" minimize fr
 occur. Our resolution process is designed to be data-driven, objective, and prioritized toward
 mutual agreement.
 
-> **As built (Decision #531 (B), ruled 2026-11-23).** A dispute exists only on a session sitting: a
-> no-show claim, or a sitting with no attendance record. §3's attendance audit decides what it can;
-> the rest goes to the other side for 48 hours and then to an operator, who releases, refunds or
-> splits the escrow (`00001260_functions_finance_disputes.sql`). Stage work has no dispute door: it
-> ends through approval or a Fair Exit. **Not built yet:** the Evidence Vault snapshot of §1, the
-> mutual refund offer of §2 Phase 1, an auditor's review of stage work (§2 Phase 2 for stages), and
-> the Dispute Summary PDF of §5 (USER_FLOWS PJ-43).
+> **As built (Decisions #531 (B), #548, #549; PROJECTS EX2, 2026-11-24).** A session's dispute is a
+> no-show claim, or a sitting with no attendance record: §3's attendance audit decides what it can,
+> and the rest goes to the other side for 48 hours and then to an operator, who releases, refunds or
+> splits the escrow (`00001260_functions_finance_disputes.sql`). **Stage work** can be disputed by
+> either side: the client or the freelancer raises a dispute on a ticket's money on one stage, while
+> it is held (the work submitted for review) or within the 7-day pending window after approval, which
+> freezes the earnings still clearing. Phase 1 is the built 48-hour respondent deadline (#548 ruling
+> 4): inside it, and until a ruling, either side offers the freelancer's share as a percentage, and
+> the other side accepting it settles the case at once through Fair Exit's arithmetic; otherwise the
+> respondent's statement, an escalation or the deadline sends it to a Projective auditor (Phase 2),
+> who releases, refunds or splits. While a dispute stands the ticket neither moves nor is claimed, and
+> the board shows it Disputed (#549). A ruling on money already released takes back what the
+> freelancer is no longer due from their clearing earnings and returns it to the client with the
+> platform fee on it. **Not built yet:** the Evidence Vault snapshot of §1 and the Dispute Summary PDF
+> of §5 (PROJECTS EX3; USER_FLOWS PJ-43).
 
 #### 1. The Evidence Vault (Immutable Audit)
 

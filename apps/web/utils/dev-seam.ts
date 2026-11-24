@@ -242,6 +242,14 @@ export type DevCalendarConnection = "auto" | "busy_only" | "publishing" | "expir
  * previewed case opens with sample statements and every write still goes to the database, which refuses
  * a case that does not exist.
  */
+/**
+ * A ticket's dispute entry in the ticket view (PROJECTS EX2): `none` withholds it, `raisable` offers
+ * Raise a dispute on the ticket's current stage whatever the server says. `auto` shows the server's
+ * answer (`finance.ticket_dispute_state`). Client-side only: raising still goes to the database, which
+ * refuses a ticket whose money cannot be disputed now.
+ */
+export type DevTicketDispute = "auto" | "none" | "raisable";
+
 export type DevDisputeState =
 	| "auto"
 	| "none"
@@ -728,6 +736,8 @@ export interface DevSeamState {
 	calendarConnection?: DevCalendarConnection;
 	/** The simulated no-show dispute. Optional like `walletAurora`; absent reads as `auto`. */
 	disputeState?: DevDisputeState;
+	/** The simulated ticket dispute entry (PROJECTS EX2). Optional; absent reads as `auto`. */
+	ticketDispute?: DevTicketDispute;
 	/** The simulated notification inbox. Optional like `walletAurora`; absent reads as `auto`. */
 	notifications?: DevNotifications;
 	/** The simulated channel delivery. Optional like `walletAurora`; absent reads as `auto`. */
@@ -952,6 +962,7 @@ const SESSION_STATES: readonly DevSessionState[] = [
 	"no_room",
 ];
 const WAITLIST_PLACES: readonly DevWaitlistPlace[] = ["auto", "waiting", "invited", "expired"];
+const TICKET_DISPUTES: readonly DevTicketDispute[] = ["auto", "none", "raisable"];
 const DISPUTE_STATES: readonly DevDisputeState[] = [
 	"auto",
 	"none",
@@ -1128,6 +1139,7 @@ export function readDevSeam(): DevSeamState | null {
 		conferencingConnection: coerce(ds.devConferencingConnection, CONFERENCING_CONNECTIONS, "auto"),
 		calendarConnection: coerce(ds.devCalendarConnection, CALENDAR_CONNECTIONS, "auto"),
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
+		ticketDispute: coerce(ds.devTicketDispute, TICKET_DISPUTES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		notificationDelivery: coerce(ds.devNotificationDelivery, NOTIFICATION_DELIVERIES, "auto"),
 		emailDeliverability: coerce(ds.devEmailDeliverability, EMAIL_DELIVERABILITIES, "auto"),

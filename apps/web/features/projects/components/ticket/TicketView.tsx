@@ -49,6 +49,7 @@ import {
 	availableStageView,
 	panelFor,
 	resolveTicketStages,
+	type TicketFrameInput,
 	ticketMetrics,
 	type TicketMode,
 	ticketMoney,
@@ -91,6 +92,7 @@ import {
 import { fundingStageOf, needsStageSelector } from "@projective/types/finance";
 import { TicketBasketPicker } from "@web/features/checkout/components/TicketBasketPicker.tsx";
 import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
+import { TicketDisputeLine } from "./TicketDisputeLine.tsx";
 import { useTicketShortcuts } from "../../hooks/useTicketShortcuts.ts";
 
 /**
@@ -201,6 +203,11 @@ export interface TicketViewProps {
 	onRoute?: (stageId: string, mode: ShippingAssignmentMode) => void;
 	/** The stage whose routing switch is in flight. */
 	routingStageId?: string | null;
+	/**
+	 * Open this ticket's dispute, or the form that raises one, as the next modal frame (PROJECTS EX2).
+	 * Absent where the host renders no dispute frame; the Finances tab then shows no dispute line.
+	 */
+	onDispute?: (dispute: NonNullable<TicketFrameInput["dispute"]>) => void;
 }
 
 export function TicketView(props: TicketViewProps): JSX.Element {
@@ -948,7 +955,27 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 										)
 										: null}
 									{current === "finances"
-										? <TicketFinanceTab card={card} stages={stages} funding={fundingLine()} />
+										? (
+											<TicketFinanceTab
+												card={card}
+												stages={stages}
+												funding={
+													<>
+														{fundingLine()}
+														{props.onDispute && server.slug
+															? (
+																<TicketDisputeLine
+																	ticketId={server.id}
+																	ticketTitle={server.title}
+																	stageId={server.stageId}
+																	onOpen={props.onDispute}
+																/>
+															)
+															: null}
+													</>
+												}
+											/>
+										)
 										: null}
 									{current === "attachments"
 										? (

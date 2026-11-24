@@ -87,15 +87,35 @@ export function emptyCopy(tab: DeskTab): { title: string; description: string } 
 // #endregion
 
 // #region Names and deadlines
+/**
+ * The two sides' names on a case: a session's attendee and provider, or a ticket case's client and
+ * freelancer by which side raised it (PROJECTS EX2; unknown on a queue row, which names the parties).
+ */
+export function deskSides(
+	kind: DisputeKind,
+	claimantSide?: "payer" | "payee" | null,
+): { claimant: string; respondent: string } {
+	if (kind !== "ticket") return { claimant: "Attendee", respondent: "Provider" };
+	if (claimantSide === "payee") return { claimant: "Freelancer", respondent: "Client" };
+	if (claimantSide === "payer") return { claimant: "Client", respondent: "Freelancer" };
+	return { claimant: "Claimant", respondent: "Respondent" };
+}
+
 /** A party as one name: the display name, else the handle, else the side they are on. */
 export function partyLabel(party: DisputeQueueParty, fallback: string): string {
 	return party.name ?? (party.handle ? `@${party.handle}` : fallback);
 }
 
-/** The case's subject line: the sitting it is about, else the engagement, else the purchase (FBP DB21). */
+/**
+ * The case's subject line: the sitting it is about, else the ticket and its engagement (PROJECTS EX2),
+ * else the engagement, else the purchase (FBP DB21).
+ */
 export function caseTitle(
-	item: Pick<DisputeQueueItem, "sitting" | "projectTitle" | "purchaseTitle">,
+	item: Pick<DisputeQueueItem, "sitting" | "projectTitle" | "purchaseTitle" | "ticketTitle">,
 ): string {
+	if (item.ticketTitle) {
+		return item.projectTitle ? `${item.ticketTitle} · ${item.projectTitle}` : item.ticketTitle;
+	}
 	return item.sitting?.title || item.projectTitle || item.purchaseTitle || "Dispute";
 }
 
@@ -189,8 +209,28 @@ const PRODUCT_OUTCOME: Record<"release" | "refund", { label: string; hint: strin
 	},
 };
 
+/** A ticket case's rulings (PROJECTS EX2): its sides are the client and the freelancer. */
+const TICKET_OUTCOME: Record<DisputeOutcome, { label: string; hint: string }> = {
+	release: {
+		label: "Pay the freelancer",
+		hint:
+			"The freelancer is paid the stage's money, less the platform fee; the submission is accepted and the client moves the ticket on.",
+	},
+	refund: {
+		label: "Refund the client",
+		hint:
+			"The whole payment goes back to the client, and the ticket ends. Money already clearing is taken back from the freelancer's earnings.",
+	},
+	split: {
+		label: "Split",
+		hint:
+			"The freelancer keeps their share, less the platform fee on it; the rest goes back to the client.",
+	},
+};
+
 /** An outcome's label for a case of this kind. */
 export function outcomeLabel(kind: DisputeKind, outcome: DisputeOutcome): string {
+	if (kind === "ticket") return TICKET_OUTCOME[outcome].label;
 	return kind === "product" && outcome !== "split"
 		? PRODUCT_OUTCOME[outcome].label
 		: OUTCOME_LABEL[outcome];
@@ -198,6 +238,7 @@ export function outcomeLabel(kind: DisputeKind, outcome: DisputeOutcome): string
 
 /** What an outcome does for a case of this kind, said once under the choice. */
 export function outcomeHint(kind: DisputeKind, outcome: DisputeOutcome): string {
+	if (kind === "ticket") return TICKET_OUTCOME[outcome].hint;
 	return kind === "product" && outcome !== "split"
 		? PRODUCT_OUTCOME[outcome].hint
 		: OUTCOME_HINT[outcome];
@@ -237,15 +278,19 @@ export function confirmSentence(
 	outcome: DisputeOutcome,
 	sharePercent: number | null,
 	amountLabel: string,
+	kind: DisputeKind = "no_show",
 ): string {
+	const payee = kind === "ticket" ? "freelancer" : "provider";
 	switch (outcome) {
 		case "release":
-			return `Pay the provider from the ${amountLabel} held. This is final.`;
+			return `Pay the ${payee} from the ${amountLabel} held. This is final.`;
 		case "refund":
-			return `Refund the ${amountLabel} held to the attendee. This is final.`;
+			return `Refund the ${amountLabel} held to the ${
+				kind === "ticket" ? "client" : "attendee"
+			}. This is final.`;
 		case "split": {
 			const bp = shareToBp(sharePercent) ?? 0;
-			return `Give the provider ${
+			return `Give the ${payee} ${
 				bp / 100
 			} % of the ${amountLabel} held and refund the rest. This is final.`;
 		}

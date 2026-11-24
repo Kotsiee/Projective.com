@@ -835,7 +835,9 @@ names no stage keeps the ticket in the one it has; `p_clear_stage` is the board'
 stage-less backlog (Decision #421). It writes one `ticket_history` row (`stage_moved` when the stage
 changes, else `status_changed`) only when the status or the stage changes: the ticket save path
 re-asserts the lane on every edit, and a move to where the ticket already is records nothing. The five-argument form is dropped by name in the migration and
-every existing call resolves against this one.
+every existing call resolves against this one. A ticket with a live dispute does not move (`PD409`, after the access check;
+`finance.fn_ticket_has_live_dispute`, PROJECTS EX2, Decision #549), and `fn_ticket_immutability_guard` refuses a client
+statement that would change its status or stage the same way.
 
 | Guard               | Rule                                                    |
 | :------------------ | :------------------------------------------------------ |
@@ -908,7 +910,7 @@ probe: `supabase/probes/ticket_move_authority.sql`.
 `00001120` (reworked in `0310`). Self-claim only. Guards, in order: `auth.uid() IS NULL` → `42501`
 ("Sign in to claim a ticket."); `p_assignee_id` ≠ `auth.uid()` → `42501` (pinning someone else is
 `assign_ticket_manual`); unknown ticket → `no_data_found` (`P0002`); not
-`has_project_access(ticket's project)` → `42501`; the ticket's stage not in `open_pull` assignment
+`has_project_access(ticket's project)` → `42501`; a live dispute on the ticket (`finance.fn_ticket_has_live_dispute`, PROJECTS EX2, Decision #549) → `PD409`; the ticket's stage not in `open_pull` assignment
 mode (a ticket with no stage counts as `open_pull`) → `check_violation`, except on a `manual` stage
 for the freelancer the ticket is pinned to (`tickets.pinned_assignee_id`), whose claim is the
 acceptance of the pin (Decision #547); the caller holds no live

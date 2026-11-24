@@ -2,6 +2,7 @@ import {
 	type DisputeAudit,
 	type DisputeCase,
 	type DisputeKind,
+	type DisputeOffer,
 	type DisputeQueue,
 	type DisputeQueueItem,
 	type DisputeQueueParty,
@@ -11,7 +12,10 @@ import {
 	DisputeRoomEntrySchema,
 	type DisputeSettlement,
 	DisputeStatus,
+	type DisputeTicket,
 	formatMoney,
+	TicketDisputeSide,
+	TicketDisputeWindow,
 } from "@projective/types/finance";
 
 /**
@@ -38,10 +42,39 @@ interface RawMessage {
 	files: RawFile[] | null;
 }
 
+/** `finance.get_dispute.ticket` (PROJECTS EX2). */
+interface RawTicket {
+	id: string;
+	slug: string;
+	title: string;
+	stage_id: string;
+	stage_name: string | null;
+	claimant_side: string;
+	window: string;
+	fee_bp: number | null;
+	escrow_amounts: number[] | null;
+}
+
+/** One `finance.get_dispute.offers` entry (PROJECTS EX2). */
+interface RawOffer {
+	id: string;
+	party: string;
+	payee_share_bp: number;
+	note: string | null;
+	created_at: string;
+	accepted_at: string | null;
+	mine: boolean;
+	standing: boolean;
+	can_accept: boolean;
+	payee_minor: number;
+	fee_minor: number;
+	refund_minor: number;
+}
+
 /** `finance.get_dispute`'s answer. */
 export interface RawDispute {
 	id: string;
-	kind: "no_show" | "general" | "product";
+	kind: "no_show" | "general" | "product" | "ticket";
 	status: string;
 	role: string;
 	reason: string;
@@ -68,8 +101,12 @@ export interface RawDispute {
 	messages: RawMessage[] | null;
 	/** The custom quote the engagement was bought on (Decision #522); absent before the key existed. */
 	agreed_terms?: RawAgreedTerms | null;
+	/** A ticket case's ticket and offers (PROJECTS EX2); null or absent on any other. */
+	ticket?: RawTicket | null;
+	offers?: RawOffer[] | null;
 	can_respond: boolean;
 	can_escalate: boolean;
+	can_offer?: boolean;
 	can_resolve: boolean;
 }
 // #endregion
@@ -167,7 +204,48 @@ function settlementOf(raw: Record<string, unknown> | null): DisputeSettlement | 
 // #region The case
 /** The read's kind; anything unrecognised reads as a general dispute. */
 function kindOf(raw: string | null | undefined): DisputeKind {
-	return raw === "no_show" || raw === "product" ? raw : "general";
+	return raw === "no_show" || raw === "product" || raw === "ticket" ? raw : "general";
+}
+
+/** A ticket case's ticket; `null` when absent or unreadable. */
+function ticketOf(raw: RawTicket | null | undefined): DisputeTicket | null {
+	if (!raw) return null;
+	const side = TicketDisputeSide.safeParse(raw.claimant_side);
+	const window = TicketDisputeWindow.safeParse(raw.window);
+	const amounts = (raw.escrow_amounts ?? []).map((a) => Math.max(0, int(a))).slice(0, 20);
+	if (!side.success || !window.success || amounts.length === 0) return null;
+	return {
+		id: raw.id,
+		slug: raw.slug,
+		title: (raw.title ?? "").slice(0, 300) || "Ticket",
+		stageId: raw.stage_id,
+		stageName: (raw.stage_name ?? "").slice(0, 200),
+		claimantSide: side.data,
+		window: window.data,
+		feeBp: Math.min(10000, Math.max(0, int(raw.fee_bp))),
+		escrowAmounts: amounts,
+	};
+}
+
+/** A ticket case's offers, dropping one this build cannot read. */
+function offersOf(raw: RawOffer[] | null | undefined): DisputeOffer[] {
+	return (raw ?? []).slice(0, 200).flatMap((o) => {
+		if (o.party !== "claimant" && o.party !== "respondent") return [];
+		return [{
+			id: o.id,
+			party: o.party,
+			payeeShareBp: Math.min(10000, Math.max(0, int(o.payee_share_bp))),
+			note: o.note?.slice(0, 1000) || null,
+			createdAt: o.created_at,
+			acceptedAt: o.accepted_at,
+			mine: !!o.mine,
+			standing: !!o.standing,
+			canAccept: !!o.can_accept,
+			payeeMinor: Math.max(0, int(o.payee_minor)),
+			feeMinor: Math.max(0, int(o.fee_minor)),
+			refundMinor: Math.max(0, int(o.refund_minor)),
+		}];
+	});
 }
 
 /** Map `finance.get_dispute`; `null` when the row is absent or unrecognisable. */
@@ -228,8 +306,11 @@ export function toDisputeCase(raw: RawDispute | null): DisputeCase | null {
 			}];
 		}),
 		agreedTerms: agreedTermsOf(raw.agreed_terms),
+		ticket: ticketOf(raw.ticket),
+		offers: offersOf(raw.offers),
 		canRespond: !!raw.can_respond,
 		canEscalate: !!raw.can_escalate,
+		canOffer: !!raw.can_offer,
 		canResolve: !!raw.can_resolve,
 	};
 }
@@ -257,6 +338,8 @@ export interface RawQueueItem {
 	project: { slug: string | null; title: string | null } | null;
 	/** A product dispute's purchase (FBP DB21); absent or null on any other. */
 	purchase?: { title: string | null } | null;
+	/** A ticket case's ticket (PROJECTS EX2); absent or null on any other. */
+	ticket?: { title: string | null; slug: string | null } | null;
 	sitting: { title: string; starts_at: string; ends_at: string } | null;
 	claimant: RawParty | null;
 	respondent: RawParty | null;
@@ -306,6 +389,7 @@ export function toDisputeQueueItem(raw: RawQueueItem): DisputeQueueItem | null {
 		projectSlug: raw.project?.slug ?? "",
 		projectTitle: (raw.project?.title ?? "").slice(0, 200),
 		purchaseTitle: raw.purchase?.title?.slice(0, 200) || null,
+		ticketTitle: raw.ticket?.title?.slice(0, 300) || null,
 		sitting: raw.sitting
 			? {
 				title: raw.sitting.title.slice(0, 200) || "Session",

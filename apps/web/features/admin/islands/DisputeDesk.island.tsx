@@ -12,6 +12,7 @@ import { disputeStatusLabel, disputeStatusSeverity } from "@features/projects/co
 import { DisputeDeskService } from "../core/DisputeDeskService.ts";
 import {
 	caseTitle,
+	deskSides,
 	deadlineLine,
 	DESK_TAB_LABEL,
 	DESK_TABS,
@@ -199,8 +200,8 @@ export default function DisputeDesk(props: DisputeDeskProps): JSX.Element {
 											: null}
 										<p class="ddesk-row__title">{caseTitle(item)}</p>
 										<p class="ddesk-row__meta">
-											{partyLabel(item.claimant, "Attendee")} v.{" "}
-											{partyLabel(item.respondent, "Provider")}
+											{partyLabel(item.claimant, deskSides(item.kind).claimant)} v.{" "}
+											{partyLabel(item.respondent, deskSides(item.kind).respondent)}
 											{" · "}
 											<span class="ddesk-row__figure">{item.amountLabel}</span>
 											{" · "}

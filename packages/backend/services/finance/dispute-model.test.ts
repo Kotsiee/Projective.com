@@ -163,6 +163,81 @@ Deno.test("a live case carries the actions the database offers", () => {
 	assertEquals([d.canRespond, d.canEscalate, d.canResolve], [true, true, false]);
 });
 
+Deno.test("a ticket case maps its ticket, its window and its offers (PROJECTS EX2)", () => {
+	const OFFER = "33333333-3333-4333-8333-333333333333";
+	const d = toDisputeCase(raw({
+		kind: "ticket",
+		status: "awaiting_response",
+		role: "respondent",
+		respond_by: "2026-11-26T10:00:00.000Z",
+		resolved_at: null,
+		resolution_notes: null,
+		resolved_by_operator: false,
+		payee_share_bp: null,
+		settlement: null,
+		audit: null,
+		sitting: null,
+		ticket: {
+			id: ID,
+			slug: "tkt-abcdefghjk",
+			title: "Checkout redesign",
+			stage_id: FILE,
+			stage_name: "Design",
+			claimant_side: "payer",
+			window: "pending",
+			fee_bp: 500,
+			escrow_amounts: [2_250_000, -4],
+		},
+		offers: [
+			{
+				id: OFFER,
+				party: "claimant",
+				payee_share_bp: 4000,
+				note: null,
+				created_at: "2026-11-24T10:00:00.000Z",
+				accepted_at: null,
+				mine: false,
+				standing: true,
+				can_accept: true,
+				payee_minor: 855_000,
+				fee_minor: 45_000,
+				refund_minor: 1_350_000,
+			},
+			{ ...({} as Record<string, never>), id: OFFER, party: "operator" } as never,
+		],
+		can_respond: true,
+		can_escalate: true,
+		can_offer: true,
+	}))!;
+	assertEquals(d.kind, "ticket");
+	assertEquals(d.ticket?.claimantSide, "payer");
+	assertEquals(d.ticket?.window, "pending");
+	assertEquals(d.ticket?.escrowAmounts, [2_250_000, 0]);
+	assertEquals(d.offers?.length, 1);
+	assertEquals([d.offers?.[0].standing, d.offers?.[0].canAccept, d.canOffer], [true, true, true]);
+	assertEquals(DisputeCaseSchema.safeParse(d).success, true);
+});
+
+Deno.test("a ticket case with an unreadable side or window carries no ticket, and no offers by default", () => {
+	const d = toDisputeCase(raw({
+		kind: "ticket",
+		ticket: {
+			id: ID,
+			slug: "tkt-abcdefghjk",
+			title: "Checkout redesign",
+			stage_id: FILE,
+			stage_name: null,
+			claimant_side: "arbiter",
+			window: "held",
+			fee_bp: 500,
+			escrow_amounts: [100],
+		},
+	}))!;
+	assertEquals(d.ticket, null);
+	assertEquals(d.offers, []);
+	assertEquals(d.canOffer, false);
+});
+
 Deno.test("who could reach the room maps for an operator, and a party's read has none", () => {
 	assertEquals(toDisputeCase(raw({ room: { guarded: true, unmatched: 2 } }))!.room, {
 		guarded: true,

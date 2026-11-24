@@ -3644,6 +3644,30 @@ case is awaiting a response. A previewed case (the `disputeState` dev axis) is b
 `devDisputeCase` and never fetched. Model: `core/dispute-view.ts` (labels, tones, sentences, UTC
 times, the dev preview). Styles: `styles/session-disputes.css` (`sess-dispute*`, `dispute-dlg*`).
 
+**The ticket dispute (PROJECTS EX2, Decisions #548, #549): `DisputeCaseDialog` generalised,
+`TicketDisputeFrame`, `TicketDisputeLine`, the card's Disputed `Tag`.** `DisputeCaseDialog` also takes
+`disputeId` (a case by id) and `raise` (`{ticketId, stageId, ticketTitle, window}`, with no case named:
+the form that raises one); `summary` and `workspace` are a session's. On a ticket case it names the sides
+"The client" and "The freelancer" (by which side raised it), its facts add the ticket · stage and read
+"Clearing earnings at stake" for money already released, and every new figure is a `MoneyView`. The
+raise form is one lede saying what happens to the money, one meta line on the 48 hours and the offer, an
+`InputText` (what is disputed, 200), the account `Textarea`, the same evidence `FileUpload`, and
+**Raise dispute** (tier 1); after it the same dialog reads the new case — one dialog, never two. An
+**Offers** section lists each offer as text (who · share · when · accepted or replaced, then each side's
+`MoneyView`, `tabular-nums`, and its note), with **Accept and settle** (filled — the region's one
+decision) on the standing offer the other side made; below it, while the viewer may offer, a `Slider`
+(0–100 %, step 5) previews both sides' amounts through `disputeOfferSplit` (the TS mirror of the
+settlement's arithmetic, from the case's `escrowAmounts` and `feeBp`), an optional note `Textarea`
+(1,000) and **Send offer** (secondary outlined). `TicketDisputeFrame` is the board's `dispute` frame on
+the ticket chain (`pushTicketDispute`, `core/ticket-view.ts`): it replaces the ticket as the one modal
+(§B.10.9), keeps `?tkv=`, and goes back to the ticket on close. `TicketDisputeLine` sits in the ticket
+view's Finances tab under the funding line: meta text (`--text-secondary`) and one text `sm` button,
+**Raise a dispute** or **View dispute**, shown only where `finance.ticket_dispute_state` offers one —
+never a box (§3 gate 6). A board card with a live case wears a **Disputed** `Tag` (`danger`, `subtle`,
+rounded — a lifecycle status, derived from the dispute row, §3 gate 7). The `ticketDispute` dev axis
+(Auto · None · Raisable) previews the line. Styles: `styles/ticket-view.css` (`tkv-dispute*`),
+`styles/session-disputes.css` (`dispute-dlg__split`, `dispute-dlg__offer`).
+
 **`SessionForfeits` (`features/projects/components/`, FBP DB21).** The host's forfeits, mounted in
 `ProjectSidebar` under `SessionDisputes` with the same props. Static text and controls under the same
 hairline label ("Forfeited sessions"): one row per `workspace.forfeits` entry, its title, its

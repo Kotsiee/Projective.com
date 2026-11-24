@@ -132,8 +132,10 @@ SELECT r.wallet_id, r.owner_type, r.owner_id, r.currency, r.balance_cents, r.led
 --   held    wallet balances (pots are earmarks inside them, DB5) · every escrow not yet released or
 --           refunded (`held`, `reserved` #430, `disputed`, the unused `funded` default) at its
 --           `amount_cents` · pending releases not yet matured, net of chargeback recoveries
---   fees    released escrows' `platform_fee_cents` · orders' `platform_fee_minor` (the product lines'
---           commission) · FX spreads (`spread_minor`, in the source currency)
+--   fees    released escrows' `platform_fee_cents`, less the fee a ticket dispute gave back on money
+--           already in its pending window (`settlement.fee_returned_minor`, PROJECTS EX2) · orders'
+--           `platform_fee_minor` (the product lines' commission) · FX spreads (`spread_minor`, in the
+--           source currency)
 --   losses  lost chargebacks' `unrecovered_cents` · card refunds' `refund_unrecovered_cents` · the
 --           platform-funded share of a promo code (order lines' `promo_discount_minor` where
 --           `promo_funded_by = 'platform'`, Decision #485 (a)): the seller is credited the line before it
@@ -195,6 +197,12 @@ WITH terms (currency, term, minor) AS (
     SELECT e.currency, 'fees_escrows', e.platform_fee_cents
       FROM finance.escrows e
      WHERE e.status = 'released' AND e.platform_fee_cents > 0
+    UNION ALL
+    -- A ticket dispute ruled on money released into the pending window (PROJECTS EX2) gives the client
+    -- back the fee on the share the freelancer is no longer due: that fee is no longer kept.
+    SELECT d.settlement ->> 'currency', 'fees_escrows', -((d.settlement ->> 'fee_returned_minor')::bigint)
+      FROM finance.disputes d
+     WHERE d.subject_kind = 'ticket_escrow' AND d.settlement ? 'fee_returned_minor'
     UNION ALL
     -- A digital product line refunded in full gives its fee back (FBP DB21): it no longer counts.
     SELECT o.currency, 'fees_orders', o.platform_fee_minor - COALESCE((

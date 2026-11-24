@@ -24,6 +24,7 @@ import {
 	DEV_DISCOVERY_ACTIVITIES,
 	DEV_DISCOVERY_VIEWERS,
 	DEV_DISPUTE_STATES,
+	DEV_TICKET_DISPUTES,
 	DEV_EMAIL_CONFIRMATIONS,
 	DEV_EMBEDDINGS,
 	DEV_FILE_ACCESSES,
@@ -936,6 +937,20 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.disputeState}
 						disabled={!o.enabled}
 						onChange={(disputeState) => patchDevContext({ disputeState })}
+					/>
+				</Field>
+
+				{
+					/* A ticket's dispute entry (PROJECTS EX2): withhold it, or offer Raise a dispute on the
+				    ticket's current stage whatever the server says. Raising still goes to the database. */
+				}
+				<Field label="Ticket dispute" hint="the ticket view's Raise a dispute">
+					<Segment
+						name="Ticket dispute"
+						options={DEV_TICKET_DISPUTES}
+						value={o.ticketDispute}
+						disabled={!o.enabled}
+						onChange={(ticketDispute) => patchDevContext({ ticketDispute })}
 					/>
 				</Field>
 

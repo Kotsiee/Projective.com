@@ -160,6 +160,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"dispute.response_requested",
 	"dispute.escalated",
 	"dispute.review_overdue",
+	"dispute.offer_made",
 	"report.filed",
 	"moderation.action",
 	// marketing (opt-in only — a marketing type can never be mandatory)

@@ -1263,7 +1263,9 @@ is the gate:** `finance.list_disputes_for_review` refuses anyone but `security.i
 **404**, so a non-operator never learns the desk exists and never receives a ruling control. A case
 is **never a URL**: it opens in a dialog over the queue and is read and ruled through the API by id
 (Decision #88 — a uuid does not route, and disputes carry no opaque slug). PRODUCT_SPEC's party-facing
-`/disputes` pages remain unbuilt; a party reads their case in the session sidebar. In development the
+`/disputes` pages remain unbuilt; a party reads their case in the session sidebar, or a ticket's case in
+its ticket view (`?tkv=`), where the case dialog is the ticket chain's `dispute` frame: it replaces the
+ticket and keeps `?tkv=`, so the case itself has no address of its own (PROJECTS EX2). In development the
 Dev Context Switcher's `operatorDesk` axis (`pj.dev.operator`) renders sample cases instead; it grants
 nothing.
 
@@ -1288,6 +1290,10 @@ control; it reaches no `/api/*` route and moves no money. MR3, MR5 and MR8b add 
 | `/api/finance/disputes` | `GET` `?status=open\|awaiting_response\|under_review` (optional) | `DisputeBackendService.queue` → `finance.list_disputes_for_review` (operator only, else 403) |
 | `/api/finance/disputes/[disputeId]` | `GET` | `DisputeBackendService.get` → `finance.get_dispute` (a party or an operator; 404 otherwise) |
 | `/api/finance/disputes/[disputeId]/resolve` | `POST` `{ outcome, payeeShareBp, notes }` | `DisputeBackendService.resolve` → `finance.resolve_dispute` (operator only, else 403) |
+| `/api/finance/disputes` | `POST` `{ ticketId, stageId, reason, statement, fileIds? }` | `DisputeBackendService.open` → `finance.open_ticket_dispute` (PROJECTS EX2): either side raises a dispute on a ticket's stage money, held or still clearing. 404 for anyone else; 409 when nothing there can be disputed now or a case stands. Behind the money switch. |
+| `/api/finance/disputes/ticket/[ticketId]` | `GET` | `DisputeBackendService.ticketState` → `finance.ticket_dispute_state`: the live case on the ticket and whether the caller may raise one now, for the ticket view's dispute line. 404 for anyone who is neither side. |
+| `/api/finance/disputes/[disputeId]/offers` | `POST` `{ payeeShareBp, note? }` | `DisputeBackendService.offer` → `finance.propose_dispute_offer`: a party's offer of the freelancer's share (0–10,000 bp) on a live ticket case. Behind the money switch. |
+| `/api/finance/disputes/[disputeId]/offers/[offerId]/accept` | `POST` | `DisputeBackendService.accept` → `finance.accept_dispute_offer`: the other side accepts the standing offer and the case settles on it. Behind the money switch. |
 | `/api/finance/tax-report` | `GET` `?year=YYYY` | The operator's seller tax-reporting export, `text/csv` (LEGAL LG6, Decision #527): `TaxReportingService.sellerTaxReport` → `finance.read_seller_tax_report`. **404** to anyone but an operator (no session, a member, the seller themself, whatever `year` they send: the door refuses before it reads the year); a year outside 2000–9998 is 400 for an operator. No page links it yet |
 | `/api/finance/tax-documents` | `GET` · `POST` `{ fileId }` | The seller's tax documents (LEGAL LG6): `GET` → `finance.list_tax_documents` (their certificates and the clients they may show one to); `POST` → `finance.mark_tax_document` (mark a file they uploaded as their residence certificate, private; 404 not theirs, 400 still uploading) |
 | `/api/finance/tax-documents/[fileId]/share` | `POST` `{ projectId \| null }` | `finance.share_tax_document`: show the certificate to that project's client and nobody else, replacing any earlier share; `null` makes it private again (404 not their document, 400 a project they cannot show it to) |

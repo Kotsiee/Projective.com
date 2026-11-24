@@ -1443,13 +1443,20 @@ CREATE TABLE finance.buyer_details (
 CREATE TABLE finance.disputes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     -- What is contested (FBP DB21; PROJECTS EX2 adopts it): a session seat's escrow, a ticket's escrow
-    -- (EX2's doors; none opens one yet) or a digital product order line. ck_disputes_subject binds it.
+    -- (finance.open_ticket_dispute, Decision #548) or a digital product order line. ck_disputes_subject
+    -- binds it.
     subject_kind text NOT NULL DEFAULT 'session_seat'
         CHECK (subject_kind IN ('session_seat', 'ticket_escrow', 'order_line')),
     -- RESTRICT, not CASCADE: a dispute is a record that outlives anything it is about. NULL only on an
     -- order-line dispute, whose money is the seller's clearing row (pending_releases.hold_dispute_id).
     escrow_id uuid NULL REFERENCES finance.escrows (id) ON DELETE RESTRICT,
     order_line_id uuid NULL REFERENCES finance.order_lines (id) ON DELETE RESTRICT,
+    -- A ticket escrow dispute's ticket and the stage whose money it contests, and the side that raised it
+    -- (`payer` the client, `payee` the freelancer), kept so the case's sides outlive a membership change
+    -- (PROJECTS EX2). NULL on any other dispute.
+    ticket_id uuid NULL REFERENCES projects.tickets (id) ON DELETE RESTRICT,
+    stage_id uuid NULL REFERENCES projects.project_stages (id) ON DELETE RESTRICT,
+    claimant_side text NULL CHECK (claimant_side IN ('payer', 'payee')),
     -- The sitting a no-show claim is about — what the attendance audit reads. NULL on any other dispute.
     session_event_id uuid NULL REFERENCES projects.session_events (id) ON DELETE RESTRICT,
     opened_by_profile uuid NOT NULL,
@@ -1486,6 +1493,9 @@ CREATE TABLE finance.disputes (
     CONSTRAINT ck_disputes_subject CHECK (
         CASE WHEN subject_kind = 'order_line' THEN order_line_id IS NOT NULL AND escrow_id IS NULL
              ELSE escrow_id IS NOT NULL AND order_line_id IS NULL END
+        AND (subject_kind = 'ticket_escrow')
+            = (ticket_id IS NOT NULL AND stage_id IS NOT NULL AND claimant_side IS NOT NULL)
+        AND num_nonnulls (ticket_id, stage_id, claimant_side) IN (0, 3)
     ),
     -- A product dispute is upheld (refund) or dismissed (release), never split.
     CONSTRAINT ck_disputes_order_line_split CHECK (subject_kind <> 'order_line' OR status <> 'resolved_split')
@@ -1512,6 +1522,27 @@ CREATE TABLE finance.dispute_evidence (
     submitted_by uuid NOT NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_dispute_evidence_message_file UNIQUE (message_id, file_id)
+);
+
+-- Phase 1's offers on a ticket escrow dispute (PRODUCT_SPEC §Dispute Resolution 2; PROJECTS EX2,
+-- Decision #548 ruling 3): either side proposes the freelancer's share of the contested money in basis
+-- points (0 is all of it back to the client, 10000 all of it to the freelancer). The newest offer on a
+-- live case is the one standing; the other side accepting it settles the case on its terms
+-- (finance.accept_dispute_offer). Written only by the definers in 00001260; append-only but for the
+-- one acceptance stamp, and never deleted (finance.fn_dispute_records_immutable, 00001830).
+CREATE TABLE finance.dispute_offers (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    dispute_id uuid NOT NULL REFERENCES finance.disputes (id) ON DELETE RESTRICT,
+    proposed_by uuid NOT NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
+    party text NOT NULL CHECK (party IN ('claimant', 'respondent')),
+    payee_share_bp integer NOT NULL CHECK (payee_share_bp BETWEEN 0 AND 10000),
+    note text NULL CHECK (note IS NULL OR length(note) BETWEEN 1 AND 1000),
+    -- clock_timestamp(), not now(): two offers one transaction writes must keep their order.
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    accepted_at timestamptz NULL,
+    accepted_by uuid NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
+    CONSTRAINT ck_dispute_offers_accepted CHECK ((accepted_at IS NULL) = (accepted_by IS NULL)),
+    CONSTRAINT ck_dispute_offers_other_side CHECK (accepted_by IS NULL OR accepted_by <> proposed_by)
 );
 -- #endregion
 

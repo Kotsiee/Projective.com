@@ -196,6 +196,17 @@
 	justify-content: flex-end;
 	gap: var(--space-2);
 }
+
+/* A ticket case's offers (PROJECTS EX2): what each side would get, figures aligned. */
+.dispute-dlg__split {
+	font-variant-numeric: tabular-nums;
+}
+
+.dispute-dlg__offer {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
 /* #endregion */
 
 .dispute-dlg__terms {

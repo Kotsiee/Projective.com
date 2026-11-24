@@ -65,6 +65,7 @@ import {
 	ticketBillingFacts,
 	type TicketBillingFacts,
 } from "../finance/live-payments.ts";
+import { liveDisputedTicketIds } from "../finance/DisputeBackendService.ts";
 
 /**
  * live-board — the RLS-scoped Postgres read path for `ProjectBackendService.board`.
@@ -1314,6 +1315,8 @@ interface CardContext {
 	personal: boolean;
 	/** The acting user, whom a pin may name ({@link BoardCard.pinnedToViewer}). */
 	viewerId: string;
+	/** Tickets with a live dispute the viewer can see (PROJECTS EX2) — the Disputed tag. */
+	disputed?: ReadonlySet<string>;
 }
 
 /**
@@ -1419,6 +1422,7 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 		currency: ctx.currency,
 		activity: NO_ACTIVITY_SIGNAL,
 		frozen: isFrozen(ticket, ctx.nowMs),
+		disputed: ctx.disputed?.has(ticket.id) ?? false,
 		commentCount: NO_COMMENT_COUNT,
 		attachmentCount: intAtLeastZero(ticket.attachment_count) ?? 0,
 		checklistDone: tasks.filter((t) => t.done).length,
@@ -1813,13 +1817,15 @@ export async function fetchBoardPage(
 	const ticketIds = ticketRows.map((t) => t.id);
 
 	// Wave 3 — everything keyed on the ids wave 2 returned.
-	const [historyRows, participantRows, assignmentRows, lockPayments, billing] = await Promise.all([
-		fetchHistoryRows(db, ticketIds),
-		fetchParticipants(db, summary.id),
-		fetchAssignments(db, stageIds),
-		latestLockPayments(actor.accessToken, stageIds),
-		ticketBillingFacts(actor.accessToken, ticketIds, clientBusinessId, new Date(nowMs)),
-	]);
+	const [historyRows, participantRows, assignmentRows, lockPayments, billing, disputed] =
+		await Promise.all([
+			fetchHistoryRows(db, ticketIds),
+			fetchParticipants(db, summary.id),
+			fetchAssignments(db, stageIds),
+			latestLockPayments(actor.accessToken, stageIds),
+			ticketBillingFacts(actor.accessToken, ticketIds, clientBusinessId, new Date(nowMs)),
+			liveDisputedTicketIds(actor.accessToken, ticketIds),
+		]);
 
 	// Wave 4 — one party lookup for every person named anywhere on the page.
 	//
@@ -1893,6 +1899,7 @@ export async function fetchBoardPage(
 		billing,
 		personal,
 		viewerId: actor.userId,
+		disputed,
 	};
 
 	const allCards = ticketRows.map((ticket) => toCard(ticket, cardContext));

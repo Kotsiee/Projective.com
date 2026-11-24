@@ -2639,6 +2639,25 @@ REVOKE ALL ON FUNCTION finance.open_order_line_dispute (uuid, text, text, uuid[]
 GRANT EXECUTE ON FUNCTION finance.open_order_line_dispute (uuid, text, text, uuid[]) TO authenticated;
 REVOKE ALL ON FUNCTION finance.order_line_disputes (uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.order_line_disputes (uuid[]) TO authenticated;
+-- The ticket dispute (PROJECTS EX2, Decisions #548, #549): either side raises one, offers, accepts.
+REVOKE ALL ON FUNCTION finance.open_ticket_dispute (uuid, uuid, text, text, uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.open_ticket_dispute (uuid, uuid, text, text, uuid[]) TO authenticated;
+REVOKE ALL ON FUNCTION finance.propose_dispute_offer (uuid, integer, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.propose_dispute_offer (uuid, integer, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.accept_dispute_offer (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.accept_dispute_offer (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.ticket_dispute_state (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.ticket_dispute_state (uuid) TO authenticated;
+-- Its internals: the sides, the contested escrows, an offer's arithmetic and the settlement.
+REVOKE ALL ON FUNCTION finance.fn_ticket_escrow_side (uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_ticket_dispute_escrows (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_dispute_offer_split (uuid[], integer) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_settle_ticket_dispute (uuid, text, integer, uuid, text, uuid) FROM PUBLIC, anon, authenticated, service_role;
+-- Whether a ticket is in a live dispute: projects.fn_ticket_immutability_guard asks it as the client's
+-- own statement runs (an invoker trigger), and the board reads it for its Disputed tag. A yes or no on
+-- a ticket id, nothing more.
+REVOKE ALL ON FUNCTION finance.fn_ticket_has_live_dispute (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.fn_ticket_has_live_dispute (uuid) TO authenticated;
 -- The operator queue: signed-in callers reach it, and it refuses anyone but security.is_admin() (42501).
 REVOKE ALL ON FUNCTION finance.list_disputes_for_review (text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.list_disputes_for_review (text) TO authenticated;

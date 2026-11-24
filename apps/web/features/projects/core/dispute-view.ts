@@ -7,6 +7,8 @@ import {
 	type DisputeSummary,
 	formatMoney,
 	isDisputeLive,
+	ticketDisputeSideLabel,
+	ticketDisputeSideOf,
 } from "@projective/types/finance";
 import type { SessionSitting, SessionWorkspace } from "@projective/types/projects";
 
@@ -71,14 +73,18 @@ const ROOM_ACTION: Record<DisputeRoomEntry["action"], string> = {
 
 /** What the room's log shows, in one sentence. The audit's own figures, recomputed by nobody here. */
 export function disputeAuditLine(audit: DisputeAudit): string {
-	if (!audit.tracked) return "The room reported no attendance, so the logs could not settle the claim.";
+	if (!audit.tracked) {
+		return "The room reported no attendance, so the logs could not settle the claim.";
+	}
 	const minutes = (seconds: number) => `${Math.round(seconds / 60)} min`;
 	const reconnects = audit.reconnects === 1
 		? ", 1 reconnect"
 		: audit.reconnects
 		? `, ${audit.reconnects} reconnects`
 		: "";
-	return `Time in the room: provider ${minutes(audit.hostSeconds)} (${audit.hostPresencePct}%), attendee ${
+	return `Time in the room: provider ${
+		minutes(audit.hostSeconds)
+	} (${audit.hostPresencePct}%), attendee ${
 		minutes(audit.claimantSeconds)
 	} (${audit.claimantPresencePct}%)${reconnects}. A claim is dismissed only when both were in the room for more than ${audit.thresholdPct}% of the session.`;
 }
@@ -136,6 +142,41 @@ export function disputeSentence(
 				: "The claim was upheld. Your payment was refunded.";
 		case "resolved_split":
 			return "The case was settled with the payment divided between you.";
+	}
+}
+
+/**
+ * A ticket case's sentence under the pill (PROJECTS EX2), from the reader's side: the client's or the
+ * freelancer's, by which side raised it. An operator reads it as the client's.
+ */
+export function ticketDisputeSentence(
+	d: Pick<DisputeCase, "status" | "respondBy" | "role" | "ticket">,
+): string {
+	const by = disputeTimeLabel(d.respondBy);
+	const claimantSide = d.ticket?.claimantSide ?? "payer";
+	const mine = d.role === "operator" ? "payer" : ticketDisputeSideOf(d.role, claimantSide);
+	const other = ticketDisputeSideLabel(mine === "payer" ? "payee" : "payer");
+	const held = d.ticket?.window === "pending"
+		? "The payment's clearing earnings stay held."
+		: "The payment stays held.";
+	switch (d.status) {
+		case "open":
+		case "awaiting_response":
+			return d.role === "respondent"
+				? `${other} raised a dispute. Respond with your account, or make an offer${
+					by ? `, by ${by}` : ""
+				}, or it goes to a Projective auditor. ${held}`
+				: `${other} has been asked to respond${
+					by ? ` by ${by}` : ""
+				}. Either of you can make an offer meanwhile. ${held}`;
+		case "under_review":
+			return `A Projective auditor is reviewing the evidence. An accepted offer still settles it first. ${held}`;
+		case "resolved_release":
+			return "The case is closed: the payment goes to the freelancer.";
+		case "resolved_refund":
+			return "The case is closed: the payment went back to the client.";
+		case "resolved_split":
+			return "The case is settled: the payment was divided between you.";
 	}
 }
 

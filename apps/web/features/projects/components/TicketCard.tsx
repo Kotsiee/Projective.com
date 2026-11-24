@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { Tag } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import { type BoardCard, TICKET_INTENSITY_LABEL } from "../types/projects-types.ts";
 import { asksToFund, type FundingSide } from "../core/funding-ui.ts";
@@ -158,6 +159,13 @@ export function TicketCard(
 								>
 									Frozen
 								</span>
+							</Tooltip>
+						)
+						: null}
+					{card.disputed
+						? (
+							<Tooltip content="Disputed — the ticket waits until its dispute settles">
+								<Tag value="Disputed" severity="danger" variant="subtle" rounded />
 							</Tooltip>
 						)
 						: null}

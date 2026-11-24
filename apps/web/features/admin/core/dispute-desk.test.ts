@@ -8,9 +8,12 @@ import {
 	confirmSentence,
 	deadlineLine,
 	DESK_TABS,
+	deskSides,
 	evidenceLine,
 	isPreviewCase,
 	itemsFor,
+	outcomeLabel,
+	outcomesFor,
 	partyLabel,
 	previewCase,
 	previewQueue,
@@ -122,4 +125,18 @@ Deno.test("names, deadlines and evidence read as one meta line", () => {
 	assertEquals(evidenceLine({ statementCount: 0, evidenceCount: 0 }), "No statements yet");
 	assertEquals(evidenceLine({ statementCount: 1, evidenceCount: 0 }), "1 statement");
 	assertEquals(evidenceLine({ statementCount: 3, evidenceCount: 2 }), "3 statements · 2 files");
+});
+
+Deno.test("a ticket case names the client and the freelancer, by which side raised it (PROJECTS EX2)", () => {
+	assertEquals(deskSides("ticket", "payer"), { claimant: "Client", respondent: "Freelancer" });
+	assertEquals(deskSides("ticket", "payee"), { claimant: "Freelancer", respondent: "Client" });
+	assertEquals(deskSides("ticket"), { claimant: "Claimant", respondent: "Respondent" });
+	assertEquals(deskSides("no_show"), { claimant: "Attendee", respondent: "Provider" });
+	assertEquals(outcomeLabel("ticket", "release"), "Pay the freelancer");
+	assertEquals(outcomeLabel("ticket", "refund"), "Refund the client");
+	assertEquals(outcomesFor("ticket"), ["release", "refund", "split"]);
+	assertEquals(
+		confirmSentence("refund", null, "£100.00", "ticket"),
+		"Refund the £100.00 held to the client. This is final.",
+	);
 });

@@ -75,6 +75,7 @@ import {
 	type DevGroupSchedule,
 	type DevDiscoveryViewer,
 	type DevDisputeState,
+	type DevTicketDispute,
 	type DevEmailConfirmation,
 	type DevEmbeddings,
 	type DevFundingState,
@@ -479,6 +480,8 @@ export interface DevOverrides {
 	 * operator to reach, so the session sidebar's dispute section previews them here.
 	 */
 	disputeState: DevDisputeState;
+	/** The ticket view's dispute entry (PROJECTS EX2): `auto` · `none` · `raisable`. */
+	ticketDispute: DevTicketDispute;
 	/**
 	 * The header drawer's and `/notifications`' inbox (DESIGN_SYSTEM §D.9): the real one, none at all,
 	 * many unread across every category, or a realtime burst of arrivals. Its own axis because an
@@ -731,6 +734,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	conferencingConnection: "auto",
 	calendarConnection: "auto",
 	disputeState: "auto",
+	ticketDispute: "auto",
 	notifications: "auto",
 	notificationDelivery: "auto",
 	emailDeliverability: "auto",
@@ -1258,6 +1262,13 @@ export const DEV_WAITLIST_PLACES: ReadonlyArray<DevOption<DevWaitlistPlace>> = [
 	{ value: "expired", label: "Expired" },
 ];
 
+/** Ticket dispute entry options (PROJECTS EX2). */
+export const DEV_TICKET_DISPUTES: ReadonlyArray<DevOption<DevTicketDispute>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "none", label: "None" },
+	{ value: "raisable", label: "Raisable" },
+];
+
 /** No-show dispute options (Decision #212). */
 export const DEV_DISPUTE_STATES: ReadonlyArray<DevOption<DevDisputeState>> = [
 	{ value: "auto", label: "Auto" },
@@ -1539,6 +1550,8 @@ function reflect(next: DevOverrides): void {
 		} else delete root.dataset.devCalendarConnection;
 		if (next.disputeState !== "auto") root.dataset.devDisputeState = next.disputeState;
 		else delete root.dataset.devDisputeState;
+		if (next.ticketDispute !== "auto") root.dataset.devTicketDispute = next.ticketDispute;
+		else delete root.dataset.devTicketDispute;
 		if (next.notifications !== "auto") root.dataset.devNotifications = next.notifications;
 		else delete root.dataset.devNotifications;
 		if (next.notificationDelivery !== "auto") {
@@ -1659,6 +1672,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devConferencingConnection;
 		delete root.dataset.devCalendarConnection;
 		delete root.dataset.devDisputeState;
+		delete root.dataset.devTicketDispute;
 		delete root.dataset.devNotifications;
 		delete root.dataset.devNotificationDelivery;
 		delete root.dataset.devEmailDeliverability;

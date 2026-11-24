@@ -98,6 +98,11 @@ Why this order:
   conserved money.
 - **Disputes are one chain:** DB6 ✅ (the freeze, ruling M3, #532) → DB21 ✅ (product disputes reuse it,
   #543) → MR3 (card refunds reuse DB21's refund writer, DB19's line states and `/admin/ledger`).
+  PROJECTS EX2 ✅ (#548, #549) took its money-lane turn on DB21's one subject design: `subject_kind`
+  `ticket_escrow`, `hold_dispute_id` for a ticket release's clearing rows, `fn_settle_dispute`'s
+  routing, and a `fees_escrows` netting row in the conservation identity for the fee a pending-window
+  ruling gives back. MR3's card refunds meet it on `finance.pending_releases`: a row frozen by a ticket
+  dispute is `on_hold` and no card dispute freezes it.
 - **Currency follows ruling M5:** the CHECKs and the exponent list (DB8, done: #538), settlement and
   entity currency (DB9), fresh rates (DB17), then the own-wallet conversion, if it is wanted (DB18).
 - **External reconciliation (MR5) runs after MR3:** it reuses DB16's terms and DB9's (landed)

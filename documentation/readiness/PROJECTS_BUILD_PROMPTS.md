@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 21 open, 0 partly done, 5 done (§0 ledger).
-> Runnable now: ST4, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 20 open, 0 partly done, 6 done (§0 ledger).
+> Runnable now: ST4, TK1, EX3, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -59,6 +59,7 @@ A prompt that lands gets a row here.
 | ST2 | The setup form's Remove reaches a door: `projects.delete_stage` refuses a stage with history `55000` before anything moves and deletes an untouched one; `projects.stage_removability` gives the setup DTO its `removable` flag; `DELETE /api/projects/:id/stages/:stageId`; a touched stage's Remove opens `StageLockedDialog`; the stub PATCH keeps an omitted stage as live does; probe `stage_removal.sql` | `60a0d652` (#553) | `4fed9f01` |
 | ST6 | A write by one party to a shared project shows on the other's next read, in every isolate: each cached project read is keyed by the project's KV version (`services/projects/freshness.ts`), bumped by every write path (#555 lists them); a KV-less isolate keeps its own bumps; a board reads around the cache while the claim sweep is due; #427 (a) confirmed and written into PRODUCT_SPEC | `08f27344` (#555) | `70f78452` |
 | ST3 | Manual assignment: `set_stage_assignment_mode` granted (planned modes refused `0A000`); `tickets.pinned_assignee_id`; `assign_ticket_manual` pins on a Manual stage and binds nothing; `decline_ticket_pin`; `claim_ticket` takes the pinned freelancer's acceptance; the stage inspector's Routing control, Assign to… and its picker, Accept / Decline; Helia's Discovery stage seeded Manual with a pin; probe `seat_lock_and_capacity.sql` region 4 | ST3_COMMIT (#547) | `9d55866d` |
+| EX2 | Either side disputes a ticket's stage money, held or still clearing: `finance.disputes` `ticket_id` · `stage_id` · `claimant_side` (`ticket_escrow`), `finance.dispute_offers`; `open_ticket_dispute`, `propose_dispute_offer`, `accept_dispute_offer`, `ticket_dispute_state`, `fn_settle_ticket_dispute` (held: release, Fair Exit split or refund; pending: the frozen rows recovered in proportion, the fee given back), the `PD409` move and claim guard; `/api/finance/disputes` POST, `…/ticket/[ticketId]`, `…/offers`, `…/accept`; `DisputeCaseDialog` generalised, the ticket chain's `dispute` frame, `TicketDisputeLine`, the card's Disputed tag, the `ticketDispute` dev axis; probe `ticket_dispute.sql` | EX2_COMMIT (#548, #549) | `1929b313` |
 
 ### 0.1 Row → work order
 
@@ -115,7 +116,7 @@ PJ-14 and PJ-74 are ⏸ (§0.4).
 
 | Row   | Now · Crit · Gate | Work order               | The row flips when                                                                                        |
 | :---- | :---------------- | :----------------------- | :-------------------------------------------------------------------------------------------------------- |
-| PJ-43 | ❌ · Crit · UAT   | **EX2** → **EX3**        | 🟡 after EX2 (raise, respond, offer and rule on ticket escrow); ✅ after EX3 (the vault snapshot and PDF) |
+| PJ-43 | 🟡 · Crit · UAT   | EX2 ✅ (#548) → **EX3**   | ✅ after EX3 (the vault snapshot and PDF)                                                                |
 | PJ-44 | 🟡 · High · UAT   | **LP1** (you)            | The three audit outcomes are recorded on live Zoom, Teams and Meet                                        |
 | PJ-46 | ❌ · Normal · UAT | PM-WP4a step 6 → **EX4** | 🟡 after WP4a's Fair Exit contest; ✅ after EX4 (the workload-verdict appeal)                             |
 
@@ -176,7 +177,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Hiring & members               |   83% | WP4b 92% → NO1 + CD2 + counsel 100%                                                                               |
 | Tickets & delivery             |   59% | WP8 62% → TK1 + TK2 66% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100%                    |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
-| Disputes                       |   38% | EX2 56% → WP4a 63% → EX3 81% → EX4 88% → LP1 100%                                                                 |
+| Disputes                       |   56% | WP4a 63% → EX3 81% → EX4 88% → LP1 100% (EX2 ✅, #548)                                                            |
 | Messaging                      |   57% | MS5 59% → CH1 + P2d 65% → CH2 67% → CH3 70% → LK1 74% → CH4 + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → NO2 + CD2 94% → NT5 + NO3 100%                                                                          |
 | Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
@@ -186,7 +187,7 @@ after PM-WP1. The paths follow §0.2's order:
 26, 27, 29, 30, 47, 49 and 57. Their work orders, in order: TK1 + TK2, D7a + P6, S3, WP9, WP6, NO1
 (+ CD2), and the chat chain (MS3, MS5, CH1, P2d, SN3, the T&S P-chain).
 
-**What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX2 → EX3) and PJ-60 (NO2 + CD2).
+**What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX3; EX2 ✅) and PJ-60 (NO2 + CD2).
 Those are the Critical · UAT rows. Below them come the High · UAT rows: ST4, WP5a, EX1,
 CH2, FL3, FL4, CFG2 and LP1.
 
@@ -211,8 +212,7 @@ lane's coordinator before taking one.
 
 1. **PM-GH1** (PJ-31). The lane ran DB6 first (#532).
 2. FBP **DB6** ✅ (#532): WP4a, WP4b and EX2 no longer wait for it.
-3. **EX2** (PJ-43). FBP DB21 landed first with the dispute subject (`subject_kind`, #543); EX2 adds
-   the ticket escrow to it, and PM-WP4a step 6 reuses it.
+3. **EX2** ✅ (#548, #549): the ticket escrow on DB21's dispute subject; PM-WP4a step 6 reuses it.
 4. **PM-WP4a** (PJ-39, PJ-46's half), then **PM-WP4b** (PJ-09, PJ-21, PJ-34). They run right after
    EX2, never beside DB21 or MR3, which touch `00001200`.
 5. **EX3** (PJ-43 → ✅). It edits `00000017`, so it belongs to this lane. It may run after any
@@ -270,14 +270,14 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001110` / `00001120` (ticket guards and doors)        | TK1; PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
 | `00001140` (claims, capacity, workload)                  | ST4; PM WP5a, D7b                                            | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
-| `00000017` + `00001260` (disputes)                       | EX2, EX3; PM-WP4a step 6                                     | FBP DB21; MR3                                                     |
+| `00000017` + `00001260` (disputes)                       | EX3; PM-WP4a step 6                                          | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3, CH4                                           | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
-| `00005010` (notification catalogue)                      | EX1, EX2, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1             | COMMS MS4                                                         |
+| `00005010` (notification catalogue)                      | EX1, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1                  | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
-| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | ST4, TK1, EX1, EX2; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1 | COMMS NT5; T&S R3                                                 |
+| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | ST4, TK1, EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1     | COMMS NT5; T&S R3                                                 |
 | `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3, CH4                                                | COMMS MS3, MS5; T&S R2                                            |
 | `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                         | O·WP6                                                             |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`               | every prompt                                                 | every readiness track: edit your rows and the computed lines only |
@@ -298,9 +298,9 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3 ✅         | **Ruled #547:** B, the pin binds nothing until the freelancer accepts it by claiming (or declines); pins on Manual stages only |
 | 15 | Where the workload gauge sits                                                                                                                | ST4           | Beside Claim (the ticket view, stage Tasks) and in the freelancer's Projects header; on `/home` once PRD-A1 lands                                                                                                        |
 | 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1 (#546)    | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
-| 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2 (#548)    | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
-| 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2 (#548–549)| Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
-| 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3           | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
+| 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2 ✅ (#548)  | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
+| 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2 ✅ (#549)  | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
+| 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3 (#548)    | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
 | 20 | Which workload verdict can be appealed                                                                                                       | EX4 (#552)    | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
 | 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1           | Edit for 15 minutes; delete for everyone at any time while the room is live; originals kept for evidence; nothing in an archived or disputed room changes                                                                |
 | 22 | Who gets team and business rooms, and when                                                                                                   | CH2           | Eagerly: at the team's seat going live, and at the business's first project access                                                                                                                                       |
@@ -733,111 +733,12 @@ documentation/database/projects/*; Zod; ROUTING.md; the decision row.
 §1.2 rows: **PJ-40** ❌ → ✅ (its "only draft|active|on_hold" text corrected). Tell the reviews
 owner that MK-32's live path no longer needs the seed.
 
-### EX2 — Either side raises a stage or ticket dispute, and an offer can settle it
-
-Narrows PJ-43 (❌ → 🟡); EX3 closes it.
-
-**Status (2026-11-24, #548, #549):** stopped at the 🧑 DECISION (questions 1–5, both NEW
-contradictions logged). Step 1's red probe `ticket_dispute.sql` is written and stays out of `main`
-while it fails. Premises that no longer hold: ruling 5's guard lives in `00001110` and `00001120`,
-which are Queue S's, not EX2's; the ticket primitives settle every held escrow of a ticket, not one;
-and §3.1's "work suspended" is the build tracker's state (#549). Steps 2–7 wait for the rulings.
-
-```text
-PROMPT EX2: The client or the freelancer can raise a dispute on a ticket's held stage escrow,
-the other side responds, either can make an offer, and a ruling or an accepted offer moves the
-money through its doors
-
-ROLE: Full-stack engineer (money). Queue M (FBP DB6 landed, #532): 00000017, 00001260, 00005010,
-00002510 (by name). It calls the 00001200 primitives and never edits them.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - Only session disputes exist. The doors that open one: claim_session_no_show (00001155:2155,
-    insert :2202, grant 00002510:2427-2428) and the session sweep's own claim (00001155:2798).
-    DisputeBackendService has get, respond, escalate, queue and resolve (:77-174), and no open.
-    DisputeCaseDialog is a no-show panel ("The attendee", "The provider"), mounted only through
-    SessionDisputes (ProjectSidebar.island.tsx:621).
-  - The schema: finance.disputes (00000017:303-340): escrow_id NOT NULL (:306), session_event_id
-    (:308), audit jsonb (:313), payee_share_bp, settlement; no subject or kind column.
-    dispute_messages (:343-350) and dispute_evidence (:355-363). The status enum is at
-    00000003:35-37; uq_disputes_escrow_live at 00004005:55; RLS at 00002013:264-277; evidence
-    reads at 00001160:313-320; immutability through 00001830 and 00001260:934.
-  - The engine (00001260): fn_dispute_context (:58) already joins escrow → stage → project.
-    fn_dispute_party (:89-113) knows only a session host. fn_settle_dispute (:292) refuses any
-    escrow that is not a session seat (:332-334), and its notice copy is no-show copy
-    (:385-392). fn_advance_dispute (:412) sends a dispute with no sitting straight to
-    awaiting_response with a 48 h deadline. The other doors: respond_to_dispute (:471),
-    escalate_dispute (:548), get_dispute (:619; the kind is derived at :651, :749),
-    list_disputes_for_review (:710), resolve_dispute (:792), sweep_disputes (:830). Grants at
-    00002510:2471-2499.
-  - The ticket money primitives: fn_release_ticket_escrow (00001200:1341), fn_fair_exit_release
-    (:1585), fn_refund_ticket_escrow (:1649), fn_fair_exit_split (:1563). The release primitives
-    refuse while a dispute is live (DB3), so a ruling closes the dispute first, in the same
-    transaction. brief_cancel.sql:210 already writes a ticket-escrow dispute directly.
-  - App: types/finance/disputes.ts (kind no_show | general, :121, :200), dispute-model.ts:139,
-    :250, the api/finance/disputes/* routes, admin/disputes.tsx, notifications 00005010:135-139.
-  - The spec: PRODUCT_SPEC.md §Dispute Mechanism (:3577-3604), PRODUCT_MANAGEMENT.md §3.8
-    (:708) and §3.1.
-  - One subject design serves this prompt, FBP DB21's order-line dispute and PM-WP4a step 6's Fair
-    Exit contest. DB21 landed first (#543): finance.disputes.subject_kind (session_seat ·
-    ticket_escrow · order_line, default session_seat), a nullable escrow_id, order_line_id and
-    ck_disputes_subject; fn_dispute_context and fn_dispute_party know a product's seller;
-    fn_settle_dispute routes an order line to fn_settle_order_line_dispute. Adopt it: one design.
-
-🧑 DECISION (before step 2). Put all of these to me at once:
-  1. What is contestable. Recommended: held escrow (§3.8), plus money released into the 7-day
-     pending window, which DB6 freezes on a card dispute (#532).
-  2. Who raises, and when. Recommended: either party, while the ticket's stage is in review or
-     submitted, or within the pending window after approval.
-  3. The Phase-1 offer. Recommended: either side proposes the payee's share in basis points;
-     the other accepts; acceptance closes the dispute and fn_fair_exit_release executes it.
-  4. NEW contradiction: the spec's 48 h is an offer cooling-off before any auditor, while the
-     built 48 h is the respondent's deadline (00005001:30-31; PRODUCT_MANAGEMENT.md:708).
-     Recommended: keep the built deadline as phase 1, with offers inside it, then escalate.
-  5. NEW contradiction: PRODUCT_MANAGEMENT §3.1 says a disputed task has its work suspended, but
-     ticket_status has no disputed state (00000003:103). Recommended: no new status (no bespoke
-     statuses). A guard refuses moves and claims on a ticket with a live dispute (PD409), and the
-     board derives a "Disputed" lifecycle Tag from the dispute row.
-  Log both contradictions as decision rows.
-
-STEPS:
-  1. Red first: supabase/probes/ticket_dispute.sql. There is no door to raise a dispute on a
-     held ticket escrow.
-  2. Schema, in place: finance.disputes has subject_kind already (DB21, #543); add nullable
-     ticket_id and stage_id, and widen ck_disputes_subject for ticket_escrow.
-     Existing rows backfill to session_seat. uq_disputes_escrow_live stays. Never drop a column.
-  3. Doors (SECURITY DEFINER, search_path ''): finance.open_ticket_dispute (the party check is
-     the payer side via fn_assert_business_actor or can_review_project, or the escrow's payee;
-     the escrow is held; no live dispute); propose_dispute_offer and accept_dispute_offer. Widen
-     fn_dispute_party and fn_settle_dispute to ticket escrow, with per-kind notice copy. The
-     move and claim guard from ruling 5. Grants by name.
-  4. Service (DisputeBackendService.open, offer, accept), Zod and thin routes under
-     /api/finance/disputes/*.
-  5. UI: DisputeCaseDialog generalised ("The client", "The freelancer"), opened from the ticket
-     view and the stage menu where the server says a dispute may be raised. The offer is a
-     share control showing both sides' amounts as MoneyViews. /admin/disputes lists ticket cases.
-  6. Notifications for raise, offer and ruling, in 00005010.
-  7. A Dev Context Switcher axis for a ticket's dispute state.
-
-ACCEPTANCE: ticket_dispute.sql is green (raise by each side; a duplicate refused; an offer
-accepted moves the right split; a ruling moves money; moves and claims refused while live), and
-so are dispute_resolution.sql, finance_invariants.sql and conservation_identity.sql; live, as the
-seeded pair, raise, offer and accept; screenshots.
-
-SAME CHANGE: PRODUCT_SPEC.md §Dispute Mechanism (phase 1 built); PRODUCT_MANAGEMENT.md §3.1 and
-§3.8 as ruled; finance-model.md if a split rule changes; documentation/database/finance/*; Zod;
-ROUTING.md; FINANCE_BUILD_PROMPTS.md DB21 (reuse subject_kind); the decision rows.
-```
-
-§1.2 rows: **PJ-43** ❌ → 🟡 ("the Evidence Vault snapshot and the summary PDF, EX3"). PJ-45 stays
-✅ and now covers ticket disputes too: say so in its note.
-
 ### EX3 — The Evidence Vault snapshot and the case summary PDF
 
 Closes PJ-43 (🟡 → ✅).
 
-**Status (2026-11-24):** waits for EX2 (#548); its 🧑 (stop 19) is put to the owner. One premise
-no longer holds: CH1 has not landed, so `00000016` keeps only a message's current body and the
+**Status (2026-11-24):** EX2 has landed (#548, #549), so EX3 may take its money-lane turn; its 🧑 (stop 19)
+is ruled as recommended (#548 (6)). One premise no longer holds: CH1 has not landed, so `00000016` keeps only a message's current body and the
 vault can capture revisions only once CH1 does.
 
 ```text
