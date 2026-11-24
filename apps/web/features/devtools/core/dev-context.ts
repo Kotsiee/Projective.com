@@ -1056,6 +1056,7 @@ export const DEV_FUNDING_STATES: ReadonlyArray<DevOption<DevFundingState>> = [
 export const DEV_PREPAID_STAGES: ReadonlyArray<DevOption<DevPrepaidStages>> = [
 	{ value: "auto", label: "Auto" },
 	{ value: "none", label: "None" },
+	{ value: "some", label: "Some" },
 	{ value: "later", label: "All later" },
 ];
 

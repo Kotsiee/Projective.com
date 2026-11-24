@@ -728,8 +728,9 @@ stage price in its Chain Reaction. The TS mirror stageCostCents
 (packages/types/projects/board.ts:179), the board's "ticket rate wins" (live-board.ts:870-872) and
 the composer's resolveTicketStages
 (live-writes.ts:2350-2376) copy that rule. The probe intensity_pricing.sql exists. A live
-reservation (#430) keeps the price it was bought at: never reprice one (PROJECTS TK1's 🧑 (c);
-whichever of TK1 and P6 runs second keeps both edits to :49). Second SQL slot, not the money lane.
+reservation (#430) keeps the price it was bought at: never reprice one (ruled #556 (c); TK1
+left `fn_ticket_stage_price` untouched, and `stage_funding_prepaid.sql` §10 pins the rule, so keep it
+green). Second SQL slot, not the money lane.
 
 🧑 DECISION — what a ticket-level price still means (STOP before step 2; a new contradiction,
 PM_BUILD_PROMPTS §0.5 #4; #344 (e)). PRODUCT_SPEC.md:1863-1866 (ruling P6) says a price set on the

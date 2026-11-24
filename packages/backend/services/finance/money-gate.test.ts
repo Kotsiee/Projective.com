@@ -20,6 +20,7 @@ import { DisputeBackendService } from "./DisputeBackendService.ts";
 import { OrderBackendService } from "./OrderBackendService.ts";
 import { PaymentBackendService } from "./PaymentBackendService.ts";
 import { RevisionPurchaseBackendService } from "./revision-purchase.ts";
+import { StageFundingBackendService } from "./stage-funding.ts";
 import { WalletBackendService } from "./WalletBackendService.ts";
 import type { ResolvedOwner } from "./commerce-owner.ts";
 import { saveBuyerDetails } from "./live-buyer.ts";
@@ -286,6 +287,11 @@ const OTHER_WRITES: [
 			{ projectId: ID, stageId: ID, idempotencyKey: KEY } as unknown as Parameters<
 				typeof PaymentBackendService.createEscrowLockIntent
 			>[0],
+			actor,
+		)],
+	["take a prepaid stage back", (actor) =>
+		StageFundingBackendService.refundReservation(
+			{ project: "prj-2345678abc", ticket: "tkt-2345678abc", stageId: ID },
 			actor,
 		)],
 	["top up by card", (actor) =>

@@ -221,7 +221,9 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   stage's, back to its payer whole (`escrow_refund`, no fee), each flip conditional on still being
   `reserved` under the ticket's row lock (Decision #188), each logged `prepaid_stage_refunded`
   (`changes.reason`: `ticket_completed` · `ticket_cancelled` · `ticket_deleted` · `stage_removed` ·
-  `prepaid_ttl_expired`; actor `auth.uid()`, else the client person). Internal.
+  `prepaid_ttl_expired` · `sent_to_new` · `funding_stage_reserved` · `refunded_by_payer`, the last
+  three Decision #556; actor `auth.uid()`, else the client person). The payer's own door for one
+  stage is `projects.refund_ticket_stage_reservation`. Internal.
 - **`finance.fn_prepaid_escrow_ttl_hours(project_id)`** → integer (Decision #428, `LANGUAGE sql`,
   STABLE, definer) — the prepaid refund window: `security.platform_params`
   `prepaid_service_ttl_hours` (default 120) when `projects.projects.source_blueprint_id` is set (a

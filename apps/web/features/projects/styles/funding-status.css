@@ -33,7 +33,9 @@
 }
 
 .fst__acts {
-	flex: none;
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	max-inline-size: 100%;
 	display: flex;
 	flex-wrap: wrap;
 	gap: var(--space-2);

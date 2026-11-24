@@ -206,7 +206,40 @@ export function needsStageSelector(stageCount: number): boolean {
 
 /** What a prepaid later stage means for the payer, stated beside every stage picker. */
 export const PREPAY_TERMS =
-	"A later stage you pay for now is held in escrow when the ticket reaches it, and comes back to your wallet if the ticket ends first.";
+	"A later stage you pay for now keeps today's price and is held in escrow when the ticket reaches it. Until then you can take it back, and it comes back to your wallet if the ticket ends or goes back to New first.";
+
+// #region Prepaid stages for everyone on the project, and the payer's refund (Decision #556)
+/**
+ * One row of `projects.get_project_prepaid_stages`: a ticket and a later stage it has prepaid (a
+ * `reserved` escrow). Ids only, never an amount: anyone with access to the project reads it, so the
+ * freelancer on a ticket sees which of its stages are paid for ahead (#556 (b)).
+ */
+export const PrepaidStageRowSchema = z.object({
+	ticket_id: ref,
+	stage_id: ref,
+});
+export type PrepaidStageRow = z.infer<typeof PrepaidStageRowSchema>;
+
+/**
+ * `POST /api/finance/escrow/reservation` — the payer takes one prepaid stage of a ticket back while
+ * the ticket has not reached it (#556 (d)). The project's `prj-…` slug, the ticket's `tkt-…` slug
+ * (or row id) and the stage's row id, which the funding line already holds.
+ */
+export const ReservationRefundBodySchema = z.object({
+	project: z.string().min(1).max(64),
+	ticket: z.string().min(1).max(80),
+	stageId: ref,
+});
+export type ReservationRefundBody = z.infer<typeof ReservationRefundBodySchema>;
+
+/** What `projects.refund_ticket_stage_reservation` gave back to the payer's wallet. */
+export const ReservationRefundSchema = z.object({
+	ticketId: ref,
+	stageId: ref,
+	amount: MoneyViewSchema,
+});
+export type ReservationRefund = z.infer<typeof ReservationRefundSchema>;
+// #endregion
 
 /** A same-currency {@link MoneyView}: nothing was converted, so there is no origin to disclose. */
 export function sameCurrencyMoney(minor: number, code: string, locale?: string): MoneyView {

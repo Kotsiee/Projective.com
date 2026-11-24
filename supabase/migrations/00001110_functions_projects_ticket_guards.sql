@@ -477,10 +477,16 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 -- Prepaid later stages follow the ticket (Decision #430). Arriving in a stage holds what was prepaid
 -- there (finance.fn_activate_ticket_reservation), however the stage was reached: the Chain Reaction, a
 -- move, a funding placement. A stage taken off the ticket gives its prepayment back, and a ticket that
+-- ends (completed or cancelled) gives back every stage it never reached. A ticket sent back to New gives
+-- back every stage it prepaid, and a New ticket never holds a reservation on the stage it is funded in,
+-- which is held, never reserved (Decision #556 (e)). Its held escrow is the escrow sync's business
+-- (#421). AFTER the escrow sync, so a completion's release has run; its own writes touch no column it
+-- fires on. A personal project carries no money.
 CREATE OR REPLACE FUNCTION projects.fn_ticket_prepay_sync()
 RETURNS TRIGGER AS $$
 DECLARE
     r record;
+    v_funding uuid;
 BEGIN
     IF projects.fn_is_personal_project(NEW.project_id) THEN
         RETURN NULL;
@@ -492,6 +498,11 @@ BEGIN
             NEW.id, NULL,
             CASE WHEN NEW.status = 'completed'::ticket_status THEN 'ticket_completed' ELSE 'ticket_cancelled' END
         );
+        RETURN NULL;
+    END IF;
+
+    IF OLD.current_stage_id IS NOT NULL AND NEW.current_stage_id IS NULL THEN
+        PERFORM finance.fn_refund_ticket_reservations(NEW.id, NULL, 'sent_to_new');
         RETURN NULL;
     END IF;
 
@@ -510,6 +521,13 @@ BEGIN
         LOOP
             PERFORM finance.fn_refund_ticket_reservations(NEW.id, r.project_stage_id, 'stage_removed');
         END LOOP;
+        IF NEW.current_stage_id IS NULL THEN
+            v_funding := projects.fn_ticket_funding_stage(NEW.id);
+            IF EXISTS (SELECT 1 FROM finance.escrows e
+                        WHERE e.ticket_id = NEW.id AND e.project_stage_id = v_funding AND e.status = 'reserved') THEN
+                PERFORM finance.fn_refund_ticket_reservations(NEW.id, v_funding, 'funding_stage_reserved');
+            END IF;
+        END IF;
     END IF;
 
     IF NEW.current_stage_id IS DISTINCT FROM OLD.current_stage_id AND NEW.current_stage_id IS NOT NULL THEN

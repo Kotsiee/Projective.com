@@ -78,7 +78,7 @@ import {
 	toSubmissionStatus,
 } from "./live-support.ts";
 import { getUserClient } from "../../core/supabase.ts";
-import { AutoFundMode } from "@projective/types/finance";
+import { AutoFundMode, PrepaidStageRowSchema } from "@projective/types/finance";
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
 import { fetchMessageAttachments } from "./message-attachments.ts";
 import { attachmentInserts, prepareLinkShares } from "../files/link-shares.ts";
@@ -836,7 +836,7 @@ export async function fetchProjectSetup(
 	projectSlug: string,
 ): Promise<ProjectSetup | null> {
 	const row = await fetchSetupProject(actor, projectSlug);
-	return row ? await composeSetup(actor, row) : null;
+	return row ? await withPrepaidCounts(actor, row.id, await composeSetup(actor, row)) : null;
 }
 
 /** The same projection for a row already in hand — the post-write re-read. */
@@ -845,7 +845,33 @@ async function fetchProjectSetupById(
 	projectRowId: string,
 ): Promise<ProjectSetup | null> {
 	const row = await fetchSetupProjectById(actor, projectRowId);
-	return row ? await composeSetup(actor, row) : null;
+	return row ? await withPrepaidCounts(actor, row.id, await composeSetup(actor, row)) : null;
+}
+
+/**
+ * Each stage's count of tickets that prepaid it (Decision #556 (c)), so the stage editor can say a
+ * new price leaves those at the price they were bought at. Read through the one reader anyone on the
+ * project may call (`projects.get_project_prepaid_stages`, ids only); a refused read leaves them unset.
+ */
+async function withPrepaidCounts(
+	actor: ReadActor & { accessToken: string },
+	projectRowId: string,
+	setup: ProjectSetup,
+): Promise<ProjectSetup> {
+	const { data, error } = await getUserClient(actor.accessToken).schema("projects")
+		.rpc("get_project_prepaid_stages", { p_project_id: projectRowId });
+	if (error || !Array.isArray(data) || data.length === 0) return setup;
+	const counts = new Map<string, number>();
+	for (const raw of data) {
+		const row = PrepaidStageRowSchema.safeParse(raw);
+		if (row.success) counts.set(row.data.stage_id, (counts.get(row.data.stage_id) ?? 0) + 1);
+	}
+	return {
+		...setup,
+		stages: setup.stages.map((s) =>
+			counts.has(s.id) ? { ...s, prepaidCount: counts.get(s.id) } : s
+		),
+	};
 }
 
 /** Everything hanging off the project row, composed once for both entry points. */

@@ -77,6 +77,7 @@ const KNOWN_WRITES = [
 	"open_order_line_dispute",
 	"cancel_order_line",
 	"refund_session_forfeit",
+	"refund_ticket_stage_reservation",
 ];
 
 const GATE = /\b(?:refuseUnlessMoneyLive|moneyWritesLive)\s*[<(]/;

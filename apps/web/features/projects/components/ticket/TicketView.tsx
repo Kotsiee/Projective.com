@@ -192,6 +192,10 @@ export interface TicketViewProps {
 	onStartWork?: (card: BoardCard) => void;
 	/** A funding write the host started is in flight. */
 	fundingBusy?: boolean;
+	/** The payer takes one prepaid stage back (Decision #556 (d)); passed on the payer's side. */
+	onRefundPrepaid?: (card: BoardCard, stageId: string) => void;
+	/** The prepaid stage whose refund the host started, while it is in flight. */
+	refundingStageId?: string | null;
 	/** Self-claim this ticket; passed only while the viewer may claim it. */
 	onClaim?: (card: BoardCard) => void;
 	/** A claim the host started is in flight. */
@@ -353,7 +357,11 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 			fundingAt >= 0 ? serverStages.slice(fundingAt + 1).map((s) => s.stageId) : [],
 		),
 	);
-	const prepaidNames = serverStages.filter((s) => prepaidIds.has(s.stageId)).map((s) => s.name);
+	const prepaidStages = serverStages.filter((s) => prepaidIds.has(s.stageId))
+		.map((s) => ({ stageId: s.stageId, name: s.name }));
+	const refundStage = isClient && props.onRefundPrepaid
+		? (stageId: string) => props.onRefundPrepaid?.(server, stageId)
+		: undefined;
 	const addToBasket = isClient ? props.onAddToBasket : undefined;
 	const basketPicker = addToBasket && needsStageSelector(server.stages.length)
 		? (done: (landed: boolean) => void) => (
@@ -379,7 +387,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 					tag={false}
 					freelancer={server.assignee?.name ?? null}
 					dateLabel={fundingDateLabel(server, funding)}
-					prepaidStages={prepaidNames}
+					prepaidStages={prepaidStages}
 				/>
 			)
 			: funding
@@ -391,7 +399,9 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 					tag={false}
 					freelancer={server.assignee?.name ?? null}
 					dateLabel={fundingDateLabel(server, funding)}
-					prepaidStages={prepaidNames}
+					prepaidStages={prepaidStages}
+					onRefundStage={refundStage}
+					refundingStageId={props.refundingStageId}
 					busy={props.fundingBusy}
 					onBuyNow={isClient && props.onBuyNow ? () => props.onBuyNow?.(server) : undefined}
 					onAddToBasket={addToBasket ? () => addToBasket(server) : undefined}

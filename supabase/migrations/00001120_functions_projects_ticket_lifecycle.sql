@@ -355,6 +355,34 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, auth;
 
 -- ---------------------------------------------------------------------------------------------
+-- 2a′. projects.get_project_prepaid_stages(p_project_id)
+-- Which stages each ticket of a project has prepaid (a `reserved` escrow, Decision #430), for anyone
+-- with access to the project (Decision #556 (b)), so the freelancer on a ticket sees that its later
+-- stages are paid for ahead. Ids only: never an amount, a payer or a wallet. The escrow rows stay
+-- payer-side under RLS "View escrows". The board's funding lines and the stage editor's reserved count
+-- read it. A caller without access is refused (42501).
+-- ---------------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION projects.get_project_prepaid_stages(p_project_id uuid)
+RETURNS TABLE (ticket_id uuid, stage_id uuid)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NOT projects.has_project_access(p_project_id) THEN
+        RAISE EXCEPTION 'You do not have access to this project.' USING ERRCODE = '42501';
+    END IF;
+    RETURN QUERY
+    SELECT e.ticket_id, e.project_stage_id
+      FROM finance.escrows e
+      JOIN projects.tickets t ON t.id = e.ticket_id
+     WHERE t.project_id = p_project_id AND e.status = 'reserved'
+     ORDER BY e.ticket_id, e.project_stage_id;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------------------------
 -- 2b. projects.get_ticket_timeline(p_ticket_id)
 -- Ordered ticket history for the modal's Timeline tab, with the actor's display name/avatar joined.
 -- ---------------------------------------------------------------------------------------------

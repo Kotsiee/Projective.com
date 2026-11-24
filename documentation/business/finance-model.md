@@ -383,8 +383,9 @@ Breakdown: System Fee (5%) → £50 to the Fee Collection Account; Team Vault (1
   (`security.platform_params`); swept every 15 minutes. The rule is PRODUCT_SPEC §Escrow Lifecycle for
   Tickets.
 - **Prepaid later stages (Decision #430):** a later ticket stage bought ahead is debited from the
-  payer's wallet at purchase into a `reserved` escrow at that stage's own price, with **no fee and no
-  refund window** while it waits. The 5% stage-completion fee is taken at release only, exactly as for
+  payer's wallet at purchase into a `reserved` escrow at that stage's own price, which it keeps if
+  the price changes before the ticket arrives (Decision #556 (c)), with **no fee and no refund
+  window** while it waits. The 5% stage-completion fee is taken at release only, exactly as for
   any held stage, so prepaying changes neither the fee nor when it is charged. Its window (above)
   starts only when the ticket reaches the stage and nobody is there to pay. Every refund of a
   reservation is whole and fee-free, to the payer's wallet. A business selection counts once against

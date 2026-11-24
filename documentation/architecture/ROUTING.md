@@ -429,6 +429,8 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   `core/ticket-view.ts`). The `fund` frame of Decision #428's stage selector is retired (Decision
   #430): Buy Now itself lists the ticket's stages. Its quote is
   `GET /api/finance/escrow/quote?project=<prj->&ticket=<tkt->` (exactly one of `stage` / `ticket`);
+  the payer takes one prepaid stage back from the funding line with `POST /api/finance/escrow/reservation`
+  (body `{ project: <prj->, ticket: <tkt->, stageId }`, Decision #556), which writes no URL state;
   the chosen stages travel as `stageIds` (with `replaceStages`) in the body of `POST /api/basket/item`,
   and the session it prices is read narrowed `?ticket_id=<tkt->` — the stage choice itself is never URL
   state, since nothing about a pending purchase is addressable. The parameter is **stripped and nothing

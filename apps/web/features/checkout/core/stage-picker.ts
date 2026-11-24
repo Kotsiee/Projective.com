@@ -159,16 +159,20 @@ export function initialStageSelection(
 
 // #region Dev preview
 /** How the Dev Context Switcher previews a ticket's prepaid stages. */
-export type PrepaidPreview = "auto" | "none" | "later";
+export type PrepaidPreview = "auto" | "none" | "some" | "later";
 
 /**
  * The quote as the dev preview shows it — display only, the server still answers from the real
- * escrows. `later` marks every unreached stage prepaid; `none` offers every prepaid stage again.
+ * escrows. `later` marks every unreached stage prepaid, `some` the first of them; `none` offers every
+ * prepaid stage again.
  */
 export function previewQuote(quote: TicketFundingQuote, mode: PrepaidPreview): TicketFundingQuote {
 	if (mode === "auto") return quote;
+	const first = [...quote.stages].sort((a, b) => a.order - b.order).find((s) =>
+		s.phase === "later"
+	);
 	const stages = quote.stages.map((s) => {
-		if (mode === "later" && s.phase === "later") {
+		if ((mode === "later" || (mode === "some" && s === first)) && s.phase === "later") {
 			return { ...s, phase: "prepaid" as const, fundable: false };
 		}
 		if (mode === "none" && s.phase === "prepaid") {

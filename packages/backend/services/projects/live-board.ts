@@ -1823,7 +1823,7 @@ export async function fetchBoardPage(
 			fetchParticipants(db, summary.id),
 			fetchAssignments(db, stageIds),
 			latestLockPayments(actor.accessToken, stageIds),
-			ticketBillingFacts(actor.accessToken, ticketIds, clientBusinessId, new Date(nowMs)),
+			ticketBillingFacts(actor.accessToken, summary.id, ticketIds, clientBusinessId, new Date(nowMs)),
 			liveDisputedTicketIds(actor.accessToken, ticketIds),
 		]);
 

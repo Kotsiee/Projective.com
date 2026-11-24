@@ -6,6 +6,8 @@ import {
 	fundingRollup,
 	fundingSentence,
 	fundingTagState,
+	prepaidPriceHint,
+	prepaidRefundNotice,
 	prepaidSentence,
 	previewFunding,
 	previewPrepaidStages,
@@ -195,4 +197,34 @@ Deno.test("the prepaid-stage preview replaces the real ids only when forced", ()
 	assertEquals(previewPrepaidStages(undefined, undefined, ["b"]), []);
 	assertEquals(previewPrepaidStages(["b"], "none", ["b", "c"]), []);
 	assertEquals(previewPrepaidStages([], "later", ["b", "c"]), ["b", "c"]);
+	assertEquals(previewPrepaidStages([], "some", ["b", "c"]), ["b"]);
+	assertEquals(previewPrepaidStages(["c"], "some", []), []);
+});
+
+Deno.test("a refunded prepaid stage is named with what came back, or the refusal (Decision #556)", () => {
+	const card = { stages: [{ stageId: "b", name: "Build" }] } as Parameters<
+		typeof prepaidRefundNotice
+	>[0];
+	assertEquals(
+		prepaidRefundNotice(card, "b", {
+			ok: true,
+			data: { refund: { amount: { display: "US$600.00" } } },
+		}),
+		"US$600.00 for Build is back in your wallet.",
+	);
+	assertEquals(
+		prepaidRefundNotice(card, "b", { ok: false, message: "This stage isn't prepaid." }),
+		"This stage isn't prepaid.",
+	);
+	assertEquals(
+		prepaidRefundNotice(card, "x", { ok: false }),
+		"The prepayment for that stage couldn't be refunded. Nothing moved.",
+	);
+});
+
+Deno.test("the stage editor says how many tickets keep the price they prepaid at (Decision #556)", () => {
+	assertEquals(prepaidPriceHint(undefined), null);
+	assertEquals(prepaidPriceHint(0), null);
+	assertEquals(prepaidPriceHint(1), "1 ticket prepaid here keeps the price it was bought at.");
+	assertEquals(prepaidPriceHint(3), "3 tickets prepaid here keep the price they were bought at.");
 });

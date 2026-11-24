@@ -10,6 +10,12 @@
 -- Before #197 every fund_stage below answered "No assigned, unfunded tickets", fund_ticket refused an
 -- unclaimed ticket ("Nobody can be paid … yet"), and a card payment for a stage with an unpriced ticket
 -- settled into the wallet with no escrow. A clean run prints only PASS.
+--
+-- 9–13 are the stages a ticket prepays (`reserved`, Decision #430) as TK1 rules them (#556): anyone on
+-- the project sees WHICH stages are prepaid and never an amount (9); a reservation keeps the price it was
+-- bought at (10); the payer gets one prepaid stage back while it is only reserved (11); a ticket sent
+-- back to New gives its reservations back (12); a reservation on the stage a New ticket is funded in
+-- comes back (13). Before TK1, 9 and 11 found no reader and no door, and 12 and 13 kept the money.
 -- =============================================================================================
 
 BEGIN;
@@ -43,6 +49,15 @@ DECLARE
     v_ok boolean;
     v_code text;
     v_msg text;
+    v_ta uuid;
+    v_tb uuid;
+    v_tc uuid;
+    v_k1 uuid;
+    v_k2 uuid;
+    v_k3 uuid;
+    v_k4 uuid;
+    v_wallet uuid;
+    v_stranger uuid;
     r record;
 BEGIN
     -- #region Fixture (as postgres)
@@ -264,6 +279,177 @@ BEGIN
         RAISE EXCEPTION 'FAIL 8: individual escrow not held prepaid from the owner';
     END IF;
     RAISE NOTICE 'PASS 8 an individual owner funds an open stage from their own wallet; a non-owner is refused';
+    -- #endregion
+
+    -- #region TK1 fixture: three stages A, B, C and four New tickets that run through them
+    PERFORM set_config('request.jwt.claims', '', true);
+    v_wallet := finance.fn_ensure_wallet('business', v_biz, v_currency);
+    UPDATE finance.wallets SET approval_threshold_cents = 100000000 WHERE id = v_wallet;
+    INSERT INTO finance.spending_limits (wallet_id, member_user_id, cap_cents, per_transaction_cents, period_interval, spent_cents)
+    VALUES (v_wallet, v_owner, NULL, NULL, 'total', 0)
+    ON CONFLICT (wallet_id, member_user_id)
+        DO UPDATE SET cap_cents = NULL, per_transaction_cents = NULL, period_interval = 'total', spent_cents = 0;
+    INSERT INTO projects.project_stages (project_id, name, sort_order, status, unit_price_cents)
+    VALUES (v_project, 'Probe TK1 A', 993, 'open', 40000) RETURNING id INTO v_ta;
+    INSERT INTO projects.project_stages (project_id, name, sort_order, status, unit_price_cents)
+    VALUES (v_project, 'Probe TK1 B', 994, 'open', 60000) RETURNING id INTO v_tb;
+    INSERT INTO projects.project_stages (project_id, name, sort_order, status, unit_price_cents)
+    VALUES (v_project, 'Probe TK1 C', 995, 'open', 25000) RETURNING id INTO v_tc;
+    INSERT INTO projects.tickets (project_id, current_stage_id, status, title, description, text_description, required_stages)
+    SELECT v_project, NULL, 'backlog', 'Probe TK1 K' || n, '{"t":"x"}', 'A description.',
+           jsonb_build_array(jsonb_build_object('stage_id', v_ta, 'order', 0),
+                             jsonb_build_object('stage_id', v_tb, 'order', 1),
+                             jsonb_build_object('stage_id', v_tc, 'order', 2))
+      FROM generate_series(1, 4) n;
+    SELECT id INTO v_k1 FROM projects.tickets WHERE project_id = v_project AND title = 'Probe TK1 K1';
+    SELECT id INTO v_k2 FROM projects.tickets WHERE project_id = v_project AND title = 'Probe TK1 K2';
+    SELECT id INTO v_k3 FROM projects.tickets WHERE project_id = v_project AND title = 'Probe TK1 K3';
+    SELECT id INTO v_k4 FROM projects.tickets WHERE project_id = v_project AND title = 'Probe TK1 K4';
+    -- Someone signed in with no access to the project.
+    FOR r IN SELECT fp.user_id FROM org.freelancer_profiles fp
+              WHERE fp.user_id NOT IN (v_owner, v_fl) ORDER BY fp.user_id LIMIT 40
+    LOOP
+        PERFORM set_config('request.jwt.claims', json_build_object('sub', r.user_id, 'role', 'authenticated')::text, true);
+        IF NOT projects.has_project_access(v_project) THEN v_stranger := r.user_id; EXIT; END IF;
+    END LOOP;
+    IF v_stranger IS NULL THEN RAISE EXCEPTION 'FAIL fixture: nobody without access to the project'; END IF;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_fl, 'role', 'authenticated')::text, true);
+    IF NOT projects.has_project_access(v_project) THEN RAISE EXCEPTION 'FAIL fixture: the freelancer has no access to the project'; END IF;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+    v_out := projects.fund_ticket(v_project, v_k1, ARRAY[v_ta, v_tb, v_tc]);
+    IF (v_out ->> 'held')::boolean IS NOT TRUE OR jsonb_array_length(v_out -> 'reserved_stage_ids') <> 2 THEN
+        RAISE EXCEPTION 'FAIL fixture: K1 funding %', v_out;
+    END IF;
+    -- #endregion
+
+    -- #region 9. (b) Anyone on the project sees WHICH stages are prepaid, never the amounts
+    IF to_regprocedure('projects.get_project_prepaid_stages(uuid)') IS NULL THEN
+        RAISE EXCEPTION 'FAIL 9: no reader tells a payee which stages are prepaid (projects.get_project_prepaid_stages)';
+    END IF;
+    -- The escrow rows stay payer-side: under RLS the freelancer reads none of K1's reservations.
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_fl, 'role', 'authenticated')::text, true);
+    SET LOCAL ROLE authenticated;
+    SELECT count(*) INTO v_n FROM finance.escrows WHERE ticket_id = v_k1 AND status = 'reserved';
+    RESET ROLE;
+    IF v_n <> 0 THEN RAISE EXCEPTION 'FAIL 9: the freelancer reads % reservation rows (amounts) under RLS', v_n; END IF;
+    SET LOCAL ROLE authenticated;
+    EXECUTE 'SELECT count(*) FROM projects.get_project_prepaid_stages($1) WHERE ticket_id = $2 AND stage_id IN ($3, $4)'
+       INTO v_n USING v_project, v_k1, v_tb, v_tc;
+    RESET ROLE;
+    IF v_n <> 2 THEN RAISE EXCEPTION 'FAIL 9: the freelancer sees % of K1''s two prepaid stages', v_n; END IF;
+    IF pg_get_function_result('projects.get_project_prepaid_stages(uuid)'::regprocedure) <> 'TABLE(ticket_id uuid, stage_id uuid)' THEN
+        RAISE EXCEPTION 'FAIL 9: the reader answers more than which stages: %',
+            pg_get_function_result('projects.get_project_prepaid_stages(uuid)'::regprocedure);
+    END IF;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_stranger, 'role', 'authenticated')::text, true);
+    SET LOCAL ROLE authenticated;
+    BEGIN
+        EXECUTE 'SELECT count(*) FROM projects.get_project_prepaid_stages($1)' INTO v_n USING v_project;
+        v_ok := true;
+    EXCEPTION WHEN OTHERS THEN v_ok := false; v_code := SQLSTATE;
+    END;
+    RESET ROLE;
+    IF v_ok OR v_code <> '42501' THEN RAISE EXCEPTION 'FAIL 9: a stranger read the prepaid stages % %', v_ok, v_code; END IF;
+    IF has_function_privilege('anon', 'projects.get_project_prepaid_stages(uuid)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'FAIL 9: anon may call the reader';
+    END IF;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+    RAISE NOTICE 'PASS 9 the freelancer sees K1''s two prepaid stages through the reader (ids only), reads no reservation row, a stranger is refused (42501)';
+    -- #endregion
+
+    -- #region 10. (c) A reservation keeps the price it was bought at; arrival never reprices it
+    UPDATE projects.project_stages SET unit_price_cents = 90000 WHERE id = v_tb;
+    PERFORM set_config('request.jwt.claims', '', true);
+    -- A is unbound, so releasing it refunds it (#197); then K1 arrives in B, as a move would bring it.
+    PERFORM finance.fn_release_ticket_escrow(v_k1);
+    SELECT balance_cents INTO v_before FROM finance.wallets WHERE id = v_wallet;
+    UPDATE projects.tickets SET current_stage_id = v_tb WHERE id = v_k1;
+    SELECT balance_cents INTO v_after FROM finance.wallets WHERE id = v_wallet;
+    SELECT e.amount_cents, e.status INTO v_row
+      FROM finance.escrows e WHERE e.ticket_id = v_k1 AND e.project_stage_id = v_tb AND e.status = 'held';
+    IF v_row.amount_cents IS DISTINCT FROM 60000::bigint OR v_after <> v_before THEN
+        RAISE EXCEPTION 'FAIL 10: arrival in a repriced B held % and moved the wallet by %', v_row.amount_cents, v_before - v_after;
+    END IF;
+    UPDATE projects.project_stages SET unit_price_cents = 60000 WHERE id = v_tb;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+    RAISE NOTICE 'PASS 10 B repriced 60000 -> 90000 after it was prepaid: arrival held the 60000 it was bought at, no debit';
+    -- #endregion
+
+    -- #region 11. (d) The payer gets one prepaid stage back while it is only reserved
+    IF to_regprocedure('projects.refund_ticket_stage_reservation(uuid,uuid)') IS NULL THEN
+        RAISE EXCEPTION 'FAIL 11: no door refunds one prepaid stage (projects.refund_ticket_stage_reservation)';
+    END IF;
+    v_out := projects.fund_ticket(v_project, v_k2, ARRAY[v_ta, v_tb, v_tc]);
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_fl, 'role', 'authenticated')::text, true);
+    BEGIN
+        EXECUTE 'SELECT projects.refund_ticket_stage_reservation($1, $2)' USING v_k2, v_tc; v_ok := true;
+    EXCEPTION WHEN OTHERS THEN v_ok := false; v_code := SQLSTATE;
+    END;
+    IF v_ok OR v_code <> 'PK403' THEN RAISE EXCEPTION 'FAIL 11: the freelancer refunded a prepaid stage % %', v_ok, v_code; END IF;
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+    SELECT balance_cents INTO v_before FROM finance.wallets WHERE id = v_wallet;
+    EXECUTE 'SELECT projects.refund_ticket_stage_reservation($1, $2)' INTO v_out USING v_k2, v_tc;
+    SELECT balance_cents INTO v_after FROM finance.wallets WHERE id = v_wallet;
+    IF v_after - v_before <> 25000 OR (v_out ->> 'amount_cents')::bigint <> 25000
+       OR NOT EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = v_k2 AND project_stage_id = v_tc AND status = 'refunded')
+       OR NOT EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = v_k2 AND project_stage_id = v_tb AND status = 'reserved')
+       OR NOT EXISTS (SELECT 1 FROM projects.ticket_history h WHERE h.ticket_id = v_k2 AND h.action_type = 'prepaid_stage_refunded'
+                       AND h.new_stage_id = v_tc AND h.changes ->> 'reason' = 'refunded_by_payer') THEN
+        RAISE EXCEPTION 'FAIL 11: refunding C returned % (%)', v_after - v_before, v_out;
+    END IF;
+    BEGIN
+        EXECUTE 'SELECT projects.refund_ticket_stage_reservation($1, $2)' USING v_k2, v_tc; v_ok := true;
+    EXCEPTION WHEN OTHERS THEN v_ok := false; v_code := SQLSTATE;
+    END;
+    IF v_ok OR v_code <> 'PF409' THEN RAISE EXCEPTION 'FAIL 11: a second refund of C % %', v_ok, v_code; END IF;
+    BEGIN
+        EXECUTE 'SELECT projects.refund_ticket_stage_reservation($1, $2)' USING v_k2, v_ta; v_ok := true;
+    EXCEPTION WHEN OTHERS THEN v_ok := false; v_code := SQLSTATE;
+    END;
+    IF v_ok OR v_code <> 'PF409' THEN RAISE EXCEPTION 'FAIL 11: refunding the held stage A % %', v_ok, v_code; END IF;
+    IF has_function_privilege('anon', 'projects.refund_ticket_stage_reservation(uuid,uuid)', 'EXECUTE')
+       OR NOT has_function_privilege('authenticated', 'projects.refund_ticket_stage_reservation(uuid,uuid)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'FAIL 11: the door''s grant';
+    END IF;
+    RAISE NOTICE 'PASS 11 the payer got C''s 25000 back (B still prepaid); a freelancer is refused (PK403), a second refund and the held stage are refused (PF409)';
+    -- #endregion
+
+    -- #region 12. (e) A ticket sent back to New gives its reservations back
+    v_out := projects.fund_ticket(v_project, v_k3, ARRAY[v_ta, v_tb]);
+    SELECT balance_cents INTO v_before FROM finance.wallets WHERE id = v_wallet;
+    PERFORM projects.move_ticket(v_k3, 'backlog'::ticket_status, NULL, NULL, NULL, true);
+    SELECT balance_cents INTO v_after FROM finance.wallets WHERE id = v_wallet;
+    IF (SELECT current_stage_id FROM projects.tickets WHERE id = v_k3) IS NOT NULL THEN
+        RAISE EXCEPTION 'FAIL 12: K3 did not go back to New';
+    END IF;
+    IF v_after - v_before <> 60000
+       OR NOT EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = v_k3 AND project_stage_id = v_tb AND status = 'refunded')
+       OR NOT EXISTS (SELECT 1 FROM projects.ticket_history h WHERE h.ticket_id = v_k3 AND h.action_type = 'prepaid_stage_refunded'
+                       AND h.new_stage_id = v_tb AND h.changes ->> 'reason' = 'sent_to_new') THEN
+        RAISE EXCEPTION 'FAIL 12: sent to New, K3 gave back % of B''s 60000', v_after - v_before;
+    END IF;
+    RAISE NOTICE 'PASS 12 K3 sent back to New: B''s 60000 reservation came back';
+    -- #endregion
+
+    -- #region 13. (e) A reservation on the stage a New ticket is funded in comes back
+    v_out := projects.fund_ticket(v_project, v_k4, ARRAY[v_tb, v_tc]);
+    IF (SELECT current_stage_id FROM projects.tickets WHERE id = v_k4) IS NOT NULL THEN
+        RAISE EXCEPTION 'FAIL 13: reservations alone placed K4 (%)', v_out;
+    END IF;
+    SELECT balance_cents INTO v_before FROM finance.wallets WHERE id = v_wallet;
+    UPDATE projects.tickets
+       SET required_stages = jsonb_build_array(jsonb_build_object('stage_id', v_tb, 'order', 1),
+                                               jsonb_build_object('stage_id', v_tc, 'order', 2))
+     WHERE id = v_k4;
+    SELECT balance_cents INTO v_after FROM finance.wallets WHERE id = v_wallet;
+    IF v_after - v_before <> 60000
+       OR NOT EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = v_k4 AND project_stage_id = v_tb AND status = 'refunded')
+       OR NOT EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = v_k4 AND project_stage_id = v_tc AND status = 'reserved')
+       OR NOT EXISTS (SELECT 1 FROM projects.ticket_history h WHERE h.ticket_id = v_k4 AND h.action_type = 'prepaid_stage_refunded'
+                       AND h.new_stage_id = v_tb AND h.changes ->> 'reason' = 'funding_stage_reserved') THEN
+        RAISE EXCEPTION 'FAIL 13: dropping A left B as K4''s funding stage, reserved; it gave back %', v_after - v_before;
+    END IF;
+    RAISE NOTICE 'PASS 13 A dropped from K4 in New: B, now its funding stage, gave its 60000 back; C still prepaid';
     -- #endregion
 END $$;
 

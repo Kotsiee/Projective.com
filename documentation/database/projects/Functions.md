@@ -454,6 +454,18 @@ flags; it gates nothing.
 only — no client grant. Unknown ticket → `P0001`; then `has_project_access(ticket's project)` →
 `42501`.
 
+### `projects.get_project_prepaid_stages(p_project_id uuid) → TABLE (ticket_id uuid, stage_id uuid)`
+
+`00001120` §2a′ (Decision #556 (b)). Which stages each ticket of a project has prepaid (a
+`reserved` escrow, Decision #430), for anyone with access to the project, so the freelancer on a
+ticket sees its later stages are paid for ahead. Ids only, never an amount, a payer or a wallet: the
+escrow rows stay payer-side under `View escrows`. The board's funding lines
+(`ticketBillingFacts` → `FundingStatus.prepaidStageIds`) and the setup stage editor's reserved count
+(`StageSetup.prepaidCount`) read it. `STABLE`, `SECURITY DEFINER`, `search_path = ''`; `EXECUTE`:
+`authenticated` (`00002510`), never `anon`. No access → `42501`. Probe:
+`supabase/probes/stage_funding_prepaid.sql` §9; Zod `PrepaidStageRowSchema`, contract
+`packages/types/finance/ticket-prepay.contract.test.ts`.
+
 ### `projects.fn_ticket_stage_price(p_required_stages jsonb, p_ticket_price bigint, p_stage projects.project_stages) → bigint`
 
 `00001120` §Intensity pricing (Decision #414). What one ticket costs in one stage — the one price rule
@@ -1063,9 +1075,14 @@ is the _Manage tickets_ policy plus `trg_ticket_authority_guard`.
 #430), named to fire after `trg_ticket_escrow_sync`. A ticket entering `completed` or `cancelled`
 gives back every stage it prepaid and never reached (`finance.fn_refund_ticket_reservations`, reason
 `ticket_completed` / `ticket_cancelled`); a `required_stages` edit gives back the reservation of each
-stage it drops (`stage_removed`); a `current_stage_id` change holds the reservation of the stage it
-arrives in (`finance.fn_activate_ticket_reservation`) — so the Chain Reaction, a move and a funding
-placement all hold what was prepaid there. A personal project is skipped. `SECURITY DEFINER`,
+stage it drops (`stage_removed`); a ticket sent back to New (`current_stage_id` cleared) gives back
+every reservation (`sent_to_new`, Decision #556 (e)); a `required_stages` edit on a ticket in New
+that leaves a prepaid stage as the stage it is funded in (`fn_ticket_funding_stage`) gives that one
+back (`funding_stage_reserved`), since a funding stage is held, never reserved; a `current_stage_id`
+change into a stage holds the reservation of the stage it arrives in
+(`finance.fn_activate_ticket_reservation`) at the amount it was bought at, never re-priced (Decision
+#556 (c)) — so the Chain Reaction, a move and a funding placement all hold what was prepaid
+there. A personal project is skipped. `SECURITY DEFINER`,
 `search_path = public, projects, finance, org, auth`; `EXECUTE` revoked from every client role.
 
 ### `projects.fn_ticket_delete_protocol() → trigger`
@@ -1694,6 +1711,19 @@ whole-stage action. Returns `{ticket_id, escrow_id (the hold, else the first res
 (the funding stage), amount_cents (the sum), currency, held, reserved_stage_ids, prepaid, placed,
 status}`. `SECURITY DEFINER` (`search_path = public, projects, finance, comms, org, auth`), `EXECUTE`:
 `authenticated`, `service_role` (`00002510`). Probe: `supabase/probes/stage_prepay.sql`.
+
+### `projects.refund_ticket_stage_reservation(p_ticket_id uuid, p_stage_id uuid)` → jsonb (Decision #556 (d))
+
+`00001150`. The payer takes ONE prepaid stage of a ticket back while the ticket has not reached it:
+signed out `42501`; the ticket row is locked (`FOR UPDATE`, so no arrival races the refund); unknown
+ticket `P0002`; not a funder (`fn_can_fund_project`) `PK403 not_funder`; no `reserved` escrow for that
+stage (never prepaid, held on arrival, or already refunded) `PF409`, so a replay returns nothing
+twice. Otherwise `finance.fn_refund_ticket_reservations(ticket, stage, 'refunded_by_payer')` returns
+it whole and fee-free to the paying wallet in the same transaction, logged `prepaid_stage_refunded`.
+Returns `{ticket_id, stage_id, amount_cents, currency}`. `SECURITY DEFINER`, `search_path = ''`;
+`EXECUTE`: `authenticated` (`00002510`), never `anon`. Route `POST /api/finance/escrow/reservation`
+(`StageFundingBackendService.refundReservation`, behind the money switch). Probe:
+`supabase/probes/stage_funding_prepaid.sql` §11.
 
 ### `projects.fn_stage_funding_need(p_stage_id uuid)` → jsonb (Decision #197)
 

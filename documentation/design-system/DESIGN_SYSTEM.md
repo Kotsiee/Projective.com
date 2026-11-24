@@ -4470,7 +4470,17 @@ server card superseded by the 3s poll while `processing`), so `TicketView` reads
 shows the tag in its header beside the status badge (`.tkv__badges`, `.fst-tag.tkv__fund-tag` at the
 badge's own 1.5rem / `--text-2xs` metrics; below 640px the title drops under the two badges) while
 every one of its funding lines passes `tag={false}`. The Dev Context Switcher's **Prepaid stages**
-axis (`prepaidStages`: Auto · None · All later) previews the prepaid names (`previewPrepaidStages`).
+axis (`prepaidStages`: Auto · None · Some · All later) previews the prepaid names
+(`previewPrepaidStages`; `previewQuote` in the stage pickers). Decision #556 makes the prepaid
+names everyone's (the board reads them through `projects.get_project_prepaid_stages`, ids only), so
+`prepaidStages?` now carries `{ stageId, name }[]`, and adds `onRefundStage?(stageId)` with
+`refundingStageId?`: on the payer's side only, one `neutral` outlined **Refund {stage}** per prepaid
+stage at the end of the row (never a fill: the region's one fill stays Buy now), the stage in flight
+spinning and the others waiting. `TicketView` threads it as `onRefundPrepaid?(card, stageId)` ·
+`refundingStageId?`, passed by the board and the timeline, which toast `prepaidRefundNotice` and
+re-read the card. The setup stage editor's price `Field` hint says how many tickets keep the price
+they were prepaid at (`prepaidPriceHint`, from `StageSetup.prepaidCount`) when no lock reason
+takes the hint.
 
 **`StageFundingSelectorDialog` — retired (Decision #430).** The Decision #428 dialog that stood
 between the ticket's funding line and Buy now / Add to basket is gone, with its `fund` frame

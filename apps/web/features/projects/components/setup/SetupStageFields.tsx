@@ -23,6 +23,7 @@ import {
 import type { StageCapacity, StageDependency, StageSetup } from "../../types/projects-types.ts";
 import { setupReveal } from "../../core/setup-state.ts";
 import { fieldStatus } from "../../core/setup-validation.ts";
+import { prepaidPriceHint } from "../../core/funding-ui.ts";
 import { Disclosure, Field, FieldGroup, PairRow } from "./setup-primitives.tsx";
 import {
 	CAPACITY_OPTIONS,
@@ -246,7 +247,9 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 						label={priceLabel}
 						htmlFor={fieldId("price")}
 						validation={price}
-						hint={props.priceLocked ? STAGE_PRICE_LOCK_REASON : undefined}
+						hint={props.priceLocked
+							? STAGE_PRICE_LOCK_REASON
+							: prepaidPriceHint(stage.prepaidCount) ?? undefined}
 					>
 					<NumberInput
 						{...MONEY_FIELD}

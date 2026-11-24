@@ -120,11 +120,11 @@ BEGIN
     v := finance.public_metrics();
     RESET ROLE;
 
-    SELECT count(*) INTO v_count FROM finance.escrows WHERE status IN ('funded', 'held', 'disputed', 'released');
+    SELECT count(*) INTO v_count FROM finance.escrows WHERE status IN ('funded', 'held', 'reserved', 'disputed', 'released');
     SELECT count(*) INTO v_all FROM finance.escrows;
     SELECT jsonb_agg(jsonb_build_object('currency', cur, 'amount_minor', amt) ORDER BY cur) INTO v_by
       FROM (SELECT upper(currency) AS cur, sum(amount_cents)::bigint AS amt
-              FROM finance.escrows WHERE status IN ('funded', 'held', 'disputed', 'released')
+              FROM finance.escrows WHERE status IN ('funded', 'held', 'reserved', 'disputed', 'released')
              GROUP BY upper(currency)) s;
     -- Delivered = approved/paid, not personal, with an escrow released to a payee (money evidence).
     SELECT count(*) INTO v_delivered

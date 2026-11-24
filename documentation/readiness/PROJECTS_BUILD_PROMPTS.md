@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 20 open, 0 partly done, 6 done (§0 ledger).
-> Runnable now: ST4, TK1, EX3, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 19 open, 0 partly done, 7 done (§0 ledger).
+> Runnable now: ST4, TK2, EX3, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -60,6 +60,7 @@ A prompt that lands gets a row here.
 | ST6 | A write by one party to a shared project shows on the other's next read, in every isolate: each cached project read is keyed by the project's KV version (`services/projects/freshness.ts`), bumped by every write path (#555 lists them); a KV-less isolate keeps its own bumps; a board reads around the cache while the claim sweep is due; #427 (a) confirmed and written into PRODUCT_SPEC | `08f27344` (#555) | `70f78452` |
 | ST3 | Manual assignment: `set_stage_assignment_mode` granted (planned modes refused `0A000`); `tickets.pinned_assignee_id`; `assign_ticket_manual` pins on a Manual stage and binds nothing; `decline_ticket_pin`; `claim_ticket` takes the pinned freelancer's acceptance; the stage inspector's Routing control, Assign to… and its picker, Accept / Decline; Helia's Discovery stage seeded Manual with a pin; probe `seat_lock_and_capacity.sql` region 4 | `1929b313` (#547) | `9d55866d` |
 | EX2 | Either side disputes a ticket's stage money, held or still clearing: `finance.disputes` `ticket_id` · `stage_id` · `claimant_side` (`ticket_escrow`), `finance.dispute_offers`; `open_ticket_dispute`, `propose_dispute_offer`, `accept_dispute_offer`, `ticket_dispute_state`, `fn_settle_ticket_dispute` (held: release, Fair Exit split or refund; pending: the frozen rows recovered in proportion, the fee given back), the `PD409` move and claim guard; `/api/finance/disputes` POST, `…/ticket/[ticketId]`, `…/offers`, `…/accept`; `DisputeCaseDialog` generalised, the ticket chain's `dispute` frame, `TicketDisputeLine`, the card's Disputed tag, the `ticketDispute` dev axis; probe `ticket_dispute.sql` | `21427dae` (#548, #549) | `1929b313` |
+| TK1 | Everyone on a project sees which of a ticket's stages are prepaid, ids only (`projects.get_project_prepaid_stages`, read by `ticketBillingFacts` and the setup DTO's `prepaidCount`); the payer takes one back while unreached (`projects.refund_ticket_stage_reservation`, `POST /api/finance/escrow/reservation`, a Refund per prepaid stage on the funding line); a ticket sent back to New, or a New ticket whose funding stage is reserved, gives the reservation back (`fn_ticket_prepay_sync`); a reservation keeps its price and the stage editor counts them; the Prepaid stages dev axis gains Some; probe `stage_funding_prepaid.sql` 9–13 | TK1_COMMIT (#556) | `62d6b1a7` |
 
 ### 0.1 Row → work order
 
@@ -91,7 +92,7 @@ PJ-14 and PJ-74 are ⏸ (§0.4).
 | Row   | Now · Crit · Gate | Work order                | The row flips (or its note clears) when                                                                      |
 | :---- | :---------------- | :------------------------ | :----------------------------------------------------------------------------------------------------------- |
 | PJ-22 | ✅ · Crit · MVP   | PM-P6                     | One price rule: a ticket's own price applies only to a single-stage ticket (note clears)                     |
-| PJ-23 | 🟡 · Crit · MVP   | **TK1** → **TK2**         | A payee sees which stages are prepaid; the funding line, basket and Buy now are driven by wallet and by card |
+| PJ-23 | 🟡 · Crit · MVP   | **TK2** (TK1 ✅ #556) | A payee sees which stages are prepaid; the funding line, basket and Buy now are driven by wallet and by card |
 | PJ-26 | 🟡 · Crit · MVP   | PM-WP6 (🧑 PM #8)         | Only the move matrix's roles move a ticket; `canMove` is a server flag                                       |
 | PJ-27 | 🟡 · Crit · MVP   | PM-WP9                    | Drafts are private, in RLS and in realtime; inserts go through doors; draft + files are atomic               |
 | PJ-29 | 🟡 · Crit · MVP   | PM-D7a (🧑 PM #9) → PM-P6 | The next stage is validated, and the assignee's capacity and seat are checked there                          |
@@ -175,7 +176,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Project setup                  |  100% | ✅ (ST1, ST6)                                                                                                      |
 | Stages                         |   69% | D7a 77% → ST4 85% → WP4b 92% → D7b 100%                                                                            |
 | Hiring & members               |   83% | WP4b 92% → NO1 + CD2 + counsel 100%                                                                               |
-| Tickets & delivery             |   59% | WP8 62% → TK1 + TK2 66% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100%                    |
+| Tickets & delivery             |   59% | WP8 62% → TK2 66% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100%                    |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   56% | WP4a 63% → EX3 81% → EX4 88% → LP1 100% (EX2 ✅, #548)                                                            |
 | Messaging                      |   57% | MS5 59% → CH1 + P2d 65% → CH2 67% → CH3 70% → LK1 74% → CH4 + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
@@ -184,7 +185,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
 
 **What MVP needs from this cluster:** the nine Critical · MVP rows not yet ✅, which are PJ-17, 23,
-26, 27, 29, 30, 47, 49 and 57. Their work orders, in order: TK1 + TK2, D7a + P6, S3, WP9, WP6, NO1
+26, 27, 29, 30, 47, 49 and 57. Their work orders, in order: TK2, D7a + P6, S3, WP9, WP6, NO1
 (+ CD2), and the chat chain (MS3, MS5, CH1, P2d, SN3, the T&S P-chain).
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX3; EX2 ✅) and PJ-60 (NO2 + CD2).
@@ -222,7 +223,7 @@ lane's coordinator before taking one.
 a time. It shares the slot with other tracks' second-session prompts (SBP, SAC, T&S). A prompt
 marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: GH1, WP4a or WP4b.
 
-1. **TK1** (★00001150): PJ-23, Critical · MVP.
+1. **TK1** ✅ (#556, §0.0).
 2. **PM-D7a**, with its Chain Reaction capacity step: PJ-29, PJ-10.
 3. **ST5** ✅ (#554): seats and participants are written only through their doors.
 4. **COMMS MS4**: PJ-62. Run MS5 right after it.
@@ -239,7 +240,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 **App lane** (up to three at once, file-disjoint):
 
 - **PM-WP8** now.
-- **TK2** (⏳ TK1).
+- **TK2** now (TK1 ✅, #556).
 - **NO3** now.
 - **FL2**.
 - **FL3**'s CSP half.
@@ -265,9 +266,9 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 
 | File                                                     | Writers here                                                 | Writers elsewhere (never at the same time)                        |
 | :------------------------------------------------------- | :----------------------------------------------------------- | :---------------------------------------------------------------- |
-| `00001150` (stage funding, submissions, cancel, approve) | TK1, EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | FBP DB13, DB14                                                    |
+| `00001150` (stage funding, submissions, cancel, approve) | EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | FBP DB13, DB14                                                    |
 | `00001130` (stages, members, `apply_write_batch`)        | CH2; PM D7a, WP4a, WP4b, S3, D7b                             | —                                                                 |
-| `00001110` / `00001120` (ticket guards and doors)        | TK1; PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
+| `00001110` / `00001120` (ticket guards and doors)        | PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
 | `00001140` (claims, capacity, workload)                  | ST4; PM WP5a, D7b                                            | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
 | `00000017` + `00001260` (disputes)                       | EX3; PM-WP4a step 6                                          | FBP DB21; MR3                                                     |
@@ -277,7 +278,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00005010` (notification catalogue)                      | EX1, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1                  | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
-| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | ST4, TK1, EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1     | COMMS NT5; T&S R3                                                 |
+| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | ST4, EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1     | COMMS NT5; T&S R3                                                 |
 | `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3, CH4                                                | COMMS MS3, MS5; T&S R2                                            |
 | `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                         | O·WP6                                                             |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`               | every prompt                                                 | every readiness track: edit your rows and the computed lines only |
@@ -291,9 +292,9 @@ block, so a question you defer still stops the build at the right step. The PM p
 
 | #  | Question                                                                                                                                     | Prompt        | Recommendation                                                                                                                                                                                                           |
 | :- | :------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 5  | #430 (b): what a payee may see of prepaid stages                                                                                             | TK1           | Which stages are prepaid, never the amounts, for anyone with project access                                                                                                                                              |
-| 6  | #430 (c): a reservation whose stage is repriced                                                                                              | TK1           | It keeps the price it was bought at; the new price applies to unfunded stages only                                                                                                                                       |
-| 7  | #430 (d) a refund of one prepaid stage; (f) a card prepaying later stages                                                                    | TK1           | (d) a payer door while the stage is unclaimed; (f) a card funds the funding stage only, and Buy now says so                                                                                                              |
+| 5  | #430 (b): what a payee may see of prepaid stages                                                                                             | TK1 ✅ (#556) | Which stages are prepaid, never the amounts, for anyone with project access                                                                                                                                              |
+| 6  | #430 (c): a reservation whose stage is repriced                                                                                              | TK1 ✅ (#556) | It keeps the price it was bought at; the new price applies to unfunded stages only                                                                                                                                       |
+| 7  | #430 (d) a refund of one prepaid stage; (f) a card prepaying later stages                                                                    | TK1 ✅ (#556) | (d) a payer door while the stage is unclaimed; (f) a card funds the funding stage only, and Buy now says so                                                                                                              |
 | 13 | #427 (a): the client creates every ticket on a service engagement                                                                            | ST6 ✅ (#555)  | **Ruled #555:** confirmed: the client creates every ticket on a service engagement, and the details the seller edits exclude tickets (PRODUCT_SPEC.md §Services)                                                         |
 | 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3 ✅         | **Ruled #547:** B, the pin binds nothing until the freelancer accepts it by claiming (or declines); pins on Manual stages only |
 | 15 | Where the workload gauge sits                                                                                                                | ST4           | Beside Claim (the ticket view, stage Tasks) and in the freelancer's Projects header; on `/home` once PRD-A1 lands                                                                                                        |
@@ -529,77 +530,9 @@ documentation/database/projects/Functions.md; Zod; ROUTING.md; the decision row.
 
 ## 3. Tickets & delivery
 
-### TK1 — A payee sees which stages are prepaid; a reservation never strands
-
-Narrows PJ-23; TK2 closes it.
-
-```text
-PROMPT TK1: Everyone on a ticket can see which of its stages are prepaid (never the amounts);
-a reservation keeps the price it was bought at; one prepaid stage can be refunded while
-unclaimed; a ticket sent back to New gives its reservations back
-
-ROLE: Full-stack engineer (money-adjacent). Queue S (★00001150): 00001120, 00001150,
-00002510 (by name). It calls the 00001200 primitives and never edits them.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - #430 (decisions-122-126.md:308) records the open flags: (a) the live path was never driven
-    in a browser (TK2); (b) payees cannot see prepaid stages; (c) a reservation's amount is fixed
-    at purchase; (d) no door refunds one prepaid stage; (e) a New ticket can be left holding a
-    reservation; (f) a card funds the funding stage only.
-  - (b) in code: fn_reserve_ticket_stage_escrow (00001200:1030; insert :1103-1107) writes the
-    reserved row with no payee. RLS "View escrows" (00002013:12-18) shows a row to its payee or
-    payer side only, so an unbound reservation is payer-only. ticketBillingFacts
-    (live-payments.ts:688-709) reads finance.escrows as the caller to build `prepaid`, so the
-    freelancer's card.funding.prepaidStageIds (funding-state.ts:194-207; live-board.ts:1393) is
-    empty, and TicketView.tsx:334-341 draws prepaid stage names only from it.
-  - projects.get_ticket_finance (00001120:281; a definer with has_project_access) already marks
-    `reserved` as `escrowed` (:318-322). Nothing calls it, and it is ungranted (00002510:7-33).
-  - The funding primitives: fn_ticket_stage_fundable (00001120:103), fn_ticket_funding_stage
-    (:75), get_ticket_funding_quote (00001150:796), fund_ticket (:1100; reserve call :1224),
-    fn_activate_ticket_reservation (00001200:951), fn_refund_ticket_reservations (:1133),
-    fn_ticket_prepay_sync (00001110:447). Grants: 00002510:1084-1085, :1095-1096, :1104-1105.
-  - (e): move_ticket's p_clear_stage sends a ticket to New (00001120:614-623).
-  - Probes: stage_prepay.sql, prepaid_escrow_ttl.sql, stage_funding_prepaid.sql,
-    single_ticket_purchase.sql. Tests: ticket-funding.test.ts, ticket-purchase.test.ts.
-
-🧑 DECISION (before each step it names). Put all four to me at once:
-  (b) step 2, what a payee may see. Recommended: anyone with project access sees which stages
-      of a ticket are prepaid, never the amounts; amounts stay payer-side.
-  (c) step 3, a repriced stage. Recommended: a reservation keeps the price it was bought at; a
-      reprice applies to unfunded stages only, and the stage editor says "N reserved at the old
-      rate".
-  (d) step 4. Recommended: a payer door, refund_ticket_stage_reservation(ticket, stage),
-      allowed while that stage is unclaimed and refused (PF409) otherwise.
-  (f). Recommended: keep it (a card funds the funding stage only) and say so in Buy now's copy.
-
-STEPS:
-  1. Red first: extend stage_funding_prepaid.sql. The payee's read sees no prepaid stage; a
-     ticket sent to New keeps its reservation (it should not).
-  2. (b): a narrow definer reader (or a granted get_ticket_finance stripped of amounts for
-     non-payers) feeds prepaidStageIds for every participant. Zod; funding-state.ts; the ticket
-     view draws the prepaid marks for everyone.
-  3. (c): prove that fn_ticket_stage_price never reprices a live reservation, and make the
-     stage editor show the reserved count. Coordinate with PM-P6 (it edits :49 of the same
-     function): whichever runs second keeps both.
-  4. (d): the door, its grant, the route and the funding-line action, refunded through
-     fn_refund_ticket_reservations in one transaction. conservation_identity.sql stays green.
-  5. (e): sending a ticket to New refunds its reservations in the same transaction.
-  6. A Dev Context Switcher axis for prepaid state (none | some | all stages).
-
-ACCEPTANCE: the probes are green, plus finance_invariants.sql and conservation_identity.sql; as
-the seeded freelancer, a ticket's prepaid stages are marked; as the client, one prepaid stage is
-refunded; screenshots.
-
-SAME CHANGE: PRODUCT_SPEC.md (stage prepay: visibility, the price rule, the refund);
-finance-model.md if a figure changes; documentation/database/{projects,finance}/*; Zod; the
-decision row (#430 (b)-(f) ruled or closed).
-```
-
-§1.2 rows: **PJ-23** stays 🟡 (note narrows to "(a) the live run, TK2").
-
 ### TK2 — Funding is driven end to end in a browser
 
-Closes PJ-23 (🟡 → ✅), with TK1.
+Closes PJ-23 (🟡 → ✅). TK1 landed (#556).
 
 ```text
 PROMPT TK2: The ticket-funding path is driven end to end in a real browser: the funding line,
@@ -650,8 +583,8 @@ Closes PJ-40 (❌ → ✅).
 
 **Status (2026-11-24, #546):** stopped at the 🧑 DECISION (questions 1 and 2, the NEW contradiction
 logged). Step 1's red probe `project_completion.sql` is written and stays out of `main` while it
-fails. Two premises no longer hold: PM-GH1 has not landed, and TK1 holds Queue S on `00001150` and
-`00002510`, so steps 2–7 wait for the rulings and for that slot.
+fails. Two premises no longer hold: PM-GH1 has not landed, and TK1 held Queue S on `00001150` and
+`00002510` until it landed (#556), so steps 2–7 wait for the rulings.
 
 ```text
 PROMPT EX1: A project completes: automatically when its last money settles, or when the client

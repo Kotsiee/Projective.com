@@ -115,8 +115,9 @@ import {
 } from "@web/features/checkout/core/basket-state.ts";
 import { buyNowOpen, requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
-import { InlineNotice } from "@projective/ui/feedback";
-import { fundingRollup, previewFunding } from "../core/funding-ui.ts";
+import { InlineNotice, Tooltip } from "@projective/ui/feedback";
+import { fundingRollup, prepaidRefundNotice, previewFunding } from "../core/funding-ui.ts";
+import { PaymentsService } from "@web/features/payments/core/PaymentsService.ts";
 import { FundStageDialog } from "@web/features/payments/components/FundStageDialog.tsx";
 import { PAYOUT_SETUP_ACTION, readPayoutGateDetails } from "@projective/types/finance";
 import {
@@ -246,6 +247,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	const savingId = useSignal<string | null>(null);
 	/** A Start work write is in flight — the funding line's control shows its spinner. */
 	const starting = useSignal(false);
+	/** The prepaid stage whose refund is in flight — its Refund control shows the spinner. */
+	const refundingStage = useSignal<string | null>(null);
 	/** The ticket a Claim write is in flight for — its control shows the spinner, the others wait. */
 	const claimingId = useSignal<string | null>(null);
 	/** A claim the earning gate refused: the sentence and the viewer's own fix link. */
@@ -647,6 +650,19 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			res.ok ? `${card.title} is in your basket.` : res.message ?? "That ticket couldn't be added.",
 		);
 		return res.ok;
+	}
+
+	/** The payer takes one prepaid stage back (Decision #556 (d)); the card is re-read, so the line moves on. */
+	async function refundPrepaid(card: BoardCard, stageId: string): Promise<void> {
+		refundingStage.value = stageId;
+		const res = await PaymentsService.refundPrepaidStage({
+			project: props.projectId,
+			ticket: card.slug ?? card.id,
+			stageId,
+		});
+		refundingStage.value = null;
+		toast(prepaidRefundNotice(card, stageId, res));
+		if (res.ok) await reread(card);
 	}
 
 	/** In basket: close the ticket chain (one overlay at a time) and open the basket. */
@@ -1484,6 +1500,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						onOpenBasket={openBasket}
 						onStartWork={(c) => void startWork(c)}
 						fundingBusy={starting.value}
+						onRefundPrepaid={(c, stageId) => void refundPrepaid(c, stageId)}
+						refundingStageId={refundingStage.value}
 						onClaim={viewerCanClaim(viewing, stages.value, providerStageIds, access.value.isClient)
 							? (c) => void claimTicket(c)
 							: undefined}

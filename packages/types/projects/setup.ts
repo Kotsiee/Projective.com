@@ -321,6 +321,12 @@ export const StageSetupSchema = z.object({
 	 */
 	chainReaction: z.boolean(),
 	/**
+	 * How many tickets have prepaid this stage (a `reserved` escrow) — SERVER-derived, never editable
+	 * (Decision #556 (c)). A prepaid stage keeps the price it was bought at, so the editor says a new
+	 * price leaves these as they are. Absent when none has, or the read was refused.
+	 */
+	prepaidCount: z.number().int().min(0).optional(),
+	/**
 	 * How many providers have taken a seat on this stage — SERVER-derived, never editable, and the
 	 * reason this stage's own price may be locked. See {@link ONBOARDED_ASSIGNMENT_EXCLUDED}.
 	 *

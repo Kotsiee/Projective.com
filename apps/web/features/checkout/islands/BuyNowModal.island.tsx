@@ -572,7 +572,7 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 								<Icon name="lock" size="sm" />
 								<span>
 									{chosenProvider.value === "card"
-										? "Your card pays into your wallet first. It is held in escrow from there and released only when you approve the work."
+										? "Your card pays into your wallet first, and every stage you chose is paid from there: held in escrow and released only when you approve the work."
 										: "Held in escrow from your wallet, released only when you approve the work."}
 								</span>
 							</p>

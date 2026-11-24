@@ -493,7 +493,9 @@ Refunded ──(client re-pools the ticket)────────────�
 Later stage ──(client prepays it with the ticket's purchase)───► Reserved   (that stage's escrow, Decision #430)
 Reserved ──(ticket arrives in the stage, any way)──────────────► Funded     (no second charge)
 Reserved ──(ticket completed · cancelled · deleted · stage dropped from it ·
-            the stage at work refunded unclaimed)──────────────► Refunded   (terminal per escrow)
+            the stage at work refunded unclaimed · ticket sent back to New ·
+            the stage becomes a New ticket's funding stage ·
+            the payer takes it back)───────────────────────────► Refunded   (terminal per escrow, Decision #556)
 
 Released ──(Chain Reaction: next required stage, hold made)────► Funded → In progress   (next stage's escrow)
 Released ──(next required stage prepaid: its reservation held)─► Funded → In progress   (whatever chain_reaction says)
@@ -523,7 +525,10 @@ basket line per stage): the stage it is funded in is held, and each later stage 
 a **Reserved** escrow (`finance.fn_reserve_ticket_stage_escrow`: debited now, bound to nobody, no
 refund window) that every way into that stage turns into its held escrow
 (`finance.fn_activate_ticket_reservation`, from `fn_hold_ticket_escrow` and `trg_ticket_prepay_sync`)
-and that comes back whole if the ticket never gets there (`finance.fn_refund_ticket_reservations`).
+and that comes back whole if the ticket never gets there (`finance.fn_refund_ticket_reservations`):
+also when the ticket is sent back to New, when it becomes a New ticket's funding stage, and when the
+payer takes that one stage back while the ticket has not reached it
+(`projects.refund_ticket_stage_reservation`, Decision #556). It keeps the amount it was bought at.
 The release, bind, sweep and settlement doors read `held` only, so the stage at work and the stages
 prepaid after it never touch. Whether a stage can be bought is one rule,
 `projects.fn_ticket_stage_fundable`. **Each later required stage of a

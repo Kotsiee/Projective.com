@@ -78,7 +78,7 @@ file, on disjoint migration files.
 | [`readiness/LEGAL_COMPLIANCE_BUILD_PROMPTS.md`](../readiness/LEGAL_COMPLIANCE_BUILD_PROMPTS.md) | Readiness §M: legal library, chain of title, seller tax, AML                                | 4    | 2      | LG4; LG7's page check (its commit also closes LG1)                                             |
 | [`readiness/MARKETPLACE_BUILD_PROMPTS.md`](../readiness/MARKETPLACE_BUILD_PROMPTS.md)           | USER_FLOWS MK: checkout and orders, reviews, seller catalogue                               | 7    | 4      | RV1, RV2, SC6, SC9 (phase 6), SC10, SC12, SC13                                                 |
 | [`readiness/OPERATIONS_BUILD_PROMPTS.md`](../readiness/OPERATIONS_BUILD_PROMPTS.md)             | Readiness §B live data, §G jobs and deployment, §H secrets                                  | 3    | 2      | CFG1, CFG2, LD4                                                                                |
-| [`readiness/PROJECTS_BUILD_PROMPTS.md`](../readiness/PROJECTS_BUILD_PROMPTS.md)                 | USER_FLOWS PJ: the row map, and the PJ prompts no domain owns                               | 20   | 0      | ST4, TK1, EX3, CH2, NO1–NO4, FL1–FL4                                                 |
+| [`readiness/PROJECTS_BUILD_PROMPTS.md`](../readiness/PROJECTS_BUILD_PROMPTS.md)                 | USER_FLOWS PJ: the row map, and the PJ prompts no domain owns                               | 19   | 0      | ST4, TK2, EX3, CH2, NO1–NO4, FL1–FL4                                                 |
 
 ## 4. Retired and merged prompts files
 

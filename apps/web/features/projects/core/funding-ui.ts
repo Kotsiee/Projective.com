@@ -269,6 +269,34 @@ export function prepaidSentence(names: readonly string[]): string | null {
 	const head = names.slice(0, -1).join(", ");
 	return `${head} and ${names[names.length - 1]} are prepaid.`;
 }
+
+/**
+ * The stage editor's note on its price while tickets have prepaid the stage (Decision #556 (c)): a
+ * new price applies to the stages not yet paid for, so the prepaid ones keep the rate they were
+ * bought at. `null` when none has.
+ */
+export function prepaidPriceHint(count: number | undefined): string | null {
+	if (!count || count <= 0) return null;
+	return count === 1
+		? "1 ticket prepaid here keeps the price it was bought at."
+		: `${count} tickets prepaid here keep the price they were bought at.`;
+}
+
+/**
+ * What the payer is told once they take one prepaid stage back (Decision #556 (d)): what came back
+ * to their wallet, or the server's own refusal.
+ */
+export function prepaidRefundNotice(
+	card: Pick<BoardCard, "stages">,
+	stageId: string,
+	res: { ok: boolean; message?: string; data?: { refund: { amount: { display: string } } } },
+): string {
+	const name = card.stages.find((s) => s.stageId === stageId)?.name ?? "that stage";
+	if (res.ok && res.data) {
+		return `${res.data.refund.amount.display} for ${name} is back in your wallet.`;
+	}
+	return res.message ?? `The prepayment for ${name} couldn't be refunded. Nothing moved.`;
+}
 // #endregion
 
 // #region Dev preview
@@ -309,14 +337,16 @@ export function previewFunding(
 
 /**
  * The Dev Context Switcher's prepaid-stage preview over the real ids — display only: `none` shows no
- * prepaid stage, `later` shows every stage after the one the ticket is funded in as prepaid.
+ * prepaid stage, `some` the first stage after the one the ticket is funded in, `later` every stage
+ * after it.
  */
 export function previewPrepaidStages(
 	real: readonly string[] | undefined,
-	mode: "auto" | "none" | "later" | undefined,
+	mode: "auto" | "none" | "some" | "later" | undefined,
 	laterStageIds: readonly string[],
 ): string[] {
 	if (mode === "none") return [];
+	if (mode === "some") return laterStageIds.slice(0, 1);
 	if (mode === "later") return [...laterStageIds];
 	return [...(real ?? [])];
 }

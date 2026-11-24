@@ -13,6 +13,8 @@ import type {
 	InboundPayment,
 	KybOnboardingInput,
 	PaymentFundingPoll,
+	ReservationRefund,
+	ReservationRefundBody,
 	SavedCardResult,
 	ShareTaxDocumentInput,
 	StageFundingQuote,
@@ -138,6 +140,13 @@ export const PaymentsService = {
 	 */
 	escrowLockIntent(input: CreateEscrowLockIntent): Promise<PaymentsResponse<CardPaymentHandoff>> {
 		return post("/api/finance/escrow/intent", input);
+	},
+
+	/** Take one prepaid stage of a ticket back into the paying wallet, while the ticket has not reached it. */
+	refundPrepaidStage(
+		input: ReservationRefundBody,
+	): Promise<PaymentsResponse<{ refund: ReservationRefund }>> {
+		return post("/api/finance/escrow/reservation", input);
 	},
 
 	/**

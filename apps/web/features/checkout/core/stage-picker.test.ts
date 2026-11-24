@@ -134,6 +134,9 @@ Deno.test("the dev preview marks later stages prepaid or offers prepaid ones aga
 	assertEquals(reopened.blocked, null);
 	assertEquals(stagePickerRows(reopened).filter((r) => r.fundable).map((r) => r.stageId), ["b"]);
 	assertEquals(previewQuote(THREE, "auto"), THREE);
+	const some = previewQuote(THREE, "some");
+	assertEquals(some.stages.filter((s) => s.phase === "prepaid").map((s) => s.stageId), ["b"]);
+	assertEquals(stagePickerRows(some).filter((r) => r.fundable).map((r) => r.stageId), ["a", "c"]);
 });
 
 Deno.test("a basket line naming its stage by slug is the same stage as the quote's row id (#430)", () => {

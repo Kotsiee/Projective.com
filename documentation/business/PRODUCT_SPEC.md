@@ -2939,8 +2939,29 @@ approval — the prepayment becomes the stage's held escrow, under the same paye
 then), and work carries on even where the stage's Chain Reaction is off, since its money is already
 in escrow. A prepaid stage the ticket never reaches comes back to the client whole, with no fee:
 when the ticket is completed, cancelled or deleted, when the client takes that stage off the
-ticket, and when the stage it is at is refunded unclaimed by the window above (nothing later can
-start either). Releasing the stage at work never touches the stages prepaid after it.
+ticket, when the ticket is sent back to New (nobody is lined up to work its stages any more), and
+when the stage it is at is refunded unclaimed by the window above (nothing later can start either).
+A ticket in New is funded in the first stage it runs through, which is held, never prepaid, so a
+prepaid stage that becomes that first stage (the stages before it taken off) comes back too; the
+later stages prepaid beyond it stay. Releasing the stage at work never touches the stages prepaid
+after it (Decision #556 (e)).
+
+- **Who sees it (Decision #556 (b)).** Everyone on the project sees which of a ticket's stages are
+  prepaid, so the freelancer on it knows the next stages are paid for ahead. Nobody but the paying
+  side sees the amounts: the escrow rows stay the payer's (`View escrows`), and the reader the board
+  uses answers stage ids only.
+- **The price it was bought at (Decision #556 (c)).** A prepaid stage keeps the price it was
+  bought at. If the stage's price, or the ticket's intensity there, changes before the ticket
+  arrives, the arrival holds the prepaid amount: no top-up, no partial refund. A new price applies
+  to the stages not yet paid for, and the stage editor says how many tickets are prepaid there at
+  the old rate.
+- **Taking one back (Decision #556 (d)).** The payer may take one prepaid stage back while the
+  ticket has not reached it, from the ticket's funding line: it comes back to the paying wallet
+  whole, with no fee. Once the ticket has reached the stage its money is the stage's held escrow, and
+  the refund is refused.
+- **By card (Decision #556 (f)).** A card pays the stage at hand. Buy now by card pays into the
+  wallet first, and every stage chosen is paid from there, the later ones prepaid; a stage's own card
+  escrow lock (Fund a stage) holds that stage's tickets and never prepays a later one.
 
 **Funding from New (Decision #428).** A ticket can be funded straight from the **New** backlog,
 before anyone is hired: one sitting in a stage is funded there, and one in the stage-less New lane is

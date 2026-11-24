@@ -51,6 +51,8 @@ import {
 } from "@web/features/checkout/core/basket-state.ts";
 import { buyNowOpen, requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
+import { PaymentsService } from "@web/features/payments/core/PaymentsService.ts";
+import { prepaidRefundNotice } from "../core/funding-ui.ts";
 import { registerTicketSurface } from "../core/ticket-link.ts";
 import {
 	type BoardAccess,
@@ -110,6 +112,8 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 	const loading = useSignal(false);
 	const composing = useSignal<BoardCard | null>(null);
 	const savingId = useSignal<string | null>(null);
+	/** The prepaid stage whose refund is in flight — its Refund control shows the spinner. */
+	const refundingStage = useSignal<string | null>(null);
 	const seenStageEpoch = useRef(stagesCreatedEpoch.peek());
 	const notice = useSignal("");
 	const newIdRef = useRef(0);
@@ -313,6 +317,19 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 			const fresh = res.data.card;
 			patchBoard((b) => ({ ...b, cards: b.cards.map((c) => (c.id === fresh.id ? fresh : c)) }));
 		}
+	}
+
+	/** The payer takes one prepaid stage back (Decision #556 (d)); the card is re-read, so the line moves on. */
+	async function refundPrepaid(card: BoardCard, stageId: string): Promise<void> {
+		refundingStage.value = stageId;
+		const res = await PaymentsService.refundPrepaidStage({
+			project: props.projectId,
+			ticket: card.slug ?? card.id,
+			stageId,
+		});
+		refundingStage.value = null;
+		toast(prepaidRefundNotice(card, stageId, res));
+		if (res.ok) await reread(card);
 	}
 
 	/** Start composing a ticket in `stageId` (or the backlog), optionally already dated. */
@@ -559,6 +576,8 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 						inBasket={basketTicketIds.value.has(viewing.slug ?? viewing.id) ||
 							basketTicketIds.value.has(viewing.id)}
 						onOpenBasket={openBasket}
+						onRefundPrepaid={(c, stageId) => void refundPrepaid(c, stageId)}
+						refundingStageId={refundingStage.value}
 					/>
 				)
 				: null}

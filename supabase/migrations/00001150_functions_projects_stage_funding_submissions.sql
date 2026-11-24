@@ -1243,6 +1243,48 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, comms, org, auth;
+
+-- The payer takes ONE prepaid stage back (Decision #556 (d)). While that stage of the ticket is only
+-- reserved (the ticket has not reached it, so nobody has claimed or worked it there), its reservation
+-- comes back whole and fee-free through finance.fn_refund_ticket_reservations, in this transaction.
+-- Whoever may fund the project may take it back (projects.fn_can_fund_project, PK403 otherwise). A
+-- stage with no reservation (never prepaid, held on arrival, or already refunded) is refused with
+-- PF409, so a replay returns nothing twice. The ticket row is locked first, so no arrival races the
+-- refund. Returns what came back, for the payer's own confirmation.
+CREATE OR REPLACE FUNCTION projects.refund_ticket_stage_reservation(p_ticket_id uuid, p_stage_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_project uuid;
+    v_amount bigint;
+    v_currency text;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to refund a prepaid stage.' USING ERRCODE = '42501';
+    END IF;
+    SELECT t.project_id INTO v_project FROM projects.tickets t WHERE t.id = p_ticket_id FOR UPDATE;
+    IF v_project IS NULL THEN
+        RAISE EXCEPTION 'Ticket not found.' USING ERRCODE = 'no_data_found';
+    END IF;
+    IF NOT projects.fn_can_fund_project(v_project) THEN
+        RAISE EXCEPTION 'not_funder: only a member who can spend from the client''s wallet can refund a prepaid stage'
+            USING ERRCODE = 'PK403';
+    END IF;
+    SELECT e.amount_cents, e.currency INTO v_amount, v_currency
+      FROM finance.escrows e
+     WHERE e.ticket_id = p_ticket_id AND e.project_stage_id = p_stage_id AND e.status = 'reserved';
+    IF v_amount IS NULL
+        OR finance.fn_refund_ticket_reservations(p_ticket_id, p_stage_id, 'refunded_by_payer') = 0 THEN
+        RAISE EXCEPTION 'This stage isn''t prepaid: the ticket has reached it, or its prepayment already came back.'
+            USING ERRCODE = 'PF409';
+    END IF;
+    RETURN jsonb_build_object('ticket_id', p_ticket_id, 'stage_id', p_stage_id,
+                              'amount_cents', v_amount, 'currency', v_currency);
+END;
+$$;
 -- #endregion
 
 -- #endregion

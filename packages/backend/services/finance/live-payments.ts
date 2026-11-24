@@ -15,6 +15,7 @@ import {
 	type PayoutScheduleRun,
 	PayoutScheduleRunSchema,
 	PayoutSchema,
+	PrepaidStageRowSchema,
 	type SavedCardResult,
 	SavedCardResultSchema,
 	type VerificationCase,
@@ -100,6 +101,7 @@ function statusForCode(code: string | undefined, reason: string): number {
 			return 404;
 		case "PX409":
 		case "PC409":
+		case "PF409":
 		// A state, not a fault (`business_not_active:` is answered with its code before this).
 		case "55000":
 			return 409;
@@ -705,34 +707,43 @@ export interface TicketBillingFacts {
 
 /**
  * The billing facts behind a board's funding lines (PRODUCT_SPEC §Escrow, Wallets & Finance #4), read
- * as the caller: escrows through `View escrows` (the payee or the payer side), the business's terms
- * through `finance.get_billing_settings` (its members). Fails open to "no facts" — the funding state
- * itself never depends on them.
+ * as the caller: escrows through `View escrows` (the payee or the payer side), the prepaid stages
+ * through `projects.get_project_prepaid_stages` (anyone on the project, ids only, Decision #556 (b)),
+ * the business's terms through `finance.get_billing_settings` (its members). Fails open to "no facts" —
+ * the funding state itself never depends on them.
  */
 export async function ticketBillingFacts(
 	accessToken: string,
+	projectId: string,
 	ticketIds: readonly string[],
 	clientBusinessId: string | null,
 	now: Date = new Date(),
 ): Promise<TicketBillingFacts> {
 	const out: TicketBillingFacts = { escrows: new Map(), prepaid: new Map(), invoicePeriod: null };
 	if (ticketIds.length === 0) return out;
-	const finance = getUserClient(accessToken).schema("finance");
-	const [escrows, settings] = await Promise.all([
+	const client = getUserClient(accessToken);
+	const finance = client.schema("finance");
+	const [escrows, prepaid, settings] = await Promise.all([
 		finance.from("escrows").select("ticket_id, project_stage_id, status, auto_funded, released_at")
 			.in("ticket_id", ticketIds as string[])
+			.neq("status", "reserved")
 			.order("created_at", { ascending: false })
 			.limit(500),
+		client.schema("projects").rpc("get_project_prepaid_stages", { p_project_id: projectId }),
 		clientBusinessId
 			? finance.rpc("get_billing_settings", { p_business_id: clientBusinessId })
 			: Promise.resolve({ data: null, error: null }),
 	]);
+	for (const raw of ((prepaid.error ? [] : prepaid.data) ?? []) as unknown[]) {
+		const row = PrepaidStageRowSchema.safeParse(raw);
+		if (!row.success) continue;
+		out.prepaid.set(row.data.ticket_id, [
+			...(out.prepaid.get(row.data.ticket_id) ?? []),
+			row.data.stage_id,
+		]);
+	}
 	for (const row of ((escrows.error ? [] : escrows.data) ?? []) as Row[]) {
 		const id = String(row.ticket_id);
-		if (row.status === "reserved") {
-			out.prepaid.set(id, [...(out.prepaid.get(id) ?? []), String(row.project_stage_id)]);
-			continue;
-		}
 		if (out.escrows.has(id)) continue;
 		out.escrows.set(id, {
 			autoFunded: row.auto_funded === true,

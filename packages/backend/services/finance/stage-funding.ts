@@ -1,13 +1,18 @@
-import type {
-	FundingCharge,
-	StageFundingQuote,
-	StageFundingQuoteQuery,
-	TicketFundingQuote,
+import {
+	type FundingCharge,
+	type ReservationRefund,
+	type ReservationRefundBody,
+	sameCurrencyMoney,
+	type StageFundingQuote,
+	type StageFundingQuoteQuery,
+	type TicketFundingQuote,
 } from "@projective/types/finance";
 import { fundingChargeFor, listedCharge } from "./funding-charge.ts";
 import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
+import { refuseUnlessMoneyLive } from "./money-gate.ts";
+import { touchProjects } from "../projects/freshness.ts";
 import { ProjectBackendService } from "../projects/ProjectBackendService.ts";
 import { type DbResult, refusalOf } from "./live-payments.ts";
 import { fixtureTicketQuote, readTicketFundingQuote, resolveTicketRefs } from "./ticket-funding.ts";
@@ -172,6 +177,56 @@ export class StageFundingBackendService {
 			console.error("[stage-funding:quote-ticket]", error instanceof Error ? error.message : error);
 			return fail(503, {
 				message: "We couldn't read this ticket's funding just now. Try again in a moment.",
+			});
+		}
+	}
+
+	/**
+	 * The payer takes one prepaid stage of a ticket back while the ticket has not reached it (Decision
+	 * #556 (d)): `projects.refund_ticket_stage_reservation` returns the reservation to the paying
+	 * wallet, whole and fee-free. 401 signed out, 503 with the money switch off, 404 for a ticket the
+	 * caller cannot see, 403 for someone who may not fund it, 409 when the stage is no longer only
+	 * prepaid (the ticket reached it, or it already came back).
+	 */
+	static async refundReservation(
+		body: ReservationRefundBody,
+		actor: ReadActor | null,
+	): Promise<ServiceResult<{ refund: ReservationRefund }>> {
+		const signedOut = "Sign in to refund a prepaid stage.";
+		const refused = refuseUnlessMoneyLive<{ refund: ReservationRefund }>(actor, signedOut);
+		if (refused) return refused;
+		if (!actor || !canReadLive(actor)) return fail(401, { message: signedOut });
+		try {
+			const refs = await resolveTicketRefs(actor.accessToken, body.project, body.ticket);
+			if (!refs) return fail(404, { message: "That ticket wasn't found." });
+			const { data, error } = await getUserClient(actor.accessToken).schema("projects").rpc(
+				"refund_ticket_stage_reservation",
+				{ p_ticket_id: refs.ticketId, p_stage_id: body.stageId },
+			);
+			if (error) {
+				const refusal = refusalOf(error, "refund_ticket_stage_reservation");
+				return fail(refusal.status, { message: refusal.message, details: refusal.details });
+			}
+			const row = (data ?? {}) as Row;
+			// Both parties' boards show the stage given back on their next read (ST6).
+			await touchProjects([body.project]);
+			return ok({
+				refund: {
+					ticketId: String(row.ticket_id ?? refs.ticketId),
+					stageId: String(row.stage_id ?? body.stageId),
+					amount: sameCurrencyMoney(
+						Math.max(0, int(row.amount_cents)),
+						String(row.currency ?? "USD").toUpperCase(),
+					),
+				},
+			});
+		} catch (error) {
+			console.error(
+				"[stage-funding:refund-reservation]",
+				error instanceof Error ? error.message : error,
+			);
+			return fail(503, {
+				message: "We couldn't refund that stage just now. Nothing moved. Try again in a moment.",
 			});
 		}
 	}

@@ -53,8 +53,18 @@ export interface FundingStatusProps {
 	tag?: boolean;
 	/** The ticket's `tkt-…` slug — re-read every few seconds while a payment is processing. */
 	pollSlug?: string;
-	/** The names of the later stages already paid for (Decision #430), stated after the sentence. */
-	prepaidStages?: readonly string[];
+	/**
+	 * The later stages already paid for (Decision #430), named after the sentence for everyone on the
+	 * ticket (Decision #556 (b)).
+	 */
+	prepaidStages?: readonly { stageId: string; name: string }[];
+	/**
+	 * The payer takes one prepaid stage back while the ticket has not reached it (Decision #556 (d)):
+	 * one outlined Refund per prepaid stage. Passed only on the payer's side.
+	 */
+	onRefundStage?: (stageId: string) => void;
+	/** The prepaid stage whose refund is in flight — its control shows the spinner. */
+	refundingStageId?: string | null;
 	onBuyNow?: () => void;
 	/** Put the ticket in the basket; resolve `true` when a line landed (the control then celebrates). */
 	onAddToBasket?: () => Promise<boolean> | boolean;
@@ -177,7 +187,8 @@ export function FundingStatus(props: FundingStatusProps): JSX.Element | null {
 		kind: props.kind,
 		sessionTerms: props.sessionTerms,
 	});
-	const prepaid = prepaidSentence(props.prepaidStages ?? []);
+	const prepaidStages = props.prepaidStages ?? [];
+	const prepaid = prepaidSentence(prepaidStages.map((s) => s.name));
 	const sentence = prepaid ? `${base} ${prepaid}` : base;
 
 	if (compact) {
@@ -266,6 +277,21 @@ export function FundingStatus(props: FundingStatusProps): JSX.Element | null {
 							onClick={props.onStart}
 						/>
 					)
+					: null}
+				{props.onRefundStage
+					? prepaidStages.map((s) => (
+						<Button
+							key={s.stageId}
+							severity="neutral"
+							variant="outlined"
+							rounded
+							size="sm"
+							loading={props.refundingStageId === s.stageId}
+							disabled={!!props.refundingStageId && props.refundingStageId !== s.stageId}
+							label={`Refund ${s.name}`}
+							onClick={() => props.onRefundStage?.(s.stageId)}
+						/>
+					))
 					: null}
 			</div>
 		</div>

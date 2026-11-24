@@ -1146,6 +1146,12 @@ REVOKE ALL ON FUNCTION finance.fn_reserve_ticket_stage_escrow (uuid, uuid) FROM 
 REVOKE ALL ON FUNCTION finance.fn_activate_ticket_reservation (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_refund_ticket_reservations (uuid, uuid, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION projects.fn_ticket_prepay_sync () FROM PUBLIC, anon, authenticated;
+-- Which stages are prepaid, for anyone on the project (ids only), and the payer's door that takes one
+-- back (Decision #556 (b), (d)). Each checks its own authority; neither is anon's.
+REVOKE ALL ON FUNCTION projects.get_project_prepaid_stages (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_project_prepaid_stages (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.refund_ticket_stage_reservation (uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.refund_ticket_stage_reservation (uuid, uuid) TO authenticated;
 REVOKE ALL ON FUNCTION finance.attach_card_payment (uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.attach_card_payment (uuid, text) TO authenticated;
 REVOKE ALL ON FUNCTION finance.abandon_card_payment (uuid, text) FROM PUBLIC, anon;
