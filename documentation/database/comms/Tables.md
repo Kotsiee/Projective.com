@@ -453,7 +453,6 @@ scopes only, archived rows included) keeps it to one room each, so the opener is
 retired room is never re-opened. A Session's stages and a Task (one conversation, Decision #121)
 get none. Who reads them is `comms.can_access_scope` ([Functions](Functions.md)).
 
-
 **`archived_at`: a retired room that carries history (Decision #163).** When a save leaves the
 project a Task (every non-root stage's rooms) or a Session (every stage-bound room),
 `projects.sanitize_single_room_topology` hard-deletes a room with no history
