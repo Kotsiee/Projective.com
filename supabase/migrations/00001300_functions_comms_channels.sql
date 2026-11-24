@@ -1762,8 +1762,10 @@ COMMENT ON FUNCTION comms.fn_dm_in_project(uuid, uuid) IS
 -- Bring the caller's one-to-one conversation with another person into a project (PROJECTS CH3; the
 -- owner's ruling on stop 23, Decision #560): either participant may, while both are parties to the
 -- project, and the other is told. The pair's thread is found or opened by comms.get_or_create_dm_thread,
--- so the DM opener's every rule holds (the pair lock, the DM shield, no self-DM); then the thread joins
--- the project's Private Messages group (comms.dm_thread_projects), clearing a past take-out. Answers
+-- so the DM opener's every rule holds (the pair lock, the DM shield, no self-DM); a DM the caller had
+-- deleted for themselves comes back for them, since opening it is their own act on it and the project
+-- would otherwise open a thread they cannot see; then the thread joins the project's Private Messages
+-- group (comms.dm_thread_projects), clearing a past take-out. Answers
 -- { thread_id, thread_ref, moved }: `moved` is false when it was already in the group, and then nobody
 -- is told again. A caller who is not a party to the project is refused 42501, as if it did not exist;
 -- the other not being one is CH409, in a sentence the roster shows.
@@ -1797,6 +1799,10 @@ BEGIN
     v_opened := comms.get_or_create_dm_thread(p_target_user_id);
     v_thread := (v_opened ->> 'thread_id')::uuid;
     v_ref := v_opened ->> 'thread_ref';
+
+    UPDATE comms.dm_participants p
+       SET deleted_at = NULL
+     WHERE p.thread_id = v_thread AND p.user_id = v_me AND p.deleted_at IS NOT NULL;
 
     IF comms.fn_dm_in_project(v_thread, p_project_id) THEN
         RETURN pg_catalog.jsonb_build_object('thread_id', v_thread, 'thread_ref', v_ref, 'moved', false);

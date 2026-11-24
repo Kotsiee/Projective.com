@@ -362,15 +362,30 @@ RESET ROLE;
 -- #endregion
 
 -- #region 5. Bringing a DM into the project, and taking it out (stop 23 as ruled, Decision #560)
--- The pair's one DM is whichever thread comms.get_or_create_dm_thread answers for them; start it out
--- of the group, whatever the seed or section 4 left, so the bring-in below is a real move.
+-- The pair's one DM is whichever thread comms.get_or_create_dm_thread answers for them: the seed's, or
+-- one of section 4's (they tie on created_at, so which is not fixed). Whichever it is, the owner first
+-- deletes it for themselves, then opens it from the project, then takes it out, so the bring-in
+-- below starts from the same state every run.
 SELECT pg_temp.act(pg_temp.id('owner'));
 SET LOCAL ROLE authenticated;
 INSERT INTO probe_ids
 SELECT 'pair', (comms.get_or_create_dm_thread(pg_temp.id('free')) ->> 'thread_id')::uuid;
-SELECT pg_temp.try_take(pg_temp.id('pair'));
+RESET ROLE;
+UPDATE comms.dm_participants SET deleted_at = now()
+ WHERE thread_id = pg_temp.id('pair') AND user_id = pg_temp.id('owner');
+SELECT pg_temp.act(pg_temp.id('owner'));
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.ok((pg_temp.try_bring(pg_temp.id('free'))::jsonb ->> 'thread_id')::uuid = pg_temp.id('pair'),
+    '5 opening the DM from the project answers the pair''s own thread');
+SELECT pg_temp.ok(pg_temp.listed(pg_temp.id('pair')),
+    '5 a DM the owner had deleted for themselves comes back for them, in the project');
+SELECT pg_temp.ok(pg_temp.try_take(pg_temp.id('pair')) = 'true', 'fixture: the pair''s DM is taken out to start');
 SELECT pg_temp.ok(NOT pg_temp.listed(pg_temp.id('pair')), 'fixture: the pair''s DM starts out of the group');
 RESET ROLE;
+SELECT pg_temp.ok(
+    (SELECT p.deleted_at IS NULL FROM comms.dm_participants p
+      WHERE p.thread_id = pg_temp.id('pair') AND p.user_id = pg_temp.id('owner')),
+    '5 and its participant row is undeleted for the owner only');
 
 DELETE FROM comms.notifications n
  WHERE n.user_id = pg_temp.id('free') AND n.type = 'message.brought_into_project';
