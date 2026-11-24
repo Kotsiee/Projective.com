@@ -301,7 +301,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 13 | #427 (a): the client creates every ticket on a service engagement                                                                            | ST6           | Confirm it: PRODUCT_SPEC.md:629-631 already says so                                                                                                                                                                      |
 | 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3           | Review authority pins among live-seat holders, capacity-checked; the assignee may hand it back before submitting                                                                                                         |
 | 15 | Where the workload gauge sits                                                                                                                | ST4           | Beside Claim (the ticket view, stage Tasks) and in the freelancer's Projects header; on `/home` once PRD-A1 lands                                                                                                        |
-| 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1           | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
+| 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1 (#546)    | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
 | 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2           | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
 | 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2           | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
 | 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3           | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
@@ -904,6 +904,11 @@ SAME CHANGE: e2e harness notes in SYSTEM_ARCHITECTURE.md if the task changes; th
 ### EX1 — A project completes
 
 Closes PJ-40 (❌ → ✅).
+
+**Status (2026-11-24, #546):** stopped at the 🧑 DECISION (questions 1 and 2, the NEW contradiction
+logged). Step 1's red probe `project_completion.sql` is written and stays out of `main` while it
+fails. Two premises no longer hold: PM-GH1 has not landed, and TK1 holds Queue S on `00001150` and
+`00002510`, so steps 2–7 wait for the rulings and for that slot.
 
 ```text
 PROMPT EX1: A project completes: automatically when its last money settles, or when the client
