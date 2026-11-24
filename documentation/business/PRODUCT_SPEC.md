@@ -1597,6 +1597,13 @@ context without "ping fatigue."
   addressed by its own opaque `cht-…` slug (`/messages/dm-<handle>` answers 303 to it), and a DM
   sent inside a project is stamped with that project so the project shows the same thread the inbox
   does; the two message stores stay separate (Decision #339, ruling N1).
+- **Inside a project** (Decision #560): a project's Private Messages group shows every conversation
+  a person has with its people that was sent inside the project, groups included. Either person in
+  a DM may **bring it into** a project they are both on (the Members "Message" action does it), and
+  the other person is told; either may **take it out** again, which removes it from the project for
+  both of them but keeps it, and every message sent inside the project, exactly as it was — those
+  messages stay part of the project's record. Bringing it back restores it. Inside the project the
+  conversation has its own Files and Members, and reading it there marks it read everywhere.
 - **Creating one:** from the `/messages` root (the empty state's _New message_ / _New group_), the
   inbox lane, or a listing/profile. One pick starts (or reopens) the pair's DM; several picks —
   or a named pick — start a group. An optional opening message is posted **in the same act**, so
@@ -1813,6 +1820,11 @@ things:
   own work if you submit.
 - **Members** — the number of membership changes: people joining for everyone, plus join requests
   and invitation outcomes for those who staff the engagement.
+
+Each room in the engagement's tree (a stage's room, a team room, the project-wide room) and each of
+its Private Messages carries an unread dot when somebody else wrote there since **this person** last
+read it (PROJECTS CH3). Reading is seeing the latest messages in an open, visible tab; opening the page
+in a background tab, or a link preview fetching it, reads nothing. A dot, never a count.
 
 What happened before a person's first visit to an engagement is not marked.
 

@@ -151,6 +151,7 @@ INSERT INTO probe_actor_reviewed VALUES
     ('comms.add_dm_thread_members(uuid,uuid[])',             'authorised: a participant; never into a pair''s inquiry or a channel (#482)', NULL),
     ('comms.create_group_thread(text,uuid[])',               'caller: the creator is auth.uid(); members are recipients', NULL),
     ('comms.get_or_create_dm_thread(uuid,uuid)',             'caller: the pair is (auth.uid(), target)', NULL),
+    ('comms.bring_dm_into_project(uuid,uuid)',               'authorised: the caller and the target are both parties to the project; the pair is (auth.uid(), target) through get_or_create_dm_thread (#560)', NULL),
     ('comms.send_request_message(uuid,text,uuid)',           'authorised: the other side of the caller''s pending invitation or application', NULL),
     ('files.get_storage_quota(files.owner_kind,uuid)',       'authorised: self, or an entity the caller belongs to', NULL),
     ('finance.ensure_purchase_wallet(text,uuid,text)',       'authorised: own wallet, or spend on the entity''s', NULL),

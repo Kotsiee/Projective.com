@@ -349,6 +349,30 @@ a race between two of them now fails loudly instead of doubling the roster. Its 
 per-message participant lookups the two `BEFORE INSERT` triggers on `dm_messages` make. Index
 (`00004006`): `idx_dm_participants_folder (user_id, inbox_folder)` — the folder tabs.
 
+### `comms.dm_thread_projects`
+
+A thread's place in one project's Private Messages group beyond its stamped messages (PROJECTS CH3,
+Decision #560, the owner's ruling on stop 23). A thread is in the group when it holds an undeleted
+message stamped with the project (`dm_messages.project_id`) **or** a participant brought it in, and
+nobody has taken it out since. Either participant brings their one-to-one conversation in while both
+are parties to the project, and the other is told (`message.brought_into_project`); either takes it
+out, which hides it from the group for **both** people and never touches a stamp, which stays as
+evidence. Bringing it back clears the take-out on the same row, so nothing is deleted. Written only by
+`comms.bring_dm_into_project` and `comms.take_dm_out_of_project` ([Functions.md](Functions.md)); read
+by the thread's participants ([Policies.md](Policies.md)). Zod: `DmThreadProjectRowSchema`
+(`@projective/types/messaging` `project-dms.ts`, `project-dms.contract.test.ts`).
+
+| Column          | Type        | Notes |
+| :-------------- | :---------- | :---- |
+| `thread_id`     | uuid        | PK with `project_id`. FK → `comms.dm_threads.id`. |
+| `project_id`    | uuid        | FK → `projects.projects.id`. |
+| `brought_in_by` | uuid        | Who last brought the thread in; NULL on a stamped thread that was only ever taken out. FK → `org.users_public`. |
+| `brought_in_at` | timestamptz | With `brought_in_by` (`ck_dm_thread_projects_brought_pair`). |
+| `taken_out_by`  | uuid        | Who took it out; NULL while it is in the group. FK → `org.users_public`. |
+| `taken_out_at`  | timestamptz | With `taken_out_by` (`ck_dm_thread_projects_taken_pair`). |
+
+`ck_dm_thread_projects_says_something`: a row records a bring-in, a take-out or both.
+
 ### `comms.auto_responses`
 
 A person's away-reply rules (Settings → Messaging; Decisions #151, #156). Own rows only
@@ -530,6 +554,24 @@ plugin; a nullable `actor_plugin_id → integrations.plugins(id)` is the expecte
 Every reader of a message (the feed, inbox previews, notifications) is to render a non-`human` row
 with a Meta-register indicator ("Sent by an assistant") rather than a pill (DESIGN_SYSTEM §B.11), and
 the PII mask, reply guard and edit window apply unchanged. `comms.dm_messages` takes the same pair.
+
+### `comms.project_channel_reads`
+
+A person's read watermark in one project room (PROJECTS CH3, PRD-E13): the room twin of
+`comms.dm_participants.last_read_at`. Its own table because a room has no per-person row:
+access is derived from the project, the stage and the seat (`comms.can_access_scope`), and
+`project_channel_participants` is keyed by profile. Written only by `comms.mark_room_read`, through
+`POST /api/projects/messages/read`, which the project chat island sends once the room has painted in
+a visible tab (CAS M10; the page's GET never writes it, PRD-C11); it moves forward, and only past a
+newer message. Read as one's own row only ([Policies.md](Policies.md)); no client write policy or
+grant. Zod: `ProjectChannelReadRowSchema` (`@projective/types/messaging` `read-marks.ts`,
+`read-marks.contract.test.ts`).
+
+| Column         | Type        | Notes |
+| :------------- | :---------- | :---- |
+| `channel_id`   | uuid        | PK with `user_id`. FK → `comms.project_channels.id`. |
+| `user_id`      | uuid        | The reader. FK → `org.users_public`. |
+| `last_read_at` | timestamptz | When they last read the room. **No row = never opened**: `comms.unread_rooms` then counts from the reader's first lane mark on the engagement (`projects.view_reads`, the `projects.get_nav_activity` baseline), so a person arriving on a project is not shown every room's history as news. |
 
 ---
 

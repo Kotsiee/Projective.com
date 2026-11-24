@@ -113,6 +113,7 @@ CLAUDE.md §6 — RLS is always on).
 | _view_channel_files_if_member_        | `comms.channel_files`                | `SELECT` | Channel access (`'project'`) or DM participation (`'dm'`)       |
 | _register_channel_files_if_member_    | `comms.channel_files`                | `INSERT` | Same predicate as the read                                      |
 | _view_channel_participants_if_member_ | `comms.project_channel_participants` | `SELECT` | `comms.has_channel_access(channel_id)`                          |
+| _view_own_room_reads_                 | `comms.project_channel_reads`        | `SELECT` | `user_id = auth.uid()` — one's own room read mark only (PROJECTS CH3). No write policy and no client write privilege (`00002520`): `comms.mark_room_read` is its one writer |
 
 Private-channel scoping and the PII handover gate are layered on top by migration 0311
 (`comms.can_access_scope`, `comms.has_channel_access`).
@@ -192,6 +193,7 @@ Added by Decisions #82/#83; summarised here so this file is not read as the whol
 | Table                            | Read                                 | Write                                                     |
 | :------------------------------- | :----------------------------------- | :-------------------------------------------------------- |
 | `comms.dm_participants`          | **Own row only.**                    | —                                                         |
+| `comms.dm_thread_projects`       | `comms.is_dm_participant(thread_id)` | — (and no write privilege, `00002520`): `comms.bring_dm_into_project` / `take_dm_out_of_project` only (Decision #560) |
 | `comms.dm_threads`               | `comms.is_dm_participant(id)`        | — (and no `INSERT` / `UPDATE` privilege, `00002520`)      |
 | `comms.dm_messages`              | `comms.is_dm_participant(thread_id)` | `INSERT` as self into a thread one is a member of.        |
 | `comms.message_reactions`        | `comms.can_read_message(...)`        | `INSERT` as self on a readable message; `DELETE` own row. |

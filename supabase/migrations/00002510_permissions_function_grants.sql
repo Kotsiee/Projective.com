@@ -1433,6 +1433,32 @@ GRANT EXECUTE ON FUNCTION comms.set_dm_muted(uuid, boolean) TO authenticated;
 
 GRANT EXECUTE ON FUNCTION comms.mark_dm_read(uuid) TO authenticated;
 
+-- Room read marks and the project's Private Messages (PROJECTS CH3): the room twin of mark_dm_read,
+-- and the two reads the project tree makes under the caller's own RLS.
+REVOKE ALL ON FUNCTION comms.mark_room_read(uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.mark_room_read(uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION comms.unread_rooms(uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.unread_rooms(uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION comms.project_dm_threads(uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.project_dm_threads(uuid) TO authenticated;
+
+-- Bringing a conversation into a project and taking it out (Decision #560): two doors for the
+-- participants; the rule they share is internal.
+REVOKE ALL ON FUNCTION comms.bring_dm_into_project(uuid, uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.bring_dm_into_project(uuid, uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION comms.take_dm_out_of_project(uuid, uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.take_dm_out_of_project(uuid, uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION comms.fn_dm_in_project(uuid, uuid) FROM public, anon, authenticated;
+
 REVOKE ALL ON FUNCTION comms.send_request_message(uuid, text, uuid) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION comms.send_request_message(uuid, text, uuid) TO authenticated;

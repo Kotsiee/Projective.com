@@ -31,6 +31,10 @@ ALTER TABLE comms.notifications ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE comms.project_channel_participants ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE comms.project_channel_reads ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE comms.dm_thread_projects ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE comms.project_channels ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE comms.project_messages ENABLE ROW LEVEL SECURITY;

@@ -1,5 +1,10 @@
 import type { ChannelKind, ProjectDetail, ProjectFormat } from "../types/projects-types.ts";
-import { discussionOf, findStageChannel, isDiscussionRef } from "@projective/types/projects";
+import {
+	discussionOf,
+	dmChannelLabel,
+	findStageChannel,
+	isDiscussionRef,
+} from "@projective/types/projects";
 import { isSession, type SessionKind } from "./session-model.ts";
 import { isTaskDetail } from "./task-project.ts";
 
@@ -229,6 +234,11 @@ export interface ChannelMeta {
 	sub: string;
 	/** Which of the four tree groups the channel belongs to (drives the leading mark glyph). */
 	kind: ChannelKind;
+	/**
+	 * A Private Messages row that is a group thread, not a pair DM. Only a pair can be taken out of the
+	 * project and brought back (Decision #560), so the room header offers the take-out on a pair alone.
+	 */
+	group?: boolean;
 }
 
 /**
@@ -301,7 +311,15 @@ export function resolveChannelMeta(detail: ProjectDetail, ref: string): ChannelM
 	}
 	for (const d of dms) {
 		if (d.chatId === ref) {
-			return { ref, channelId: d.chatId, stageId: null, title: d.party.name, sub: detail.title, kind: "dm" };
+			return {
+				ref,
+				channelId: d.chatId,
+				stageId: null,
+				title: dmChannelLabel(d),
+				sub: detail.title,
+				kind: "dm",
+				group: d.group !== undefined,
+			};
 		}
 	}
 	return null;

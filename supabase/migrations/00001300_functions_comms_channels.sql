@@ -1175,6 +1175,279 @@ $$;
 COMMENT ON FUNCTION comms.mark_dm_read(uuid) IS
 'Advance the caller''s own read watermark (dm_participants.last_read_at) on a thread they are an undeleted participant of; true when it moved. SECURITY DEFINER because dm_participants carries no client UPDATE policy.';
 
+-- #region Room read marks and the project's Private Messages (PROJECTS CH3; PRD-E13, PRD-E17)
+-- A project room's read watermark (comms.project_channel_reads): the room twin of mark_dm_read
+-- above, sent by the same read POST the chat island makes once a page has painted in a visible tab
+-- (CAS M10, PRD-C11; a GET writes nothing). The mark moves only when there is something to read past
+-- it — never opened, or a message newer than the mark — so re-opening a read room writes nothing, and
+-- the answer says whether it moved, which is what tells the caller its cached project tree is stale.
+-- A caller who cannot read the room is refused 42501, in the shape of mark_dm_read. SECURITY DEFINER
+-- because the table carries no client write policy or grant: this is its one writer.
+CREATE OR REPLACE FUNCTION comms.mark_room_read(p_channel_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_me uuid := auth.uid();
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'mark_room_read: no acting user' USING ERRCODE = '42501';
+    END IF;
+    IF NOT comms.has_channel_access(p_channel_id) THEN
+        RAISE EXCEPTION 'Not a member of this room' USING ERRCODE = '42501';
+    END IF;
+
+    INSERT INTO comms.project_channel_reads AS r (channel_id, user_id, last_read_at)
+    VALUES (p_channel_id, v_me, pg_catalog.now())
+    ON CONFLICT (channel_id, user_id) DO UPDATE
+        SET last_read_at = EXCLUDED.last_read_at
+        WHERE EXISTS (
+            SELECT 1 FROM comms.project_messages m
+             WHERE m.channel_id = p_channel_id AND m.created_at > r.last_read_at
+        );
+
+    RETURN FOUND;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.mark_room_read(uuid) IS
+'Advance the caller''s own read watermark in a project room they can read (comms.project_channel_reads); true when it moved. The room twin of mark_dm_read. SECURITY DEFINER because the table carries no client write policy or grant.';
+
+-- The rooms of one project the caller can read that hold news for them: a message by somebody else,
+-- not deleted, newer than their mark in the room, or, in a room they never opened, newer than their
+-- first lane mark on the engagement. That baseline is projects.get_nav_activity's (00001145): a
+-- person who has just arrived is told about what happens from here, not shown every room's history,
+-- and a caller with no lane mark on the project has no news yet. The project tree's per-room unread
+-- dot (live-detail.ts). SECURITY INVOKER: the room, message and mark read policies are the guard, so
+-- a room the caller cannot read never answers and an archived room is never listed.
+CREATE OR REPLACE FUNCTION comms.unread_rooms(p_project_id uuid)
+RETURNS SETOF uuid
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+    WITH me AS (
+        SELECT auth.uid() AS uid,
+               (SELECT pg_catalog.min(v.seen_at) FROM projects.view_reads v
+                 WHERE v.user_id = auth.uid() AND v.project_id = p_project_id) AS baseline
+    )
+    SELECT c.id
+      FROM comms.project_channels c
+      CROSS JOIN me
+      LEFT JOIN comms.project_channel_reads r ON r.channel_id = c.id AND r.user_id = me.uid
+     WHERE c.project_id = p_project_id
+       AND me.uid IS NOT NULL
+       AND COALESCE(r.last_read_at, me.baseline) IS NOT NULL
+       AND EXISTS (
+           SELECT 1 FROM comms.project_messages m
+            WHERE m.channel_id = c.id
+              AND m.sender_user_id <> me.uid
+              AND m.deleted_at IS NULL
+              AND m.created_at > COALESCE(r.last_read_at, me.baseline)
+       );
+$$;
+
+COMMENT ON FUNCTION comms.unread_rooms(uuid) IS
+'The project rooms the caller can read holding an undeleted message by somebody else newer than the caller''s mark in the room, else newer than their first lane mark on the engagement (projects.view_reads); none without a lane mark. SECURITY INVOKER: RLS is the guard.';
+
+-- The project's Private Messages group (Decision #339 ruling N1; #508 (e), (f), (g)): every thread of
+-- the caller's that holds an undeleted message stamped with this project or that either participant
+-- brought into it (comms.dm_thread_projects), and that nobody has taken out since, one row per thread
+-- with its newest stamped (or brought-in) instant, newest first. A DM, a service inquiry or a group,
+-- never an entity channel (comms.tg_bind_dm_project never stamps one). A thread the caller deleted for
+-- themselves stays out, as it does the inbox. Read thread by thread from the caller's own participant
+-- rows, each one index probe (idx_dm_messages_project), where the scan it replaces read at most 500
+-- stamped messages and let one busy thread crowd the others out. SECURITY INVOKER: the participant,
+-- thread, message and link read policies are the guard.
+CREATE OR REPLACE FUNCTION comms.project_dm_threads(p_project_id uuid)
+RETURNS TABLE (
+    thread_id uuid,
+    ref text,
+    kind comms.conversation_kind,
+    title text,
+    last_stamped_at timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+    SELECT t.id, t.ref, t.kind, t.title, GREATEST(s.created_at, l.brought_in_at)
+      FROM comms.dm_participants p
+      JOIN comms.dm_threads t ON t.id = p.thread_id
+      LEFT JOIN comms.dm_thread_projects l ON l.thread_id = t.id AND l.project_id = p_project_id
+      LEFT JOIN LATERAL (
+          SELECT m.created_at FROM comms.dm_messages m
+           WHERE m.project_id = p_project_id AND m.thread_id = t.id AND m.deleted_at IS NULL
+           ORDER BY m.created_at DESC
+           LIMIT 1
+      ) s ON true
+     WHERE p.user_id = auth.uid()
+       AND p.deleted_at IS NULL
+       AND t.kind IN ('dm', 'service_inquiry', 'group')
+       AND l.taken_out_at IS NULL
+       AND (s.created_at IS NOT NULL OR l.brought_in_at IS NOT NULL)
+     ORDER BY 5 DESC, t.id;
+$$;
+
+COMMENT ON FUNCTION comms.project_dm_threads(uuid) IS
+'The caller''s undeleted threads (dm, service_inquiry, group) holding an undeleted message stamped with the project or brought into it, and not taken out (comms.dm_thread_projects), one row each with its newest stamped or brought-in instant, newest first. SECURITY INVOKER: RLS is the guard.';
+
+-- Whether one thread is in one project's Private Messages group right now: a stamped undeleted
+-- message or a bring-in, and no take-out. The one rule the two doors below share with
+-- comms.project_dm_threads above. SECURITY DEFINER so the doors can ask it for a thread whatever the
+-- caller's own message reads; no client EXECUTE.
+CREATE OR REPLACE FUNCTION comms.fn_dm_in_project(p_thread_id uuid, p_project_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT NOT EXISTS (
+               SELECT 1 FROM comms.dm_thread_projects l
+                WHERE l.thread_id = p_thread_id AND l.project_id = p_project_id AND l.taken_out_at IS NOT NULL
+           )
+       AND (
+           EXISTS (
+               SELECT 1 FROM comms.dm_thread_projects l
+                WHERE l.thread_id = p_thread_id AND l.project_id = p_project_id AND l.brought_in_at IS NOT NULL
+           )
+           OR EXISTS (
+               SELECT 1 FROM comms.dm_messages m
+                WHERE m.thread_id = p_thread_id AND m.project_id = p_project_id AND m.deleted_at IS NULL
+           )
+       );
+$$;
+
+COMMENT ON FUNCTION comms.fn_dm_in_project(uuid, uuid) IS
+'Whether the thread is in the project''s Private Messages group: an undeleted stamped message or a bring-in, and no take-out (comms.dm_thread_projects). No client EXECUTE.';
+
+-- Bring the caller's one-to-one conversation with another person into a project (PROJECTS CH3; the
+-- owner's ruling on stop 23, Decision #560): either participant may, while both are parties to the
+-- project, and the other is told. The pair's thread is found or opened by comms.get_or_create_dm_thread,
+-- so the DM opener's every rule holds (the pair lock, the DM shield, no self-DM); then the thread joins
+-- the project's Private Messages group (comms.dm_thread_projects), clearing a past take-out. Answers
+-- { thread_id, thread_ref, moved }: `moved` is false when it was already in the group, and then nobody
+-- is told again. A caller who is not a party to the project is refused 42501, as if it did not exist;
+-- the other not being one is CH409, in a sentence the roster shows.
+CREATE OR REPLACE FUNCTION comms.bring_dm_into_project(p_project_id uuid, p_target_user_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_me uuid := auth.uid();
+    v_opened jsonb;
+    v_thread uuid;
+    v_ref text;
+    v_project record;
+    v_name text;
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'bring_dm_into_project: no acting user' USING ERRCODE = '42501';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM projects.fn_engaged_projects(v_me) e WHERE e.project_id = p_project_id) THEN
+        RAISE EXCEPTION 'No such project' USING ERRCODE = '42501';
+    END IF;
+    IF p_target_user_id IS NULL OR NOT EXISTS (
+        SELECT 1 FROM projects.fn_engaged_projects(p_target_user_id) e WHERE e.project_id = p_project_id
+    ) THEN
+        RAISE EXCEPTION 'They are not on this project, so your conversation cannot be brought into it.'
+            USING ERRCODE = 'CH409';
+    END IF;
+
+    v_opened := comms.get_or_create_dm_thread(p_target_user_id);
+    v_thread := (v_opened ->> 'thread_id')::uuid;
+    v_ref := v_opened ->> 'thread_ref';
+
+    IF comms.fn_dm_in_project(v_thread, p_project_id) THEN
+        RETURN pg_catalog.jsonb_build_object('thread_id', v_thread, 'thread_ref', v_ref, 'moved', false);
+    END IF;
+
+    INSERT INTO comms.dm_thread_projects AS l (thread_id, project_id, brought_in_by, brought_in_at)
+    VALUES (v_thread, p_project_id, v_me, pg_catalog.now())
+    ON CONFLICT (thread_id, project_id) DO UPDATE
+        SET brought_in_by = EXCLUDED.brought_in_by,
+            brought_in_at = EXCLUDED.brought_in_at,
+            taken_out_by = NULL,
+            taken_out_at = NULL;
+
+    SELECT p.slug, p.title INTO v_project FROM projects.projects p WHERE p.id = p_project_id;
+    SELECT NULLIF(pg_catalog.btrim(COALESCE(up.first_name, '') || ' ' || COALESCE(up.last_name, '')), '')
+      INTO v_name
+      FROM org.users_public up WHERE up.user_id = v_me;
+
+    PERFORM comms.fn_notify(
+        p_target_user_id,
+        'message.brought_into_project',
+        pg_catalog.format('%s brought your conversation into %s', COALESCE(v_name, 'Someone'), v_project.title),
+        'It now opens inside the project too, with the same history.',
+        'comms.dm_threads',
+        v_thread,
+        pg_catalog.jsonb_build_object('project_slug', v_project.slug, 'project_title', v_project.title,
+                                      'thread_ref', v_ref),
+        v_me,
+        'project',
+        p_project_id,
+        NULL,
+        '/projects/' || v_project.slug || '/' || v_ref
+    );
+
+    RETURN pg_catalog.jsonb_build_object('thread_id', v_thread, 'thread_ref', v_ref, 'moved', true);
+END;
+$$;
+
+COMMENT ON FUNCTION comms.bring_dm_into_project(uuid, uuid) IS
+'Either participant brings their one-to-one conversation with another party to the project into its Private Messages group (Decision #560, stop 23 as ruled); the thread is found or opened by get_or_create_dm_thread, a past take-out is cleared, and the other is told (message.brought_into_project). Returns { thread_id, thread_ref, moved }. 42501 for a caller not on the project; CH409 when the other is not.';
+
+-- Take a one-to-one conversation out of a project's Private Messages group (Decision #560, stop 23 as
+-- ruled): either participant may. It leaves the group for both people, and every stamp stays as
+-- evidence; bringing it back (above) restores it. True when it left the group, false when it was not
+-- in it. A caller who is not a participant is refused 42501; a group thread is 22023, because a group
+-- cannot be brought back by the pair door and would be lost to the project.
+CREATE OR REPLACE FUNCTION comms.take_dm_out_of_project(p_thread_id uuid, p_project_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_me uuid := auth.uid();
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'take_dm_out_of_project: no acting user' USING ERRCODE = '42501';
+    END IF;
+    IF NOT comms.is_dm_participant(p_thread_id) THEN
+        RAISE EXCEPTION 'Not a participant of this conversation' USING ERRCODE = '42501';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM comms.dm_threads t WHERE t.id = p_thread_id AND t.kind IN ('dm', 'service_inquiry')
+    ) THEN
+        RAISE EXCEPTION 'Only a one-to-one conversation can be taken out of a project.' USING ERRCODE = '22023';
+    END IF;
+    IF NOT comms.fn_dm_in_project(p_thread_id, p_project_id) THEN
+        RETURN false;
+    END IF;
+
+    INSERT INTO comms.dm_thread_projects AS l (thread_id, project_id, taken_out_by, taken_out_at)
+    VALUES (p_thread_id, p_project_id, v_me, pg_catalog.now())
+    ON CONFLICT (thread_id, project_id) DO UPDATE
+        SET taken_out_by = EXCLUDED.taken_out_by,
+            taken_out_at = EXCLUDED.taken_out_at;
+
+    RETURN true;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.take_dm_out_of_project(uuid, uuid) IS
+'Either participant takes their one-to-one conversation out of the project''s Private Messages group for both people (Decision #560, stop 23 as ruled); stamps are never touched. True when it left the group. 42501 for a non-participant; 22023 for a group.';
+-- #endregion
+
 -- Post the opening message of a hiring request into the pair's DM, opening the thread if there is
 -- none. The caller must hold an OPEN engagement with the recipient on `p_project_id` — a pending
 -- invitation they issued, or a pending application of theirs to the recipient's project — so the

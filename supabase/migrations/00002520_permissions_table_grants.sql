@@ -426,6 +426,15 @@ GRANT INSERT (thread_id, sender_user_id, project_id, service_id, body, body_delt
 -- write privilege goes too, and no column is granted back: a client write that names any column is
 -- refused outright (42501) instead of an UPDATE RLS quietly matches to no row.
 REVOKE INSERT, UPDATE ON TABLE comms.dm_threads FROM authenticated;
+
+-- comms.project_channel_reads takes no client write either: comms.mark_room_read (00001300) is its one
+-- writer and the table has no INSERT, UPDATE or DELETE policy. The privilege goes too, so a direct
+-- write is refused outright (42501) rather than matched by RLS to no row.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE comms.project_channel_reads FROM authenticated;
+
+-- comms.dm_thread_projects likewise: comms.bring_dm_into_project and comms.take_dm_out_of_project are
+-- its only writers (Decision #560).
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE comms.dm_thread_projects FROM authenticated;
 -- #endregion
 
 -- comms notification view grants → 00003005_permissions_view_grants.sql (views, Category 3).

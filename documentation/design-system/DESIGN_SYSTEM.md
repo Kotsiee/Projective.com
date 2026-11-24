@@ -5763,7 +5763,13 @@ The routed tab body + `ChatComposer` flow in the canvas beneath it:
      (a dot, or the plain figure, `.proj-chan__count`), then every stage's `#` channel with its
      status glyph and unread dot, the owner's inline ＋ on the header opening the Create stage
      popover on itself (Decisions #409, #416; the separate STAGES section is gone) — plus Teams / Private Messages when the viewer has
-     something in them, under the quick filters, where General answers only the Unread facet; a
+     something in them, under the quick filters, where General answers only the Unread facet. A
+     room's unread dot is the viewer's own read mark (PROJECTS CH3): set when somebody else wrote
+     since they read it, cleared by the chat island's after-paint read (the tab layers its own marks
+     over the server's tree, `chat-read-marks.ts`); a dot, never a count. A Private Messages row is
+     a pair DM (the counterpart's avatar and name) or a group (its first other member's avatar and
+     `dmChannelLabel`: its name, else its members' first names), and the room header's kebab on a
+     pair DM adds **Take out of this project**, behind a `ConfirmDialog` (Decision #560); a
      Task's Overview (Status · Due · Owner · Assigned) and Tasks checklist; a session's panel. The
      room is one destination: the top tier draws no Discussion link beside the General row.
   4. **Utility footer** (`LaneFooter`) — the docked `LaneCollapseButton` and, for REVIEW AUTHORITY

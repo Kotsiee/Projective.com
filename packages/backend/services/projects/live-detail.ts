@@ -5,6 +5,8 @@ import type { ReadActor } from "../read-actor.ts";
 import {
 	accessOf,
 	type ChannelKind,
+	DM_GROUP_MEMBERS_MAX,
+	type DmChannel,
 	type ProjectAccess,
 	type ProjectChannel,
 	type ProjectDetail,
@@ -31,6 +33,7 @@ import {
 	toStageProjectStatus,
 } from "./live-support.ts";
 import { fetchProjectBySlug } from "./live-queries.ts";
+import { fetchProjectDmThreads, fetchUnreadRoomIds } from "./live-read-marks.ts";
 import {
 	deriveFundingState,
 	fundingTicketOf,
@@ -336,9 +339,8 @@ function toMemberViewerRole(raw: string | null | undefined): ProjectViewerRole {
  * a real primary key, which is what the sidebar's `channelHref(slug, id)` needs to produce a link that
  * resolves.
  *
- * `unread` is `NO_UNREAD_SIGNAL`: a project channel has no per-viewer read watermark anywhere in the
- * schema (`comms.project_channel_participants` is keyed by profile with no `last_read_at`, while the
- * DM side has one), so there is nothing to compare against.
+ * `unread` starts as `NO_UNREAD_SIGNAL` and is set for the whole tree in one pass once the viewer's
+ * unread rooms are known ({@link withRoomUnread}), so the builders stay free of the read state.
  */
 function toProjectChannel(
 	row: ChannelRow,
@@ -495,6 +497,24 @@ function withChannelStars(
 	starred: ReadonlySet<string>,
 ): ProjectDetail["channels"] {
 	const mark = (c: ProjectChannel): ProjectChannel => ({ ...c, starred: starred.has(c.id) });
+	return {
+		...channels,
+		general: channels.general.map(mark),
+		stages: channels.stages.map((s) => ({ ...s, channel: mark(s.channel) })),
+		teams: channels.teams.map((t) => ({ ...t, channels: t.channels.map(mark) })),
+	};
+}
+
+/**
+ * Set every room's unread dot from the viewer's read marks (`comms.unread_rooms`, PRD-E13): a room is
+ * unread when it holds a message by somebody else since the viewer last read it. The dot, never a
+ * count (`ProjectChannelSchema.unread`). Private Messages rows carry their own thread rule.
+ */
+function withRoomUnread(
+	channels: ProjectDetail["channels"],
+	unread: ReadonlySet<string>,
+): ProjectDetail["channels"] {
+	const mark = (c: ProjectChannel): ProjectChannel => ({ ...c, unread: unread.has(c.id) });
 	return {
 		...channels,
 		general: channels.general.map(mark),
@@ -765,105 +785,149 @@ async function fetchBusinesses(
 	return out;
 }
 
-/**
- * The viewer's starred project channels — their `project_channel` bookmarks (Decision #181). Read
- * whole rather than per project: a person stars few rooms, and the read then joins the first wave. A
- * failed read stars nothing.
- */
-/** How many stamped messages the Private Messages read scans for their threads. */
-const PROJECT_DM_SCAN = 500;
+/** The most thread ids one roster or preview RPC takes (`comms.inbox_tails` reads its first 200). */
+const THREAD_ID_CHUNK = 200;
 
-/** One row of the project's Private Messages group, before its counterpart is named. */
+/** One row of the project's Private Messages group, before its people are named. */
 interface ProjectDmRow {
 	/** The thread's `cht-` address — the row's `chatId`, and the segment it routes by. */
 	ref: string;
-	/** The other participant; `null` when the roster could not say. */
-	otherUserId: string | null;
+	/** The other participants, in roster order; empty when the roster could not say. */
+	otherUserIds: string[];
+	/** A group's own name and the fact that it is one; `null` on a pair DM or a service inquiry. */
+	group: { title: string | null } | null;
 	unread: boolean;
 	/** The newest message's instant, for the group's order. */
 	lastAt: string;
 }
 
+/** `ids` in runs of at most {@link THREAD_ID_CHUNK}, each RPC's own limit. */
+function chunks<T>(ids: readonly T[]): T[][] {
+	const out: T[][] = [];
+	for (let i = 0; i < ids.length; i += THREAD_ID_CHUNK) out.push(ids.slice(i, i + THREAD_ID_CHUNK));
+	return out;
+}
+
 /**
- * The project's Private Messages group (Decision #339 ruling N1): the viewer's one-to-one threads —
- * a DM or a service inquiry — that hold a message stamped with this project
- * (`comms.dm_messages.project_id`, through `idx_dm_messages_project`), newest first. A stamp exists
- * only where `comms.tg_bind_dm_project` found the sender and every other participant parties to the
- * project, so the group lists exactly the threads the project may draw, and each opens the SAME
- * thread `/messages` does, at `/projects/:projectSlug/cht-…`.
+ * The project's Private Messages group (Decision #339 ruling N1): the viewer's threads — a DM, a
+ * service inquiry or a group — that hold a message stamped with this project
+ * (`comms.dm_messages.project_id`), newest first, read one row per thread through
+ * `comms.project_dm_threads` (Decision #508 (f), (g): the scan it replaces read at most 500 stamped
+ * messages and drew no group). A stamp exists only where `comms.tg_bind_dm_project` found the sender
+ * and every other participant parties to the project, so the group lists exactly the threads the
+ * project may draw, and each opens the SAME thread `/messages` does, at `/projects/:projectSlug/cht-…`.
  *
- * Every read runs under the caller's own RLS (`view_dm_messages_if_participant` keeps the scan to the
- * viewer's own threads). Secondary throughout: a failed read draws no group rather than failing the
- * project, and a preview that could not be read leaves its row unmarked.
+ * Every read runs under the caller's own RLS. Secondary throughout: a failed read draws no group
+ * rather than failing the project, and a preview that could not be read leaves its row unmarked. The
+ * roster and the previews are read in runs of {@link THREAD_ID_CHUNK}, the RPCs' own limit, so no
+ * thread past the 200th is quietly left unread.
  */
 async function fetchProjectDms(
 	actor: ReadActor & { accessToken: string },
 	projectId: string,
 ): Promise<ProjectDmRow[]> {
+	const threads = await fetchProjectDmThreads(actor, projectId);
+	if (threads.length === 0) return [];
+	const ids = threads.map((t) => t.thread_id);
 	const comms = commsDb(actor);
-	const stamped = await comms.from("dm_messages")
-		.select("thread_id")
-		.eq("project_id", projectId)
-		.is("deleted_at", null)
-		.limit(PROJECT_DM_SCAN);
-	if (stamped.error) return [];
-	const ids = [
-		...new Set(((stamped.data ?? []) as { thread_id: string }[]).map((r) => r.thread_id)),
-	];
-	if (ids.length === 0) return [];
 
-	const [threads, mine, roster, tails] = await Promise.all([
-		comms.from("dm_threads").select("id, ref, kind, created_at").in("id", ids)
-			.in("kind", ["dm", "service_inquiry"]),
-		comms.from("dm_participants").select("thread_id, last_read_at")
-			.eq("user_id", actor.userId).is("deleted_at", null).in("thread_id", ids),
-		comms.rpc("dm_thread_roster", { p_thread_ids: ids }),
-		comms.rpc("inbox_tails", { p_thread_ids: ids.slice(0, 200), p_k: 1 }),
+	const [mine, rosters, tails] = await Promise.all([
+		Promise.all(
+			chunks(ids).map((run) =>
+				comms.from("dm_participants").select("thread_id, last_read_at")
+					.eq("user_id", actor.userId).is("deleted_at", null).in("thread_id", run)
+			),
+		),
+		Promise.all(chunks(ids).map((run) => comms.rpc("dm_thread_roster", { p_thread_ids: run }))),
+		Promise.all(chunks(ids).map((run) => comms.rpc("inbox_tails", { p_thread_ids: run, p_k: 1 }))),
 	]);
-	if (threads.error || mine.error) return [];
+	if (mine.some((r) => r.error)) return [];
 
-	const readAt = new Map(
-		((mine.data ?? []) as { thread_id: string; last_read_at: string | null }[]).map((
-			r,
-		) => [r.thread_id, r.last_read_at]),
-	);
-	const other = new Map<string, string>();
-	for (
-		const row of (roster.error ? [] : roster.data ?? []) as { thread_id: string; user_id: string }[]
-	) {
-		if (row.user_id !== actor.userId && !other.has(row.thread_id)) {
-			other.set(row.thread_id, row.user_id);
+	const readAt = new Map<string, string | null>();
+	for (const r of mine) {
+		for (const row of (r.data ?? []) as { thread_id: string; last_read_at: string | null }[]) {
+			readAt.set(row.thread_id, row.last_read_at);
+		}
+	}
+	const others = new Map<string, string[]>();
+	for (const r of rosters) {
+		for (const row of (r.error ? [] : r.data ?? []) as { thread_id: string; user_id: string }[]) {
+			if (row.user_id === actor.userId) continue;
+			const list = others.get(row.thread_id) ?? [];
+			if (!list.includes(row.user_id)) list.push(row.user_id);
+			others.set(row.thread_id, list);
 		}
 	}
 	const tail = new Map<string, { sender_user_id: string; created_at: string }>();
-	for (
-		const row of (tails.error ? [] : tails.data ?? []) as {
-			thread_id: string;
-			sender_user_id: string;
-			created_at: string;
-		}[]
-	) {
-		if (!tail.has(row.thread_id)) tail.set(row.thread_id, row);
+	for (const r of tails) {
+		for (
+			const row of (r.error ? [] : r.data ?? []) as {
+				thread_id: string;
+				sender_user_id: string;
+				created_at: string;
+			}[]
+		) {
+			if (!tail.has(row.thread_id)) tail.set(row.thread_id, row);
+		}
 	}
 
-	return ((threads.data ?? []) as { id: string; ref: string; created_at: string }[])
+	return threads
 		// A thread the viewer has deleted for themselves stays out of the project as it does the inbox.
-		.filter((t) => readAt.has(t.id))
+		.filter((t) => readAt.has(t.thread_id))
 		.map((t) => {
-			const last = tail.get(t.id);
-			const read = readAt.get(t.id) ?? null;
+			const last = tail.get(t.thread_id);
 			return {
 				ref: t.ref,
-				otherUserId: other.get(t.id) ?? null,
-				// The inbox's own rule: news only when someone else wrote after the viewer last read.
-				unread: !!last && last.sender_user_id !== actor.userId &&
-					(!read || Date.parse(last.created_at) > Date.parse(read)),
-				lastAt: last?.created_at ?? t.created_at,
+				otherUserIds: others.get(t.thread_id) ?? [],
+				group: t.kind === "group" ? { title: t.title?.trim() || null } : null,
+				unread: dmRowUnread(last ?? null, readAt.get(t.thread_id) ?? null, actor.userId),
+				lastAt: last?.created_at ?? t.last_stamped_at,
 			};
 		})
 		.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
 }
 
+/**
+ * One Private Messages row as the tree draws it. `party` is the counterpart, a group's first other
+ * member; a group also carries its name and every other member (Decision #508 (f)), so the row and
+ * its room header name the group through `dmChannelLabel`.
+ */
+function toDmChannel(row: ProjectDmRow, parties: ReadonlyMap<string, PartyRow>): DmChannel {
+	const people = row.otherUserIds.map((id) => partyOf(parties.get(id)));
+	const channel: DmChannel = {
+		chatId: row.ref,
+		party: people[0] ?? partyOf(undefined),
+		unread: row.unread,
+		hasProjectContext: true,
+	};
+	if (row.group && people.length > 0) {
+		channel.group = {
+			title: row.group.title ? clamp(row.group.title, 120) : null,
+			members: people.slice(0, DM_GROUP_MEMBERS_MAX),
+		};
+	}
+	return channel;
+}
+
+/**
+ * The inbox's own unread rule for one thread: news only when somebody else wrote the newest message,
+ * after the viewer last read (a NULL mark is never opened). Pure, so the project's row and the inbox's
+ * row cannot disagree about one thread.
+ */
+export function dmRowUnread(
+	last: { sender_user_id: string; created_at: string } | null,
+	readAt: string | null,
+	viewer: string,
+): boolean {
+	return !!last && last.sender_user_id !== viewer &&
+		(!readAt || Date.parse(last.created_at) > Date.parse(readAt));
+}
+
+/**
+ * The viewer's starred project channels — their `project_channel` bookmarks (Decision #181). Read
+ * whole rather than per project: a person stars few rooms, and the read then joins the first wave. A
+ * failed read stars nothing.
+ */
 async function fetchStarredChannelIds(actor: ReadActor & { accessToken: string }): Promise<Set<string>> {
 	const { data, error } = await getUserClient(actor.accessToken).schema("org").from("user_bookmarks")
 		.select("entity_id")
@@ -974,8 +1038,8 @@ function buildMembers(
  *
  * ## Fields with no column, returned neutral rather than invented
  *
- * - **`channels.dms`** is the viewer's one-to-one threads holding a message stamped with this project
- *   (`fetchProjectDms`), each by its `cht-` ref — the SAME address the inbox opens it by, so the row
+ * - **`channels.dms`** is the viewer's threads (pairs and groups) holding a message stamped with this
+ *   project (`fetchProjectDms`), each by its `cht-` ref — the SAME address the inbox opens it by, so the row
  *   routes to `/projects/:projectSlug/cht-…` and renders the thread `/messages` does (Decision #339
  *   ruling N1). A DM sent inside the project is what stamps it (the send door writes
  *   `dm_messages.project_id`).
@@ -983,8 +1047,9 @@ function buildMembers(
  *   service blueprint that would carry one lives in `marketplace`, which PostgREST does not expose.
  * - **`starred`** is inherited from the summary (`projects.user_preferences.is_starred`); each
  *   channel's `starred` is the viewer's `project_channel` bookmark (Decision #181).
- * - **Every channel's `unread` is `false`** — there is no per-viewer read watermark for a project
- *   channel; see `NO_UNREAD_SIGNAL`.
+ * - **A room's `unread`** is the viewer's own read mark (`comms.unread_rooms`, PRD-E13): a message by
+ *   somebody else since they last read the room, or, in a room they never opened, since their first
+ *   lane mark on the engagement. A Private Messages row's is the inbox's thread rule.
  * - **Avatars are resolved, never composed** — a person's through `org.get_party_cards`, a team's or
  *   a business's through `files.get_public_media`; an entity without a public mark stays `null`.
  *
@@ -1022,6 +1087,7 @@ export async function fetchProjectDetail(
 		starredRooms,
 		dmRows,
 		viewerCanComplete,
+		unreadRooms,
 	] = await Promise.all([
 		fetchDetailRow(db, slug),
 		fetchStages(db, summary.id),
@@ -1033,6 +1099,7 @@ export async function fetchProjectDetail(
 		fetchStarredChannelIds(actor),
 		fetchProjectDms(actor, summary.id),
 		fetchCanComplete(db, summary.id),
+		fetchUnreadRoomIds(actor, summary.id),
 	]);
 
 	const { general, stageAll, privateRooms } = partitionChannels(channelRows);
@@ -1054,7 +1121,7 @@ export async function fetchProjectDetail(
 		fetchParties(actor, [
 			...participants.filter((row) => row.profile_type !== "business").map((r) => r.profile_id),
 			...(clientUserId ? [clientUserId] : []),
-			...dmRows.flatMap((row) => (row.otherUserId ? [row.otherUserId] : [])),
+			...dmRows.flatMap((row) => row.otherUserIds),
 		]),
 	]);
 
@@ -1124,18 +1191,13 @@ export async function fetchProjectDetail(
 			: clientPartyOf(clientBusinessId, businesses, marks),
 		bannerImage: null,
 		members: buildMembers(summary, ownerUserId, clientUserId, participants, parties, businesses, marks),
-		channels: withChannelStars({
+		channels: withRoomUnread(withChannelStars({
 			general: general.map((row) => toProjectChannel(row, "general", null)),
 			stages: buildStageChannels(stages, stageAll),
 			teams: buildTeamChannels(hired, privateRooms, stageNames, teamNames, marks),
 			// The threads stamped with this project, by their `cht-` refs (see `fetchProjectDms`).
-			dms: dmRows.map((row) => ({
-				chatId: row.ref,
-				party: partyOf(row.otherUserId ? parties.get(row.otherUserId) : undefined),
-				unread: row.unread,
-				hasProjectContext: true,
-			})),
-		}, starredRooms),
+			dms: dmRows.map((row) => toDmChannel(row, parties)),
+		}, starredRooms), unreadRooms),
 		funding,
 	};
 }

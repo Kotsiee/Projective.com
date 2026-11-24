@@ -465,13 +465,19 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   them — Teams and Private Messages) routes into the **project namespace** via
   `channelHref(projectSlug, ref)`
   (`apps/web/features/projects/core/chat-context.ts`). The Private Messages group lists the viewer's
-  one-to-one threads that hold a message stamped with the project (`dm_messages.project_id`,
-  `fetchProjectDms`), each by its `cht-` ref, and the destination page renders the SAME thread
-  `/messages/cht-…` does — a project DM and the same person's global DM are one record. A `cht-`
-  segment the project does not list (a thread the viewer is not in, or one never stamped with this
-  project — a stamp needs every participant to be a party to it) answers a real **404**, never the
-  `room-not-found` flash. A message sent from `/projects/[project-slug]/cht-…` is stamped with the
-  project (`projectChatRef`). Fixture DMs keep their `dm-{handle}` ids.
+  threads, pairs and groups, that hold a message stamped with the project (`dm_messages.project_id`)
+  or that a participant brought into it, and that nobody took out since (`comms.project_dm_threads`,
+  `fetchProjectDms`; PROJECTS CH3, Decision #560), each by its `cht-` ref, and the destination page
+  renders the SAME thread `/messages/cht-…` does — a project DM and the same person's global DM are
+  one record. Its **Files** and **Members** tabs (`/projects/[project-slug]/cht-…/files`, `…/members`)
+  render the thread's own readers, the ones `/messages/cht-…/files` and `…/members` render (the
+  `conversation` scope), not the project's file tree or roster. A `cht-` segment the project does not
+  list (a thread the viewer is not in, one never stamped with or brought into this project, or one
+  taken out of it) answers a real **404**, never the `room-not-found` flash. A message sent from
+  `/projects/[project-slug]/cht-…` is stamped with the project (`projectChatRef`). The Members
+  "Message" action opens `/projects/[project-slug]/cht-…`, bringing the pair's DM into the project
+  first when it is not there (`POST /api/projects/messages/dm`), and the room header's "Take out of
+  this project" lands on `/messages/cht-…`. Fixture DMs keep their `dm-{handle}` ids.
 
   **A message is addressed by `?m=<messageId>` on its conversation's chat address**
   (Decision #162(G)): `/messages/cht-…?m=<id>` for a DM, `/projects/[project-slug]/[stage-slug]/chat?m=<id>`
@@ -1226,6 +1232,8 @@ then one fat-service method. A guest is a 401 on every write.
 | `/api/messaging/conversations/members`       | `POST` | `MessagingBackendService.addMembers` (`AddConversationMembersSchema`) — a DM becomes a group the moment a third person is added |
 | `/api/messaging/messages`                    | `GET` · `HEAD` (`?conversationId=&before=&limit=`) | `MessagingBackendService.messages` — a bottom-anchored page of a conversation's messages; `before` is the scroll-up cursor |
 | `/api/messaging/messages/send`               | `POST` | The ONE send door, `MessagingBackendService.sendMessage(actor, ChatRef, input)` (Decision #339 ruling N1; CAS M3): `SendConversationMessageSchema` names the conversation (`cht-…`, or a `dm-{handle}` whose first message creates the pair's thread) as a thread `ChatRef` → `comms.dm_messages`. Answers `{ message, ref }` — the conversation's `cht-` ref. 404 for an address the caller cannot reach (a uuid, a thread they are not in); 30 messages a minute per sender, a 429 with `details.retryAt` beyond (CAS M23). The `ChatComposer`'s conversation-scope endpoint |
+| `/api/projects/messages/read`                | `POST` | `{ projectId, channelId }` (`MarkChatReadInputSchema`, the send's own pair) → `projectChatRef` → `MessagingBackendService.markChatRead`: a room moves the caller's own mark (`comms.mark_room_read`, PRD-E13), a `cht-` channel the thread's watermark (`comms.mark_dm_read`), which clears the inbox's dot too. 204; 404 for a room or thread the caller cannot read. Sent by the project chat island once the page has painted in a visible tab (PROJECTS CH3; PRD-C11). |
+| `/api/projects/messages/dm`                  | `POST` · `DELETE` | Decision #560. `POST { projectId, handle }` → `MessagingBackendService.bringDmIntoProject` → `comms.bring_dm_into_project`: opens the pair's DM (found or opened) inside the project, bringing it in when it is not there and telling the other person once; answers `{ ref, moved }`. `DELETE { projectId, conversationId }` → `takeDmOutOfProject` → `comms.take_dm_out_of_project`: out of the group for both people, stamps kept; answers `{ moved }`. 409 when the other is not on the project, 404 for a project or person the caller cannot see, 503 `not_live` on the fixture backend. |
 | `/api/projects/messages/send`                | `POST` | The same door: `SendProjectMessageSchema` `{ projectId, channelId, … }` → `projectChatRef` — a room `ChatRef` → `comms.project_messages`, or, for a `cht-` channel, the thread seen through the project, stamped with it (`dm_messages.project_id`). The same 404s, rate limit and 429. The `ChatComposer`'s project-scope endpoint |
 | `/api/messaging/files`                       | `GET` · `HEAD` | `MessagingBackendService.files` — the conversation-scoped File Explorer read (`FileListParamsSchema`) |
 | `/api/messaging/members`                     | `GET` · `HEAD` | `MessagingBackendService.members` — the conversation roster, the same `MemberRosterPage` contract as `/api/projects/members` |
@@ -1415,6 +1423,7 @@ screens and the loaders they reach on every render are pinned by `apps/web/utils
 
 | Was                                                    | Now                                                                                                                                                  |
 | :----------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A project room's read mark (none existed; PRD-E13)     | The project chat island's `POST /api/projects/messages/read`, once the room or project DM has painted in a visible tab (PROJECTS CH3) |
 | `/messages/:id` rendering → `comms.mark_dm_read`       | The chat island's `POST /api/messaging/conversations/[id]/read`, once the thread has painted in a visible tab (SAC3)                                   |
 | `GET /api/user/emails/verify` → `org.confirm_user_email` | The `GET` forwards the token to `/settings/account?email-token=…`; the person's Confirm sends `POST /api/user/emails/verify` (SAC3)                   |
 | `GET /api/auth/confirm` → GoTrue `verifyOtp`           | `POST /api/auth/confirm` from `/verify/confirm` (#445)                                                                                               |

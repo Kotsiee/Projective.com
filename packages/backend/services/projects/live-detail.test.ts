@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { ProjectDetailSchema } from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
-import { fetchProjectDetail, isClientSideRole } from "./live-detail.ts";
+import { dmRowUnread, fetchProjectDetail, isClientSideRole } from "./live-detail.ts";
 
 /**
  * live-detail_test — the sidebar's project detail read against a fake PostgREST.
@@ -346,6 +346,129 @@ Deno.test("fetchProjectDetail builds the channel tree: general, one shared room 
 		]]);
 		assertEquals(detail.channels.dms, []);
 	});
+});
+// #endregion
+
+// #region Read state and the Private Messages group (PROJECTS CH3)
+Deno.test("a room is unread exactly when comms.unread_rooms names it, asked with the project's row id", async () => {
+	await withPostgrest(
+		happyRoutes({ "comms.rpc.unread_rooms": ["c-s1", "c-general"] }),
+		async (calls) => {
+			const detail = await fetchProjectDetail(OWNER, SLUG);
+			assert(detail);
+			ProjectDetailSchema.parse(detail);
+			assertEquals(detail.channels.general.map((c) => c.unread), [true]);
+			assertEquals(detail.channels.stages.map((s) => [s.id, s.channel.unread]), [["c-s1", true], [
+				"c-s2",
+				false,
+			]]);
+			const ask = calls.find((c) => c.rpc && c.name === "unread_rooms");
+			assertEquals((ask?.body as { p_project_id?: string }).p_project_id, PROJECT_UUID);
+		},
+	);
+});
+
+Deno.test("a failed unread read marks no room unread rather than failing the project", async () => {
+	await withPostgrest(
+		happyRoutes({ "comms.rpc.unread_rooms": pgFail("42501", "permission denied", 403) }),
+		async () => {
+			const detail = await fetchProjectDetail(OWNER, SLUG);
+			assert(detail);
+			assertEquals(detail.channels.stages.map((s) => s.channel.unread), [false, false]);
+		},
+	);
+});
+
+/** The uuid of the `i`th thread in the Private Messages fixture. */
+const threadId = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+
+Deno.test("the Private Messages group lists every stamped thread, past the RPCs' 200-id runs, groups included", async () => {
+	const count = 230;
+	const threads = Array.from({ length: count }, (_, k) => ({
+		thread_id: threadId(k + 1),
+		ref: `cht-abcdef${
+			[...String(k + 1).padStart(4, "0")].map((d) => "23456789ab"[Number(d)]).join("")
+		}`,
+		kind: k === count - 1 ? "group" : "dm",
+		title: k === count - 1 ? "Launch crew" : null,
+		last_stamped_at: new Date(Date.UTC(2026, 10, 1) - k * 60_000).toISOString(),
+	}));
+	// The viewer deleted the second thread for themselves: no undeleted participant row comes back.
+	const mine = threads.filter((_, k) => k !== 1).map((t) => ({
+		thread_id: t.thread_id,
+		last_read_at: null,
+	}));
+	await withPostgrest(
+		happyRoutes({
+			"comms.rpc.project_dm_threads": threads,
+			"comms.dm_participants": (req: FakeRequest) => {
+				const ids = (req.query.get("thread_id") ?? "").replace(/^in\.\(|\)$/g, "").split(",");
+				return mine.filter((r) => ids.includes(r.thread_id));
+			},
+			"comms.rpc.dm_thread_roster": (req: FakeRequest) =>
+				(req.body as { p_thread_ids: string[] }).p_thread_ids.flatMap((id) => [
+					{ thread_id: id, user_id: OWNER_ID },
+					{ thread_id: id, user_id: FREELANCER_ID },
+					...(id === threadId(count)
+						? [{ thread_id: id, user_id: "99999999-9999-4999-8999-999999999999" }]
+						: []),
+				]),
+			"comms.rpc.inbox_tails": (req: FakeRequest) =>
+				(req.body as { p_thread_ids: string[] }).p_thread_ids.map((id) => ({
+					thread_id: id,
+					sender_user_id: FREELANCER_ID,
+					created_at: "2026-11-02T00:00:00.000Z",
+				})),
+			"org.rpc.get_party_cards": [
+				...PARTY_CARDS,
+				{
+					user_id: "99999999-9999-4999-8999-999999999999",
+					username: "cal",
+					first_name: "Cal",
+					last_name: null,
+				},
+			],
+		}),
+		async (calls) => {
+			const detail = await fetchProjectDetail(OWNER, SLUG);
+			assert(detail);
+			ProjectDetailSchema.parse(detail);
+			const dms = detail.channels.dms;
+			assertEquals(dms.length, count - 1, "every thread but the one the viewer deleted");
+			assert(!dms.some((d) => d.chatId === threads[1].ref));
+			assert(dms.every((d) => d.unread), "a thread past the 200th still reads its tail");
+			// The roster and the previews were each read in two runs, never truncated to the first 200.
+			assertEquals(calls.filter((c) => c.rpc && c.name === "inbox_tails").length, 2);
+			assertEquals(calls.filter((c) => c.rpc && c.name === "dm_thread_roster").length, 2);
+			// Nothing scans stamped messages any more.
+			assertEquals(calls.filter((c) => !c.rpc && c.name === "dm_messages").length, 0);
+
+			const group = dms.find((d) => d.chatId === threads[count - 1].ref);
+			assert(group?.group, "a group thread carries its group facts");
+			assertEquals(group.group.title, "Launch crew");
+			assertEquals(group.group.members.map((m) => m.name), ["Fern", "Cal"]);
+			assertEquals(group.party.name, "Fern");
+			const pair = dms.find((d) => d.chatId === threads[0].ref);
+			assertEquals(pair?.group, undefined);
+			assertEquals(pair?.party.name, "Fern");
+		},
+	);
+});
+
+Deno.test("dmRowUnread is the inbox's rule: somebody else wrote the newest message after the last read", () => {
+	const me = OWNER_ID;
+	const tail = (sender: string, at: string) => ({ sender_user_id: sender, created_at: at });
+	assertEquals(dmRowUnread(null, null, me), false);
+	assertEquals(dmRowUnread(tail(me, "2026-11-02T00:00:00Z"), null, me), false);
+	assertEquals(dmRowUnread(tail(FREELANCER_ID, "2026-11-02T00:00:00Z"), null, me), true);
+	assertEquals(
+		dmRowUnread(tail(FREELANCER_ID, "2026-11-02T00:00:00Z"), "2026-11-03T00:00:00Z", me),
+		false,
+	);
+	assertEquals(
+		dmRowUnread(tail(FREELANCER_ID, "2026-11-04T00:00:00Z"), "2026-11-03T00:00:00Z", me),
+		true,
+	);
 });
 // #endregion
 

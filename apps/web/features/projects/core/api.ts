@@ -1,5 +1,6 @@
 import type { ProjectsResult } from "../types/results.ts";
 import { apiFetch } from "@web/utils/api-client.ts";
+import { BACKGROUND_HEADER } from "@web/utils/offline.ts";
 
 /**
  * Projects transport primitives — the `fetch` helpers the thin {@link ProjectSidebarService} composes
@@ -50,6 +51,40 @@ async function sendProjects<T>(
 /** POST JSON to a projects endpoint, folding the response into a soft {@link ProjectsResult}. */
 export function postProjects<T>(path: string, payload: unknown): Promise<ProjectsResult<T>> {
 	return sendProjects<T>("POST", path, payload);
+}
+
+/**
+ * POST a background signal to a projects endpoint that answers with no body (a 204): a read mark the
+ * page sends on its own, never on a person's click. Marked as a background request, so the offline
+ * shell never queues or announces it, and `keepalive`, so a mark sent as the tab closes still lands.
+ * Mirrors the inbox's `signalMessaging`.
+ */
+export async function signalProjects(
+	path: string,
+	payload: unknown,
+): Promise<ProjectsResult<null>> {
+	try {
+		const res = await apiFetch(path, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				accept: "application/json",
+				[BACKGROUND_HEADER]: "1",
+			},
+			body: JSON.stringify(payload),
+			keepalive: true,
+		});
+		if (res.ok) return { ok: true, data: null };
+		const body = await res.json().catch(() => null);
+		return {
+			ok: false,
+			message: typeof body?.message === "string"
+				? body.message
+				: "The projects service refused it.",
+		};
+	} catch {
+		return { ok: false, message: "Network error — please try again." };
+	}
 }
 
 /** PATCH JSON to a projects endpoint — a partial edit of an existing engagement. */

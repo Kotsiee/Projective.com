@@ -196,6 +196,18 @@ SELECT TO authenticated USING (user_id = auth.uid () OR security.is_admin ());
 CREATE POLICY "view_own_dm_participation" ON comms.dm_participants FOR
 SELECT TO authenticated USING (user_id = auth.uid ());
 
+-- A room read mark is its reader's own, for the reason below: when somebody last read a room is
+-- private state, so nobody reads another person's mark. There is no write policy: comms.mark_room_read
+-- (00001300) is the one writer, and it moves only the caller's own row.
+CREATE POLICY "view_own_room_reads" ON comms.project_channel_reads FOR
+SELECT TO authenticated USING (user_id = auth.uid ());
+
+-- A thread's place in a project (brought in, taken out) is the conversation's own fact, shared by its
+-- participants like its messages, so a participant reads it and nobody else does. There is no write
+-- policy: comms.bring_dm_into_project and comms.take_dm_out_of_project (00001300) are its writers.
+CREATE POLICY "view_dm_thread_projects_if_participant" ON comms.dm_thread_projects FOR
+SELECT TO authenticated USING (comms.is_dm_participant (thread_id));
+
 -- OWN ROW ONLY. An earlier draft added a second arm — `OR comms.is_dm_participant(thread_id)` — so
 -- that the inbox could read the other members of a thread for its roster. That is a disclosure, not
 -- a convenience: RLS is ROW-level, not column-level, and every private per-viewer field lives on

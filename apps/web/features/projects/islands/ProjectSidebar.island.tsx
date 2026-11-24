@@ -63,6 +63,7 @@ import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { activeChannelIdOf } from "../core/chat-context.ts";
 import { projectSidebarProjection } from "../core/sidebar-overlay.ts";
+import { chatReadMarks, detailWithChatReads } from "../core/chat-read-marks.ts";
 import { setupBaseline, setupCommitEpoch, setupDraft } from "../core/setup-store.ts";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { isTaskDetail } from "../core/task-project.ts";
@@ -524,8 +525,11 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	 * On every route that is not the owner's setup surface there is no draft, and the projection hands
 	 * back the server's answer unchanged — so this is one code path, not a live one beside a static one.
 	 */
+	// This tab's read marks go over the server's unread state first (PROJECTS CH3): the chat on screen
+	// posts its mark after paint, so the request that drew the tree could not yet know it had been read.
+	// They go in before the projection, because the stage rows the tree draws are the projection's.
 	const projection = projectSidebarProjection(
-		liveDetail.value ?? detail,
+		detailWithChatReads(liveDetail.value ?? detail, chatReadMarks.value),
 		setupDraft.value,
 		setupBaseline.value,
 	);

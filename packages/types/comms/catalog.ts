@@ -97,6 +97,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"message.new",
 	"message.mention",
 	"message.reaction",
+	"message.brought_into_project",
 	"channel.invited",
 	// schedule
 	"session.booked",

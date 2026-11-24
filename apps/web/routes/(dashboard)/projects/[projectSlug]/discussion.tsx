@@ -6,7 +6,7 @@ import { DISCUSSION_REF, discussionOf } from "@projective/types/projects";
 import { resolveProjectDetail } from "@web/features/projects/core/detail-ssr.ts";
 import { resolveMessageFeed } from "@web/features/projects/core/messages-ssr.ts";
 import { projectsNoticeHref } from "@web/features/projects/core/project-notice.ts";
-import ChatFeed from "@web/features/projects/islands/ChatFeed.island.tsx";
+import ProjectChat from "@web/features/projects/islands/ProjectChat.island.tsx";
 import type { MessagePage } from "@web/features/projects/types/projects-types.ts";
 
 /**
@@ -21,7 +21,8 @@ import type { MessagePage } from "@web/features/projects/types/projects-types.ts
  *   • a **one-off, pipeline or session** binds its project-wide room
  *     (`comms.project_channels.visibility = 'project_all'`).
  *
- * The page is the room's Chat view. Every read and write below it — this feed, the composer, the
+ * The page is the room's Chat view ({@link ProjectChat}, which marks the room read once it has
+ * painted in a visible tab, PROJECTS CH3). Every read and write below it — this feed, the composer, the
  * header's tabs (`/discussion/files`, `/discussion/tasks`, …, served by the `[channelId]` routes) —
  * carries the word `discussion` rather than the room's key, and the server resolves it to the room
  * (`resolveChannelRef`). So the address the lane links is the address every tab and every posted
@@ -83,7 +84,7 @@ export default define.page<typeof handler>(function DiscussionPage({ data }) {
 	// the composer are the frame's bands, resolved by the dashboard layout from this URL.
 	return (
 		<div class="chan-view">
-			<ChatFeed projectId={data.projectId} channelId={DISCUSSION_REF} initial={data.initial} />
+			<ProjectChat projectId={data.projectId} channelId={DISCUSSION_REF} initial={data.initial} />
 		</div>
 	);
 });

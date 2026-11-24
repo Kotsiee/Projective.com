@@ -258,6 +258,32 @@ CREATE TABLE comms.dm_participants (
         CONSTRAINT dm_participants_inbox_folder_check CHECK (inbox_folder IN ('primary', 'requests', 'archived'))
 );
 
+-- A thread's place in one project's Private Messages group beyond its stamped messages (PROJECTS CH3,
+-- Decision #560; the owner's ruling on stop 23). A thread is in the group when it holds an undeleted
+-- message stamped with the project (comms.dm_messages.project_id) or either participant brought it
+-- in, and nobody has taken it out since. A take-out hides it from the group for both people and never
+-- touches a stamp: the stamps stay as evidence (the dispute vault reads them). Bringing it back clears
+-- the take-out on the same row, so nothing is deleted. Written only by comms.bring_dm_into_project and
+-- comms.take_dm_out_of_project: no client write policy (00002012) and no client write grant (00002520).
+CREATE TABLE comms.dm_thread_projects (
+    thread_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    -- Who last brought the thread in, and when; NULL on a stamped thread that was only ever taken out.
+    brought_in_by uuid NULL,
+    brought_in_at timestamp with time zone NULL,
+    -- Who took it out, and when; NULL while it is in the group.
+    taken_out_by uuid NULL,
+    taken_out_at timestamp with time zone NULL,
+    CONSTRAINT dm_thread_projects_pkey PRIMARY KEY (thread_id, project_id),
+    CONSTRAINT dm_thread_projects_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES comms.dm_threads (id),
+    CONSTRAINT dm_thread_projects_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects (id),
+    CONSTRAINT dm_thread_projects_brought_in_by_fkey FOREIGN KEY (brought_in_by) REFERENCES org.users_public (user_id),
+    CONSTRAINT dm_thread_projects_taken_out_by_fkey FOREIGN KEY (taken_out_by) REFERENCES org.users_public (user_id),
+    CONSTRAINT ck_dm_thread_projects_brought_pair CHECK ((brought_in_by IS NULL) = (brought_in_at IS NULL)),
+    CONSTRAINT ck_dm_thread_projects_taken_pair CHECK ((taken_out_by IS NULL) = (taken_out_at IS NULL)),
+    CONSTRAINT ck_dm_thread_projects_says_something CHECK (brought_in_at IS NOT NULL OR taken_out_at IS NOT NULL)
+);
+
 CREATE TABLE comms.dm_messages (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     thread_id uuid NOT NULL,
@@ -383,6 +409,24 @@ CREATE TABLE comms.project_channel_participants (
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT project_channel_participants_pkey PRIMARY KEY (id),
     CONSTRAINT project_channel_participants_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES comms.project_channels(id)
+);
+
+-- A person's read watermark in one project room (PRD-E13): the room twin of
+-- comms.dm_participants.last_read_at. Its own table, because a room has no per-person row to carry
+-- it: access to a room is derived from the project, the stage and the seat (comms.can_access_scope),
+-- and comms.project_channel_participants is keyed by profile, not by the person who reads. No row =
+-- never opened: comms.unread_rooms then counts from the reader's first lane mark on the engagement,
+-- the baseline projects.get_nav_activity uses (00001145), so a person arriving on a project is not
+-- shown every room's history as news. Written only by comms.mark_room_read, which moves it forward
+-- and only past a newer message, so there is no client write policy (00002012) and no client write
+-- grant (00002520).
+CREATE TABLE comms.project_channel_reads (
+    channel_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    last_read_at timestamp with time zone NOT NULL,
+    CONSTRAINT project_channel_reads_pkey PRIMARY KEY (channel_id, user_id),
+    CONSTRAINT project_channel_reads_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES comms.project_channels (id),
+    CONSTRAINT project_channel_reads_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id)
 );
 
 CREATE TABLE comms.channel_files (

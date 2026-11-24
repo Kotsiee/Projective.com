@@ -37,6 +37,10 @@ const MOVED_WRITES: readonly MovedWrite[] = [
 	},
 	{ name: "markLiveRead", door: "POST /api/messaging/conversations/[id]/read" },
 	{ name: "mark_dm_read", door: "POST /api/messaging/conversations/[id]/read" },
+	{ name: "markChatRead", door: "POST /api/projects/messages/read (PROJECTS CH3)" },
+	{ name: "markChatSeen", door: "POST /api/projects/messages/read, sent by the chat island" },
+	{ name: "markLiveRoomRead", door: "POST /api/projects/messages/read" },
+	{ name: "mark_room_read", door: "POST /api/projects/messages/read" },
 	{ name: "confirmEmail", door: "POST /api/user/emails/verify (the press of Confirm)" },
 	{ name: "confirm_user_email", door: "POST /api/user/emails/verify (the press of Confirm)" },
 ];

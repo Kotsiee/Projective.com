@@ -1,5 +1,6 @@
 import type {
 	AddConversationMembers,
+	BringDmIntoProjectInput,
 	ChatRef,
 	ContactList,
 	ContactSuggestionParams,
@@ -13,6 +14,8 @@ import type {
 	ConversationSummary,
 	CreateConversation,
 	CreatedConversation,
+	DmBroughtIntoProject,
+	DmTakenOutOfProject,
 	GroupPhotoInput,
 	GroupPhotoSet,
 	InboxFolder,
@@ -23,6 +26,7 @@ import type {
 	SendMessageInput,
 	SentMessage,
 	SetGroupPhoto,
+	TakeDmOutOfProjectInput,
 } from "@projective/types/messaging";
 import {
 	conversationPath,
@@ -93,6 +97,11 @@ import {
 	INQUIRY_CLOSED_MESSAGE,
 } from "./live-conversation-writes.ts";
 import { insertRoomMessage, resolveSendRoom } from "../projects/live-writes.ts";
+import {
+	bringLiveDmIntoProject,
+	markLiveRoomRead,
+	takeLiveDmOutOfProject,
+} from "../projects/live-read-marks.ts";
 import {
 	findChannelMessage,
 	findMessagePage,
@@ -878,8 +887,9 @@ export class MessagingBackendService {
 	 * which the chat island sends once the thread has painted in a visible tab. Never called while a
 	 * page renders (PRD-C11): a GET cannot tell a person who saw the thread from a prefetch. Live only,
 	 * through `comms.mark_dm_read`; the fixture backend keeps its corpus's own unread flags, so there it
-	 * is a no-op. The tenant's inbox cache is dropped only when the watermark actually moved, so
-	 * re-opening a read conversation costs the cache nothing.
+	 * is a no-op. The tenant's cached reads are dropped only when the watermark actually moved, so
+	 * re-opening a read conversation costs the cache nothing: the inbox's, and the projects' too,
+	 * because a thread stamped with a project is also a Private Messages row there (PROJECTS CH3).
 	 */
 	static async markRead(
 		conversationId: string,
@@ -893,11 +903,116 @@ export class MessagingBackendService {
 			if ("refusal" in outcome) {
 				return fail(outcome.refusal.status, { message: outcome.refusal.message });
 			}
-			if (outcome.data.moved) invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+			if (outcome.data.moved) {
+				bumpTenant(messagingReadCache, actor);
+				bumpTenant(projectsReadCache, actor);
+			}
 			return ok(outcome.data);
 		} catch (error) {
 			liveFailed("markRead", error);
 			return fail(502, { message: "That conversation could not be marked read." });
+		}
+	}
+
+	/**
+	 * Mark the conversation a project chat shows read for the viewer (PROJECTS CH3; PRD-E13, PRD-E17)
+	 * — `POST /api/projects/messages/read`, which the project chat island sends once the page has
+	 * painted in a visible tab, exactly as the inbox's island does (CAS M10; a GET writes nothing,
+	 * PRD-C11). The ref is the send's own (`projectChatRef`): a thread (a `cht-` channel inside the
+	 * project) moves the same `comms.mark_dm_read` watermark {@link markRead} does, so the inbox's dot
+	 * clears too; a room moves the viewer's own mark in it (`comms.mark_room_read`), resolved through
+	 * the send's own room rule. Only the reader's own cached reads change, so nothing else is bumped.
+	 * The fixture backend keeps its corpus's own unread flags, so there it is a no-op, as on a thread.
+	 */
+	static async markChatRead(
+		ref: ChatRef,
+		actor: ReadActor,
+	): Promise<ServiceResult<ConversationReadMarked>> {
+		if (ref.kind === "thread") return await this.markRead(ref.ref, actor);
+		if (!isProjectsBackendLive()) return ok({ moved: false });
+		if (!canReadLive(actor)) return sessionRequired();
+		try {
+			const outcome = await markLiveRoomRead(actor, ref.ref, ref.channel);
+			if (outcome === null) return fail(404, { message: "No such project channel." });
+			if ("refusal" in outcome) {
+				return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			}
+			if (outcome.data.moved) bumpTenant(projectsReadCache, actor);
+			return ok(outcome.data);
+		} catch (error) {
+			liveFailed("markChatRead", error);
+			return fail(502, { message: "That room could not be marked read." });
+		}
+	}
+
+	/**
+	 * Open the viewer's conversation with a project member inside the project (PROJECTS CH3, Decision
+	 * #560; the Members "Message" action, `POST /api/projects/messages/dm`): the pair's DM is found or
+	 * opened and brought into the project's Private Messages group when it is not there, and the other
+	 * person is told once (`comms.bring_dm_into_project`). Answers the thread's `cht-` address, which the
+	 * caller opens at `/projects/:slug/cht-…`. Both parties' project reads change, so the project's
+	 * version is bumped as a send's is. Live only: the fixture backend has no thread to bring in, so it
+	 * answers 503 and the roster opens the inbox's conversation instead.
+	 */
+	static async bringDmIntoProject(
+		input: BringDmIntoProjectInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<DmBroughtIntoProject>> {
+		if (!isMessagingBackendLive()) {
+			return fail(503, {
+				message: "Project conversations need the live backend.",
+				details: { reason: "not_live" },
+			});
+		}
+		if (!canReadLive(actor)) return sessionRequired();
+		try {
+			const outcome = await bringLiveDmIntoProject(actor, input.projectId, input.handle);
+			if (outcome === null) return fail(404, { message: "No such project or person." });
+			if ("refusal" in outcome) return refusedWith(outcome.refusal);
+			if (outcome.data.moved) {
+				bumpTenant(messagingReadCache, actor);
+				bumpTenant(projectsReadCache, actor);
+				await touchProjects([input.projectId]);
+			}
+			return ok(outcome.data, {
+				message: outcome.data.moved ? "Conversation brought into the project." : undefined,
+			});
+		} catch (error) {
+			liveFailed("bringDmIntoProject", error);
+			return fail(502, { message: "That conversation could not be opened in the project." });
+		}
+	}
+
+	/**
+	 * Take a conversation out of the project's Private Messages group for both people (PROJECTS CH3,
+	 * Decision #560; `DELETE /api/projects/messages/dm`, the room header's "Take out of this project").
+	 * Its messages, and their project stamps, are untouched; it stays in `/messages`. Live only.
+	 */
+	static async takeDmOutOfProject(
+		input: TakeDmOutOfProjectInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<DmTakenOutOfProject>> {
+		if (!isMessagingBackendLive()) {
+			return fail(503, {
+				message: "Project conversations need the live backend.",
+				details: { reason: "not_live" },
+			});
+		}
+		if (!canReadLive(actor)) return sessionRequired();
+		try {
+			const outcome = await takeLiveDmOutOfProject(actor, input.projectId, input.conversationId);
+			if (outcome === null) return fail(404, { message: "No such conversation in this project." });
+			if ("refusal" in outcome) return refusedWith(outcome.refusal);
+			if (outcome.data.moved) {
+				bumpTenant(projectsReadCache, actor);
+				await touchProjects([input.projectId]);
+			}
+			return ok(outcome.data, {
+				message: outcome.data.moved ? "Conversation taken out of the project." : undefined,
+			});
+		} catch (error) {
+			liveFailed("takeDmOutOfProject", error);
+			return fail(502, { message: "That conversation could not be taken out of the project." });
 		}
 	}
 

@@ -1,4 +1,4 @@
-import { getProjects, postProjects } from "./api.ts";
+import { deleteProjects, getProjects, postProjects, signalProjects } from "./api.ts";
 import type { ChatMessage, MessagePage, SendProjectMessage } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
 
@@ -40,5 +40,40 @@ export const MessagesService = {
 	 */
 	send(payload: SendProjectMessage): Promise<ProjectsResult<{ message: ChatMessage }>> {
 		return postProjects<{ message: ChatMessage }>("/api/projects/messages/send", payload);
+	},
+
+	/**
+	 * Mark the conversation this chat shows read for the viewer (PROJECTS CH3), named as {@link send}
+	 * names it: a room's own mark, or a `cht-` thread's watermark, which clears the inbox's dot too.
+	 * Sent by the chat island once the page has painted in a visible tab, never by a GET (PRD-C11).
+	 */
+	markRead(projectId: string, channelId: string): Promise<ProjectsResult<null>> {
+		return signalProjects("/api/projects/messages/read", { projectId, channelId });
+	},
+
+	/**
+	 * Open the viewer's conversation with a project member inside the project, bringing it into the
+	 * project's Private Messages group first when it is not there (Decision #560). Resolves with the
+	 * thread's `cht-` address to open at `/projects/:projectId/:ref`.
+	 */
+	bringDm(
+		projectId: string,
+		handle: string,
+	): Promise<ProjectsResult<{ ref: string; moved: boolean }>> {
+		return postProjects<{ ref: string; moved: boolean }>("/api/projects/messages/dm", {
+			projectId,
+			handle,
+		});
+	},
+
+	/** Take a conversation out of the project's Private Messages group, for both people (Decision #560). */
+	takeDmOut(
+		projectId: string,
+		conversationId: string,
+	): Promise<ProjectsResult<{ moved: boolean }>> {
+		return deleteProjects<{ moved: boolean }>("/api/projects/messages/dm", {
+			projectId,
+			conversationId,
+		});
 	},
 };

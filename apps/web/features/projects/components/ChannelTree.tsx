@@ -11,7 +11,7 @@ import type { ChannelFilterKey } from "./ChannelQuickFilters.tsx";
 import { channelHref } from "../core/chat-context.ts";
 import type { SidebarStageRow } from "../core/sidebar-overlay.ts";
 import type { ProjectViewStatus } from "../core/nav-activity-model.ts";
-import { conditionalChannelGroups } from "@projective/types/projects";
+import { conditionalChannelGroups, dmChannelLabel } from "@projective/types/projects";
 import type { DmChannel, ProjectChannel, ProjectDetail } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import { isChannelStarred } from "../core/channel-stars.ts";
@@ -219,7 +219,11 @@ function GeneralRow({ general }: { general: GeneralChannel }): JSX.Element {
 	);
 }
 
-/** A DM row — a project member the viewer has messaged; opens the DM inside the project. */
+/**
+ * A Private Messages row — a thread with project members, a pair DM or a group; opens it inside the
+ * project. A group is named by `dmChannelLabel` (its name, else its members' first names) beside its
+ * first other member's avatar.
+ */
 export function DmRow(
 	{ dm, slug, activeChannelId }: {
 		dm: DmChannel;
@@ -228,6 +232,7 @@ export function DmRow(
 	},
 ): JSX.Element {
 	const active = activeChannelId === dm.chatId;
+	const label = dmChannelLabel(dm);
 	return (
 		<a
 			class="proj-chan proj-chan--dm"
@@ -236,7 +241,7 @@ export function DmRow(
 			aria-current={active ? "page" : undefined}
 		>
 			<UserAvatar image={dm.party.avatar} label={dm.party.name} size={22} shape="circle" />
-			<span class="proj-chan__name">{dm.party.name}</span>
+			<span class="proj-chan__name">{label}</span>
 			{dm.unread && <span class="proj-chan__dot" role="status" aria-label="unread" />}
 		</a>
 	);

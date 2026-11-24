@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **85%** |            61 | 44 |  16 |  1 |              13 |
-| **UAT**          | **74%** |           193 | 106 |  75 | 12 |              23 |
-| **Production**   | **67%** |           251 | 112 | 106 | 33 |              34 |
+| **UAT**          | **74%** |           193 | 107 |  74 | 12 |              23 |
+| **Production**   | **68%** |           251 | 113 | 105 | 33 |              34 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,7 +45,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 25 |  7 |  2 |   70% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 34 | 33 |  8 |  2 |   69% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 35 | 32 |  8 |  2 |   69% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 26 | 14 |  3 |   61% |
 
 **Critical flows not yet ✅, by the tier they gate:**
@@ -336,7 +336,7 @@ The operator's ruling is MW-59.
 | PJ-47 | Stage room and Discussion chat                           | Client, Freelancer          | `/discussion`, `[channelId]/chat`           | 🟡     | Critical | MVP  | No live delivery (PRD-E3); no edit or delete; reactions local; archived rooms accept posts (SEC G5)                |
 | PJ-48 | Team and business private project rooms                  | Team admin, Business member | stage tree                                  | 🟡     | Normal   | UAT  | RLS-scoped; how rooms are created is unchecked                                                                     |
 | PJ-49 | DMs and groups (create, members, photo)                  | Any                         | `/messages/:id`, `/api/messaging/*`         | 🟡     | Critical | MVP  | No live delivery (PRD-E3); group photo unscreened. Addressed by `cht-` refs through one send door (#508). Read marks are the chat's POST after paint (SAC3, PRD-C11) |
-| PJ-50 | Project DMs shown inside the project                     | Client, Freelancer          | `/projects/:slug/cht-…`                     | 🟡     | Normal   | UAT  | #508 (MS2): the Private Messages group lists the viewer's project-stamped DMs and opens each in the project; only Chat works there, it marks nothing read, and an unstamped pair DM cannot be brought in (PRD-E17) |
+| PJ-50 | Project DMs shown inside the project                     | Client, Freelancer          | `/projects/:slug/cht-…`                     | ✅     | Normal   | UAT  | CH3 (#560, `this commit`): the Private Messages group lists every thread stamped with or brought into the project, groups included, with no 500-message cap; its Files and Members tabs read the thread; reading it in place marks it read in `/messages` too; the Members "Message" brings a pair DM in (the other is told) and either may take it out, stamps kept. Probe `room_read_marks.sql`; live as Noor and Juno on the dev server: the room's and the DM's dots set and cleared, `/messages` cleared, the Files and Members tabs, take out and bring back |
 | PJ-51 | Inbox folders: Primary, Requests, Archived               | Any                         | `/api/messaging/conversations/[id]/folder`  | ✅     | High     | MVP  | —                                                                                                                  |
 | PJ-52 | Mute or delete a conversation                            | Any                         | `/messages` menus                           | 🟡     | Normal   | UAT  | localStorage only; the server `mute` route is unused there (MS5)                                                   |
 | PJ-53 | Context panel (accept, decline, fund and confirm a seat) | Client, Freelancer          | `/api/messaging/conversations/[id]/context` | ✅     | High     | MVP  | —                                                                                                                  |
@@ -584,3 +584,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-24 | TK2 (#557): PJ-23 🟡 → ✅ (driven end to end in a browser: the basket by wallet, Buy now by wallet and by card with and without 3-D Secure, the freelancer's prepaid marks, the refusals) | 85% | 74% | 67% |
 | 2026-11-24 | EX3 (#558): PJ-43 🟡 → ✅ (raising a ticket dispute freezes a hashed Evidence Vault in the same transaction, its files copied to a private store; the parties read its hash and the case summary PDF, an operator the raw snapshot) | 85% | 74% | 67% |
 | 2026-11-24 | CH4 (#559): no row flips; PJ-56's M15 and M18 closed (a message and its files are one write; a voice memo plays with its waveform after a reload); it stays 🟡 on T&S SN1's scan | 85% | 74% | 67% |
+| 2026-11-24 | CH3 (#560): PJ-50 🟡 → ✅ (every project DM and group opens in place with its own Files and Members; reading a room or a DM marks it read; either participant brings a DM in or takes it out, stamps kept) | 85% | 74% | 68% |

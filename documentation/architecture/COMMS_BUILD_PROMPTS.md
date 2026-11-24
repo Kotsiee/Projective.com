@@ -74,8 +74,8 @@ E11, E14) is 🟡 when it is built and proved locally, and ✅ only when CD2 pro
 project. PRD-E6, PRD-C15 and PRD-M3 set that precedent.
 
 **What each tier needs from §E.** MVP needs MS3 (PRD-E3). UAT also needs MS4, MS5 and CD2's E4–E6
-cases. Rows with no work order here: PRD-E13 and E17 (PROJECTS CH3), E15 (PROJECTS NO2), E18
-(PROJECTS NO3) and E16 (none yet).
+cases. Rows with no work order here: E15 (PROJECTS NO2), E18 (PROJECTS NO3) and E16 (none yet);
+PRD-E13 and E17 closed with PROJECTS CH3 (#560).
 
 ### 0.2 Run order
 
@@ -138,7 +138,7 @@ These cannot run in parallel because they edit the same files:
   (`bumpCacheVersion`, `cacheVersion`, `cacheVersionTag` in `packages/backend/core/kv.ts`) and SR3
   `cachedGlobal(key, ttlMs, fetch)` from the same file. No prompt here edits `core/cache.ts`.
 - **`MessagingBackendService.ts`, `conversations-ssr.ts`, `live-queries.ts`,
-  `ChatFeed.island.tsx`.** MS3 and MS5 here; PROJECTS CH1 and CH3 and T&S R2 elsewhere (one at a time;
+  `ChatFeed.island.tsx`.** MS3 and MS5 here; PROJECTS CH1 and T&S R2 elsewhere (one at a time;
   PROJECTS CH4 landed, #559).
 - **`00001400`, `00002510` and the `search` schema.** The identity track's erasure (SEC G16, CAS
   S17) and the trust track's search grants and policies (SEC G13–G15, T&S P2d step 5) never run

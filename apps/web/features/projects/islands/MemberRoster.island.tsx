@@ -25,6 +25,7 @@ import {
 	TICKET_MANAGER_ROLES,
 } from "../types/projects-types.ts";
 import { MembersService } from "../core/MembersService.ts";
+import { MessagesService } from "../core/MessagesService.ts";
 import { RequestService } from "../core/RequestService.ts";
 import {
 	filterInvites,
@@ -336,8 +337,28 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 		if (handle) void loadProfile(handle);
 	}
 
-	function message(target: ChatTarget): void {
+	/**
+	 * The roster's Message action. Inside a project it opens the conversation IN the project
+	 * (`/projects/:slug/cht-…`), bringing it into the project's Private Messages group first when it is
+	 * not there, which tells the other person once (PROJECTS CH3, Decision #560). A conversation's own
+	 * roster, a refusal (they are not on the project, the DM shield) or the fixture backend opens the
+	 * inbox's conversation as before, and a refusal says why.
+	 */
+	async function message(target: ChatTarget): Promise<void> {
 		previewOpen.value = false;
+		if (scope === "conversation" || !target.handle) {
+			openMemberChat(target, mobile);
+			return;
+		}
+		const res = await MessagesService.bringDm(projectId, target.handle);
+		if (res.ok && res.data) {
+			globalThis.location.assign(`/projects/${encodeURIComponent(projectId)}/${res.data.ref}`);
+			return;
+		}
+		// The fixture backend has no thread to bring in: the inbox opens it, and there is nothing to say.
+		if (res.details?.reason !== "not_live") {
+			say("warning", res.message ?? "That conversation could not be opened here.");
+		}
 		openMemberChat(target, mobile);
 	}
 	// #endregion

@@ -6,7 +6,7 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 15 open, 0 partly done, 11 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 14 open, 0 partly done, 12 done (§0 ledger).
 > Runnable now: CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -64,11 +64,12 @@ A prompt that lands gets a row here.
 | TK2 | The funding path driven end to end in a real browser on the live path: `apps/web/tests/e2e/ticket-funding.spec.ts` (`deno task test:e2e:funding`). One stage through the basket picker and the checkout narrowed by `?ticket_id=`, paid from the business wallet; a stage held and two prepaid in one Buy now, the freelancer seeing the marks and no amounts; Buy now by a 3-D Secure card and a plain one, held after the signed webhook (the spec forwards it from Stripe test mode) and after a reload; a short wallet and a paid-for stage refused. The checkout's client re-read keeps `?ticket_id=` (it widened to the whole basket); `test:e2e` no longer names the deleted `landing-hero.spec.ts` (PRD-K3) | `f9bce8aa` (#557) | `288865a0` |
 | EX3 | Raising a ticket dispute freezes its Evidence Vault in the same transaction: `finance.dispute_vaults` (manifest jsonb, `sha256` of its canonical text, `pending` → `ready`, `object_prefix`; immutable by trigger, RLS with no client policy), `fn_dispute_vault_manifest` (terms, escrows, history, submissions with their file hashes, the stage's rooms), `fn_freeze_dispute_vault` from `open_ticket_dispute`, `mark_dispute_vault_ready` (service role), `get_dispute_vault`, `get_dispute.vault`; the service copies the files to `evidence/vault/{dispute}/`; `GET /api/finance/disputes/[disputeId]/summary.pdf` and `…/vault`; the case dialog's and the desk's Evidence Vault line and links; probe `dispute_vault.sql` | `a91a5080` (#558) | `0e06fa9d` |
 | CH4 | A message and its files are one write, and a voice memo survives a reload: `comms.send_message` (invoker) writes the message, its `message_attachments` links and `channel_files` rows in one transaction and refuses the whole send on a refused file (PA422 → 422 `not_attached`); `message_attachments.audio_duration_ms` + `audio_peaks` (four CHECKs, `uq_message_attachments_one_memo`); `SendAudioSchema` names the memo's upload; `fetchMessageAttachments` returns the memo as the player on every read; `MessageAttachmentRowSchema`; probe `message_send.sql` | `1732ac6d` (#559) | `0e06fa9d` |
+| CH3 | Inside a project every DM and group opens in place, and reading marks it read: `comms.project_channel_reads` + `comms.mark_room_read` + `comms.unread_rooms` behind `POST /api/projects/messages/read` (the send's own pair; a `cht-` channel marks the thread, so `/messages` clears too) and the `ProjectChat` island's after-paint read; `comms.project_dm_threads` (groups, no 500 cap); the `cht-` Files and Members tabs; `comms.dm_thread_projects` + `comms.bring_dm_into_project` (the other told, `message.brought_into_project`) + `comms.take_dm_out_of_project` (stamps kept) behind `POST | DELETE /api/projects/messages/dm`, the Members "Message" action and the header's Take out; probe `room_read_marks.sql` | this commit (#560) | this commit^ |
 
 ### 0.1 Row → work order
 
 Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 04 (ST6, #555), 05, 06, 08, 11 (ST4, #550), 12, 13 (ST3, #547), 16, 18, 19, 20 (ST5, #554), 24, 25 (PM-WP1,
-`07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513). PJ-14 and
+`07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513); 50 (CH3, #560). PJ-14 and
 PJ-74 are ⏸ (§0.4).
 
 **Project setup** (100%): every row ✅.
@@ -125,14 +126,13 @@ PJ-74 are ⏸ (§0.4).
 
 The operator's ruling is MW-59; it is not this file's row.
 
-**Messaging** (57%)
+**Messaging** (59%)
 
 | Row   | Now · Crit · Gate | Work order                                        | The row flips when                                                                            |
 | :---- | :---------------- | :------------------------------------------------ | :-------------------------------------------------------------------------------------------- |
 | PJ-47 | 🟡 · Crit · MVP   | COMMS MS3 → MS5 step 3; **CH1**; T&S P2d (G5, G6) | Live delivery; edit and delete; persisted reactions; an archived room refuses at the database |
 | PJ-48 | 🟡 · Normal · UAT | **CH2** (🧑)                                      | Team and business rooms exist, and only their people read them                                |
 | PJ-49 | 🟡 · Crit · MVP   | COMMS MS3; T&S SN3                                | Live delivery; the group photo is screened                                                    |
-| PJ-50 | 🟡 · Normal · UAT | **CH3**                                           | Every project DM is reachable and readable in place, and reading marks it read                |
 | PJ-52 | 🟡 · Normal · UAT | COMMS MS5                                         | Mute and delete persist on the server                                                         |
 | PJ-54 | 🟡 · High · UAT   | T&S LK1                                           | A link nobody could check goes through `/exit`                                                |
 | PJ-56 | 🟡 · High · MVP   | CH4 ✅ (#559); T&S SN1                                  | Files are scanned (M15 and M18 closed by CH4)             |
@@ -181,7 +181,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Tickets & delivery             |   59% | WP8 62% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100% (TK2 ✅, #557)               |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
-| Messaging                      |   57% | MS5 59% → CH1 + P2d 65% → CH2 67% → CH3 70% → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
+| Messaging                      |   59% | MS5 61% → CH1 + P2d 67% → CH2 70% (CH3 ✅, #560) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → NO2 + CD2 94% → NT5 + NO3 100%                                                                          |
 | Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
@@ -234,7 +234,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
 9. **CH2** (ST3 ✅, #547; ST4 ✅, #550).
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. **CH3** (CH4 ✅, #559), then **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
+11. CH3 ✅ (#560) and CH4 ✅ (#559); next **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
     slug.
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
@@ -272,14 +272,14 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001140` (claims, capacity, workload)                  | PM WP5a, D7b                                                 | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
 | `00000017` + `00001260` (disputes)                       | PM-WP4a step 6                                               | FBP DB21; MR3                                                     |
-| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3                                                | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
+| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2                                                     | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
 | `00005010` (notification catalogue)                      | EX1, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1                  | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
 | `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1      | COMMS NT5; T&S R3                                                 |
-| `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3                                                     | COMMS MS3, MS5; T&S R2                                            |
+| `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1                                                          | COMMS MS3, MS5; T&S R2                                            |
 | `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                         | O·WP6                                                             |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`               | every prompt                                                 | every readiness track: edit your rows and the computed lines only |
 
@@ -305,7 +305,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 20 | Which workload verdict can be appealed                                                                                                       | EX4 (#552)    | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
 | 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1           | Edit for 15 minutes; delete for everyone at any time while the room is live; originals kept for evidence; nothing in an archived or disputed room changes                                                                |
 | 22 | Who gets team and business rooms, and when                                                                                                   | CH2           | Eagerly: at the team's seat going live, and at the business's first project access                                                                                                                                       |
-| 23 | Who may bring a pair DM into a project                                                                                                       | CH3           | Either participant, when both are on the project; the other is told                                                                                                                                                      |
+| 23 | Who may bring a pair DM into a project                                                                                                       | CH3 ✅ (#560) | **Ruled #560:** as recommended: either participant, while both are on the project; the other is told; either may take it out, which hides it for both and keeps every stamp |
 | 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1           | Yes, as a transactional invite behind a switch until counsel answers; `application.received` joins the hourly digest                                                                                                     |
 | 25 | When a push device is dropped                                                                                                                | NO3           | At once on 404 / 410; otherwise after 5 failures over at least 24 h; Settings says so                                                                                                                                    |
 | 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                                     | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
@@ -729,50 +729,6 @@ decision row.
 ```
 
 §1.2 rows: **PJ-48** 🟡 → ✅ (its text corrected: nothing created the rooms).
-
-### CH3 — Inside a project, every DM is reachable and reading marks it read
-
-Closes PJ-50 (🟡 → ✅); PRD-E17 and PRD-E13.
-
-```text
-PROMPT CH3: Inside a project, every DM and group the viewer has with its people can be opened in
-place, any participant can bring an existing DM in, and reading a room or a DM there marks it
-read
-
-ROLE: Full-stack engineer. Queue S (comms SQL), after COMMS MS3.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - MS2 (#508) lists the viewer's project-stamped DMs in the Private Messages group and opens each
-    in the project. Its flags (c)–(g) are open: the Files and Members readers do not take a cht-
-    ref; nothing there marks read; an unstamped pair DM cannot be brought in; stamped groups are
-    not drawn; fetchProjectDms caps at 500 messages.
-  - The project chat route renders only ChatFeed ([channelId]/chat.tsx:14-18), and
-    useReadWhenSeen is used only in ConversationChat.island.tsx.
-  - PRD-E17 (PRODUCTION_READINESS.md:196) and PRD-E13 (room read marks; #478 (g)) have no work
-    order. A read mark is a POST after paint, never a GET (SAC3, #478).
-
-🧑 DECISION (before step 4): who may bring a pair DM into a project. Recommended: either
-participant, when both are on the project; the other is told; either may take it out again.
-
-STEPS:
-  1. Red first: tests for each flag. Reading a project DM in place leaves it unread; a stage
-     room has no read state at all.
-  2. Room read state (PRD-E13): a per-user, per-room last-read mark written by the same POST the
-     DMs use, with unread counts in the tree.
-  3. The project chat marks read through useReadWhenSeen; the Files and Members readers take a
-     cht- ref.
-  4. "Bring into this project" (a door stamping a pair DM, and its reverse). The Members
-     "Message" action opens /projects/:slug/cht-….
-  5. Draw stamped groups; page fetchProjectDms instead of capping it.
-
-ACCEPTANCE: each test is green; live, reading a DM inside the project clears its unread mark in
-/messages, and a stage room's unread count clears; screenshots.
-
-SAME CHANGE: ROUTING.md; documentation/database/comms/*; Zod; PRODUCTION_READINESS.md (E17, E13);
-the decision row (#508 (c)-(g) closed).
-```
-
-§1.2 rows: **PJ-50** 🟡 → ✅; PRD-E17, PRD-E13.
 
 ---
 

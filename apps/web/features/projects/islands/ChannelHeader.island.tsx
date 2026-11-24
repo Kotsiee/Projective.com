@@ -2,7 +2,7 @@ import { cloneElement, type JSX, type RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/channel-header.css";
-import { Drawer, Popover, Tooltip } from "@projective/ui/feedback";
+import { ConfirmDialog, Drawer, Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { CHANNEL_TABS, type ChannelMeta, visibleChannelTabKeys } from "../core/channel-view.ts";
 import { readDevSeam, resolveViewer, watchDevSeam } from "../core/submission-access.ts";
@@ -40,6 +40,7 @@ import {
 } from "../components/ChannelDetailBody.tsx";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
 import { channelStarOverrides } from "../core/channel-stars.ts";
+import { MessagesService } from "../core/MessagesService.ts";
 
 /**
  * ChannelHeader — the contextual header for a project channel/chat engagement
@@ -185,6 +186,9 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 	const panelDocks = activeTab === "chat" && inflow;
 	const menuOpen = useSignal<boolean>(false);
 	const copied = useSignal<boolean>(false);
+	/** The take-out confirm (a pair DM seen through the project only, Decision #560). */
+	const takeOutOpen = useSignal<boolean>(false);
+	const canTakeOut = meta.kind === "dm" && meta.group === false;
 
 	useEffect(() => {
 		const recompute = () => {
@@ -266,6 +270,20 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 			title: meta.title,
 			href: base,
 		});
+	}
+
+	/**
+	 * Take this conversation out of the project for both people (PROJECTS CH3, Decision #560), then go
+	 * to it in Messages, where it stays with all its history. A refusal is said in the live region.
+	 */
+	async function takeOut(): Promise<void> {
+		const projectId = base.split("/")[2] ?? "";
+		const res = await MessagesService.takeDmOut(projectId, meta.ref);
+		if (res.ok) {
+			globalThis.location.assign(`/messages/${meta.ref}`);
+			return;
+		}
+		said.value = res.message ?? "That conversation could not be taken out of the project.";
 	}
 
 	/** Show the details: toggle the docked frame panel where one stands, else open the drawer. */
@@ -476,6 +494,22 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 							</span>
 							<span class="chan-menu__label">{copied.value ? "Link copied" : "Copy link"}</span>
 						</button>
+						{canTakeOut && (
+							<button
+								type="button"
+								role="menuitem"
+								class="ui-menu-item chan-menu__item"
+								onClick={() => {
+									menuOpen.value = false;
+									takeOutOpen.value = true;
+								}}
+							>
+								<span class="ui-menu-item__icon chan-menu__icon" aria-hidden="true">
+									{cloneElement(DmIcon)}
+								</span>
+								<span class="chan-menu__label">Take out of this project</span>
+							</button>
+						)}
 					</div>
 				</Popover>
 			</div>
@@ -489,6 +523,17 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 			>
 				<ChannelDetailBody title={meta.title} isStage={isStage} info={detailInfo} />
 			</Drawer>
+
+			{canTakeOut && (
+				<ConfirmDialog
+					visible={takeOutOpen}
+					header="Take out of this project"
+					message={`Your conversation with ${meta.title} will no longer show in ${meta.sub}, for either of you. It stays in Messages with all its history, and either of you can bring it back with Message on the project's Members.`}
+					acceptLabel="Take it out"
+					rejectLabel="Keep it here"
+					onAccept={() => void takeOut()}
+				/>
+			)}
 		</header>
 	);
 }

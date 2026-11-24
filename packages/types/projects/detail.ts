@@ -131,19 +131,51 @@ export const TeamChannelSchema = z.object({
 });
 export type TeamChannel = z.infer<typeof TeamChannelSchema>;
 
+/** The most other members a group row of the Private Messages group names (the rest are counted). */
+export const DM_GROUP_MEMBERS_MAX = 50;
+
 /**
- * A direct-message thread with another party in the engagement. `chatId` is the unified global DM id,
- * so opening it here or from `/messages` shows the same history. `hasProjectContext` marks a DM that
- * already carries messages sent inside this project — only those appear in the project's Private
- * Messages group (see {@link conditionalChannelGroups}).
+ * A group thread's own facts, on a {@link DmChannelSchema} row that is one (Decision #508 (f)): its
+ * name, `null` when nobody named it, and the OTHER members, the viewer left out, in roster order.
+ */
+export const DmGroupSchema = z.object({
+	title: z.string().min(1).max(120).nullable(),
+	members: z.array(ProjectPartySchema).min(1).max(DM_GROUP_MEMBERS_MAX),
+});
+export type DmGroup = z.infer<typeof DmGroupSchema>;
+
+/**
+ * A direct-message thread with other parties in the engagement. `chatId` is the unified global DM id
+ * (the thread's `cht-` ref), so opening it here or from `/messages` shows the same history.
+ * `hasProjectContext` marks a thread that already carries messages sent inside this project — only
+ * those appear in the project's Private Messages group (see {@link conditionalChannelGroups}).
+ *
+ * `party` is the counterpart: on a group, its first other member, so a reader that names one person
+ * still names somebody real. `group` is present exactly when the thread is a group; read the row's
+ * name through {@link dmChannelLabel}, never `party.name`, so a group is titled as a group.
  */
 export const DmChannelSchema = z.object({
 	chatId: z.string().min(1).max(80),
 	party: ProjectPartySchema,
 	unread: z.boolean(),
 	hasProjectContext: z.boolean(),
+	group: DmGroupSchema.optional(),
 });
 export type DmChannel = z.infer<typeof DmChannelSchema>;
+
+/**
+ * The name a Private Messages row and its room header carry: the counterpart's name on a pair DM; on
+ * a group, its own name, else its members' first names ("Ada, Ben and Cal"; past three, "Ada, Ben
+ * and 3 others"), which is how the inbox lists an unnamed group too.
+ */
+export function dmChannelLabel(dm: Pick<DmChannel, "party" | "group">): string {
+	if (!dm.group) return dm.party.name;
+	if (dm.group.title) return dm.group.title;
+	const names = dm.group.members.map((m) => m.name.trim().split(/\s+/)[0] || m.name);
+	if (names.length === 1) return names[0];
+	if (names.length <= 3) return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+	return `${names.slice(0, 2).join(", ")} and ${names.length - 2} others`;
+}
 
 /**
  * The stage a routed segment addresses, or `null` when the segment names no stage.
