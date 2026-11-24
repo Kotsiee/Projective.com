@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 19 open, 0 partly done, 7 done (§0 ledger).
-> Runnable now: ST4, TK2, EX3, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 18 open, 0 partly done, 8 done (§0 ledger).
+> Runnable now: TK2, EX3, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -61,23 +61,23 @@ A prompt that lands gets a row here.
 | TK1 | Everyone on a project sees which of a ticket's stages are prepaid, ids only (`projects.get_project_prepaid_stages`, read by `ticketBillingFacts` and the setup DTO's `prepaidCount`); the payer takes one back while unreached (`projects.refund_ticket_stage_reservation`, `POST /api/finance/escrow/reservation`, a Refund per prepaid stage on the funding line); a ticket sent back to New, or a New ticket whose funding stage is reserved, gives the reservation back (`fn_ticket_prepay_sync`); a reservation keeps its price and the stage editor counts them; the Prepaid stages dev axis gains Some; probe `stage_funding_prepaid.sql` 9–13 | `592ccfc0` (#556) | `62d6b1a7` |
 | ST3 | Manual assignment: `set_stage_assignment_mode` granted (planned modes refused `0A000`); `tickets.pinned_assignee_id`; `assign_ticket_manual` pins on a Manual stage and binds nothing; `decline_ticket_pin`; `claim_ticket` takes the pinned freelancer's acceptance; the stage inspector's Routing control, Assign to… and its picker, Accept / Decline; Helia's Discovery stage seeded Manual with a pin; probe `seat_lock_and_capacity.sql` region 4 | `1929b313` (#547) | `9d55866d` |
 | ST6 | A write by one party to a shared project shows on the other's next read, in every isolate: each cached project read is keyed by the project's KV version (`services/projects/freshness.ts`), bumped by every write path (#555 lists them); a KV-less isolate keeps its own bumps; a board reads around the cache while the claim sweep is due; #427 (a) confirmed and written into PRODUCT_SPEC | `08f27344` (#555) | `70f78452` |
+| ST4 | The freelancer's own workload: `projects.get_my_workload_capacity()` (no argument, `auth.uid()`, per-stage split) granted to `authenticated` only, the any-user `get_workload_capacity` revoked by name; `WorkloadCapacitySchema`, `ProjectWorkloadService.mine`, `GET /api/projects/workload`; the `WorkloadGauge` island in the `/projects` header; the capacity line and over-cap refusal beside the ticket view's and the board card's Claim; dev axis `workload`; probe `workload_capacity_self.sql` | `97680598` (#550) | `97680598` |
 
 ### 0.1 Row → work order
 
-Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 04 (ST6, #555), 05, 06, 08, 12, 13 (ST3, #547), 16, 18, 19, 20 (ST5, #554), 24, 25 (PM-WP1,
+Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 04 (ST6, #555), 05, 06, 08, 11 (ST4, #550), 12, 13 (ST3, #547), 16, 18, 19, 20 (ST5, #554), 24, 25 (PM-WP1,
 `07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513). PJ-14 and
 PJ-74 are ⏸ (§0.4).
 
 **Project setup** (100%): every row ✅.
 
-**Stages** (69%)
+**Stages** (81%)
 
 | Row   | Now · Crit · Gate | Work order                   | The row flips (or its note clears) when                                                                         |
 | :---- | :---------------- | :--------------------------- | :-------------------------------------------------------------------------------------------------------------- |
 | PJ-07 | ✅ · High · MVP   | PM-WP5a step 1               | `categoryWeight` is gone; $W_i$ reads intensity alone (note clears)                                             |
 | PJ-09 | 🟡 · High · UAT   | PM-WP4b steps 4, 6 (ST2 landed, #553) | ✅ after WP4b (a touched stage archives and settles) |
 | PJ-10 | ❌ · High · UAT   | PM-D7a → PM-D7b              | 🟡 after D7a (no loops, no cross-project routes); ✅ after D7b (a waiting stage opens)                          |
-| PJ-11 | 🟡 · High · UAT   | **ST4**                      | The freelancer's own gauge renders from a self-only read                                                        |
 
 **Hiring & members** (83%)
 
@@ -174,7 +174,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Section                        | Today | Path                                                                                                              |
 | :----------------------------- | ----: | :---------------------------------------------------------------------------------------------------------------- |
 | Project setup                  |  100% | ✅ (ST1, ST6)                                                                                                      |
-| Stages                         |   69% | D7a 77% → ST4 85% → WP4b 92% → D7b 100%                                                                            |
+| Stages                         |   81% | D7a 88% → WP4b 94% → D7b 100%                                                                                     |
 | Hiring & members               |   83% | WP4b 92% → NO1 + CD2 + counsel 100%                                                                               |
 | Tickets & delivery             |   59% | WP8 62% → TK2 66% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100%                    |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
@@ -189,7 +189,7 @@ after PM-WP1. The paths follow §0.2's order:
 (+ CD2), and the chat chain (MS3, MS5, CH1, P2d, SN3, the T&S P-chain).
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX3; EX2 ✅) and PJ-60 (NO2 + CD2).
-Those are the Critical · UAT rows. Below them come the High · UAT rows: ST4, WP5a, EX1,
+Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a, EX1,
 CH2, FL3, FL4, CFG2 and LP1.
 
 ### 0.2 Run order
@@ -231,7 +231,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 6. **PM-WP9** (★00001150, ⏳ PM-WP8 step 4): PJ-27, PJ-38.
 7. **COMMS MS5** (⏳ MS3), then **CH1** (⏳ MS3): PJ-52, PJ-47.
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
-9. **CH2**, then **ST4** (ST3 ✅, #547).
+9. **CH2** (ST3 ✅, #547; ST4 ✅, #550).
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
 11. **CH3**, then **CH4**'s audio column, **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
     slug.
@@ -269,7 +269,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001150` (stage funding, submissions, cancel, approve) | EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | FBP DB13, DB14                                                    |
 | `00001130` (stages, members, `apply_write_batch`)        | CH2; PM D7a, WP4a, WP4b, S3, D7b                             | —                                                                 |
 | `00001110` / `00001120` (ticket guards and doors)        | PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
-| `00001140` (claims, capacity, workload)                  | ST4; PM WP5a, D7b                                            | —                                                                 |
+| `00001140` (claims, capacity, workload)                  | PM WP5a, D7b                                                 | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
 | `00000017` + `00001260` (disputes)                       | EX3; PM-WP4a step 6                                          | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3, CH4                                           | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
@@ -278,7 +278,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00005010` (notification catalogue)                      | EX1, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1                  | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
-| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | ST4, EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1 | COMMS NT5; T&S R3                                                 |
+| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1      | COMMS NT5; T&S R3                                                 |
 | `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3, CH4                                                | COMMS MS3, MS5; T&S R2                                            |
 | `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                         | O·WP6                                                             |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`               | every prompt                                                 | every readiness track: edit your rows and the computed lines only |
@@ -297,7 +297,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 7  | #430 (d) a refund of one prepaid stage; (f) a card prepaying later stages                                                                    | TK1 ✅ (#556) | (d) a payer door while the stage is unclaimed; (f) a card funds the funding stage only, and Buy now says so                                                                                                              |
 | 13 | #427 (a): the client creates every ticket on a service engagement                                                                            | ST6 ✅ (#555)  | **Ruled #555:** confirmed: the client creates every ticket on a service engagement, and the details the seller edits exclude tickets (PRODUCT_SPEC.md §Services)                                                         |
 | 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3 ✅         | **Ruled #547:** B, the pin binds nothing until the freelancer accepts it by claiming (or declines); pins on Manual stages only |
-| 15 | Where the workload gauge sits                                                                                                                | ST4           | Beside Claim (the ticket view, stage Tasks) and in the freelancer's Projects header; on `/home` once PRD-A1 lands                                                                                                        |
+| 15 | Where the workload gauge sits                                                                                                                | ST4 ✅ (#550)  | **Ruled #550:** as recommended: beside both Claim controls (the ticket view and the board card) and in the freelancer's `/projects` header; `/home` once PRD-A1 lands |
 | 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1 (#546)    | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
 | 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2 ✅ (#548) | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
 | 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2 ✅ (#549) | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
@@ -479,54 +479,6 @@ its section (IDs are never reused), never silence. Finish with: what you built; 
 ---
 
 ## 2. Project setup, stages & members
-
-### ST4 — The freelancer's workload gauge reads their own capacity
-
-Closes PJ-11 (🟡 → ✅).
-
-```text
-PROMPT ST4: A freelancer sees their own workload against their cap where they claim work, from
-a read that can only ever return the caller's own load
-
-ROLE: Full-stack engineer. Queue S: 00001140 (after PM-WP1), 00002510 (by name).
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - Caps are enforced (check_ticket_capacity, 00001140:251).
-  - The gauge is a placeholder: features/dashboard/home/islands/WorkloadGauge.island.tsx ("Example
-    island … Replace with the real Workload-Capacity gauge", :3-7). Nothing imports it.
-  - projects.get_workload_capacity (00001140:338-383) is SECURITY DEFINER, takes any p_user_id,
-    and is ungranted under deny-by-default (00002510:7-31). Granting it as-is would let anyone
-    read anyone's load. It has no Zod type.
-  - The only gauge that exists is the team workspace's Σ W_i / Σ cap
-    (features/workspaces/core/overview-deck.ts:42-50), not the freelancer's own.
-  - The spec: PRODUCT_SPEC.md:2665-2667.
-
-🧑 DECISION (before step 4): where the gauge sits. Recommended: beside Claim (the ticket view and
-the stage Tasks rail: "this ticket adds X; you would be at Y of Z"), and in the freelancer's
-Projects header; on /home once PRD-A1 replaces the placeholder there.
-
-STEPS:
-  1. Red first: a probe in which a caller reads another user's capacity. Today nothing can call
-     the function; after this change, nothing may read anyone else's.
-  2. A self-only reader: projects.get_my_workload_capacity(), a definer that passes auth.uid()
-     to the existing function, granted by name. The original stays ungranted.
-  3. Zod (WorkloadCapacitySchema), the service and GET /api/projects/workload.
-  4. The gauge: replace the placeholder with a real island, reusing a meter from the
-     @projective/ui roster if one exists (else add one and its §C.1 entry). Figures are
-     tabular-nums. The claim refusal copy matches check_ticket_capacity's reasons.
-  5. A Dev Context Switcher axis for load (normal | near cap | at cap).
-
-ACCEPTANCE: the probe is green; as the seeded freelancer the gauge shows the real Σ W_i against
-the cap, and a claim that would pass the cap says why before the click; screenshots at three
-widths.
-
-SAME CHANGE: PRODUCT_SPEC.md:2665-2667 (built); DESIGN_SYSTEM.md §C.1 if a component is added;
-documentation/database/projects/Functions.md; Zod; ROUTING.md; the decision row.
-```
-
-§1.2 rows: **PJ-11** 🟡 → ✅.
-
----
 
 ## 3. Tickets & delivery
 

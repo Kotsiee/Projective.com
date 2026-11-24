@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **84%** |            61 | 43 |  17 |  1 |              14 |
-| **UAT**          | **73%** |           193 | 103 |  78 | 12 |              25 |
-| **Production**   | **67%** |           251 | 109 | 109 | 33 |              36 |
+| **UAT**          | **74%** |           193 | 104 |  77 | 12 |              25 |
+| **Production**   | **67%** |           251 | 110 | 108 | 33 |              36 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,7 +45,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 25 |  7 |  2 |   70% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 31 | 36 |  8 |  2 |   66% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 32 | 35 |  8 |  2 |   67% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 26 | 14 |  3 |   61% |
 
 **Critical flows not yet ✅, by the tier they gate:**
@@ -270,7 +270,7 @@ PRODUCTION_READINESS.md.
 | PJ-08 | Reorder stages                                       | Client     | `/details`                        | ✅     | Normal   | UAT  | —                                                                                                                        |
 | PJ-09 | Delete or archive a stage                            | Client     | `/details`                        | 🟡     | High     | UAT  | Remove deletes an untouched stage and it stays gone; a touched one is refused with its reason and nothing moves (ST2, `60a0d652`, #553). Left: its archive-and-settle and the direct-DELETE hole (PM-WP4b steps 4, 6) |
 | PJ-10 | Stage dependencies (open on completion, chains)      | Client     | `/details`, `/timeline`           | ❌     | High     | UAT  | Drawn only (`live-board.ts:291`); no engine, cycle or cross-project guard (PM-D7a/D7b)                                   |
-| PJ-11 | Concurrency caps and the workload gauge              | Freelancer | claim                             | 🟡     | High     | UAT  | Caps enforced (PM-WP2); the gauge is an unmounted example island                                                         |
+| PJ-11 | Concurrency caps and the workload gauge              | Freelancer | claim · `/projects` header       | ✅     | High     | UAT  | ST4 (#550, `97680598`): a self-only read (`get_my_workload_capacity`) feeds the `/projects` gauge, and both Claim controls say what a claim adds, or the cap's own refusal before the click |
 | PJ-12 | Open Pull self-claim                                 | Freelancer | stage Tasks                       | ✅     | Critical | MVP  | —                                                                                                                        |
 | PJ-13 | Manual assignment                                    | Client     | —                                 | ✅     | Normal   | UAT  | Built (ST3, `1929b313`, #547): a Manual stage's client pins a Ready ticket to a live-seat holder (Routing control in the stage inspector, Assign to… and its picker); the freelancer accepts it by claiming or declines it, and nothing binds until then. Probe `seat_lock_and_capacity.sql` region 4. Open: team-seat members are not offered in the picker (#547 (a)); an unfunded pin stays off the freelancer's board until funded (#547 (c)) |
 | PJ-14 | Round Robin, Parallel Stream, Global Workload Kanban | Client     | —                                 | ⏸      | Normal   | PROD | Planned (#338 P3)                                                                                                        |
@@ -580,3 +580,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-24 | ST6 (#555): no row flips; PJ-04's (i) closed (a write by either side to a shared project shows on the other's next read, in every isolate) and its (b) corrected (closed by #456); ✅ waits on 🧑 #427 (a) | 83% | 73% | 66% |
 | 2026-11-24 | ST3 (#547): PJ-13 ❌ → ✅ (a Manual stage's client pins a Ready ticket to a live-seat holder, who accepts it by claiming or declines it; nothing binds until then) | 83% | 73% | 66% |
 | 2026-11-24 | ST6 (#555): PJ-04 🟡 → ✅ (#427 (a) confirmed: the client creates every ticket and the seller's details exclude them; either side's write shows on the other's next read) | 84% | 73% | 67% |
+| 2026-11-24 | ST4 (#550): PJ-11 🟡 → ✅ (a freelancer reads only their own load; the `/projects` gauge and both Claim controls say what a claim adds, or the cap's refusal before the click) | 84% | 74% | 67% |
