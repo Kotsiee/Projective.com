@@ -1000,6 +1000,19 @@ projects.stage_open_seat_skills,
 projects.project_required_skills TO anon;
 
 
+-- --- projects: seats and the roster are door-written (PROJECTS ST5, Decision #139) ---
+--
+-- A stage is never assigned, and a project never opened to someone, without that person's
+-- acceptance. A seat is written by assign_from_application, fn_apply_invitation_decision, create_stage,
+-- set_project_status, remove_project_member and the instantiation writer; a participant row by
+-- create_project, those same hiring doors, set_member_role and set_ticket_manager. Every one is
+-- SECURITY DEFINER. With 00002500's blanket grant an owner could INSERT any freelancer's seat at any
+-- status, or a participant row, straight through PostgREST; both tables go back to SELECT for the
+-- client roles, read under their "View …" policies (00002011).
+REVOKE INSERT, UPDATE, DELETE ON projects.stage_assignments,
+projects.project_participants FROM anon, authenticated;
+
+
 -- --- projects: sessions & cohorts (00001155, Decision #171) ---
 --
 -- Evidence and money-adjacent state is definer-written only: a seat hold is placed by

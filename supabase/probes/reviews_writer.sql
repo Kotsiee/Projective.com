@@ -491,20 +491,22 @@ DECLARE
     v_ended timestamptz;
     v_rem uuid;
     v_rstage uuid;
+    v text;
+    v_backdate text := format($q$UPDATE projects.stage_assignments sa SET ended_at = now() - interval '100 days'
+      FROM projects.project_stages ps
+     WHERE ps.id = sa.project_stage_id AND ps.project_id = %L AND sa.status = 'released'$q$, v_run);
 BEGIN
     SELECT sa.ended_at INTO v_ended FROM projects.stage_assignments sa
       JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
      WHERE ps.project_id = v_run AND sa.status = 'released';
     PERFORM pg_temp.check(v_ended > now() - interval '1 minute', '7a a released seat is stamped as it ends');
-    PERFORM pg_temp.act('authenticated', c);
-    UPDATE projects.stage_assignments sa SET ended_at = now() - interval '100 days'
-      FROM projects.project_stages ps
-     WHERE ps.id = sa.project_stage_id AND ps.project_id = v_run AND sa.status = 'released';
-    PERFORM pg_temp.act(NULL);
+    v := pg_temp.door(c, v_backdate);
+    PERFORM pg_temp.check(v = '42501', format('7b the project owner cannot write the seat at all (ST5; got %L)', v));
+    EXECUTE v_backdate;
     PERFORM pg_temp.check((SELECT sa.ended_at FROM projects.stage_assignments sa
                              JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
                             WHERE ps.project_id = v_run AND sa.status = 'released') = v_ended,
-        '7b the project owner cannot backdate the stamp');
+        '7b2 a door''s write that leaves the status alone cannot backdate the stamp');
 
     PERFORM pg_temp.act('authenticated', c);
     v_items := reviews.get_reviewables((SELECT p.slug FROM projects.projects p WHERE p.id = v_done::uuid));

@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 26 open, 0 partly done, 0 done (§0 ledger).
-> Runnable now: ST1–ST6, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 25 open, 0 partly done, 1 done (§0 ledger).
+> Runnable now: ST1–ST4, ST6, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -50,16 +50,17 @@ prompt's CONTEXT was verified at `e1ff027b` on 2026-11-19: re-check every cite.
 
 ### 0.0 Done
 
-No prompt in this file has landed yet. A prompt that lands gets a row here.
+A prompt that lands gets a row here.
 
-| ID | What landed | Commit | Text at |
-| :- | :---------- | :----- | :------ |
+| ID  | What landed                                                                                                                                                                                    | Commit            | Text at    |
+| :-- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------- | :--------- |
+| ST5 | Seats and participant rows are written only by their definer doors: the owner's two `FOR ALL` policies dropped, client `INSERT` / `UPDATE` / `DELETE` revoked; probe `seat_insert_consent.sql` | ST5_COMMIT (#554) | `f398cd9f` |
 
 ### 0.1 Row → work order
 
-Rows not listed are ✅ with no note: PJ-01, 03, 05, 06, 08, 12, 16, 18, 19, 24, 25 (PM-WP1,
-`07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513). PJ-14 and
-PJ-74 are ⏸ (§0.4).
+Rows not listed are ✅ with no note: PJ-01, 03, 05, 06, 08, 12, 16, 18, 19, 20 (ST5, #554), 24, 25
+(PM-WP1, `07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513).
+PJ-14 and PJ-74 are ⏸ (§0.4).
 
 **Project setup** (90%)
 
@@ -84,7 +85,6 @@ PJ-74 are ⏸ (§0.4).
 | :---- | :---------------- | :-------------------------------- | :---------------------------------------------------------------------------- |
 | PJ-15 | ✅ · Crit · MVP   | PJZ (stale note); NO1 (email, 🧑) | The note says what is true: push is built locally, the hosted send is CD2's   |
 | PJ-17 | 🟡 · Crit · MVP   | **NO1** (⚖️) + CD2                | An address with no account receives its invitation; a hosted send is recorded |
-| PJ-20 | ✅ · High · UAT   | **ST5**                           | Seats and participants are written only through doors (note clears)           |
 | PJ-21 | 🟡 · Crit · UAT   | PM-WP4b step 3 (⏳ WP4a)          | A removal refunds or splits the held escrow by the state of the work          |
 
 **Tickets & delivery** (59%)
@@ -226,7 +226,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 
 1. **TK1** (★00001150): PJ-23, Critical · MVP.
 2. **PM-D7a**, with its Chain Reaction capacity step: PJ-29, PJ-10.
-3. **ST5**: PJ-20. A live consent hole, and small.
+3. **ST5** ✅ (#554): seats and participants are written only through their doors.
 4. **COMMS MS4**: PJ-62. Run MS5 right after it.
 5. **PM-P6** (no longer a money-lane prompt). Then **PM-S3** (⏳ D7a).
 6. **PM-WP9** (★00001150, ⏳ PM-WP8 step 4): PJ-27, PJ-38.
@@ -273,7 +273,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001130` (stages, members, `apply_write_batch`)        | ST1?, ST2?, CH2; PM D7a, WP4a, WP4b, S3, D7b                 | —                                                                 |
 | `00001110` / `00001120` (ticket guards and doors)        | TK1; PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
 | `00001140` (claims, capacity, workload)                  | ST3, ST4; PM WP5a, D7b                                       | —                                                                 |
-| `00002011` (projects policies)                           | ST5; PM WP4b, WP5a, WP9                                      | —                                                                 |
+| `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
 | `00000017` + `00001260` (disputes)                       | EX2, EX3; PM-WP4a step 6                                     | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3, CH4                                           | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
@@ -689,51 +689,6 @@ documentation/database/projects/Functions.md; Zod; ROUTING.md; the decision row.
 ```
 
 §1.2 rows: **PJ-11** 🟡 → ✅.
-
-### ST5 — A seat or a participant is written only through a door
-
-Clears PJ-20's note.
-
-```text
-PROMPT ST5: No project owner can insert a freelancer's seat, or a participant, without that
-person's consent: seats and participants are written only through their doors
-
-ROLE: Database engineer (RLS). Queue S: 00002011, 00002520, 00001850.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - "Owner manage assignments" (00002011:47-56) is FOR ALL with USING only, so its check is its
-    USING, on a table with GRANT ALL (00002500:125). An owner can INSERT any freelancer's
-    projects.stage_assignments row at any status.
-  - The only INSERT triggers are the personal-project and adult checks (00001820:72, :97) and
-    ended_at (00001850:130-133). The lock guard covers UPDATE and DELETE only (00001850:96-99).
-  - "Owner manage participants" (00002011:136-144) likewise grants project access without
-    consent.
-  - The doors that legitimately write seats: assign_from_application,
-    fn_apply_invitation_decision, create_stage_open_seat and instantiation.
-  - The rule: PRODUCT_SPEC.md:2322-2323 (#139), "a stage is never assigned without the
-    freelancer's acceptance". PM audit §5.3 (:414): "Open (no prompt)".
-
-STEPS:
-  1. Red first: supabase/probes/seat_insert_consent.sql. Under an owner's JWT, INSERT a seat
-     for another freelancer and a participant row. Both succeed today.
-  2. Find every client-side write to these tables (grep packages/backend and apps/web for
-     .from("stage_assignments") and .from("project_participants") with insert, update, upsert or
-     delete). Each must already be a door call; move any that is not.
-  3. Split each FOR ALL policy into what the product needs (SELECT, and UPDATE or DELETE only
-     where a client path survives step 2), and drop owner INSERT. Narrow the table grants in
-     00002520 to match.
-  4. Every probe that seeds seats stays green (seat_fill_concurrency, business_authority,
-     seat_lock_and_capacity and the invite probes).
-
-ACCEPTANCE: seat_insert_consent.sql is green; the whole probe suite is green; applying,
-accepting an invitation and hiring still work live.
-
-SAME CHANGE: documentation/database/projects/Policies.md; PROJECT_MANAGEMENT_COMPLETENESS_AUDIT
-§5.3 (closed); PRODUCTION_READINESS.md (a PRD-C row if one tracks this; if none, say so); the
-decision row.
-```
-
-§1.2 rows: **PJ-20**'s note cleared.
 
 ### ST6 — The other side sees a write on its next read
 

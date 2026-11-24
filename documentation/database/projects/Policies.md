@@ -112,14 +112,16 @@ ERROR:  new row violates row-level security policy for table "projects"
 The arm is written out because a reader should not have to know that defaulting rule to see that the
 post-image is constrained — but it changed no behaviour.
 
-This matters for the eleven remaining `USING`-only `FOR ALL` policies in this schema
-(`project_stages`, `stage_assignments`, `stage_staffing_roles`, `stage_open_seats`,
-`project_participants`, `cohorts`, `cohort_memberships`, `session_events`, `maintenance_contracts`,
-`stage_budget_rules` — `project_application_targets` and `stage_revision_requests` have only a `SELECT`
-policy; the SQL comment's "twelve" counts the first, and the second had a `FOR ALL` until 2026-10-10; the `USING`-only `UPDATE` _Manage waitlists_ was removed by Decision #455): **do not treat them
-as open on the strength of a missing `WITH CHECK`.** Each may still deserve a NARROWER post-image
-predicate than its `USING` — that is a per-table judgement about which columns a caller may move a
-row across — but the default is a mirror, not an absence.
+This matters for the nine remaining `USING`-only `FOR ALL` policies in this schema
+(`project_stages`, `stage_staffing_roles`, `stage_open_seats`, `cohorts`, `cohort_memberships`,
+`session_events`, `maintenance_contracts`, `stage_budget_rules` — `project_application_targets` and
+`stage_revision_requests` have only a `SELECT` policy; the SQL comment's "twelve" counts the first,
+and the second had a `FOR ALL` until 2026-10-10; the `USING`-only `UPDATE` _Manage waitlists_ was
+removed by Decision #455, and the `FOR ALL` policies on `stage_assignments` and
+`project_participants` by ST5, Decision #554): **do not treat them as open on the strength of a
+missing `WITH CHECK`.** Each may still deserve a NARROWER post-image predicate than its `USING` —
+that is a per-table judgement about which columns a caller may move a row across — but the default
+is a mirror, not an absence.
 
 ⚠️ The same claim appears at `00002011:524` for `files.items` (Decision #67) and reads as false for
 the same reason. It is another pass's record and is flagged here rather than rewritten; the
@@ -341,12 +343,12 @@ none, and a direct `INSERT` is refused.
 
 | Table                                     | Read                                                     | Write                                       |
 | :---------------------------------------- | :------------------------------------------------------- | :------------------------------------------ |
-| `projects.stage_assignments`              | Owner, public-active project, or `can_review_project` (Decision #163). | Owner (`FOR ALL`), bounded by `trg_stage_assignment_lock_guard`: a taken seat cannot be deleted, un-taken or re-pointed. |
+| `projects.stage_assignments`              | Owner, public-active project, or `can_review_project` (Decision #163). | Definer doors only (no write policy and no client write grant, `00002520`; ST5, Decision #554): `assign_from_application`, `fn_apply_invitation_decision`, `create_stage`, `set_project_status`, `remove_project_member` and the instantiation writer. `trg_stage_assignment_lock_guard` binds them too: a taken seat cannot be deleted, un-taken or re-pointed. |
 | `projects.stage_open_seats`               | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
 | `projects.stage_open_seat_skills`         | Project access, or any `active` project.                 | Definer RPCs only.                          |
 | `projects.stage_staffing_roles`           | Owner, or public-active project.                         | `can_review_project` (`FOR ALL`, Decision #163). |
 | `projects.stage_budget_rules`             | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
-| `projects.project_participants`           | Self (own `profile_id`, Decision #296 (D)), owner, or public-active project. | Owner (`FOR ALL`).                          |
+| `projects.project_participants`           | Self (own `profile_id`, Decision #296 (D)), owner, or public-active project. | Definer doors only (no write policy and no client write grant, `00002520`; ST5, Decision #554): `create_project`, `assign_from_application`, `fn_apply_invitation_decision`, `set_member_role`, `set_ticket_manager`, `remove_project_member`. |
 | `projects.project_applications`           | The applicant, or `can_manage_project_members`.          | Definer RPCs only.                          |
 | `projects.project_application_targets`    | Follows the parent application.                          | Definer RPCs only.                          |
 | `projects.stage_revision_requests`        | Requester, review authority (`can_review_project`), the ticket's assignee, or the submitter of the work it was raised on (Decision #167). | Definer RPCs only (`review_submission`, `request_paid_revision`, `fund_paid_revision`, `submit_deliverable`). |
@@ -361,24 +363,26 @@ none, and a direct `INSERT` is refused.
 | `projects.maintenance_contracts`          | Freelancer or project owner (`FOR ALL`).                 | Same.                                       |
 | `projects.project_attachments`            | `has_project_access` or `can_review_project`.            | `can_review_project` `INSERT` / `DELETE`; no `UPDATE`. |
 
-Policy names, in table order: _View assignments_ / _Owner manage assignments_; _View seats public or
-own_ / _Manage seats own_; _View seat skills_; _View roles public or own_ / _Manage roles own_; _View
-budget rules_ / _Owner manage budget rules_; _View participants_ / _Owner manage participants_; _View
-own or owned applications_; _View application targets_; _View revisions_;
-_View workload reports_ / _File workload report_; _Project owner can view activity_ / _Users can
-insert their own activity_; _View project status history_; _View cohorts_; _View
-cohort memberships_; _View session events_;
-_View own attendance_; _View waitlists_ / _Leave waitlist_ (`DELETE`, a place holding no seat);
-_Users can view/manage own contracts_; and the three
-attachment policies below. The public-active read arms are `status = 'active' AND visibility =
-'public'`; _View seat skills_ is wider — project access **or any `active` project** whatever its
-visibility. _View assignments_ gained its review-authority arm so the setup write path's onboarding
-lock sees the seats that freeze prices (Decision #163). _Owner manage assignments_ is `FOR ALL`, so
-on its own it let the owner flip a taken seat to `declined` / `pending_funding`, re-point it, or
-delete it — lifting the shape and price locks that read this table on demand (audit X8). The policy
-is unchanged; `trg_stage_assignment_lock_guard` (BEFORE UPDATE OR DELETE,
-[Functions.md](Functions.md#projectsfn_stage_assignment_lock_guard--trigger)) refuses those writes
-for every caller, and `ck_stage_assignments_status` bounds the vocabulary. `project_activity`'s `INSERT` checks only `auth.uid() = actor_user_id`, with no project
+Policy names, in table order: _View assignments_; _View seats public or own_ / _Manage seats own_;
+_View seat skills_; _View roles public or own_ / _Manage roles own_; _View budget rules_ / _Owner
+manage budget rules_; _View participants_; _View own or owned applications_; _View application
+targets_; _View revisions_; _View workload reports_ / _File workload report_; _Project owner can
+view activity_ / _Users can insert their own activity_; _View project status history_; _View
+cohorts_; _View cohort memberships_; _View session events_; _View own attendance_; _View waitlists_
+/ _Leave waitlist_ (`DELETE`, a place holding no seat); _Users can view/manage own contracts_; and
+the three attachment policies below. The public-active read arms are
+`status = 'active' AND visibility =
+'public'`; _View seat skills_ is wider — project access **or any
+`active` project** whatever its visibility. _View assignments_ gained its review-authority arm so
+the setup write path's onboarding lock sees the seats that freeze prices (Decision #163). Until ST5
+(Decision #554), _Owner manage assignments_ and _Owner manage participants_ were `FOR ALL` on tables
+`00002500` grants in full, so the owner could insert any freelancer's seat at any status, or a
+participant row, without that person's acceptance (Decision #139), and could flip, re-point or
+delete a seat. Both policies are gone and `00002520` takes `INSERT` / `UPDATE` / `DELETE` back from
+the client roles; probe `seat_insert_consent.sql`. `trg_stage_assignment_lock_guard` (BEFORE UPDATE
+OR DELETE, [Functions.md](Functions.md#projectsfn_stage_assignment_lock_guard--trigger)) still
+refuses the un-taking writes for every door (audit X8), and `ck_stage_assignments_status` bounds the
+vocabulary. `project_activity`'s `INSERT` checks only `auth.uid() = actor_user_id`, with no project
 predicate (see Findings).
 
 ### `projects.project_attachments`
@@ -416,12 +420,11 @@ the two owner write policies above.)
   `authenticated`, the app's doors to `authenticated`). A new `SECURITY DEFINER` door still refuses
   a `NULL` `auth.uid()` itself and needs its own `GRANT` before any client can call it.
 - Several older `FOR ALL` policies carry a `USING` clause and **no `WITH CHECK`**
-  (`stage_assignments`, `stage_budget_rules`, `stage_open_seats`, `project_participants`,
-  `stage_staffing_roles`, `project_stages`, `maintenance_contracts`). As the `projects.projects` note above
-  verifies, Postgres reuses `USING` as the post-image check, so an `UPDATE` cannot move a row out of
-  the tenancy `USING` validated — these are not open. Each may still deserve a narrower post-image
-  predicate, and needs its own read before being tightened, because that predicate is not always
-  simply the pre-image one.
+  (`stage_budget_rules`, `stage_open_seats`, `stage_staffing_roles`, `project_stages`,
+  `maintenance_contracts`). As the `projects.projects` note above verifies, Postgres reuses `USING`
+  as the post-image check, so an `UPDATE` cannot move a row out of the tenancy `USING` validated —
+  these are not open. Each may still deserve a narrower post-image predicate, and needs its own read
+  before being tightened, because that predicate is not always simply the pre-image one.
 - `projects.stage_submissions.status` is nullable `text` with a NULL-tolerant CHECK, and the DB
   spelling is plural `revisions_requested` against the Zod singular. `live-support.ts` reconciles it
   — use `toSubmissionStatus`, never a cast.

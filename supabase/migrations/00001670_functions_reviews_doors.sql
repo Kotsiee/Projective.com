@@ -75,10 +75,9 @@ AS $$ SELECT interval '3 days' $$;
 -- #region The seat clock
 -- Stamps `projects.stage_assignments.ended_at` when a seat moves into an ended status, so a review of
 -- a provider who left mid-engagement has an instant to count 30 days from. The writers of the status
--- (projects.leave_project, the completion doors) are not edited: the stamp follows the move. The
--- project owner's "Owner manage assignments" policy reaches this table, so the stamp is pinned: an
--- update that leaves the status alone keeps the stamp it had, and only the table's owner (the seed)
--- may supply one on insert.
+-- (projects.remove_project_member, set_project_status, the completion doors) are not edited: the
+-- stamp follows the move. The stamp is pinned whoever writes: an update that leaves the status alone
+-- keeps the stamp it had, and only the table's owner (the seed) may supply one on insert.
 CREATE OR REPLACE FUNCTION projects.trg_stage_assignment_ended_at()
 RETURNS trigger
 LANGUAGE plpgsql

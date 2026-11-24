@@ -306,9 +306,9 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
 
 -- The seat half of the three locks above (audit X8). Each of them asks "has a seat been taken?" over
--- `stage_assignments`, and the owner may write that table directly ("Owner manage assignments", FOR
--- ALL). Without this, flipping a taken seat to `declined` or `pending_funding`, re-pointing it at
--- another stage or another person, or deleting it would lift the shape and price locks on demand.
+-- `stage_assignments`, which only its definer doors write (no client role may, since ST5). Without
+-- this, a door flipping a taken seat to `declined` or `pending_funding`, re-pointing it at another
+-- stage or another person, or deleting it would lift the shape and price locks.
 -- A taken seat therefore only moves forward through the taken states (`assigned` → `accepted` →
 -- `completed` / `released` / `cancelled`) and is never deleted; a seat that was never taken
 -- (`declined`, `pending_funding`) stays free to change. No caller is exempt: no RPC un-takes a seat.

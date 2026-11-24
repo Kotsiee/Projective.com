@@ -44,17 +44,10 @@ INSERT
 WITH
     CHECK (auth.uid () = actor_user_id);
 
-CREATE POLICY "Owner manage assignments" ON projects.stage_assignments FOR ALL TO public USING (
-    EXISTS (
-        SELECT 1
-        FROM projects.project_stages s
-            JOIN projects.projects p ON p.id = s.project_id
-        WHERE
-            s.id = stage_assignments.project_stage_id
-            AND p.owner_user_id = auth.uid ()
-    )
-);
-
+-- A seat is read here and written only by its doors (assign_from_application,
+-- fn_apply_invitation_decision, create_stage, set_project_status, remove_project_member and the
+-- instantiation writer), every one SECURITY DEFINER: no client role may write the table (00002520),
+-- so no owner seats a freelancer who never accepted (Decision #139).
 CREATE POLICY "View assignments" ON projects.stage_assignments FOR
 SELECT TO public USING (
     EXISTS (
@@ -133,16 +126,11 @@ SELECT TO public USING (
     )
 );
 
-CREATE POLICY "Owner manage participants" ON projects.project_participants FOR ALL TO public USING (
-    EXISTS (
-        SELECT 1
-        FROM projects.projects p
-        WHERE
-            p.id = project_participants.project_id
-            AND p.owner_user_id = auth.uid ()
-    )
-);
-
+-- The roster is read here and written only by its doors (create_project, assign_from_application,
+-- fn_apply_invitation_decision, set_member_role, set_ticket_manager, remove_project_member), every one
+-- SECURITY DEFINER: no client role may write the table (00002520), so project access is never granted
+-- without the person's acceptance.
+--
 -- A participant always reads their OWN participant row (`profile_id` is the user id of an individual
 -- participant; a business row carries a business id, which is never a user id). Without this arm a
 -- freelancer hired onto an invite-only engagement could read the project but not their own seat on

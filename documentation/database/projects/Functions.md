@@ -1849,9 +1849,9 @@ the same deny-list. `00001130`, bound in `00001850` / `00001820`; `SECURITY DEFI
 ### `projects.fn_stage_assignment_lock_guard() → trigger`
 
 The seat half of the three locks above (audit X8). Each asks "has a seat been taken?" over
-`stage_assignments`, and the owner may write that table directly (_Owner manage assignments_, `FOR
-ALL` — [Policies.md](Policies.md)); without this, flipping a taken seat back, re-pointing it or
-deleting it would lift the shape and price locks on demand. `trg_stage_assignment_lock_guard` —
+`stage_assignments`, which only its definer doors write (no client role may since ST5 —
+[Policies.md](Policies.md)); without this, a door flipping a taken seat back, re-pointing it or
+deleting it would lift the shape and price locks. `trg_stage_assignment_lock_guard` —
 `BEFORE UPDATE OR DELETE ON projects.stage_assignments` (`00001850`). A seat whose `OLD.status` is
 `declined` / `pending_funding` (never taken) passes untouched. A taken seat: a `DELETE` →
 `check_violation` "A seat a freelancer has taken cannot be deleted; release it instead."; an
