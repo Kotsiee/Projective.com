@@ -152,8 +152,8 @@ Why this order:
 - **RED WP2 / WP11** (the wallet read path, SQL aggregates) wait for SV5. **RED WP4** (keyboard on
   money paths) waits for UI2, UI3 and UI5. **RED WP7** (the money sweep and its lint ban) waits for
   UI5 (and SBP S5).
-- **Marketplace:** CK4 (checkout tax, #490) has landed, off (#544); SC7 (#493) waited for DB21, which
-  has landed (#542, #543).
+- **Marketplace:** CK4 (checkout tax, #490) has landed, off (#544); SC7 (#493) has landed (#545):
+  its royalty leg is a `product_royalty` pending credit, recovered with the seller's by DB21's paths.
 - **LEGAL_COMPLIANCE LG4** adds one enqueue line each to `fn_mature_pending_releases` and
   `fn_wallet_credit_pending`'s immediate branch (`00001240`), and takes its turn here after DB6 (landed, #532),
   whose clearing-window holds decide which escrows count as finally released (#530 (g)).

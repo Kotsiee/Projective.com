@@ -316,7 +316,8 @@ $$;
 
 -- The seller's still-clearing credit for a digital product line: the `product_sale` row of the
 -- line's order, in a wallet of the product's owner, of exactly the line's credit (the line, less a
--- promo share the seller funded, less the line's fee: what place_wallet_order credited). Two lines of
+-- promo share the seller funded, less the line's fee, less a client's royalty (SC7): what
+-- place_wallet_order credited). Two lines of
 -- one seller with the same credit share an order, a wallet, an amount and a date, so either row is
 -- that line's. NULL once the sale has cleared, was partly taken back, or is on hold. The cancel door
 -- locks the row it names; the offer read (finance.cancellable_order_lines) only asks. Internal.
@@ -335,6 +336,7 @@ AS $$
        AND pr.state = 'pending' AND pr.recovered_cents = 0
        AND pr.amount_cents = (p_line).line_total_minor - (p_line).platform_fee_minor
              - CASE WHEN (p_line).promo_funded_by = 'platform' THEN 0 ELSE (p_line).promo_discount_minor END
+             - (p_line).royalty_minor
        AND ((p.owner_team_id IS NOT NULL AND w.owner_type = 'team' AND w.owner_id = p.owner_team_id)
          OR (p.owner_team_id IS NULL AND w.owner_type IN ('freelancer', 'user') AND w.owner_id = p.owner_user_id))
      ORDER BY pr.id
@@ -363,8 +365,9 @@ $$;
 -- checks: what they paid, with the line's tax (Decision #490: the platform held it for this sale, and
 -- the tax sweep reverses it at Stripe), into the wallet that paid (`order_refund`); the seller's clearing row
 -- p_release_id (pending, or on hold for a product dispute) closed, taken back in full, with no ledger
--- line, since that money never cleared; the entitlement `refunded`, so the download route stops serving
--- it; and the line written through fn_record_line_refund (`cancelled`, or `refunded` once delivered).
+-- line, since that money never cleared; a client's royalty row on the line (`product_royalty`, SC7) closed
+-- the same way; the entitlement `refunded`, so the download route stops serving it; and the line written
+-- through fn_record_line_refund (`cancelled`, or `refunded` once delivered).
 -- p_release_id is NULL only when the seller was credited nothing. Returns the amount refunded, tax
 -- included. Internal:
 -- finance.cancel_order_line and a product dispute's buyer win (fn_settle_order_line_dispute) call it.
@@ -388,6 +391,19 @@ BEGIN
          WHERE id = p_release_id AND state IN ('pending', 'on_hold') AND recovered_cents = 0;
         IF NOT FOUND THEN
             RAISE EXCEPTION 'The seller''s earnings from this sale are no longer clearing' USING ERRCODE = 'PO409';
+        END IF;
+    END IF;
+    IF l.royalty_minor > 0 THEN
+        UPDATE finance.pending_releases
+           SET recovered_cents = amount_cents, state = 'available', matured_at = pg_catalog.now()
+         WHERE id = (SELECT pr.id FROM finance.pending_releases pr
+                      WHERE pr.order_id = l.order_id AND pr.reason = 'product_royalty'
+                        AND pr.amount_cents = l.royalty_minor AND pr.recovered_cents = 0
+                        AND pr.state IN ('pending', 'on_hold')
+                      ORDER BY pr.id
+                      LIMIT 1);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'The client''s royalty from this sale is no longer clearing' USING ERRCODE = 'PO409';
         END IF;
     END IF;
     SELECT * INTO w FROM finance.wallets WHERE id = finance.fn_order_paying_wallet(l.order_id, l.currency);
@@ -428,7 +444,7 @@ AS $$
                 AND COALESCE((SELECT f.enabled FROM security.feature_flags f
                                WHERE f.key = 'finance.delivered_refund_refusal'), false))
        AND (l.line_total_minor - l.platform_fee_minor
-              - CASE WHEN l.promo_funded_by = 'platform' THEN 0 ELSE l.promo_discount_minor END <= 0
+              - CASE WHEN l.promo_funded_by = 'platform' THEN 0 ELSE l.promo_discount_minor END - l.royalty_minor <= 0
             OR finance.fn_line_sale_release(l) IS NOT NULL);
 $$;
 
@@ -498,7 +514,7 @@ BEGIN
             USING ERRCODE = 'PO409';
     END IF;
     v_credit := l.line_total_minor - l.platform_fee_minor
-                - CASE WHEN l.promo_funded_by = 'platform' THEN 0 ELSE l.promo_discount_minor END;
+                - CASE WHEN l.promo_funded_by = 'platform' THEN 0 ELSE l.promo_discount_minor END - l.royalty_minor;
     IF v_credit > 0 THEN
         SELECT * INTO r FROM finance.pending_releases
          WHERE id = finance.fn_line_sale_release(l) AND state = 'pending' AND recovered_cents = 0

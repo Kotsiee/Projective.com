@@ -23,3 +23,4 @@ export * from "./batch.ts";
 export * from "./promotion.ts";
 export * from "./entitlements.ts";
 export * from "./rows.ts";
+export * from "./sale-requests.ts";

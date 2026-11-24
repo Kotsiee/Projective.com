@@ -291,7 +291,7 @@ export const LEDGER_KIND_REASONS: Readonly<Record<LedgerKind, readonly string[]>
 	],
 	escrow_hold: ["escrow_hold"],
 	service_sale: [],
-	product_sale: ["product_sale"],
+	product_sale: ["product_sale", "product_royalty"],
 	order_payment: ["order_payment", "on_account_credit", "invoice_payment"],
 	platform_fee: ["fx_spread"],
 	topup: ["topup"],

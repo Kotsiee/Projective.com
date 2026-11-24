@@ -3648,6 +3648,28 @@ report** (the primary fill: it opens a case and moves none of the buyer's money,
 Once sent the history re-reads, and the line's meta text says where the report stands (Problem under
 review · Refunded after review · Problem report dismissed), never as a `Tag`.
 
+**`SaleRequestsBlock` + `SaleRequestDialog` (`features/projects/`, MARKETPLACE SC7).** How a maker
+asks to sell work made on a released stage and how the client decides. `SaleRequestsBlock` is the
+Overview's aside region "Requests to sell" (server component, `Block` + `pjd-row` links, no card of its
+own): one row per stage the viewer may sell from or holds a request on, its state as inline Meta text
+(`MetaFacts`: You may ask to sell it · Waiting for the client · Granted · Draft ready · Declined ·
+Awaiting your decision · 10 % royalty to you), each a link to `?sell=<stage slug>`; nothing renders
+with nothing to show. `SaleRequestDialog` (`islands/`, props `slug`, `sales: ProjectSaleRequests`,
+`initialStage`; `Dialog`, `--overlay-w-md`, `visible` a Signal opened on first paint when the URL asks,
+`?sell=` dropped with `replaceState` on close) branches on the viewer's side. **The maker**: a title
+`InputText`, the delivered files as `Checkbox`es (a file with no whole-file fingerprint is listed, not
+offered, with its reason as meta text), a `NumberStepper` for the royalty in % with its meaning as
+meta text (none on a shared-ownership stage), a note `Textarea`, and **Send request** (or **Create the
+draft**) as the one fill; a waiting request shows its facts and a tier-5 **Withdraw request**; a
+granted one links **Open the draft** (`/catalogue/<prd-…>`). **The client**: the request's facts, the
+maker's note set off by an inline-start hairline (a quote, not a card), what the royalty means, the
+files to grant as `Checkbox`es (all by default) and a scope `Textarea`, then **Grant** (the one fill)
+beside a tier-5 **Decline**, which turns the dialog into its own step (an optional reason, **Back** ·
+**Decline request**). ⚖️ While grants wait for counsel there is no Grant: an `InlineNotice` says so and
+Decline stays. A refusal is an assertive `InlineNotice`; every act re-reads the page on the same
+`?sell=`. The `saleRequest` dev axis previews each state. Styles: `styles/sale-requests.css`
+(`sale-dlg*`).
+
 **`ReviewDialog` + `ReviewReplyThread` + `ReviewsBlock` (`features/reviews/`, `features/projects/components/overview/`, Decision #487).**
 How a client reviews what they completed, and how the reviewed side answers. `ReviewsBlock` is the
 Overview's aside region "Reviews" (server component, `Block` + `pjd-row` links, no card of its own):

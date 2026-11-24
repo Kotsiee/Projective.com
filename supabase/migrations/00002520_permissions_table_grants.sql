@@ -924,6 +924,9 @@ GRANT ALL ON ALL TABLES IN SCHEMA catalogue TO service_role;
 -- `anon` too, so it is taken back here. `authenticated` keeps SELECT only (00002020: the holder and
 -- the seller); every write is a definer.
 REVOKE ALL ON catalogue.product_versions, catalogue.entitlements FROM anon;
+-- A request to sell (MARKETPLACE SC7) is never a signed-out read, and its writes are definers.
+REVOKE ALL ON catalogue.sale_requests FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON catalogue.sale_requests FROM authenticated;
 
 
 -- --- editorial + community (Decision #274) ---

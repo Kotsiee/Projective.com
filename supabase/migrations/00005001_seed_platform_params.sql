@@ -367,6 +367,20 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Days of inactivity before an un-funded instantiated pipeline draft is soft-archived by projects.fn_archive_stale_service_drafts. Mirrored by DRAFT_IDLE_DAYS in @projective/types/services, which the interface reads to tell the buyer when their draft expires — the two must agree.')
 ON CONFLICT (key) DO NOTHING;
 
+-- #region Requests to sell (MARKETPLACE SC7, Decision #493 ⚖️)
+-- A client's grant to sell work made on their project waits for counsel's licence wording, so the switch
+-- stays off: a request can be made and declined, and a shared-ownership stage lists without a grant, but
+-- no grant is recorded (catalogue.decide_sale_request refuses 55000). Never switched on by a build. The
+-- royalty a maker may propose is capped at 50 % of the seller's net by the table's CHECK; the param may
+-- only lower it.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('sale_grants_enabled', 'false'::jsonb,
+        'When true, a client may grant a request to sell work made on their project (catalogue.decide_sale_request). Off until counsel has written the licence a grant creates (Decision #493 ⚖️); the owner switches it on per environment.'),
+    ('sale_royalty_max_bp', '5000'::jsonb,
+        'The highest royalty, in basis points of the seller''s net after the commission, a maker may propose to a client in a request to sell (catalogue.request_sale; 0–5000, Decision #493 (A)).')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
 -- #region Product delivery (Decision #488, ruling A8 ⚖️)
 -- The refund rule's consequence of a delivery, held OFF until counsel approves the A8 words. While
 -- off, a delivered product line is refunded exactly as an undelivered one; the facts it would read

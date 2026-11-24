@@ -3256,10 +3256,13 @@ pathway for shared ownership.
   deliverables is transferred 100% to the Client. The Freelancer retains only the right to display
   the work in their Projective portfolio (unless a Non-Disclosure Agreement is in place).
 - **The Shared IP Request:** A Freelancer may request "Marketplace Rights" for assets created during
-  a project.
+  a project (§3, the "Request to Sell").
   - **Negotiation:** The Client must explicitly approve this request.
-  - **Result:** The IP status changes to **Shared Ownership**, granting the Freelancer the legal
-    right to list and sell the asset (or derivatives) on the Projective Marketplace.
+  - **Result:** The grant itself is the record of the Freelancer's right to list and sell the granted
+    files (or derivatives) on the Projective Marketplace. A grant may cover only part of the work, so
+    it never rewrites the stage's IP mode (Decision #493 (c)). A stage made under **Shared Ownership**
+    already gives the Freelancer that right, so its work lists without a grant. **Built** (MARKETPLACE
+    SC7).
 - **Independent Assets:** Creators may upload and sell assets created entirely outside of a platform
   project. These are 100% owned by the creator.
 
@@ -3277,12 +3280,24 @@ The marketplace populates from two distinct sources:
 To maintain trust, the transition from "Project Deliverable" to "Marketplace Product" follows a
 strict approval gate:
 
-1. **Submission:** Freelancer completes the project/stage work.
-2. **Request:** Freelancer triggers the "Request Marketplace Listing" action.
+1. **Submission:** Freelancer completes the project/stage work, and the stage is released (paid).
+2. **Request:** Freelancer triggers the "Request Marketplace Listing" action ("Requests to sell" on
+   the project's Overview): what they want to sell, the delivered files it is made of, the royalty
+   they offer the Client and a note. Only the Freelancer (or team) the stage paid may ask, on an
+   Exclusive Transfer or Licensed Use stage; a Projective Partner stage can't be sold from yet.
 3. **Client Review:** The Client reviews the request. They may grant shared IP for the whole asset
-   or specific components (e.g., "You can sell the UI layout, but not the logo").
+   or specific components (e.g., "You can sell the UI layout, but not the logo"): they grant some or
+   all of the files asked for, each named by its fingerprint, and may say the scope in their own
+   words. They approve or decline the royalty as offered and never counter. A business decides
+   through a member who manages its projects; a 13–17 account can't ask or grant.
 4. **Listing:** Once approved, the asset is minted as a **Marketplace Listing** with a cryptographic
-   link back to the original project for IP verification.
+   link back to the original project for IP verification: a draft product naming the request (the
+   project, the stage and each granted file's SHA-256), which the Freelancer prices and publishes
+   through the normal gate, and which can deliver only granted files.
+
+**Built** (MARKETPLACE SC7, Decision #493). ⚖️ A grant is refused until counsel has written the
+licence it creates (`sale_grants_enabled`, off): a request can be made, declined or withdrawn, and a
+Shared Ownership stage lists at once, but no grant is recorded until then.
 
 #### 4. Dispute Resolution & Legal Documentation
 
@@ -3309,7 +3324,12 @@ When a project-derived asset is sold, the marketplace logic can be configured to
   Each seller in a basket pays their own rate, and the seller sees in their wallet the rate their
   next sale pays.
 - **Shared Royalty:** A percentage of every sale is automatically routed to the original Client's
-  wallet as a "Founding Partner" incentive for allowing the asset to be sold.
+  wallet as a "Founding Partner" incentive for allowing the asset to be sold. The rate is the one
+  the Freelancer offered and the Client granted: 0–50% of what the seller earns from a sale, after
+  the marketplace commission. It reaches the Client's wallet through the same clearing window as
+  the seller's share, a refund takes both back, and it stops if the Client's account is erased (the
+  seller keeps it). A Shared Ownership asset carries none. `finance-model.md` §16.9. **Built**
+  (MARKETPLACE SC7).
 
 #### 6. Orders, Refunds & Promo Codes
 

@@ -6,7 +6,7 @@
 > MK-12 and MK-16. The owner's rulings are Decisions #485–#506 (one per prompt), #525 for SC10–SC13
 > and #393 for the asset-delivery phases.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 8 open, 4 partly done, 12 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 7 open, 4 partly done, 13 done (§0 ledger).
 > Runnable now: RV1, RV2, SC6, SC9 (phase 6), SC10, SC12, SC13.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -43,6 +43,7 @@ closing sweep). Paste §1.1, then the prompt, then §1.2 with the rows given und
 | SC3 | `projects.open_cohort` / `cancel_cohort`, the Cohorts block at `?cohort=`, one seeded cohort        | `322c4dc9`, `b87c276c` (#498)             | `f2e25929` |
 | SC4 | Only the definer door publishes; the post-publish locks on the tables; a product needs a file; the follower notice | `0cf50f7d`, `fb7d7276` (#535) | `0cf50f7d` |
 | SC5 | `ListingViewBeacon` writes deduped views; the rollup derives view and order counts; 91 days seeded  | `322c4dc9` (#506)                         | `f2e25929` |
+| SC7 | Request to Sell: `catalogue.sale_requests` and its doors, a grant mints a draft with provenance, the royalty leg in `place_wallet_order`, grants off for counsel | SC7_COMMIT (#545) | `f2e25929` |
 | SC11 | Rolling weekly templates: `group_schedule_mode`, `session_template_rules.weekly`, `fn_open_template_cohorts` (job `cohort-template-chains`), `save_group_schedule`, the offer's `chains`, `/plan` Fixed · Rolling, `/view` Starts | `999615f0` (#541) | `SC11TEXTAT` |
 
 ### 0.1 Row → work order
@@ -83,7 +84,7 @@ Two rows of the **Listing view** section are left to live runs of prompts that l
 | MK-41 | 🟡 · Crit · PROD   | T&S SN2 → SN3 (SC4 ✅, #535)                      | ✅ once SN3 screens before publish                                                                |
 | MK-42 | ✅ · Normal · UAT  | **MKZ** (🧑 close #219 (d))                       | The note cites SA's sanctioned loosening                                                          |
 | MK-45 | ✅ · High · UAT    | **SC6** step 3 (ruled #500)                       | The ruled team-editing scope is built (note clears)                                               |
-| MK-46 | ❌ · Normal · PROD | **SC7** (ruled #493; ⚖️)                          | Request to Sell, the client's grant and the royalty leg run                                       |
+| MK-46 | 🟡 · Normal · PROD | ⚖️ counsel's licence, then the switch (SC7 ✅, #545) | Request to Sell, the client's grant and the royalty leg run                                       |
 | MK-47 | ❌ · High · PROD   | T&S R2 → **SC8** (R1 landed); **SC9** × every #393 phase | 🟡 once SC8 and ASSET phase 2 land (phase 1 landed, #SC9P1); ✅ once every ASSET and ANTI_PIRACY phase lands |
 
 SC10 and SC12 each add a new MK row in the change that lands them (#525); SC11 added MK-63 (#541). Section scores live
@@ -106,8 +107,8 @@ finance SQL lane (FINANCE §0); FINANCE's order wins on a conflict.
 3. FBP **MR3** — DB21 has landed whole (#542, #543).
 4. **CK4** — built, not switched on (#544); ⚖️ counsel before the switch. LEGAL LG8 is next: it calls
    `calculateTax` (`checkout-tax.ts`) for a fee line.
-5. **SC7** — runnable: DB21 has landed (#543; a refund reverses the royalty too, #493 (D)); ⚖️ counsel before the grant
-   switch. The last change to the money path in this file.
+5. **SC7** — landed (#545), grants off: ⚖️ counsel's licence wording, then the owner switches
+   `sale_grants_enabled` on.
 
 **Queue C — everything else**, as the second SQL session whenever its files are disjoint from what
 is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
@@ -124,8 +125,8 @@ is running. It shares that slot with SBP S1–S4 and the IDENTITY prompts.
 
 | File                                             | Writers here          | Writers elsewhere (never at the same time)                        |
 | :----------------------------------------------- | :-------------------- | :---------------------------------------------------------------- |
-| `00001210` (`place_wallet_order`, promo, orders) | SC7, SC10             | FBP DB10, DB11, DB13; SCH-WP6                                     |
-| `00000017` (finance tables)                      | SC7                   | FBP MR3, MR5                                                      |
+| `00001210` (`place_wallet_order`, promo, orders) | SC10                  | FBP DB10, DB11, DB13; SCH-WP6                                     |
+| `00000017` (finance tables)                      | —                     | FBP MR3, MR5                                                      |
 | `00001170` (catalogue doors, `save_listing`)     | SC6, SC10, SC12       | —                                                                 |
 | `00001155` (sessions, cohorts)                   | SC10                  | every SCH package                                                 |
 | `00005060` (jobs)                                | RV2                   | MR5; PM-GH1                                                       |
@@ -556,69 +557,6 @@ closing #312 (a), (e).
 ```
 
 §1.2 rows: **MK-45**'s note cleared once the ruled scope is built; **PRD-C34** ❌ → ✅.
-
-### SC7 — Request to Sell, the client's grant, and the royalty
-
-> **Status 2026-11-23:** open and runnable: CK1, DB19 and FBP DB21 have landed (#542, #543), so a
-> refund on either path can reverse the royalty.
-
-Closes MK-46 (❌ → ✅).
-
-```text
-PROMPT SC7: A freelancer asks to sell an asset made on a project; the client grants it; every
-sale routes the client's royalty
-
-ROLE: Full-stack + payments engineer. Queue M (it changes place_wallet_order's money), after DB21
-(#493 (D); CK1 and DB19 have landed).
-
-CONTEXT (verified at b7280787):
-  - PRODUCT_SPEC.md §Digital Marketplace 3 (:3148-3158 at 693819fd): a "strict approval gate".
-    The freelancer triggers Request Marketplace Listing; the client may grant shared IP for the
-    whole asset or for parts; the approved asset is minted with "a cryptographic link back to the
-    original project". §5 (:3174-3185): Shared Royalty, "a percentage of every sale is
-    automatically routed to the original Client's wallet".
-  - Nothing exists: no table, door or UI, and catalogue.products has no provenance column. The
-    enum ip_option_mode includes shared_ownership (00000003:41), used by
-    projects.ip_ownership_mode and project_stages.ip_mode; the deed text is
-    apps/web/features/legal/core/content/ip-transfer-deed.ts.
-  - CK1's product_versions is what a minted product sells.
-
-The royalty, who may request, and erasure (ruled: Decision #493, 2026-11-18, two points
-re-ruled the same day, #493 (G); ⚖️ the licence wording a grant creates is counsel's):
-  (1) The freelancer proposes a rate and the client approves or declines it as proposed, never
-      counters; 0-50% of the seller's net, fixed at the grant; the commission first, then the
-      royalty floored from what is left, the dust to the seller; the client credited through
-      fn_wallet_credit_pending beside the seller, so a refund recovers both.
-  (2) Only a released exclusive_transfer or licensed_use stage takes a request; shared_ownership
-      already lets the maker sell, so it lists with provenance, no grant and no royalty, and the
-      client is told; projective_partner is refused; a business grants through a member holding
-      manage_projects; no 13-17 account on either side.
-  (3) The grant survives erasure, its royalty stops and the seller keeps it; the grant sits behind
-      a platform param that stays off until counsel.
-Re-verify DB21 at HEAD and stop if it has not landed, and read #493's flags (a)-(c) before step 2
-((d) is ruled).
-
-STEPS:
-  1. Red first: a probe that no request door exists and a sale routes nothing to the client.
-  2. catalogue.sale_requests (requested · approved · declined · withdrawn; nothing deleted) and
-     its doors.
-  3. On approval, a draft product with provenance (the project, the stage, the source files'
-     hashes: the "cryptographic link"), which the freelancer edits and publishes through the
-     normal gate.
-  4. The royalty leg in place_wallet_order, through the wallet doors (integer minor units,
-     floored, the dust named), with its terms in finance.v_conservation_identity (DB16, #483).
-     The client sees the earnings in their wallet. Notices both ways.
-
-ACCEPTANCE: the probe: a request on a stage that cannot share refuses; an approved one mints a
-draft with provenance; a sale pays the seller, the platform and the client exactly, and conserves
-money; finance_invariants.sql passes. A live walk across two personas.
-
-SAME CHANGE: PRODUCT_SPEC.md §Digital Marketplace 3 and 5 (the markers removed); finance-model.md
-(the royalty leg); PRODUCT_MANAGEMENT.md (the request lifecycle); documentation/database/
-{catalogue,finance}/*; Zod; ROUTING.md; the decision row.
-```
-
-§1.2 rows: **MK-46** ❌ → ✅.
 
 ### SC8 — A rights-holder reports a listing; an operator takes it down; the seller answers
 

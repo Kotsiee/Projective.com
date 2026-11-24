@@ -2161,6 +2161,19 @@ GRANT EXECUTE ON FUNCTION catalogue.delete_listing (uuid) TO authenticated, serv
 -- delivery record are the service's word alone.
 REVOKE ALL ON FUNCTION catalogue.fn_freeze_product_version (uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION catalogue.fn_freeze_product_version (uuid) TO service_role;
+-- Requests to sell (00001170, MARKETPLACE SC7): the doors and the read are the signed-in caller's and
+-- authorise them with auth.uid() (the paid maker, or the client); the helpers are reached only through them.
+REVOKE ALL ON FUNCTION catalogue.fn_sale_stage_party (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION catalogue.fn_stage_delivered_files (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION catalogue.fn_mint_sale_product (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION catalogue.request_sale (uuid, text, uuid[], integer, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION catalogue.request_sale (uuid, text, uuid[], integer, text) TO authenticated;
+REVOKE ALL ON FUNCTION catalogue.decide_sale_request (uuid, boolean, uuid[], text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION catalogue.decide_sale_request (uuid, boolean, uuid[], text) TO authenticated;
+REVOKE ALL ON FUNCTION catalogue.withdraw_sale_request (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION catalogue.withdraw_sale_request (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION catalogue.project_sale_requests (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION catalogue.project_sale_requests (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION catalogue.mark_product_version_ready (uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION catalogue.mark_product_version_ready (uuid) TO service_role;
 REVOKE ALL ON FUNCTION catalogue.fn_record_delivery (uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;

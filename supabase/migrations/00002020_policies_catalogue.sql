@@ -333,4 +333,22 @@ SELECT TO authenticated USING (
         )
     );
 
+-- A request to sell (MARKETPLACE SC7) is read by its parties: the maker who asked (or a member of the
+-- selling team) and the client (the person, or an active member of the client business; deciding one
+-- still needs manage_projects, which catalogue.decide_sale_request checks). Every write is a definer in
+-- 00001170, so there is no write policy.
+CREATE POLICY "Parties read their requests to sell" ON catalogue.sale_requests FOR
+SELECT TO authenticated USING (
+        requested_by = auth.uid ()
+        OR client_user_id = auth.uid ()
+        OR (
+            seller_team_id IS NOT NULL
+            AND org.is_active_team_member (seller_team_id)
+        )
+        OR (
+            client_business_id IS NOT NULL
+            AND org.is_active_business_member (client_business_id)
+        )
+    );
+
 -- #endregion

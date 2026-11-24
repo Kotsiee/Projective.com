@@ -1015,6 +1015,24 @@ BEGIN
     IF v_manifest IS NULL THEN
         RETURN NULL;
     END IF;
+    -- A product minted from a client's grant delivers granted files only, each the file granted or one
+    -- with the same whole-file SHA-256 (MARKETPLACE SC7, #493 (b)): the grant is the licence to sell.
+    IF v_product.sale_request_id IS NOT NULL THEN
+        SELECT m ->> 'name' INTO v_missing
+          FROM pg_catalog.jsonb_array_elements(v_manifest) m
+          JOIN files.items fi ON fi.id = (m ->> 'fileId')::uuid
+          JOIN catalogue.sale_requests sr ON sr.id = v_product.sale_request_id
+         WHERE sr.status <> 'approved'
+            OR NOT COALESCE(fi.id = ANY (sr.granted_file_ids)
+                    OR (fi.hash_algo = 'sha-256' AND NOT fi.hash_sampled AND fi.content_hash IN (
+                            SELECT g ->> 'sha256' FROM pg_catalog.jsonb_array_elements(sr.files) g
+                             WHERE (g ->> 'file_id')::uuid = ANY (sr.granted_file_ids))), false)
+         LIMIT 1;
+        IF v_missing IS NOT NULL THEN
+            RAISE EXCEPTION '% is not among the files the client granted for sale', v_missing
+                USING ERRCODE = 'PG422', DETAIL = 'every file it delivers';
+        END IF;
+    END IF;
 
     SELECT * INTO v_latest FROM catalogue.product_versions pv
      WHERE pv.product_id = v_product.id ORDER BY pv.version DESC LIMIT 1;
@@ -2204,4 +2222,476 @@ discovery calls, orders, session bookings and pipeline projects, each with its b
 order''s team or business and its contact), its source table''s own status, the reasons it waits on
 the seller and its deep link by slug (no uuid but ?event=). INVOKER: the arms answer under RLS,
 orders through fn_seller_order_lines. Lanes are derived in TypeScript (laneOf).';
+-- #endregion
+
+-- #region Requests to sell (MARKETPLACE SC7, Decision #493)
+-- A maker asks to sell an asset they made on a released stage, the client grants or declines it, and
+-- a grant mints a draft product with provenance that the maker edits and publishes through the normal
+-- gate (PRODUCT_SPEC §Digital Marketplace & IP Governance 1, 3, 5; PRODUCT_MANAGEMENT §3.11). Rules
+-- (#493): a request opens only on a stage that is `paid` (released) and was paid to the caller, in
+-- person or through a team they may list for (`publish_listings`). `exclusive_transfer` and
+-- `licensed_use` need the client's grant; `shared_ownership` lets the maker sell already, so its request
+-- is approved as it is made, with no royalty, and the client is told ((d)); `projective_partner` is
+-- refused. The maker proposes a royalty of 0–50 % of the seller's net (`sale_royalty_max_bp` may lower
+-- the ceiling), which the client approves or declines as proposed, never counters ((A), (G)). A person
+-- client decides alone; a business through a member holding `manage_projects`; a 13–17 account is
+-- refused on both sides. The client may grant all the files asked for or some of them, each by its
+-- SHA-256 ((b), ruled); the stage's `ip_mode` is never rewritten ((c), ruled). ⚖️ A grant is refused
+-- while `sale_grants_enabled` is off: counsel writes the licence it creates (#493). The royalty leg is
+-- finance.place_wallet_order's. These doors are definers: they write rows the caller's own policies
+-- do not reach (the maker's draft, on the client's grant).
+
+-- The caller's standing on a stage as its maker: the project, the stage's IP mode, the team that sells
+-- (NULL for a person), the client party, and why a request would be refused (NULL when it would not).
+-- No row when the caller was not paid on the stage. Internal.
+CREATE OR REPLACE FUNCTION catalogue.fn_sale_stage_party(p_stage uuid)
+RETURNS TABLE (
+    project_id uuid,
+    ip_mode public.ip_option_mode,
+    seller_team_id uuid,
+    client_user_id uuid,
+    client_business_id uuid,
+    refusal text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    s projects.project_stages;
+    p projects.projects;
+    v_team uuid;
+    v_client uuid;
+BEGIN
+    SELECT * INTO s FROM projects.project_stages st WHERE st.id = p_stage;
+    IF NOT FOUND OR v_uid IS NULL THEN
+        RETURN;
+    END IF;
+    SELECT * INTO p FROM projects.projects pr WHERE pr.id = s.project_id;
+    IF NOT EXISTS (SELECT 1 FROM finance.escrows e
+                    WHERE e.project_stage_id = s.id AND e.status = 'released'
+                      AND e.payee_type = 'freelancer' AND e.payee_id = v_uid) THEN
+        SELECT e.payee_id INTO v_team FROM finance.escrows e
+         WHERE e.project_stage_id = s.id AND e.status = 'released' AND e.payee_type = 'team'
+           AND org.fn_member_can('team', e.payee_id, 'publish_listings')
+         ORDER BY e.payee_id
+         LIMIT 1;
+        IF v_team IS NULL THEN
+            RETURN;
+        END IF;
+    END IF;
+    v_client := CASE WHEN p.client_business_id IS NULL THEN COALESCE(p.client_user_id, p.owner_user_id) END;
+    project_id := p.id;
+    ip_mode := s.ip_mode;
+    seller_team_id := v_team;
+    client_user_id := v_client;
+    client_business_id := p.client_business_id;
+    refusal := CASE
+        WHEN s.status <> 'paid' THEN 'Only a released stage can be sold from'
+        WHEN s.ip_mode IS NULL OR s.ip_mode = 'projective_partner'
+            THEN 'A Projective Partner stage can''t be sold from until its partner terms exist'
+        WHEN org.fn_is_minor(v_uid) THEN 'Selling from a project needs an adult account'
+        WHEN v_client = v_uid THEN 'You are this project''s client'
+        WHEN v_client IS NOT NULL AND org.fn_is_minor(v_client) THEN 'This project''s client can''t grant a sale'
+    END;
+    RETURN NEXT;
+END;
+$$;
+
+-- The files delivered on a stage by its maker (the caller, or an active member of the selling team), as
+-- a request names them: [{ file_id, name, bytes, sha256 }], `sha256` NULL when the file has no
+-- whole-file fingerprint (a sampled one cannot be the link, #493 (b)). Internal.
+CREATE OR REPLACE FUNCTION catalogue.fn_stage_delivered_files(p_stage uuid, p_team uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+               'file_id', fi.id,
+               'name', fi.display_name,
+               'bytes', fi.size_bytes,
+               'sha256', CASE WHEN fi.hash_algo = 'sha-256' AND NOT fi.hash_sampled THEN fi.content_hash END
+           ) ORDER BY fi.display_name, fi.id), '[]'::jsonb)
+      FROM (SELECT DISTINCT sf.file_id
+              FROM projects.stage_submissions s
+              JOIN projects.submission_files sf ON sf.submission_id = s.id
+             WHERE s.project_stage_id = p_stage
+               AND (s.submitted_by = auth.uid()
+                    OR (p_team IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM org.team_members tm
+                         WHERE tm.team_id = p_team AND tm.user_id = s.submitted_by AND tm.status = 'active')))) d
+      JOIN files.items fi ON fi.id = d.file_id AND fi.deleted_at IS NULL;
+$$;
+
+-- An approved request's draft product: a `catalogue.products` row owned by the maker (and the selling
+-- team), naming the request (`sale_request_id`, its provenance), priced at 0 in the seller's currency,
+-- delivering the granted files; and its draft listing. The maker edits and publishes it through the
+-- normal gate, where catalogue.fn_freeze_product_version lets it deliver granted files only.
+-- Returns { listing_id, product_id, slug }. Internal.
+CREATE OR REPLACE FUNCTION catalogue.fn_mint_sale_product(p_request uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    sr catalogue.sale_requests;
+    v_currency text;
+    v_manifest jsonb;
+    v_product uuid;
+    v_slug text;
+    v_listing uuid;
+BEGIN
+    SELECT * INTO sr FROM catalogue.sale_requests r WHERE r.id = p_request AND r.status = 'approved';
+    IF NOT FOUND OR sr.requested_by IS NULL THEN
+        RAISE EXCEPTION 'That request to sell is not approved' USING ERRCODE = 'PG409';
+    END IF;
+    v_currency := COALESCE(
+        CASE WHEN sr.seller_team_id IS NOT NULL THEN org.fn_entity_currency(sr.seller_team_id) END,
+        org.fn_currency_for_country((SELECT up.country FROM org.user_preferences up WHERE up.user_id = sr.requested_by)));
+    SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+               'fileId', f ->> 'file_id',
+               'name', f ->> 'name',
+               'label', '',
+               'extension', COALESCE(pg_catalog.lower(pg_catalog.substring(f ->> 'name', '\.([A-Za-z0-9]{1,10})$')), ''),
+               'bytes', f -> 'bytes'
+           ) ORDER BY o)
+      INTO v_manifest
+      FROM pg_catalog.jsonb_array_elements(sr.files) WITH ORDINALITY AS x (f, o)
+     WHERE (f ->> 'file_id')::uuid = ANY (sr.granted_file_ids);
+    INSERT INTO catalogue.products (owner_user_id, owner_team_id, sale_request_id, title, price_cents, currency, file_manifest)
+    VALUES (sr.requested_by, sr.seller_team_id, sr.id, sr.title, 0, v_currency, COALESCE(v_manifest, '[]'::jsonb))
+    RETURNING id, slug INTO v_product, v_slug;
+    INSERT INTO catalogue.listings (owner_user_id, owner_team_id, kind, status, product_id, title, delivery_label, currency)
+    VALUES (sr.requested_by, sr.seller_team_id, 'product', 'draft', v_product, sr.title, 'Instant download', v_currency)
+    RETURNING id INTO v_listing;
+    RETURN pg_catalog.jsonb_build_object('listing_id', v_listing, 'product_id', v_product, 'slug', v_slug);
+END;
+$$;
+
+-- Ask to sell an asset made on a stage (user door): a title, the delivered files it is made of (1–24,
+-- each with a whole-file fingerprint), the proposed royalty in basis points and a note to the client.
+-- On a `shared_ownership` stage it is approved as it is made, its draft minted and the client told; on
+-- any other it waits for the client (`sale_request.received`). One open request per stage and maker.
+-- Returns { request_id, status, listing_id, slug } (the last two once a draft exists).
+CREATE OR REPLACE FUNCTION catalogue.request_sale(
+    p_stage uuid,
+    p_title text,
+    p_file_ids uuid[],
+    p_royalty_bp integer,
+    p_note text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    x record;
+    v_title text := pg_catalog.btrim(COALESCE(p_title, ''));
+    v_note text := pg_catalog.btrim(COALESCE(p_note, ''));
+    v_max integer;
+    v_delivered jsonb;
+    v_picked jsonb;
+    v_ids uuid[];
+    v_unlinked text;
+    v_shared boolean;
+    v_id uuid;
+    v_out jsonb := '{}'::jsonb;
+    v_slugs record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to ask to sell' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO x FROM catalogue.fn_sale_stage_party(p_stage);
+    IF x.project_id IS NULL THEN
+        RAISE EXCEPTION 'That stage doesn''t exist, or it didn''t pay you' USING ERRCODE = 'P0002';
+    END IF;
+    IF x.refusal IS NOT NULL THEN
+        RAISE EXCEPTION '%', x.refusal USING ERRCODE = 'PG409';
+    END IF;
+    IF v_title = '' OR pg_catalog.length(v_title) > 200 THEN
+        RAISE EXCEPTION 'Name what you want to sell (up to 200 characters)' USING ERRCODE = '22023', DETAIL = 'title';
+    END IF;
+    IF pg_catalog.length(v_note) > 2000 THEN
+        RAISE EXCEPTION 'Keep the note to the client under 2,000 characters' USING ERRCODE = '22023', DETAIL = 'note';
+    END IF;
+    v_shared := x.ip_mode = 'shared_ownership';
+    v_max := LEAST(COALESCE((SELECT (pp.value #>> '{}')::integer FROM security.platform_params pp
+                              WHERE pp.key = 'sale_royalty_max_bp'), 5000), 5000);
+    IF v_shared AND COALESCE(p_royalty_bp, 0) <> 0 THEN
+        RAISE EXCEPTION 'A shared-ownership stage carries no royalty' USING ERRCODE = '22023', DETAIL = 'royaltyBp';
+    END IF;
+    IF NOT v_shared AND (p_royalty_bp IS NULL OR p_royalty_bp < 0 OR p_royalty_bp > v_max) THEN
+        RAISE EXCEPTION 'Propose a royalty from 0 %% to % %%', v_max / 100.0 USING ERRCODE = '22023', DETAIL = 'royaltyBp';
+    END IF;
+
+    v_delivered := catalogue.fn_stage_delivered_files(p_stage, x.seller_team_id);
+    SELECT COALESCE(pg_catalog.array_agg(DISTINCT i), '{}') INTO v_ids FROM pg_catalog.unnest(COALESCE(p_file_ids, '{}')) i;
+    SELECT pg_catalog.jsonb_agg(f ORDER BY f ->> 'name'), pg_catalog.min(f ->> 'name') FILTER (WHERE f ->> 'sha256' IS NULL)
+      INTO v_picked, v_unlinked
+      FROM pg_catalog.jsonb_array_elements(v_delivered) f
+     WHERE (f ->> 'file_id')::uuid = ANY (v_ids);
+    IF pg_catalog.cardinality(v_ids) NOT BETWEEN 1 AND 24
+       OR COALESCE(pg_catalog.jsonb_array_length(v_picked), 0) <> pg_catalog.cardinality(v_ids) THEN
+        RAISE EXCEPTION 'Choose 1 to 24 files you delivered on this stage' USING ERRCODE = '22023', DETAIL = 'fileIds';
+    END IF;
+    IF v_unlinked IS NOT NULL THEN
+        RAISE EXCEPTION '% has no full fingerprint, so it can''t be linked to this project. Deliver it again.', v_unlinked
+            USING ERRCODE = '22023', DETAIL = 'fileIds';
+    END IF;
+    IF EXISTS (SELECT 1 FROM catalogue.sale_requests r
+                WHERE r.stage_id = p_stage AND r.requested_by = v_uid AND r.status = 'requested') THEN
+        RAISE EXCEPTION 'You already asked to sell from this stage. Wait for the client, or withdraw it.' USING ERRCODE = 'PG409';
+    END IF;
+
+    INSERT INTO catalogue.sale_requests (
+        project_id, stage_id, requested_by, seller_team_id, ip_mode, client_user_id, client_business_id,
+        title, note, royalty_bp, files, status, granted_file_ids, decided_at
+    ) VALUES (
+        x.project_id, p_stage, v_uid, x.seller_team_id, x.ip_mode, x.client_user_id, x.client_business_id,
+        v_title, v_note, COALESCE(p_royalty_bp, 0), v_picked,
+        CASE WHEN v_shared THEN 'approved' ELSE 'requested' END,
+        CASE WHEN v_shared THEN v_ids END,
+        CASE WHEN v_shared THEN pg_catalog.now() END
+    )
+    RETURNING id INTO v_id;
+    IF v_shared THEN
+        v_out := catalogue.fn_mint_sale_product(v_id);
+    END IF;
+
+    SELECT p.slug AS project_slug, s.slug AS stage_slug, s.name AS stage_name, p.owner_user_id
+      INTO v_slugs
+      FROM projects.project_stages s JOIN projects.projects p ON p.id = s.project_id
+     WHERE s.id = p_stage;
+    PERFORM comms.fn_notify(
+        COALESCE(x.client_user_id, v_slugs.owner_user_id),
+        CASE WHEN v_shared THEN 'sale_request.shared_listed' ELSE 'sale_request.received' END,
+        CASE WHEN v_shared THEN 'Work from your project is being listed' ELSE 'A request to sell work from your project' END,
+        CASE WHEN v_shared
+             THEN pg_catalog.format('"%s", made on "%s" under shared ownership, is being listed for sale. Shared ownership lets either of you sell it, so no grant is needed.', v_title, v_slugs.stage_name)
+             ELSE pg_catalog.format('Your freelancer asks to sell "%s", made on "%s", for a %s %% royalty to you. Approve or decline it.', v_title, v_slugs.stage_name, COALESCE(p_royalty_bp, 0) / 100.0)
+        END,
+        'catalogue.sale_requests', v_id, pg_catalog.jsonb_build_object('stage_id', p_stage),
+        v_uid, 'project', x.project_id, NULL,
+        '/projects/' || v_slugs.project_slug || '?sell=' || v_slugs.stage_slug
+    );
+    RETURN pg_catalog.jsonb_build_object('request_id', v_id,
+        'status', CASE WHEN v_shared THEN 'approved' ELSE 'requested' END) || v_out;
+END;
+$$;
+
+-- The client approves or declines a request as proposed (user door): a person client, or a member of
+-- the client business holding `manage_projects`; no 13–17 account. Approving names the files granted
+-- (all asked for, or some of them) and the client's own words for the scope, mints the maker's draft
+-- and tells the maker; it is refused while `sale_grants_enabled` is off (⚖️ counsel, 55000). Declining
+-- may say why. Returns { request_id, status, listing_id, slug }.
+CREATE OR REPLACE FUNCTION catalogue.decide_sale_request(
+    p_request uuid,
+    p_approve boolean,
+    p_file_ids uuid[] DEFAULT NULL,
+    p_note text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    sr catalogue.sale_requests;
+    v_note text := NULLIF(pg_catalog.btrim(COALESCE(p_note, '')), '');
+    v_asked uuid[];
+    v_granted uuid[];
+    v_out jsonb := '{}'::jsonb;
+    v_slugs record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to decide a request to sell' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO sr FROM catalogue.sale_requests r WHERE r.id = p_request FOR UPDATE;
+    IF NOT FOUND OR NOT COALESCE(sr.client_user_id = v_uid
+                                 OR (sr.client_business_id IS NOT NULL
+                                     AND org.fn_member_can('business', sr.client_business_id, 'manage_projects')), false) THEN
+        RAISE EXCEPTION 'That request to sell doesn''t exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF sr.status <> 'requested' THEN
+        RAISE EXCEPTION 'This request was already decided or withdrawn' USING ERRCODE = 'PG409';
+    END IF;
+    IF org.fn_is_minor(v_uid) THEN
+        RAISE EXCEPTION 'Deciding a request to sell needs an adult account' USING ERRCODE = '42501';
+    END IF;
+    IF pg_catalog.length(COALESCE(v_note, '')) > 2000 THEN
+        RAISE EXCEPTION 'Keep your note under 2,000 characters' USING ERRCODE = '22023', DETAIL = 'note';
+    END IF;
+
+    IF COALESCE(p_approve, false) THEN
+        IF NOT COALESCE((SELECT (pp.value #>> '{}')::boolean FROM security.platform_params pp
+                          WHERE pp.key = 'sale_grants_enabled'), false) THEN
+            RAISE EXCEPTION 'Grants open once Projective''s counsel has written the licence a grant creates. You can decline now, or decide later.'
+                USING ERRCODE = '55000';
+        END IF;
+        SELECT pg_catalog.array_agg((f ->> 'file_id')::uuid) INTO v_asked FROM pg_catalog.jsonb_array_elements(sr.files) f;
+        SELECT COALESCE(pg_catalog.array_agg(DISTINCT i), '{}') INTO v_granted
+          FROM pg_catalog.unnest(COALESCE(p_file_ids, v_asked)) i;
+        IF pg_catalog.cardinality(v_granted) = 0 OR NOT (v_granted <@ v_asked) THEN
+            RAISE EXCEPTION 'Grant one or more of the files asked for' USING ERRCODE = '22023', DETAIL = 'fileIds';
+        END IF;
+        UPDATE catalogue.sale_requests
+           SET status = 'approved', granted_file_ids = v_granted, scope_note = v_note, decided_by = v_uid,
+               decided_at = pg_catalog.now(), updated_at = pg_catalog.now()
+         WHERE id = sr.id;
+        v_out := catalogue.fn_mint_sale_product(sr.id);
+    ELSE
+        UPDATE catalogue.sale_requests
+           SET status = 'declined', decision_note = v_note, decided_by = v_uid,
+               decided_at = pg_catalog.now(), updated_at = pg_catalog.now()
+         WHERE id = sr.id;
+    END IF;
+
+    SELECT p.slug AS project_slug, s.slug AS stage_slug INTO v_slugs
+      FROM projects.project_stages s JOIN projects.projects p ON p.id = s.project_id
+     WHERE s.id = sr.stage_id;
+    IF sr.requested_by IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            sr.requested_by,
+            CASE WHEN p_approve THEN 'sale_request.approved' ELSE 'sale_request.declined' END,
+            CASE WHEN p_approve THEN 'Your request to sell was approved' ELSE 'Your request to sell was declined' END,
+            CASE WHEN p_approve
+                 THEN pg_catalog.format('The client granted "%s" for sale. Its draft is ready: set a price and publish it.', sr.title)
+                 ELSE pg_catalog.format('The client declined "%s".%s You may ask again.', sr.title,
+                          COALESCE(' They said: "' || v_note || '".', ''))
+            END,
+            'catalogue.sale_requests', sr.id, pg_catalog.jsonb_build_object('stage_id', sr.stage_id),
+            v_uid, 'project', sr.project_id, NULL,
+            '/projects/' || v_slugs.project_slug || '?sell=' || v_slugs.stage_slug
+        );
+    END IF;
+    RETURN pg_catalog.jsonb_build_object('request_id', sr.id,
+        'status', CASE WHEN p_approve THEN 'approved' ELSE 'declined' END) || v_out;
+END;
+$$;
+
+-- The maker withdraws an open request (user door); the client is told. Returns { request_id, status }.
+CREATE OR REPLACE FUNCTION catalogue.withdraw_sale_request(p_request uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    sr catalogue.sale_requests;
+    v_slugs record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to withdraw a request' USING ERRCODE = '42501';
+    END IF;
+    SELECT * INTO sr FROM catalogue.sale_requests r WHERE r.id = p_request FOR UPDATE;
+    IF NOT FOUND OR sr.requested_by IS DISTINCT FROM v_uid THEN
+        RAISE EXCEPTION 'That request to sell doesn''t exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF sr.status <> 'requested' THEN
+        RAISE EXCEPTION 'Only an open request can be withdrawn' USING ERRCODE = 'PG409';
+    END IF;
+    UPDATE catalogue.sale_requests SET status = 'withdrawn', updated_at = pg_catalog.now() WHERE id = sr.id;
+    SELECT p.slug AS project_slug, s.slug AS stage_slug, p.owner_user_id INTO v_slugs
+      FROM projects.project_stages s JOIN projects.projects p ON p.id = s.project_id
+     WHERE s.id = sr.stage_id;
+    PERFORM comms.fn_notify(
+        COALESCE(sr.client_user_id, v_slugs.owner_user_id), 'sale_request.withdrawn',
+        'A request to sell was withdrawn',
+        pg_catalog.format('Your freelancer withdrew the request to sell "%s".', sr.title),
+        'catalogue.sale_requests', sr.id, '{}'::jsonb, v_uid, 'project', sr.project_id, NULL,
+        '/projects/' || v_slugs.project_slug
+    );
+    RETURN pg_catalog.jsonb_build_object('request_id', sr.id, 'status', 'withdrawn');
+END;
+$$;
+
+-- A project's requests to sell as the caller may act on them (read; the Overview's "Requests to sell"):
+-- `stages` — the released stages the caller may ask to sell from, each with its IP mode, the reason a
+-- request would be refused and the files delivered on it; `requests` — every request the caller made
+-- (or their team) or decides as the client, with what they may do now; and the switch and ceiling a
+-- form needs (`grants_enabled`, `royalty_max_bp`).
+CREATE OR REPLACE FUNCTION catalogue.project_sale_requests(p_project uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_stages jsonb := '[]'::jsonb;
+    v_requests jsonb;
+    s record;
+    x record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN NULL;
+    END IF;
+    FOR s IN
+        SELECT st.id, st.slug, st.name
+          FROM projects.project_stages st
+         WHERE st.project_id = p_project AND st.status = 'paid'
+         ORDER BY st.sort_order, st.id
+    LOOP
+        SELECT * INTO x FROM catalogue.fn_sale_stage_party(s.id);
+        CONTINUE WHEN x.project_id IS NULL;
+        v_stages := v_stages || pg_catalog.jsonb_build_object(
+            'stage_id', s.id, 'stage_slug', s.slug, 'stage_name', s.name, 'ip_mode', x.ip_mode,
+            'refusal', x.refusal,
+            'open_request', EXISTS (SELECT 1 FROM catalogue.sale_requests r
+                                     WHERE r.stage_id = s.id AND r.requested_by = v_uid AND r.status = 'requested'),
+            'files', catalogue.fn_stage_delivered_files(s.id, x.seller_team_id));
+    END LOOP;
+
+    SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+               'id', r.id, 'stage_id', r.stage_id, 'stage_slug', st.slug, 'stage_name', st.name,
+               'title', r.title, 'status', r.status, 'ip_mode', r.ip_mode, 'royalty_bp', r.royalty_bp,
+               'note', r.note, 'files', r.files, 'granted_file_ids', COALESCE(pg_catalog.to_jsonb(r.granted_file_ids), '[]'::jsonb),
+               'scope_note', r.scope_note, 'decision_note', r.decision_note,
+               'created_at', r.created_at, 'decided_at', r.decided_at,
+               'role', CASE WHEN COALESCE(r.requested_by = v_uid
+                                 OR (r.seller_team_id IS NOT NULL AND org.is_active_team_member(r.seller_team_id)), false)
+                            THEN 'maker' ELSE 'client' END,
+               'can_decide', COALESCE(r.status = 'requested' AND r.requested_by IS DISTINCT FROM v_uid
+                             AND (r.client_user_id = v_uid
+                                  OR (r.client_business_id IS NOT NULL
+                                      AND org.fn_member_can('business', r.client_business_id, 'manage_projects'))), false),
+               'can_withdraw', COALESCE(r.status = 'requested' AND r.requested_by = v_uid, false),
+               'product_slug', (SELECT pr.slug FROM catalogue.products pr
+                                 WHERE pr.sale_request_id = r.id AND (pr.owner_user_id = v_uid
+                                       OR (pr.owner_team_id IS NOT NULL AND org.is_active_team_member(pr.owner_team_id)))
+                                 ORDER BY pr.created_at LIMIT 1)
+           ) ORDER BY r.created_at DESC, r.id), '[]'::jsonb)
+      INTO v_requests
+      FROM catalogue.sale_requests r
+      JOIN projects.project_stages st ON st.id = r.stage_id
+     WHERE r.project_id = p_project
+       AND (r.requested_by = v_uid
+            OR (r.seller_team_id IS NOT NULL AND org.is_active_team_member(r.seller_team_id))
+            OR r.client_user_id = v_uid
+            OR (r.client_business_id IS NOT NULL
+                AND org.fn_member_can('business', r.client_business_id, 'manage_projects')));
+
+    RETURN pg_catalog.jsonb_build_object(
+        'grants_enabled', COALESCE((SELECT (pp.value #>> '{}')::boolean FROM security.platform_params pp
+                                    WHERE pp.key = 'sale_grants_enabled'), false),
+        'royalty_max_bp', LEAST(COALESCE((SELECT (pp.value #>> '{}')::integer FROM security.platform_params pp
+                                          WHERE pp.key = 'sale_royalty_max_bp'), 5000), 5000),
+        'stages', v_stages,
+        'requests', v_requests);
+END;
+$$;
 -- #endregion

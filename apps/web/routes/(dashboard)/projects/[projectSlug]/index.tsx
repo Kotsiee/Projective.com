@@ -21,6 +21,13 @@ import { projectsNoticeHref } from "@features/projects/core/project-notice.ts";
 import { STATUS_LABEL } from "@features/projects/core/portfolio-model.ts";
 import type { Reviewable } from "@projective/types/reviews";
 import { ReviewsBackendService } from "@server/services/reviews/ReviewsBackendService.ts";
+import { SaleRequestBackendService } from "@server/services/catalogue/SaleRequestBackendService.ts";
+import type { ProjectSaleRequests } from "@projective/types/catalogue";
+import {
+	applySaleRequestSim,
+	parseSaleRequestSim,
+	SALE_REQUEST_SIM_COOKIE,
+} from "@features/projects/core/sale-request-sim.ts";
 import {
 	applyReviewStateSim,
 	parseReviewStateSim,
@@ -66,6 +73,8 @@ interface OverviewData {
 	attachments: FileListPage | null;
 	/** What the viewer may review here, and whether `?review=<slug>` opens the dialog (Decision #487). */
 	reviews: { items: Reviewable[]; open: boolean };
+	/** The requests to sell the viewer may act on, and the stage `?sell=` opens (MARKETPLACE SC7). */
+	sales: { read: ProjectSaleRequests; stage: string | null };
 }
 
 export const handler = define.handlers({
@@ -85,12 +94,23 @@ export const handler = define.handlers({
 
 		ctx.state.title = `${resolved.title} · Projective`;
 		const actor = readActor(ctx);
-		const [{ workspace }, activity, attachments, reviewables] = await Promise.all([
+		const [{ workspace }, activity, attachments, reviewables, saleRead] = await Promise.all([
 			resolveProjectWorkspace(slug, actor, landing.viewer),
 			resolveNavActivity(ctx.state, slug, actor),
 			resolveFilePage(slug, actor, null, true),
 			ReviewsBackendService.reviewables(slug, actor),
+			SaleRequestBackendService.forProject(slug, actor),
 		]);
+		// The Dev Context Switcher's request-to-sell state, honoured in development only (sale-request-sim.ts).
+		const saleSim = isDevelopmentEnv()
+			? parseSaleRequestSim(readCookies(ctx.req)[SALE_REQUEST_SIM_COOKIE])
+			: null;
+		const sales = applySaleRequestSim(
+			saleRead.ok && saleRead.data
+				? saleRead.data
+				: { grantsEnabled: false, royaltyMaxBp: 0, stages: [], requests: [] },
+			saleSim,
+		);
 		// The Dev Context Switcher's review state, honoured in development only (review-state-sim.ts).
 		const reviewSim = isDevelopmentEnv()
 			? parseReviewStateSim(readCookies(ctx.req)[REVIEW_STATE_SIM_COOKIE])
@@ -110,6 +130,7 @@ export const handler = define.handlers({
 		changes: activity.overview.changes,
 		attachments: attachments.page,
 		reviews: { items: reviewItems, open: ctx.url.searchParams.get("review") === slug },
+		sales: { read: sales, stage: ctx.url.searchParams.get("sell") },
 	};
 		return page(data);
 	},
@@ -131,6 +152,7 @@ export default define.page<typeof handler>(function ProjectOverviewPage({ data }
 			changes={data.changes}
 			attachments={data.attachments}
 			reviews={data.reviews}
+			sales={data.sales}
 		/>
 	);
 });

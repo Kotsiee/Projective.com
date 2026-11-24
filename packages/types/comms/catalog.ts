@@ -62,6 +62,11 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	// work
 	"stage.funded",
 	"stage.approved",
+	"sale_request.received",
+	"sale_request.approved",
+	"sale_request.declined",
+	"sale_request.withdrawn",
+	"sale_request.shared_listed",
 	"stage.cancelled",
 	"stage.invite",
 	"stage.deadline_approaching",

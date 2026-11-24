@@ -4,6 +4,19 @@
 -- their primary keys, so "the caller's listings" (the client pipeline, Decision #217) and "the quote
 -- requests on this blueprint" were sequential scans of the whole platform's rows.
 
+-- #region catalogue.sale_requests — requests to sell (MARKETPLACE SC7)
+-- One open request per stage and maker (catalogue.request_sale refuses a second first); the project's
+-- read lists by project; a minted product names its request.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sale_requests_open
+    ON catalogue.sale_requests (stage_id, requested_by)
+    WHERE status = 'requested';
+CREATE INDEX IF NOT EXISTS idx_sale_requests_project
+    ON catalogue.sale_requests (project_id);
+CREATE INDEX IF NOT EXISTS idx_products_sale_request
+    ON catalogue.products (sale_request_id)
+    WHERE sale_request_id IS NOT NULL;
+-- #endregion
+
 -- #region catalogue.listings — the seller's own listings
 -- catalogue.get_client_pipeline / fn_seller_order_lines narrow to the caller's listings before the
 -- per-row capability check: personal ones by owner, team ones by owning team.

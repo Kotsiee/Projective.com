@@ -717,6 +717,8 @@ ALTER TABLE catalogue.collection_listings ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE catalogue.product_versions ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE catalogue.sale_requests ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE catalogue.entitlements ENABLE ROW LEVEL SECURITY;
 
 

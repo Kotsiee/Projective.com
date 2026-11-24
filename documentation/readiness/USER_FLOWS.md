@@ -35,7 +35,7 @@ signed-in person).
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
 | **UAT**          | **72%** |           193 | 101 |  78 | 14 |              25 |
-| **Production**   | **66%** |           251 | 107 | 108 | 36 |              36 |
+| **Production**   | **66%** |           251 | 107 | 109 | 35 |              36 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -44,7 +44,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | Cluster                                          | Flows | ✅ | 🟡 | ❌ |  ⏸ | Score |
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
-| MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 24 |  8 |  2 |   70% |
+| MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 25 |  7 |  2 |   70% |
 | PJ — Projects, collaboration, files & calendar   |    77 | 29 | 36 | 10 |  2 |   64% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 26 | 14 |  3 |   61% |
 
@@ -223,7 +223,7 @@ PRODUCTION_READINESS.md.
 | MK-43 | Listing analytics                                        | Seller             | `/catalogue?view=analytics`                        | ✅     | Normal   | UAT  | — (#506, SC5: a service or product page shown writes one view, at most one per viewer per listing per 30 minutes, never the seller's own or a crawler's, `listing_view_events.sql`; the rollup derives `view_count` / `order_count`; `13_analytics.sql` seeds 91 days). Impressions and views need the EXPLORE flag (environment); a direct insert can still inflate them (PRD-C36) |
 | MK-44 | Clients pipeline                                         | Seller             | `?view=clients`, `/api/catalogue/clients`          | ✅     | Normal   | UAT  | — (SC6, #537: no Clients link carries a uuid but `?event=`, an inquiry opening `/messages/dm-<buyer>`; a team's or a business's order names the entity, and messages reach its owner; inquiries reach the board with their buyer, who was blank before). Quotes are answered in the drawer (`QuotePanel`, #458) |
 | MK-45 | Team catalogue                                           | Team admin         | `/teams/:h/catalogue/*`                            | ✅     | High     | UAT  | Team listings are edited only by their creator, and no door asks `publish_listings` (#312 (a), PRD-C34); ruled A, tightened (#500): any holder edits any team listing and creating needs it, presets on the team's schedule; SC6 step 3 builds it, and runs now that SC4 (#535) has landed; steps 1–2 landed (#537) |
-| MK-46 | Request to Sell; shared IP; royalty routing              | Freelancer, Client | —                                                  | ❌     | Normal   | PROD | No table, door or UI (PRODUCT_SPEC §Digital Marketplace 3, 5)                                                    |
+| MK-46 | Request to Sell; shared IP; royalty routing              | Freelancer, Client | Overview `?sell=`                                  | 🟡     | Normal   | PROD | Built (SC7, #545, `sale_royalty.sql`): the paid maker of a released stage asks to sell named delivered files for a royalty; the client grants some or all, or declines; a grant mints a draft with provenance that delivers only granted files; every sale routes the client's royalty through the pending window, and a refund takes it back. A shared-ownership stage lists at once. Left: ⚖️ counsel's licence wording, then the owner switches grants on (`sale_grants_enabled`) |
 | MK-47 | Asset protection, delivery APIs, takedown and report     | Seller, Operator   | proposed `/api/catalogue/files/*`                  | ❌     | High     | PROD | #393 phases 0 (CK1, #488) and 1 (#SC9P1: no signed read URL reaches a browser) built, phases 2–7 not; 18 of 21 rulings open (A2, A6, A8 ruled); no inbound copyright or report path; SC8's mechanism ruled #496, waits for T&S R2 (R1 landed: the `notice` source) |
 | MK-57 | Edit a published listing within its locks                | Seller             | `/catalogue/:slug`                                 | ✅     | High     | PROD | — (SC4, #535: the locks are held on the tables, so a direct write meets the editor's refusals; `promoted` is the plan check's alone; a showcase cannot name another person's file; a published listing keeps its last cover and stage, `PG422`; probe `catalogue_publish_locks` §5–7) |
 | MK-59 | Let people join a cohort that has started                | Seller, Buyer      | Offer section toggle                               | ❌     | Normal   | PROD | The toggle (`allow_continuous_enrollment`) renders and does nothing, and every cohort's enrolment closes by its first sitting, as ruled (#498 (b)); `enrollment_window_days` has no reader or writer. Re-read by SC11 (#541): a rolling listing gives a late buyer next week's run instead, and the toggle still does nothing |
@@ -571,3 +571,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-23 | DB21 (#542): MK-31 ❌ → 🟡 (a buyer cancels a digital product while its sale clears; the product dispute and an operator's card refund are left) | 83% | 72% | 66% |
 | 2026-11-23 | DB21 step 2 (#543): no row flips; MK-31 narrowed (a buyer reports a faulty or missing download and an operator rules; only an operator's card refund is left) | 83% | 72% | 66% |
 | 2026-11-23 | CK4 (#544): MW-57 ❌ → 🟡 (invoice tax lines and VAT reverse charge built, off pending counsel); MK-20 narrowed (checkout tax built behind `tax_collection_enabled`, off); still 🟡 | 83% | 72% | 66% |
+| 2026-11-24 | SC7 (#545): MK-46 ❌ → 🟡 (Request to Sell, the client's grant and the royalty leg built; grants off until counsel's licence wording) | 83% | 72% | 66% |

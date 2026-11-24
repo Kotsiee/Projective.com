@@ -21,6 +21,7 @@ import {
 	SCOPED_LISTING_COLUMNS,
 	ScopedListingRowSchema,
 } from "./rows.ts";
+import { SaleRequestRowSchema } from "./sale-requests.ts";
 
 // #region Sources
 const TABLES_SQL = readRepoFile("supabase/migrations/00000023_tables_catalogue.sql");
@@ -31,6 +32,7 @@ const DERIVED_SQL = readRepoFile("supabase/migrations/00001895_triggers_derived_
 /** Each catalogue table with a row schema. */
 const ROWS: readonly [table: string, schema: z.ZodObject][] = [
 	["catalogue.listings", CatalogueListingRowSchema],
+	["catalogue.sale_requests", SaleRequestRowSchema],
 ];
 
 /** The quoted literals of the first `(...)` list after `anchor` in `sql`. */

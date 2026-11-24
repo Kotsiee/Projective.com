@@ -31,6 +31,9 @@ import { BriefBlock, TermsBlock } from "./BriefBlocks.tsx";
 import { ClaimableBlock, SubmissionsBlock } from "./WorkSignalBlocks.tsx";
 import { ReviewsBlock } from "./ReviewsBlock.tsx";
 import ReviewDialog from "@features/reviews/islands/ReviewDialog.island.tsx";
+import { SaleRequestsBlock } from "./SaleRequestsBlock.tsx";
+import SaleRequestDialog from "../../islands/SaleRequestDialog.island.tsx";
+import type { ProjectSaleRequests } from "@projective/types/catalogue";
 import type { Reviewable } from "@projective/types/reviews";
 
 /**
@@ -81,11 +84,17 @@ export interface ProjectOverviewScreenProps {
 	 * first paint. Empty until the engagement, a released seat or a sitting completes.
 	 */
 	reviews?: { items: Reviewable[]; open: boolean };
+	/**
+	 * The requests to sell the viewer may act on here (MARKETPLACE SC7) and the stage `?sell=` names, whose
+	 * dialog opens on first paint. Empty for anyone who was not paid on a released stage and is not the
+	 * client of a request.
+	 */
+	sales?: { read: ProjectSaleRequests; stage: string | null };
 }
 
 /** The Overview for one engagement, or a calm miss with the one route back. */
 export function ProjectOverviewScreen(
-	{ workspace, slug, changes = [], attachments = null, reviews }: ProjectOverviewScreenProps,
+	{ workspace, slug, changes = [], attachments = null, reviews, sales }: ProjectOverviewScreenProps,
 ): JSX.Element {
 	if (!workspace) {
 		return (
@@ -143,6 +152,9 @@ export function ProjectOverviewScreen(
 			{reviews && reviews.items.length > 0 && (
 				<ReviewDialog slug={slug} items={reviews.items} initialOpen={reviews.open} />
 			)}
+			{sales?.stage && (
+				<SaleRequestDialog slug={slug} sales={sales.read} initialStage={sales.stage} />
+			)}
 			<div class="pjd__inner">
 				<header class="pjd-hero">
 					<h1 class="pjd-hero__title" data-pjd-region="details">{hero.title}</h1>
@@ -175,6 +187,7 @@ export function ProjectOverviewScreen(
 					<div class="pjd__aside">
 						{showProvider && <ProviderBlock provider={hero.owner} handle={hero.handle} />}
 						{reviews && <ReviewsBlock slug={slug} items={reviews.items} />}
+						{sales && <SaleRequestsBlock sales={sales.read} />}
 						{participant && <SubmissionsBlock submissions={submissions} slug={slug} />}
 						{participant && <ClaimableBlock claimable={claimable} />}
 						{participant && (

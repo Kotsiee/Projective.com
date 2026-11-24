@@ -29,6 +29,7 @@ that could not carry a foreign key.
 | :------------------------------- | :----------------------- | :------------------------------------------------------------------------------------------------ |
 | `id`                             | uuid PK                  |                                                                                                   |
 | `owner_user_id` / `owner_team_id` | uuid                    | See above.                                                                                        |
+| `sale_request_id`                | uuid NULL → `catalogue.sale_requests` RESTRICT | The approved request to sell it was minted from (MARKETPLACE SC7): its provenance and the client's royalty. Set only by `catalogue.fn_mint_sale_product`; a duplicate keeps it. NULL on a product made from scratch. |
 | `slug`                           | text UNIQUE NOT NULL     | **The public address** `/view/prd-…` — `prd-` + 10 symbols, minted by `security.fn_slug_guard('prd')`, permanent (`ck_products_slug_shape`). |
 | `title`                          | text NOT NULL            |                                                                                                   |
 | `description` / `description_text` | jsonb / text           | Rich body + its flattened text (search, card blurbs).                                             |
@@ -145,6 +146,33 @@ Indexes (`00004012`): `ix_entitlements_holder (holder_type, holder_id, created_a
 purchases view, plus `version_id` and `product_id` partial indexes. **`finance.order_lines.asset_id`
 is reserved**: no door writes it and no reader reads it; a product line's files are reached through
 its entitlement ([../finance/Tables.md](../finance/Tables.md)).
+
+## `catalogue.sale_requests` (MARKETPLACE SC7, Decision #493)
+
+A maker's request to sell an asset made on a released stage, and the client's grant (lifecycle in
+PRODUCT_MANAGEMENT §3.11). Listed above `catalogue.products` in `00000023`, since a minted product
+names it. Never deleted; every write is a definer in `00001170` §Requests to sell.
+
+| Column | Type | Notes |
+| :-- | :-- | :-- |
+| `id` | uuid PK | |
+| `project_id` / `stage_id` | uuid NOT NULL → `projects.projects` / `projects.project_stages` RESTRICT | The provenance: the engagement and the released stage it was made on. |
+| `requested_by` / `seller_team_id` | uuid NULL → `org.users_public` / `org.teams` SET NULL | The maker who asked, and the team that sells it when the stage paid a team. |
+| `ip_mode` | `public.ip_option_mode` | The stage's mode when asked: `exclusive_transfer` · `licensed_use` · `shared_ownership` (`ck_sale_requests_ip_mode`; `projective_partner` is refused). |
+| `client_user_id` / `client_business_id` | uuid NULL → `org.users_public` / `org.business_profiles` SET NULL | The client party, at most one (`ck_sale_requests_client`). |
+| `title` / `note` | text | 1–200 and ≤ 2,000 characters. |
+| `royalty_bp` | integer | 0–5000 basis points of the seller's net, 0 on shared ownership (`ck_sale_requests_royalty`); fixed at the grant. |
+| `files` | jsonb | The delivered files asked for, 1–24: `[{ file_id, name, bytes, sha256 }]`, each with its whole-file SHA-256 (the cryptographic link). |
+| `granted_file_ids` / `scope_note` | uuid[] / text | What the client granted (a subset of `files`) and their own words; set exactly when approved (`ck_sale_requests_granted`). |
+| `status` | text | `requested` · `approved` · `declined` · `withdrawn`. |
+| `decided_by` / `decided_at` / `decision_note` | | Who decided and when (`decided_at` set exactly when approved or declined, `ck_sale_requests_decided`), and a decline's words. |
+| `created_at` / `updated_at` | timestamptz | |
+
+One open request per stage and maker (`uq_sale_requests_open`, partial on `requested`);
+`idx_sale_requests_project`; `idx_products_sale_request`. RLS: its parties read it (the maker, a member
+of the selling team, the client person, an active member of the client business); no client role
+writes it, and `anon` reads nothing (`00002520`). Zod `SaleRequestRowSchema`, held to the table by
+`catalogue-tables.contract.test.ts`.
 
 ## Seed
 

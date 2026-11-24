@@ -55,6 +55,7 @@ import {
 	DEV_PROPOSAL_ALLOWANCES,
 	DEV_CLIENT_TRUST,
 	DEV_REVIEW_STATES,
+	DEV_SALE_REQUESTS,
 	DEV_REVISION_ALLOTMENTS,
 	DEV_ROLES,
 	DEV_SAVED,
@@ -454,6 +455,24 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						disabled={!o.enabled}
 						onChange={(reviewState) => {
 							patchDevContext({ reviewState });
+							reloadProjectPage();
+						}}
+					/>
+				</Field>
+
+				{
+					/* A request to sell (MARKETPLACE SC7): the Overview's "Requests to sell" block and its dialog
+				    as the maker or the client. Server-side via `pj.dev.sale-request`, so a change reloads a project
+				    page. */
+				}
+				<Field label="Request to sell" hint="Overview block · dialog · reloads">
+					<Segment
+						name="Request to sell"
+						options={DEV_SALE_REQUESTS}
+						value={o.saleRequest}
+						disabled={!o.enabled}
+						onChange={(saleRequest) => {
+							patchDevContext({ saleRequest });
 							reloadProjectPage();
 						}}
 					/>

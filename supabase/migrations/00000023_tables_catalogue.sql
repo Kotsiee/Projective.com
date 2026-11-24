@@ -50,6 +50,73 @@
 -- one nullable column and make it unrepresentable.
 -- =============================================================================================
 
+-- #region Requests to sell (MARKETPLACE SC7, Decision #493)
+-- A maker's request to sell an asset they made on a released stage, and the client's grant
+-- (PRODUCT_SPEC §Digital Marketplace & IP Governance 1, 3, 5; lifecycle in PRODUCT_MANAGEMENT §3.11).
+-- Only a stage whose IP mode is `exclusive_transfer` or `licensed_use` needs the client's grant;
+-- `shared_ownership` already lets the maker sell, so its request is approved as it is made, with no
+-- royalty, and the client is told (#493 (d)); `projective_partner` is refused. Written only by the
+-- definers in 00001170 §Requests to sell; never deleted. A grant is the record, and the stage's
+-- `ip_mode` is never rewritten by it (#493 (c)). Listed above products: an approved request's draft
+-- product names it (`products.sale_request_id`).
+CREATE TABLE catalogue.sale_requests (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    project_id uuid NOT NULL,
+    stage_id uuid NOT NULL,
+    -- The maker who asked, and the team that sells the asset when the stage paid a team. SET NULL on
+    -- erasure: the request is a record that outlives the account.
+    requested_by uuid,
+    seller_team_id uuid,
+    -- The stage's IP mode when asked.
+    ip_mode public.ip_option_mode NOT NULL,
+    -- The client party: a person, or the business that decides through a member holding
+    -- `manage_projects`. Exactly one.
+    client_user_id uuid,
+    client_business_id uuid,
+    title text NOT NULL,
+    note text NOT NULL DEFAULT '',
+    -- The rate the maker proposes, in basis points of the seller's net after the commission (#493 (A)):
+    -- the client approves or declines it as proposed, never counters, and it is fixed at the grant.
+    royalty_bp integer NOT NULL,
+    -- The delivered files asked for, each by its whole-file SHA-256 (the "cryptographic link", #493 (b)):
+    -- [{ "file_id", "name", "bytes", "sha256" }].
+    files jsonb NOT NULL,
+    -- What the client granted: some or all of `files`, by id, and the client's own words for the scope.
+    granted_file_ids uuid[],
+    scope_note text,
+    status text NOT NULL DEFAULT 'requested',
+    decided_by uuid,
+    decided_at timestamptz,
+    decision_note text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT sale_requests_pkey PRIMARY KEY (id),
+    CONSTRAINT sale_requests_project_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id) ON DELETE RESTRICT,
+    CONSTRAINT sale_requests_stage_fkey FOREIGN KEY (stage_id) REFERENCES projects.project_stages(id) ON DELETE RESTRICT,
+    CONSTRAINT sale_requests_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES org.users_public(user_id) ON DELETE SET NULL,
+    CONSTRAINT sale_requests_seller_team_fkey FOREIGN KEY (seller_team_id) REFERENCES org.teams(id) ON DELETE SET NULL,
+    CONSTRAINT sale_requests_client_user_fkey FOREIGN KEY (client_user_id) REFERENCES org.users_public(user_id) ON DELETE SET NULL,
+    CONSTRAINT sale_requests_client_business_fkey FOREIGN KEY (client_business_id) REFERENCES org.business_profiles(id) ON DELETE SET NULL,
+    CONSTRAINT sale_requests_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES org.users_public(user_id) ON DELETE SET NULL,
+    CONSTRAINT ck_sale_requests_status CHECK (status IN ('requested', 'approved', 'declined', 'withdrawn')),
+    CONSTRAINT ck_sale_requests_ip_mode CHECK (ip_mode IN ('exclusive_transfer', 'licensed_use', 'shared_ownership')),
+    CONSTRAINT ck_sale_requests_title CHECK (char_length(title) BETWEEN 1 AND 200),
+    CONSTRAINT ck_sale_requests_note CHECK (char_length(note) <= 2000 AND char_length(COALESCE(decision_note, '')) <= 2000
+                                            AND char_length(COALESCE(scope_note, '')) <= 2000),
+    -- 0–50 % of the seller's net (#493 (A)); a shared-ownership asset carries none (#493 (d)).
+    CONSTRAINT ck_sale_requests_royalty CHECK (royalty_bp BETWEEN 0 AND 5000
+                                               AND (ip_mode <> 'shared_ownership' OR royalty_bp = 0)),
+    CONSTRAINT ck_sale_requests_files CHECK (jsonb_typeof(files) = 'array' AND jsonb_array_length(files) BETWEEN 1 AND 24),
+    CONSTRAINT ck_sale_requests_client CHECK (num_nonnulls(client_user_id, client_business_id) <= 1),
+    CONSTRAINT ck_sale_requests_decided CHECK ((status IN ('approved', 'declined')) = (decided_at IS NOT NULL)),
+    CONSTRAINT ck_sale_requests_granted CHECK (
+        (status = 'approved') = (granted_file_ids IS NOT NULL)
+        AND (granted_file_ids IS NULL OR cardinality(granted_file_ids) >= 1)
+    )
+);
+-- #endregion
+
 -- #region Products
 -- The digital product entity. Referenced by the discovery corpus (`ProductItemSchema`), the
 -- `/view/[id]` product template (`ProductViewSchema` — format, file manifest, spec ledger,
@@ -58,6 +125,11 @@ CREATE TABLE catalogue.products (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     owner_user_id uuid NOT NULL,
     owner_team_id uuid,
+    -- The approved request to sell this product was minted from (MARKETPLACE SC7, Decision #493): its
+    -- provenance (the project, the stage, the granted files' hashes) and the client's royalty. NULL on
+    -- a product made from scratch. Set only by catalogue.fn_mint_sale_product; a duplicate keeps it, so
+    -- a copy carries the same royalty and the same granted-files rule.
+    sale_request_id uuid,
 
     -- The product's public address — `/view/prd-…` — on the same contract as every other slug:
     -- opaque, derived from nothing, minted by `security.fn_slug_guard('prd')` when an insert supplies
@@ -118,7 +190,8 @@ CREATE TABLE catalogue.products (
         jsonb_typeof(specs) = 'array' AND jsonb_array_length(specs) <= 24
     ),
     CONSTRAINT products_owner_user_fkey FOREIGN KEY (owner_user_id) REFERENCES org.users_public(user_id) ON DELETE CASCADE,
-    CONSTRAINT products_owner_team_fkey FOREIGN KEY (owner_team_id) REFERENCES org.teams(id) ON DELETE SET NULL
+    CONSTRAINT products_owner_team_fkey FOREIGN KEY (owner_team_id) REFERENCES org.teams(id) ON DELETE SET NULL,
+    CONSTRAINT products_sale_request_fkey FOREIGN KEY (sale_request_id) REFERENCES catalogue.sale_requests(id) ON DELETE RESTRICT
 );
 -- #endregion
 

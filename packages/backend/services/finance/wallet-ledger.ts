@@ -90,6 +90,8 @@ export function reasonMeta(reason: string, direction: "credit" | "debit"): Reaso
 				: { category: "transfer", label: "Distributed to members", refKind: "transfer" };
 		case "product_sale":
 			return { category: "earning", label: "Product sale", refKind: null };
+		case "product_royalty":
+			return { category: "earning", label: "Royalty on a sale", refKind: null };
 		case "product_sale_vault_retention":
 			return { category: "earning", label: "Vault share of a product sale", refKind: null };
 		case "service_sale":

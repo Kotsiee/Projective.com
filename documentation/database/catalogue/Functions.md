@@ -131,6 +131,20 @@ the team but editable only by the member who created it (`owner_user_id = auth.u
 functions and in the UPDATE policy). Letting any member edit needs a team-permission rule, which is
 a product decision.
 
+## Requests to sell — `00001170` §Requests to sell (MARKETPLACE SC7, Decision #493)
+
+| Function | Door | What it does |
+| :-- | :-- | :-- |
+| `request_sale(p_stage, p_title, p_file_ids, p_royalty_bp, p_note)` | DEFINER, user | The maker asks to sell an asset made on a stage: the caller must have been paid on it (a released escrow to them, or to a team where they hold `publish_listings`), the stage `paid`, its mode not `projective_partner`, neither side 13–17, the caller not the client. 1–24 files they delivered on the stage, each with a whole-file SHA-256; a royalty within `sale_royalty_max_bp`. On `shared_ownership` it is approved at once with no royalty, its draft minted, and the client told (`sale_request.shared_listed`); otherwise the client is told (`sale_request.received`). One open request per stage and maker. Refusals: `42501` · `P0002` not paid on it · `PG409` the stage's refusal or an open request · `22023` title, note, royalty or files. Returns `{ request_id, status, listing_id?, product_id?, slug? }`. |
+| `decide_sale_request(p_request, p_approve, p_file_ids, p_note)` | DEFINER, user | The client (the person, or a business member holding `manage_projects`; not 13–17) grants some or all of the files asked for, with their words for the scope, minting the maker's draft and telling them (`sale_request.approved`); or declines, saying why (`sale_request.declined`). ⚖️ A grant refuses `55000` while `sale_grants_enabled` is off. `P0002` to anyone else; `PG409` once decided. |
+| `withdraw_sale_request(p_request)` | DEFINER, user | The maker withdraws an open request; the client is told (`sale_request.withdrawn`). |
+| `project_sale_requests(p_project)` | DEFINER, read | The Overview's read: the released stages the caller may sell from (mode, refusal, open request, delivered files), every request they made or decide (role, `can_decide`, `can_withdraw`, the draft's slug for its maker), `grants_enabled` and `royalty_max_bp`. |
+| `fn_sale_stage_party(p_stage)` / `fn_stage_delivered_files(p_stage, p_team)` / `fn_mint_sale_product(p_request)` | DEFINER, internal | The caller's standing on a stage as its maker; the files delivered on it by the maker (`sha256` only for a whole-file fingerprint); an approved request's draft product (owned by the maker and the selling team, priced 0 in the seller's currency, `sale_request_id` set, the granted files as its manifest) and draft listing. |
+
+`fn_freeze_product_version` refuses (`PG422`) a minted product's file that is neither a granted file nor
+one with a granted file's SHA-256, so a draft can deliver only what the client granted. The royalty
+every sale pays is `finance.place_wallet_order`'s ([../finance/Functions.md](../finance/Functions.md)).
+
 ## Maintained by triggers elsewhere
 
 | Trigger                                                          | Function                                 | Does                                                                                  |

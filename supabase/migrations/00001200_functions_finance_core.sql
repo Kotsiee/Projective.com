@@ -169,7 +169,7 @@ SET search_path = ''
 AS $$
     SELECT COALESCE(p_reason IN (
         'escrow_release', 'team_split', 'team_finder_fee', 'fair_exit_release', 'product_sale',
-        'escrow_release_vault_retention', 'fair_exit_release_vault_retention'
+        'product_royalty', 'escrow_release_vault_retention', 'fair_exit_release_vault_retention'
     ), false);
 $$;
 

@@ -208,6 +208,7 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Invoice**                | `draft → issued → paid`; `overdue` / `void`                | `finance.invoices.status` · `finance-model.md` §15   |
 | **Statement**              | `draft → issued → final`                                   | `finance.statement_status` · `finance-model.md` §15  |
 | **Dispute** (Decision #212) | `open → awaiting_response → under_review → resolved_release` / `resolved_refund` / `resolved_split`; never deleted, terminal once resolved — the full machine is §3.8 | `dispute_status` · `finance.disputes` · `database/finance/Functions.md` § Platform disputes |
+| **Request to sell** (MARKETPLACE SC7, Decision #493) | `requested → approved` / `declined` / `withdrawn`; a shared-ownership request is `approved` as it is made; never deleted, terminal once decided — the full machine is §3.11 | `catalogue.sale_requests.status` · `database/catalogue/Tables.md` |
 | **Spend approval**         | `pending → approved → consumed` · `pending → rejected` (the TypeScript projection reads it as `declined`) · `pending → expired` · `pending → withdrawn`. **consumed** is the terminal spent state. It is DERIVED from `consumed_at` + `consumed_ref_*`, which `finance.fn_redeem_spend_approval` stamps in the charging transaction, and is shown as "Used" on the Spend module. It is not an enum value: `finance.approval_status` stays pending · approved · rejected · expired · withdrawn. Filed by `finance.request_spend_approval` only when the spend genuinely needs one (over the per-transaction ceiling, over the remaining cap, or at/above the business threshold — the wallet's own, else the platform's, `finance.fn_business_threshold`), with the wallet's currency and **`expires_at = now() + 7 days`** set by the server; decided by a member holding **`approve_spend`** who is not the requester; **withdrawn** only by its requester while `pending` (`finance.withdraw_spend_approval`, Decision #246 — terminal, `decided_at` stamped, no approver, nothing moves; a lapsed one is marked `expired` instead). Business wallets only, one open request per ref; what a request is bound to and how an approved one is spent once are `finance-model.md` §14 (Approval thresholds). A consumed, rejected, expired or withdrawn request is never re-decided, and only an approved, unconsumed, unexpired one is ever spent. `pending → expired` is written by the hourly sweep `finance.fn_expire_spend_approvals` (job `finance-expire-spend-approvals`, FINANCE_AUDIT A16) for every `pending` row past `expires_at`, and in between by any decision, withdrawal, new request for the same ref or auto-fund drain that meets one first; an approved-but-unspent request past `expires_at` can no longer be spent. At a business checkout a waiting or approved request bears on Pay exactly as `PRODUCT_SPEC.md` §Escrow, Wallets & Finance #5 ("A purchase that needs a sign-off…") says; RLS shows a member only their own requests, so filing while another member's waits is refused `PC409` (Decision #243) | `finance.approval_status` · `finance.spend_approvals.consumed_at` · `database/finance/Functions.md` § Workspace money governance · `finance-model.md` §14 |
 | **Workspace membership** (team / business seat) | `active → left`. A departure is a status with `left_at`, never a `DELETE`; a former member is **reactivated** by accepting a new invitation, never inserted twice. Exactly **one** active owner per entity, who can never leave or be removed — ownership moves only by **transfer** (`org.transfer_workspace_ownership`) to another active member — for a team, one who is a freelancer account and payout-ready (Decisions #196, #228 (A)), since the team's withdrawer and verification follow the owner — after which the former owner holds the Admin preset or, in the same act, leaves. A business's **managers** — admins and holders of `manage_projects`, pending invitations to such a role included — are capped by its plan's `business_managers` (2 free / 15 Pro): inviting, accepting, a role change or grant that would pass it is refused `PK402` while `business_plan_gates_enforced` is on (Decision #230 (b), (e)); a downgrade removes nobody. An invitation is **not** a member state (the former `invited` member status is gone) | `org.team_members` / `org.business_members` `status` (`CHECK IN ('active','left')`) · `packages/types/workspace` `MembershipState` · `database/org/Tables.md` § Workspace membership |
 | **Workspace invitation**   | `pending → accepted` / `declined` (the invitee) / `revoked` (the inviting side). Each has its own timestamp (`responded_at` / `revoked_at`), pinned by `ck_org_invitation_lifecycle`. **14-day expiry, DERIVED from `expires_at`, never a stored status** — a lapsed `pending` row stays in the queue and **resend renews** it (a fresh token and `expires_at = now() + 14 days`); an answered row cannot be resent or revoked. At most one pending invitation per entity per person or per address; up to ten are issued per send, each at its own role (Decision #318). An invitation still names one person or one address — somebody holding the entity's invite link ASKS instead (Workspace join request, below; the 2026-09-28 cut of links and requests is reversed by #318). Accepting a TEAM invitation needs the invitee payout-ready, as does creating a team (Decision #196); before then the roster shows a pending invitee's readiness, and the refusal stays at accept (Decision #337, ruling M4 — the roster half **Not built yet**) | `org.org_invitations.status` · `packages/types/workspace` `WorkspaceInvite` · `database/org/Functions.md` §12 |
@@ -818,6 +819,30 @@ review of a client party moves its Client Trust Score (Decision #486 (B)), and s
 withdrawal or hiding.
 
 ---
+
+### 3.11 Request to sell lifecycle (per request)
+
+A product domain lifecycle in the §3.5 sense (MARKETPLACE SC7, Decision #493), stored as
+`catalogue.sale_requests.status`. It is not a board state. Canonical business text: `PRODUCT_SPEC.md`
+§Digital Marketplace & IP Governance 1, 3, 5; the royalty is `finance-model.md` §16.9.
+
+```text
+(the paid maker of a released exclusive_transfer or licensed_use stage asks) ──► Requested
+(the paid maker of a released shared_ownership stage asks) ────────────────────► Approved (at once)
+Requested ──(the client grants some or all of the files, ⚖️ grants switched on)──► Approved
+Requested ──(the client declines, optionally saying why) ────────────────────────► Declined
+Requested ──(the maker withdraws) ───────────────────────────────────────────────► Withdrawn
+```
+
+| State | Meaning | Who can act | What unlocks the next state |
+| :-- | :-- | :-- | :-- |
+| **Requested** | The maker asked to sell an asset made of named delivered files, for a royalty to the client. One open request per stage and maker. | **Client** (the person, or a business member holding `manage_projects`): grant or decline. **Maker**: withdraw. | The client's decision, or the maker's withdrawal. |
+| **Approved** | Granted (or, for shared ownership, needing no grant): a draft product naming the request is minted for the maker, delivering only the granted files. Terminal. | **Maker**: price and publish the draft through the normal gate. | — |
+| **Declined** | The client said no, as proposed. Terminal; the maker may ask again. | Nobody. | — |
+| **Withdrawn** | The maker took it back. Terminal; the maker may ask again. | Nobody. | — |
+
+⚖️ A grant is refused while `sale_grants_enabled` is off (counsel writes the licence it creates). A
+13–17 account can neither ask nor grant. Nothing is deleted.
 
 ## 4. Estimation & Capacity (Workload Intensity)
 

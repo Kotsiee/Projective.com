@@ -59,7 +59,7 @@ CREATE TABLE finance.transactions (
         'fx_conversion', 'fx_spread', 'chargeback', 'refund', 'forfeit_refund',
         -- earned credits, through the pending window
         'escrow_release', 'escrow_release_vault_retention', 'fair_exit_release',
-        'fair_exit_release_vault_retention', 'team_split', 'team_finder_fee', 'product_sale',
+        'fair_exit_release_vault_retention', 'team_split', 'team_finder_fee', 'product_sale', 'product_royalty',
         -- money in, and the payer's own money back
         'topup', 'transfer_in', 'escrow_refund', 'fair_exit_refund', 'order_refund', 'payout_reversal',
         'on_account_credit',
@@ -1286,6 +1286,10 @@ CREATE TABLE finance.order_lines (
     -- at release (finance.escrows.platform_fee_cents). finance.orders.platform_fee_minor is the sum.
     platform_fee_bp integer CHECK (platform_fee_bp IS NULL OR platform_fee_bp BETWEEN 0 AND 10000),
     platform_fee_minor bigint NOT NULL DEFAULT 0 CHECK (platform_fee_minor >= 0),
+    -- The client's royalty on a product sold under their grant (MARKETPLACE SC7, Decision #493 (A)):
+    -- taken after the commission from what is left, floored, and credited pending to the client
+    -- (`product_royalty`) beside the seller's credit, which is this much less. 0 on every other line.
+    royalty_minor bigint NOT NULL DEFAULT 0 CHECK (royalty_minor >= 0),
 
     -- What has gone back to the buyer for this line, and where the line stands (Decision #337, ruling
     -- M8; Decision #469; FBP DB19). Written only by finance.fn_record_order_line_refund, which every

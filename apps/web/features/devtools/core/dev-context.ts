@@ -26,6 +26,10 @@ import {
 } from "@features/profile/core/business-page-sim.ts";
 import { TEAM_PAGE_SIM_COOKIE, type TeamPageSim } from "@features/profile/core/team-page-sim.ts";
 import { REVIEW_STATE_SIM_COOKIE } from "@features/reviews/core/review-state-sim.ts";
+import {
+	SALE_REQUEST_SIM_COOKIE,
+	type SaleRequestSim,
+} from "@features/projects/core/sale-request-sim.ts";
 import type { ReviewState } from "@projective/types/reviews";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
@@ -139,6 +143,8 @@ export type DevBusinessPage = "auto" | BusinessPageSim;
 export type DevTeamPage = "auto" | TeamPageSim;
 /** A simulated state of the open engagement's reviews, or `auto` for the database's (Decision #487). */
 export type DevReviewState = "auto" | ReviewState;
+/** A simulated request to sell and the viewer's side of it, or `auto` for the database's (MARKETPLACE SC7). */
+export type DevSaleRequest = "auto" | SaleRequestSim;
 /** Whether every project's client reads as warned, or `auto` for the database's (Decision #486 (C)). */
 export type DevClientTrust = "auto" | "warned";
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
@@ -310,6 +316,13 @@ export interface DevOverrides {
 	 * development only; the panel reloads a project page to apply it. A write still meets the doors.
 	 */
 	reviewState: DevReviewState;
+	/**
+	 * Simulated request to sell (MARKETPLACE SC7, Decision #493): the Overview's "Requests to sell" block
+	 * and its dialog as the maker who may ask · waiting · granted · declined, or as the client deciding.
+	 * Server-side, through the `pj.dev.sale-request` cookie the Overview honours in development only; the
+	 * panel reloads a project page to apply it. A write still meets the doors.
+	 */
+	saleRequest: DevSaleRequest;
 	/**
 	 * Simulated Client Trust Score warning (Decision #486 (C)): `warned` restates every project's client
 	 * as below 3.00 from 3 reviews, so Apply on a listing and Accept request in a thread open the
@@ -686,6 +699,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	businessPage: "auto",
 	teamPage: "auto",
 	reviewState: "auto",
+	saleRequest: "auto",
 	clientTrust: "auto",
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
@@ -861,6 +875,16 @@ export const DEV_REVIEW_STATES: ReadonlyArray<DevOption<DevReviewState>> = [
 	{ value: "locked", label: "Locked" },
 	{ value: "withdrawn", label: "Withdrawn" },
 	{ value: "closed", label: "Closed" },
+];
+
+/** Simulated requests to sell in display order (MARKETPLACE SC7). `Auto` defers to the database. */
+export const DEV_SALE_REQUESTS: ReadonlyArray<DevOption<DevSaleRequest>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "can_request", label: "May ask" },
+	{ value: "requested", label: "Asked" },
+	{ value: "granted", label: "Granted" },
+	{ value: "declined", label: "Declined" },
+	{ value: "client_pending", label: "Client" },
 ];
 
 /** The client-trust warning in display order (Decision #486 (C)). `Auto` defers to the database. */
@@ -1449,6 +1473,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devTeamPage;
 		if (next.reviewState !== "auto") root.dataset.devReviewState = next.reviewState;
 		else delete root.dataset.devReviewState;
+		if (next.saleRequest !== "auto") root.dataset.devSaleRequest = next.saleRequest;
+		else delete root.dataset.devSaleRequest;
 		if (next.clientTrust !== "auto") root.dataset.devClientTrust = next.clientTrust;
 		else delete root.dataset.devClientTrust;
 		root.dataset.devMemberRole = next.memberRole;
@@ -1604,6 +1630,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devBusinessPage;
 		delete root.dataset.devTeamPage;
 		delete root.dataset.devReviewState;
+		delete root.dataset.devSaleRequest;
 		delete root.dataset.devClientTrust;
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
@@ -1670,6 +1697,7 @@ function reflect(next: DevOverrides): void {
 	writeBusinessPageCookie(next);
 	writeTeamPageCookie(next);
 	writeReviewStateCookie(next);
+	writeSaleRequestCookie(next);
 	writeDiscoveryCookie(next);
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
@@ -1838,6 +1866,17 @@ function writeReviewStateCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.reviewState !== "auto"
 		? `${REVIEW_STATE_SIM_COOKIE}=${next.reviewState}; path=/; samesite=lax`
 		: `${REVIEW_STATE_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/**
+ * Mirror the request-to-sell axis into the `pj.dev.sale-request` cookie, which the SERVER-rendered
+ * Overview reads before it renders (MARKETPLACE SC7). Written while simulation is on and the axis is not
+ * `auto`; removed otherwise.
+ */
+function writeSaleRequestCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.saleRequest !== "auto"
+		? `${SALE_REQUEST_SIM_COOKIE}=${next.saleRequest}; path=/; samesite=lax`
+		: `${SALE_REQUEST_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Patch a subset of the overrides. */

@@ -1206,6 +1206,29 @@ cap, and past matches and open takedown cases stay readable.
 (§1.2). They are not measured yet, and they must be before launch, because a commission of 6.5% on a
 low-priced product may not cover a large render.
 
+### 16.9 The client's royalty on a project-derived product (Decision #493)
+
+A product minted from a client's grant to sell work made on their project (MARKETPLACE SC7) pays
+the client a royalty on every sale. **Built.**
+
+- **The rate** is the maker's offer, which the client approves or declines and never counters: 0–5000
+  basis points of the seller's net (`catalogue.sale_requests.royalty_bp`; the ceiling is
+  `sale_royalty_max_bp`, 5000, which may only be lowered). It is fixed at the grant.
+- **The cuts, in order** (`finance.place_wallet_order`): the seller's marketplace commission on what
+  was paid (§16.3), floored; then the royalty, floored, from what is left; the seller keeps the rest,
+  so the dust of both cuts is the seller's. A platform-funded promo pays the royalty on the same
+  as-if net the seller is credited on, so the platform funds the client's share too (#493 flag (a)).
+- **Where it goes:** the client party's wallet (the person, or the business), as `product_royalty`,
+  through the pending window beside the seller's credit (§7), recorded on the line
+  (`order_lines.royalty_minor`). A cancel or an upheld product dispute takes both back
+  (`finance.fn_refund_product_line`); a report holds both (FBP DB21).
+- **Conservation:** it moves money between two held parties inside one sale, so it adds no term to
+  `finance.v_conservation_identity`.
+- **Erasure:** a person client whose account is erased is paid nothing from then on, and the seller
+  keeps it (#493 (C); §17).
+- A shared-ownership asset carries no royalty. ⚖️ No grant is recorded until counsel has written its
+  licence (`sale_grants_enabled`, off).
+
 ---
 
 ## 17. Record Retention & Erasure Windows

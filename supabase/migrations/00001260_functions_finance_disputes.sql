@@ -857,6 +857,13 @@ BEGIN
             finance.fn_dispute_review_by(pg_catalog.now()))
     RETURNING id INTO v_id;
     UPDATE finance.pending_releases SET state = 'on_hold', hold_dispute_id = v_id WHERE id = r.id;
+    -- The client's royalty on the line (SC7) is held with it, so an upheld report recovers both.
+    UPDATE finance.pending_releases SET state = 'on_hold', hold_dispute_id = v_id
+     WHERE id = (SELECT pr.id FROM finance.pending_releases pr
+                  WHERE pr.order_id = l.order_id AND pr.reason = 'product_royalty'
+                    AND pr.amount_cents = l.royalty_minor AND pr.state = 'pending' AND pr.recovered_cents = 0
+                  ORDER BY pr.id
+                  LIMIT 1);
     INSERT INTO finance.dispute_messages (dispute_id, sender_user_id, party, body)
     VALUES (v_id, v_uid, 'claimant', v_body)
     RETURNING id INTO v_message;
@@ -945,7 +952,7 @@ BEGIN
     END IF;
     SELECT * INTO l FROM finance.order_lines WHERE id = v_d.order_line_id FOR UPDATE;
     SELECT * INTO r FROM finance.pending_releases
-     WHERE hold_dispute_id = v_d.id AND state = 'on_hold'
+     WHERE hold_dispute_id = v_d.id AND state = 'on_hold' AND reason = 'product_sale'
      ORDER BY id
      LIMIT 1
        FOR UPDATE;
@@ -957,7 +964,7 @@ BEGIN
         RAISE EXCEPTION 'The earnings this report held are no longer on hold; nothing can be ruled on' USING ERRCODE = 'PS409';
     ELSIF p_outcome = 'release' THEN
         v_status := 'resolved_release';
-        UPDATE finance.pending_releases SET state = 'pending' WHERE id = r.id;
+        UPDATE finance.pending_releases SET state = 'pending' WHERE hold_dispute_id = v_d.id AND state = 'on_hold';
         v_settlement := pg_catalog.jsonb_build_object('payee_minor', r.amount_cents, 'fee_minor', l.platform_fee_minor,
             'refund_minor', 0, 'currency', l.currency);
     ELSE

@@ -137,6 +137,10 @@ SELECT r.wallet_id, r.owner_type, r.owner_id, r.currency, r.balance_cents, r.led
 --   losses  lost chargebacks' `unrecovered_cents` · card refunds' `refund_unrecovered_cents` · the
 --           platform-funded share of a promo code (order lines' `promo_discount_minor` where
 --           `promo_funded_by = 'platform'`, Decision #485 (a)): the seller is credited the line before it
+-- A client's royalty on a product sold under their grant (MARKETPLACE SC7, Decision #493 (A)) moves money
+-- between two held parties inside one sale: it is in `held_pending` while it clears and `held_wallets`
+-- after, and the seller's credit is that much less, so it adds no term of its own; a refund recovers it
+-- with the seller's row (finance.fn_refund_product_line).
 -- A new money flow adds its terms here in the same change (FBP §1). Read by finance.fn_check_conservation
 -- and finance.get_ledger_health; service role only.
 CREATE OR REPLACE VIEW finance.v_conservation_identity AS

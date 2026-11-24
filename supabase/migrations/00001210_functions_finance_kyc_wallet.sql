@@ -1895,6 +1895,13 @@ and KYB verification (PK403 kyb_required).';
 --     rate as its `platform_fee_bp`.
 --   * A sale credits the seller through the pending window (finance.fn_wallet_credit_pending, keyed to
 --     the order): it reaches their Available balance `pending_release_days` later (Decision #191).
+--   * A product minted from a client's grant (catalogue.sale_requests, MARKETPLACE SC7, Decision #493
+--     (A)) pays the client a royalty: the grant's `royalty_bp` of what is left after the commission,
+--     floored, the dust to the seller, credited pending to the client party (`product_royalty`, the
+--     person or the business) beside the seller's credit, which is that much less, and recorded on
+--     the line (`royalty_minor`). On a platform-funded promo it is taken from the same as-if net the
+--     seller is paid on (#493 flag (a), ruled). A person client whose account was erased is paid
+--     nothing, and the seller keeps it (#493 (C)).
 --   * A team-owned product credits the team's wallet; distributing it to members is the team's own
 --     Distribute action. Nobody buys their own listing: a solo seller's, or one owned by a team the
 --     buyer is an active member of (products, sessions and cohort seats alike).
@@ -1971,6 +1978,10 @@ DECLARE
     v_fee bigint;
     v_seller_type text;
     v_seller_id uuid;
+    v_grant catalogue.sale_requests;
+    v_royalty bigint;
+    v_royalty_type text;
+    v_royalty_id uuid;
     v_manifest jsonb;
     v_escrow_total bigint := 0;
     v_rev record;
@@ -2899,7 +2910,33 @@ BEGIN
         INSERT INTO finance.wallets (owner_type, owner_id, currency)
         VALUES (v_seller_type, v_seller_id, v_currency)
         ON CONFLICT (owner_type, owner_id, currency) DO NOTHING;
-        PERFORM finance.fn_wallet_credit_pending (v_seller_id, v_seller_type, v_currency, v_paid - v_fee,
+        -- The client's royalty on a product sold under their grant (SC7, #493 (A), (C)).
+        v_royalty := 0;
+        SELECT sr.* INTO v_grant
+          FROM catalogue.products p
+          JOIN catalogue.sale_requests sr ON sr.id = p.sale_request_id
+         WHERE p.id = (v_line.l ->> 'item_id')::uuid AND sr.status = 'approved' AND sr.royalty_bp > 0;
+        IF FOUND AND (v_grant.client_business_id IS NOT NULL OR (v_grant.client_user_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM org.deletion_requests d
+                                WHERE d.user_id = v_grant.client_user_id AND d.scope = 'account'
+                                  AND d.status = 'completed'))) THEN
+            v_royalty := (GREATEST(v_paid - v_fee, 0) * v_grant.royalty_bp) / 10000;
+        END IF;
+        IF v_royalty > 0 THEN
+            IF v_grant.client_business_id IS NOT NULL THEN
+                v_royalty_type := 'business';
+                v_royalty_id := v_grant.client_business_id;
+            ELSE
+                v_royalty_type := finance.fn_person_wallet_type(v_grant.client_user_id);
+                v_royalty_id := v_grant.client_user_id;
+            END IF;
+            INSERT INTO finance.wallets (owner_type, owner_id, currency)
+            VALUES (v_royalty_type, v_royalty_id, v_currency)
+            ON CONFLICT (owner_type, owner_id, currency) DO NOTHING;
+            PERFORM finance.fn_wallet_credit_pending (v_royalty_id, v_royalty_type, v_currency, v_royalty,
+                'product_royalty', 'orders', v_order_id);
+        END IF;
+        PERFORM finance.fn_wallet_credit_pending (v_seller_id, v_seller_type, v_currency, v_paid - v_fee - v_royalty,
             'product_sale', 'orders', v_order_id);
 
         -- What this purchase delivers is the newest version publishing froze (Decision #488, ruling A6),
@@ -2916,13 +2953,13 @@ BEGIN
             CASE WHEN pg_catalog.jsonb_typeof(v_line.l -> 'manifest') = 'array' THEN v_line.l -> 'manifest' ELSE '[]'::jsonb END);
         INSERT INTO finance.order_lines (
             order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
-            currency, promo_discount_minor, promo_funded_by, platform_fee_bp, platform_fee_minor, fulfilment,
-            download_name, download_bytes, download_format, licence, position
+            currency, promo_discount_minor, promo_funded_by, platform_fee_bp, platform_fee_minor, royalty_minor,
+            fulfilment, download_name, download_bytes, download_format, licence, position
         ) VALUES (
             v_order_id, (v_line.l ->> 'id')::uuid, 'digital_product', (v_line.l ->> 'item_id')::uuid,
             v_line.l ->> 'title', 'Instant download', (v_line.l ->> 'quantity')::integer,
             (v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint, v_currency,
-            v_share, v_funder, v_line_bp, v_fee, 'download',
+            v_share, v_funder, v_line_bp, v_fee, v_royalty, 'download',
             CASE WHEN pg_catalog.jsonb_array_length(v_manifest) = 1 THEN v_manifest -> 0 ->> 'name' END,
             (SELECT pg_catalog.sum((x ->> 'bytes')::bigint)
                FROM pg_catalog.jsonb_array_elements(v_manifest) AS x

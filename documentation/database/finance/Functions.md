@@ -1075,7 +1075,14 @@ reached only through the refund doors (probe `order_refund_lifecycle.sql`).
   paid, with the line's tax (Decision #490), into the paying wallet (`order_refund`; the return value
   is that sum), the seller's clearing row (`pending` or `on_hold`)
   closed with `recovered_cents = amount_cents`, the entitlement `refunded`, the line written through
-  `fn_record_line_refund`.
+  `fn_record_line_refund`. A client's royalty row on the line (`product_royalty`, MARKETPLACE SC7) closes with it; an open
+  product report holds both rows.
+- **`finance.place_wallet_order`'s royalty leg** (MARKETPLACE SC7, Decision #493 (A)): a product
+  minted from an approved request (`catalogue.products.sale_request_id`) pays the client party the
+  request's `royalty_bp` of what is left after the commission, floored, through
+  `fn_wallet_credit_pending` (`product_royalty`, keyed to the order, the client's wallet made if
+  missing), and the seller's credit is that much less; `order_lines.royalty_minor` records it. A
+  person client whose account was erased is paid nothing. `finance.fn_is_income_reason` counts it.
 - **`finance.fn_order_paying_wallet(p_order_id, p_currency)` → uuid** (internal): the wallet of the
   order's first `order_payment` debit when it is in the line's currency, else NULL.
 - **`finance.fn_line_sale_release(p_line)` → uuid** (internal, STABLE): the seller's still-pending
