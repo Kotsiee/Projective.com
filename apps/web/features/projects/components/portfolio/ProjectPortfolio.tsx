@@ -55,10 +55,16 @@ export interface ProjectPortfolioProps {
 	loadError?: string | null;
 	/** The page's own address, reloaded by the failure's Try again. */
 	retryHref?: string;
+	/**
+	 * Drawn beside the title: a freelancer's own workload gauge (`WorkloadGauge`, PROJECTS ST4). Absent
+	 * for a viewer who holds no freelancer profile.
+	 */
+	headerAside?: ComponentChildren;
 }
 
 export function ProjectPortfolio(
-	{ items, filter, contextLabel, children, loadError, retryHref }: ProjectPortfolioProps,
+	{ items, filter, contextLabel, children, loadError, retryHref, headerAside }:
+		ProjectPortfolioProps,
 ): JSX.Element {
 	if (items.length === 0 && loadError) {
 		return (
@@ -110,7 +116,7 @@ export function ProjectPortfolio(
 		<div class="prj-port">
 			<PortfolioStyleAnchor />
 
-			<header class="prj-port__head">
+			<header class={headerAside ? "prj-port__head prj-port__head--aside" : "prj-port__head"}>
 				<h1 class="prj-port__title">Projects</h1>
 				<p class="prj-port__meta">
 					{contextLabel}
@@ -120,6 +126,7 @@ export function ProjectPortfolio(
 						{items.length === 1 ? "project" : "projects"}
 					</span>
 				</p>
+				{headerAside ? <div class="prj-port__aside">{headerAside}</div> : null}
 			</header>
 
 			{

@@ -128,6 +128,21 @@ export function canCancelEngagement(
 	return kind === "service" ? role === "client" : isOwnerRole(role);
 }
 
+/**
+ * Whether the lane offers this viewer "Reopen" (EX1, Decision #546): the same client side as
+ * {@link canCancelEngagement}, on a `completed` engagement only. A completed engagement takes no new
+ * escrow, so extending it starts by reopening it (`projects.reopen_project`, which re-checks review
+ * authority).
+ */
+export function canReopenEngagement(
+	kind: EngagementKind,
+	role: ProjectViewerRole,
+	status: ProjectStatus,
+): boolean {
+	if (status !== "completed") return false;
+	return kind === "service" ? role === "client" : isOwnerRole(role);
+}
+
 /** Whether a viewer role satisfies the chosen {@link ProjectInvolvement} axis (`all` always passes). */
 export function matchesInvolvement(
 	role: ProjectViewerRole,

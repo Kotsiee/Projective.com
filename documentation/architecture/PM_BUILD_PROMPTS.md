@@ -849,7 +849,10 @@ STEPS:
      assumes them, and the platform (no auth.uid()) passes fn_assert_business_actor as it does
      today. reviewed_by stays NULL; a ticket_history 'auto_approved' row is
      written; both sides get submission.auto_approved. A refusal (PD409, PF402) skips the row and
-     writes an ops.log_entries row; the sweep never raises.
+     writes an ops.log_entries row; the sweep never raises. After each accepted row, call
+     projects.fn_complete_project(<project>, NULL, 'Approved automatically') (PROJECTS EX1, Decision
+     #546, which landed before GH1): it completes the engagement only when every stage is settled,
+     every ticket has ended and nothing is held, and otherwise does nothing.
   4. Register projects-auto-approve-submissions in 00005060: hourly, on a minute no other job uses.
   5. The reviewer's explorer and the submission card show "Approves automatically on <date>" as
      MetaLine text (tabular-nums) from the DTO's autoApproveAt, which the server computes; the

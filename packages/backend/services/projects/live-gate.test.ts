@@ -164,6 +164,8 @@ const READS: Record<string, ReadCase> = {
 		ProjectBackendService.previewStageFairExit({ projectId: c.slug, stageId: c.stageId }, a),
 	previewProjectCancel: (c, a) =>
 		ProjectBackendService.previewProjectCancel({ projectId: c.slug }, a),
+	previewProjectComplete: (c, a) =>
+		ProjectBackendService.previewProjectComplete({ projectId: c.slug }, a),
 };
 
 /** Every public write of the service — covered by `liveWrite` and its siblings, not by this table. */
@@ -199,6 +201,8 @@ const WRITES = new Set([
 	"approveStage",
 	"cancelStageFairExit",
 	"cancelProject",
+	"completeProject",
+	"reopenProject",
 	"create",
 	"instantiateService",
 	"archiveDraft",
@@ -209,7 +213,11 @@ const WRITES = new Set([
  * The reads with no fixture road at all: they refuse with the gate off as well (the stub store holds
  * no escrow), so the off road proves nothing about them and is not asked.
  */
-const LIVE_ONLY = new Set(["previewStageFairExit", "previewProjectCancel"]);
+const LIVE_ONLY = new Set([
+	"previewStageFairExit",
+	"previewProjectCancel",
+	"previewProjectComplete",
+]);
 
 /**
  * The one read that degrades to a NEUTRAL answer when the database cannot be reached, by design
@@ -411,6 +419,8 @@ const WRITE_CASES: Record<string, (c: Corpus, a: ReadActor) => Promise<ServiceRe
 			a,
 		),
 	cancelProject: (c, a) => ProjectBackendService.cancelProject({ projectId: c.slug } as never, a),
+	completeProject: (c, a) => ProjectBackendService.completeProject({ projectId: c.slug }, a),
+	reopenProject: (c, a) => ProjectBackendService.reopenProject({ projectId: c.slug }, a),
 	create: (_, a) => ProjectBackendService.create({ title: "Draft", currency: "USD" } as never, a),
 	archiveDraft: (c, a) => ProjectBackendService.archiveDraft({ projectId: c.slug }, a),
 };

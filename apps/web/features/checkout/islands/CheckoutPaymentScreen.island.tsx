@@ -227,6 +227,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 			display: initial.display,
 			projectId: initial.session.preselect.projectId,
 			serviceId: initial.session.preselect.serviceId,
+			ticketId: initial.session.preselect.ticketId,
 			payIn: payInParamOf(initial.session.payIn),
 		});
 		applySession({ session: initial.session });
@@ -241,6 +242,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		display: initial.display,
 		projectId: initial.session.preselect.projectId,
 		serviceId: initial.session.preselect.serviceId,
+		ticketId: initial.session.preselect.ticketId,
 		payIn: payInParamOf(initial.session.payIn),
 	});
 

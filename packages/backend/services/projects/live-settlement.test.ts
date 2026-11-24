@@ -3,15 +3,20 @@ import {
 	FairExitPreviewSchema,
 	ProjectCancelledSchema,
 	ProjectCancelPreviewSchema,
+	ProjectCompletedSchema,
+	ProjectCompletePreviewSchema,
 	StageExitedSchema,
 } from "@projective/types/projects";
 import {
 	fairExitMessage,
 	projectCancelledMessage,
+	projectCompletedMessage,
 	settlementRefusal,
 	toFairExitPreview,
 	toProjectCancelled,
 	toProjectCancelPreview,
+	toProjectCompleted,
+	toProjectCompletePreview,
 	toStageExited,
 } from "./live-settlement.ts";
 
@@ -418,5 +423,87 @@ Deno.test("the cancel doors are callable by a signed-in user, the helper by nobo
 		/REVOKE ALL ON FUNCTION projects\.fn_settle_project_escrow \(uuid, jsonb\) FROM PUBLIC, anon, authenticated, service_role;/
 			.test(grants),
 	);
+});
+// #endregion
+
+// #region Completing an engagement (EX1, Decision #546)
+Deno.test("the completion preview maps the function's keys and trusts no unknown reason", () => {
+	const preview = toProjectCompletePreview({
+		kind: "service",
+		completable: true,
+		blocked: null,
+		tickets_to_close: 2,
+		stages_to_close: "1",
+	});
+	assertEquals(preview, {
+		kind: "service",
+		completable: true,
+		blocked: null,
+		ticketsToClose: 2,
+		stagesToClose: 1,
+	});
+	assert(ProjectCompletePreviewSchema.safeParse(preview).success);
+	const held = toProjectCompletePreview({ kind: "project", completable: false, blocked: "held" });
+	assertEquals([held.completable, held.blocked], [false, "held"]);
+	const odd = toProjectCompletePreview({ completable: true, blocked: "something_new" });
+	assertEquals(
+		[odd.completable, odd.blocked],
+		[true, null],
+		"an unknown word is dropped, not shown",
+	);
+	const lying = toProjectCompletePreview({ completable: true, blocked: "dispute" });
+	assertEquals(lying.completable, false, "a named block is never completable");
+});
+
+Deno.test("the completion answer and its notice", () => {
+	const done = toProjectCompleted({
+		kind: "project",
+		status: "completed",
+		tickets_closed: 1,
+		stages_closed: 2,
+	});
+	assert(ProjectCompletedSchema.safeParse(done).success);
+	assertEquals([done.ticketsClosed, done.stagesClosed], [1, 2]);
+	assertStringIncludes(projectCompletedMessage(done), "1 unfunded ticket closed");
+	assertEquals(
+		projectCompletedMessage({ ...done, kind: "service", ticketsClosed: 0 }),
+		"Service completed — its reviews are open.",
+	);
+});
+
+Deno.test("the keys the completion mappers read are the functions' own", () => {
+	const sql = Deno.readTextFileSync(
+		new URL("supabase/migrations/00001100_functions_projects_read_access.sql", REPO),
+	);
+	for (
+		const key of [
+			"'completable'",
+			"'blocked'",
+			"'tickets_to_close'",
+			"'stages_to_close'",
+			"'tickets_closed'",
+			"'stages_closed'",
+		]
+	) {
+		assertStringIncludes(sql, key);
+	}
+});
+
+Deno.test("the completion doors are callable by a signed-in user, the completer by nobody", () => {
+	const grants = Deno.readTextFileSync(
+		new URL("supabase/migrations/00002510_permissions_function_grants.sql", REPO),
+	);
+	for (
+		const door of [
+			"preview_project_complete (uuid)",
+			"can_complete_project (uuid)",
+			"complete_project (uuid, text)",
+			"reopen_project (uuid, text)",
+		]
+	) {
+		assertStringIncludes(grants, `GRANT EXECUTE ON FUNCTION projects.${door} TO authenticated;`);
+	}
+	assert(!/GRANT EXECUTE ON FUNCTION projects\.fn_complete_project/.test(grants));
+	assert(!/GRANT EXECUTE ON FUNCTION projects\.fn_project_complete_blocked/.test(grants));
 });
 // #endregion

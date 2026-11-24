@@ -5,6 +5,9 @@ import type {
 	PaidRevisionRaised,
 	ProjectCancelled,
 	ProjectCancelPreview,
+	ProjectCompleted,
+	ProjectCompletePreview,
+	ProjectReopened,
 	StageApproved,
 	StageExited,
 	SubmissionReviewDecision,
@@ -145,5 +148,28 @@ export const SettlementService = {
 		return postProjects<ProjectCancelled>(`/api/projects/${encodeURIComponent(projectId)}/cancel`, {
 			tiers,
 		});
+	},
+
+	/** What completing an engagement would close, or why it cannot complete now (EX1). */
+	previewProjectComplete(projectId: string): Promise<ProjectsResult<ProjectCompletePreview>> {
+		return getProjects<ProjectCompletePreview>(
+			`/api/projects/${encodeURIComponent(projectId)}/complete`,
+		);
+	},
+
+	/** Complete an engagement: its open, unfunded work closes and its reviews open. */
+	completeProject(projectId: string): Promise<ProjectsResult<ProjectCompleted>> {
+		return postProjects<ProjectCompleted>(
+			`/api/projects/${encodeURIComponent(projectId)}/complete`,
+			{},
+		);
+	},
+
+	/** Reopen a completed engagement to extend it (`completed → active`). */
+	reopenProject(projectId: string): Promise<ProjectsResult<ProjectReopened>> {
+		return postProjects<ProjectReopened>(
+			`/api/projects/${encodeURIComponent(projectId)}/reopen`,
+			{},
+		);
 	},
 };

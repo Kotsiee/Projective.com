@@ -102,6 +102,7 @@ import {
 	type DevProjectType,
 	type DevPromoDismissal,
 	type DevProposalAllowance,
+	type DevWorkload,
 	type DevRevisionAllotment,
 	type DevSaved,
 	type DevSeamRole,
@@ -193,6 +194,7 @@ export type {
 	DevProfileSetup,
 	DevProjectType,
 	DevProposalAllowance,
+	DevWorkload,
 	DevRevisionAllotment,
 	DevSaved,
 	DevServiceSide,
@@ -407,6 +409,12 @@ export interface DevOverrides {
 	 * server facts no control can reach without spending real proposals.
 	 */
 	proposalAllowance: DevProposalAllowance;
+	/**
+	 * The caller's own workload the gauge and the Claim capacity line render (PROJECTS ST4): the real
+	 * read, or room left, under one standard ticket of room, or the cap filled. Its own axis because
+	 * Σ W_i is a server fact no control reaches without claiming real tickets.
+	 */
+	workload: DevWorkload;
 	/**
 	 * The verification stamp the account popover and the profile hero draw (Decision #155). Raising it
 	 * fires the milestone celebration, so the toast and the stamp animation are reachable without a
@@ -718,6 +726,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	accountLifecycle: "auto",
 	dataExport: "auto",
 	proposalAllowance: "auto",
+	workload: "auto",
 	verificationStamp: "auto",
 	trustAdornments: "auto",
 	fundingState: "auto",
@@ -1016,6 +1025,17 @@ export const DEV_PROPOSAL_ALLOWANCES: ReadonlyArray<DevOption<DevProposalAllowan
 	{ value: "weekly", label: "Week spent" },
 	{ value: "team_draft", label: "Team unpublished" },
 	{ value: "team_small", label: "Team < 2" },
+];
+
+/**
+ * Workload options in display order. `At cap` is the value worth having: the over-cap sentence beside
+ * Claim, which no seeded freelancer sits at.
+ */
+export const DEV_WORKLOADS: ReadonlyArray<DevOption<DevWorkload>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "normal", label: "Normal" },
+	{ value: "near", label: "Near cap" },
+	{ value: "at", label: "At cap" },
 ];
 
 /**
@@ -1515,6 +1535,8 @@ function reflect(next: DevOverrides): void {
 		if (next.proposalAllowance !== "auto") {
 			root.dataset.devProposalAllowance = next.proposalAllowance;
 		} else delete root.dataset.devProposalAllowance;
+		if (next.workload !== "auto") root.dataset.devWorkload = next.workload;
+		else delete root.dataset.devWorkload;
 		if (next.verificationStamp !== "auto") {
 			root.dataset.devVerificationStamp = next.verificationStamp;
 		} else delete root.dataset.devVerificationStamp;
@@ -1659,6 +1681,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devAccountLifecycle;
 		delete root.dataset.devDataExport;
 		delete root.dataset.devProposalAllowance;
+		delete root.dataset.devWorkload;
 		delete root.dataset.devVerificationStamp;
 		delete root.dataset.devTrustAdornments;
 		delete root.dataset.devFundingState;

@@ -150,11 +150,16 @@ import { reembedInBackground } from "../search/embedding-sync.ts";
 import {
 	approveStageRow,
 	cancelProjectRow,
+	completeProjectRow,
 	exitStageRow,
 	fairExitMessage,
 	previewFairExitRow,
 	previewProjectCancelRow,
+	previewProjectCompleteRow,
 	projectCancelledMessage,
+	projectCompletedMessage,
+	projectReopenedMessage,
+	reopenProjectRow,
 	requestPaidRevisionRow,
 	reviewSubmissionRow,
 } from "./live-settlement.ts";
@@ -163,12 +168,18 @@ import type {
 	ApproveStage,
 	CancelProject,
 	CancelStageFairExit,
+	CompleteProject,
 	FairExitPreview,
 	PaidRevisionRaised,
 	PreviewProjectCancel,
+	PreviewProjectComplete,
 	PreviewStageFairExit,
 	ProjectCancelled,
 	ProjectCancelPreview,
+	ProjectCompleted,
+	ProjectCompletePreview,
+	ProjectReopened,
+	ReopenProject,
 	RequestPaidRevision,
 	ReviewSubmission,
 	StageApproved,
@@ -227,10 +238,10 @@ import {
 	hireInvitationRefusal,
 	inviteActionFor,
 	invitesForScope,
+	isStaleSetupWrite,
 	memberStagePicture,
 	NO_REMOVAL_IMPACT,
 	providerScopedPage,
-	isStaleSetupWrite,
 	isTaskProject,
 	reconcileSetup,
 	requestsForScope,
@@ -4054,6 +4065,91 @@ export class ProjectBackendService {
 			clientRefundedCents: 0,
 			ticketsCancelled: 0,
 		}, { message: "Project cancelled (simulated — no escrow moved)." });
+	}
+
+	/**
+	 * What completing an engagement would close (`projects.preview_project_complete`, EX1, Decision
+	 * #546): its open, unfunded tickets and its open stages, or why it cannot complete now. Review
+	 * authority only, refused 403 by the function for anyone else. Live only, like
+	 * {@link previewProjectCancel}: the stub store holds no escrow to say whether anything is held.
+	 */
+	static async previewProjectComplete(
+		input: PreviewProjectComplete,
+		actor: ReadActor,
+	): Promise<ServiceResult<ProjectCompletePreview>> {
+		const denied = settlementDenied<ProjectCompletePreview>(actor, "complete a project");
+		if (denied) return denied;
+		if (!isProjectsBackendLive() || !canReadLive(actor)) {
+			return fail(503, { message: "Completing a project needs the live backend." });
+		}
+		try {
+			const outcome = await previewProjectCompleteRow(actor, input);
+			if (outcome === null) return noSuchProject(input.projectId);
+			if ("refusal" in outcome) return refused<ProjectCompletePreview>(outcome.refusal);
+			return ok(outcome.data);
+		} catch (error) {
+			liveFailed("previewProjectComplete", error);
+			return fail(503, { message: "What completing closes could not be read — please try again." });
+		}
+	}
+
+	/**
+	 * Complete an engagement (`projects.complete_project`): refused while anything is held or reserved
+	 * (409 `settle_first`) or a dispute stands (409 `dispute_open`); otherwise its open, unfunded tickets
+	 * and its open stages close and it reads `completed`, which opens its reviews. Review authority only.
+	 */
+	static async completeProject(
+		input: CompleteProject,
+		actor: ReadActor,
+	): Promise<ServiceResult<ProjectCompleted>> {
+		const denied = settlementDenied<ProjectCompleted>(actor, "complete a project");
+		if (denied) return denied;
+
+		const live = await liveWrite<ProjectCompleted>(
+			"completeProject",
+			actor,
+			input.projectId,
+			projectCompletedMessage,
+			(a) => completeProjectRow(a, input),
+			"project",
+		);
+		if (live) return live;
+
+		const stub = findProjectDetail(input.projectId);
+		if (!stub) return noSuchProject(input.projectId);
+		return ok(
+			{ status: "completed", kind: stub.kind, ticketsClosed: 0, stagesClosed: 0 },
+			{ message: "Project completed (simulated — nothing was written)." },
+		);
+	}
+
+	/**
+	 * Reopen a completed engagement to extend it (`projects.reopen_project`, `completed → active`, EX1,
+	 * Decision #546). Review authority only; anything but a completed engagement is a 409.
+	 */
+	static async reopenProject(
+		input: ReopenProject,
+		actor: ReadActor,
+	): Promise<ServiceResult<ProjectReopened>> {
+		const denied = settlementDenied<ProjectReopened>(actor, "reopen a project");
+		if (denied) return denied;
+
+		const live = await liveWrite<ProjectReopened>(
+			"reopenProject",
+			actor,
+			input.projectId,
+			projectReopenedMessage,
+			(a) => reopenProjectRow(a, input),
+			"project",
+		);
+		if (live) return live;
+
+		const stub = findProjectDetail(input.projectId);
+		if (!stub) return noSuchProject(input.projectId);
+		return ok(
+			{ status: "active", kind: stub.kind },
+			{ message: "Project reopened (simulated — nothing was written)." },
+		);
 	}
 	// #endregion
 

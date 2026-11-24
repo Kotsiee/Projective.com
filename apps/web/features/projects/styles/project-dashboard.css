@@ -995,9 +995,10 @@ a.pjd-track__name:hover {
  * Cancel's desktop home is the lane's kebab; the shell removes the lane below `--bp-md`
  * (`.ui-middle-nav__lane`, `max-width: 767px`), so Cancel renders here at exactly those widths — moved,
  * never shown twice (Decision #467). A button dressed as the band's links; the lane island opens the
- * confirmation.
+ * confirmation. Complete and Reopen (`.pjd-head__moved`, EX1, Decision #546) move here the same way.
  */
-.pjd-head__cancel {
+.pjd-head__cancel,
+.pjd-head__moved {
 	display: none;
 	padding: 0;
 	border: 0;
@@ -1010,23 +1011,27 @@ a.pjd-track__name:hover {
 		transform var(--dur-fast) var(--ease-standard);
 }
 
-.pjd-head__cancel:active {
+.pjd-head__cancel:active,
+.pjd-head__moved:active {
 	transform: scale(var(--btn-press-scale));
 }
 
 @media (max-width: 767px) {
-	.pjd-head__cancel {
+	.pjd-head__cancel,
+	.pjd-head__moved {
 		display: inline-flex;
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.pjd-head__cancel:active {
+	.pjd-head__cancel:active,
+	.pjd-head__moved:active {
 		transform: none;
 	}
 }
 
-:root[data-motion="reduced"] .pjd-head__cancel:active {
+:root[data-motion="reduced"] .pjd-head__cancel:active,
+:root[data-motion="reduced"] .pjd-head__moved:active {
 	transform: none;
 }
 /* #endregion */

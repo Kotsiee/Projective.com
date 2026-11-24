@@ -115,6 +115,8 @@ export async function resolveProjectAccess(
 			: sim.access
 			? sim.access === "owner"
 			: detail.viewerCanConfigure,
+		canComplete: detail.viewerCanComplete === true &&
+			(sim.access ?? side?.access ?? "owner") === "owner",
 		service,
 		discussion: discussionOf(detail) !== null,
 		personal: detail.personal === true,

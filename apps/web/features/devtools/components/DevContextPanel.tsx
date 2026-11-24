@@ -54,6 +54,7 @@ import {
 	DEV_PROJECT_TYPES,
 	DEV_PROMO_DISMISSALS,
 	DEV_PROPOSAL_ALLOWANCES,
+	DEV_WORKLOADS,
 	DEV_CLIENT_TRUST,
 	DEV_REVIEW_STATES,
 	DEV_SALE_REQUESTS,
@@ -1189,6 +1190,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.payoutReadiness}
 						disabled={!o.enabled}
 						onChange={(payoutReadiness) => patchDevContext({ payoutReadiness })}
+					/>
+				</Field>
+
+				{
+					/* The caller's own workload — the gauge and the capacity line beside Claim. Σ W_i is a
+				    server fact, so this substitutes the figures; check_ticket_capacity still refuses from
+				    the real load. */
+				}
+				<Field label="Workload" hint="gauge · Claim capacity line">
+					<Segment
+						name="Workload"
+						options={DEV_WORKLOADS}
+						value={o.workload}
+						disabled={!o.enabled}
+						onChange={(workload) => patchDevContext({ workload })}
 					/>
 				</Field>
 

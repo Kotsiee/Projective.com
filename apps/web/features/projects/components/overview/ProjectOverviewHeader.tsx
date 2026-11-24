@@ -39,16 +39,57 @@ export interface ProjectOverviewHeaderProps {
 	 * engagement that has not ended, else `null`. Rendered below `--bp-md` only, where the lane is not.
 	 */
 	cancelLabel?: string | null;
+	/**
+	 * Complete's label when the server says the viewer may complete the engagement now, and Reopen's on
+	 * a completed one (EX1, Decision #546), else `null`. Below `--bp-md` only, like Cancel; the lane
+	 * island opens their confirmations (`data-project-complete`, `data-project-reopen`).
+	 */
+	completeLabel?: string | null;
+	reopenLabel?: string | null;
 }
 
 export function ProjectOverviewHeader(props: ProjectOverviewHeaderProps): JSX.Element {
-	const { slug, title, owner, canPreview, cancelLabel = null } = props;
+	const {
+		slug,
+		title,
+		owner,
+		canPreview,
+		cancelLabel = null,
+		completeLabel = null,
+		reopenLabel = null,
+	} = props;
 	return (
 		<header class="pjd-head">
 			<div class="pjd-head__id">
 				<span class="pjd-head__title">{title || "Untitled project"}</span>
 			</div>
 			<div class="pjd-head__end">
+				{completeLabel && (
+					<button
+						type="button"
+						class="pjd-head__link pjd-head__moved"
+						data-project-complete=""
+						aria-haspopup="dialog"
+					>
+						<span class="pjd-head__icon" aria-hidden="true">
+							<Icon name="check" size="sm" />
+						</span>
+						<span>{completeLabel}</span>
+					</button>
+				)}
+				{reopenLabel && (
+					<button
+						type="button"
+						class="pjd-head__link pjd-head__moved"
+						data-project-reopen=""
+						aria-haspopup="dialog"
+					>
+						<span class="pjd-head__icon" aria-hidden="true">
+							<Icon name="rotate-ccw" size="sm" />
+						</span>
+						<span>{reopenLabel}</span>
+					</button>
+				)}
 				{cancelLabel && (
 					<button
 						type="button"

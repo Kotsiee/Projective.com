@@ -711,6 +711,12 @@ For both Projects and Services, the "End" is non-binding. If a client and freela
 continue, new tickets (for Pipelines) or new sessions (for Services) can be added to the existing
 engagement, maintaining the historical data and communication thread.
 
+An engagement **completes** on its own when its last stage settles: every stage paid or cancelled,
+every ticket ended, nothing held or reserved. Its client may also complete it while it holds no
+money, which closes the work nobody funded. Completing it opens its reviews and tells the other side.
+A completed engagement takes no new money, so continuing it starts with the client's **Reopen**,
+which returns it to active with its history and its thread intact (Decision #546).
+
 ---
 
 ### The Entity View — the public evaluation & purchase surface
@@ -1717,7 +1723,7 @@ protected; a timestamp once unlocked), read via `projects.is_protected_phase`.
    — is masked by the same rules (`comms.tg_mask_dm_message_pii`), and so is an invitation's intro.
    Neither side can opt out of it, because the contract the filter protects is not theirs alone.
 2. **The "Projective Unlock" (`handover_unlocked_at` set)**: When the **final escrow releases**
-   (`projects.approve_stage` settles the last stage) — or the project is force-completed — the
+   (`projects.approve_stage` settles the last stage) — or its client completes it — the
    filter switches off for that project's threads and the full, unrestricted file library unlocks,
    allowing the "Contact Handover."
 
@@ -2750,7 +2756,13 @@ the freelancer:
    (`org.freelancer_profiles.max_workload_intensity`, falling back to the
    `global_workload_cap_default` platform parameter). At the global limit they cannot claim new
    tickets anywhere until they submit current work. The live figure feeds the **Workload Capacity
-   Gauge** via `projects.get_workload_capacity`.
+   Gauge**, which a freelancer sees in their `/projects` header and beside every Claim ("This ticket
+   adds 1.5 · you'd be at 3.5 of 5"). When a claim would pass either cap, Claim says
+   `check_ticket_capacity`'s own sentence before the click and is disabled; the door still decides.
+   The gauge reads `projects.get_my_workload_capacity()`, which takes no argument and answers only
+   about the caller, with their held $W_i$ per stage for the Project Hard Cap. The two-argument
+   `projects.get_workload_capacity` answers for any user and is never granted to a client (Decision
+   #550).
 
 $W_i$ is a sum over **tickets held**, not seats. Accepting an application or an invitation seats the
 freelancer on the stage's roster and hands them no ticket, so it adds nothing to their $W_i$ and is

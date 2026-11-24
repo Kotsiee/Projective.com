@@ -59,6 +59,8 @@ import { BoardService } from "../core/BoardService.ts";
 import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeletons.tsx";
 import { SearchIcon } from "../components/file-glyphs.tsx";
 import { TicketCard } from "../components/TicketCard.tsx";
+import { claimCapacityLine } from "../core/workload-copy.ts";
+import { effectiveWorkload, ensureWorkload, refreshWorkload } from "../core/workload-state.ts";
 import { BoardColumnHeader } from "../components/BoardColumnHeader.tsx";
 import { BoardEmptyColumn } from "../components/BoardEmptyColumn.tsx";
 import { DeleteTicketDialog } from "../components/DeleteTicketDialog.tsx";
@@ -115,7 +117,7 @@ import {
 } from "@web/features/checkout/core/basket-state.ts";
 import { buyNowOpen, requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
-import { InlineNotice } from "@projective/ui/feedback";
+import { InlineNotice, Tooltip } from "@projective/ui/feedback";
 import { fundingRollup, prepaidRefundNotice, previewFunding } from "../core/funding-ui.ts";
 import { PaymentsService } from "@web/features/payments/core/PaymentsService.ts";
 import { FundStageDialog } from "@web/features/payments/components/FundStageDialog.tsx";
@@ -727,6 +729,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		if (res.ok && res.data) {
 			const saved = res.data.card;
 			cards.value = cards.value.map((c) => (c.id === saved.id ? saved : c));
+			void refreshWorkload();
 			toast(res.message ?? "Ticket claimed.");
 			return;
 		}
@@ -818,25 +821,40 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		toast(res.message ?? "Routing saved.");
 	}
 
+	// The provider side's own load, read once, for the capacity line beside every Claim (PROJECTS ST4).
+	useSignalEffect(() => {
+		if (!access.value.isClient) ensureWorkload();
+	});
+
 	/**
 	 * A card's action slot: Claim (Accept, on a ticket pinned to the viewer), or on a manual stage's open
 	 * ticket the line that says who routes it — the client, or for the client who it is waiting on.
+	 * Claim carries what it would do to the viewer's own load; past a cap it opens the ticket instead,
+	 * where check_ticket_capacity's sentence stands beside a disabled Claim (PROJECTS ST4).
 	 */
 	function itemAction(c: BoardCard): JSX.Element | null {
 		if (viewerCanClaim(c, stages.value, providerStageIds, access.value.isClient)) {
 			const verb = c.pinnedToViewer ? "Accept" : "Claim";
-			return (
+			const load = claimCapacityLine(
+				effectiveWorkload.value,
+				c.workload,
+				c.stageId,
+				stageOfCard(c)?.maxConcurrentIntensity ?? null,
+			);
+			const refusal = load && !load.verdict.allowed ? load.text : null;
+			const button = (
 				<Button
 					variant="outlined"
 					size="sm"
 					rounded
 					label={verb}
-					aria-label={`${verb} ${c.title}`}
+					aria-label={refusal ? `${verb} ${c.title}: ${refusal}` : `${verb} ${c.title}`}
 					loading={claimingId.value === c.id}
 					disabled={claimingId.value !== null && claimingId.value !== c.id}
-					onClick={() => void claimTicket(c)}
+					onClick={() => (refusal ? openDetail(c) : void claimTicket(c))}
 				/>
 			);
+			return load ? <Tooltip content={load.text}>{button}</Tooltip> : button;
 		}
 		if (c.claimed || stageOfCard(c)?.assignmentMode !== "manual") return null;
 		if (access.value.isClient) {

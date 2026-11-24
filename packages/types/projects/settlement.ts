@@ -307,3 +307,77 @@ export const ProjectCancelledSchema = z.object({
 });
 export type ProjectCancelled = z.infer<typeof ProjectCancelledSchema>;
 // #endregion
+
+// #region Completing and reopening an engagement (EX1, Decision #546)
+/**
+ * Complete an engagement through `projects.complete_project`, the client's door. Nothing may be held
+ * or reserved; the tickets still open (none funded) and the stages still open close, then the
+ * engagement reads `completed` and its reviews open. An engagement whose last money settles completes
+ * on its own (`projects.fn_complete_project`), so this door is for one with unfunded work left over.
+ */
+export const CompleteProjectSchema = z.object({
+	projectId: ProjectRef,
+	reason: z.string().trim().max(400).optional(),
+});
+export type CompleteProject = z.infer<typeof CompleteProjectSchema>;
+
+/** Read what completing an engagement closes. The address is the whole request. */
+export const PreviewProjectCompleteSchema = z.object({ projectId: ProjectRef });
+export type PreviewProjectComplete = z.infer<typeof PreviewProjectCompleteSchema>;
+
+/**
+ * Why an engagement cannot be completed now (`projects.fn_project_complete_blocked`): it has `ended`;
+ * it is a `draft`; it is a session engagement (`sessions`), whose seats complete on their own; one of
+ * the cancel's reasons (`dispute`, `sittings`, `settling`); or money is still `held` or reserved, which
+ * settles first (approve the stage, or cancel).
+ */
+export const ProjectCompleteBlocked = z.enum([
+	"ended",
+	"draft",
+	"sessions",
+	"dispute",
+	"sittings",
+	"settling",
+	"held",
+]);
+export type ProjectCompleteBlocked = z.infer<typeof ProjectCompleteBlocked>;
+
+/** The completion's read (`projects.preview_project_complete`): what closes, or why it cannot. */
+export const ProjectCompletePreviewSchema = z.object({
+	kind: EngagementKind,
+	completable: z.boolean(),
+	blocked: ProjectCompleteBlocked.nullable(),
+	/** Open tickets (none funded) that close as `cancelled`. */
+	ticketsToClose: z.number().int().min(0),
+	/** Open stages that close: `paid` when work on them was paid, else `cancelled`. */
+	stagesToClose: z.number().int().min(0),
+});
+export type ProjectCompletePreview = z.infer<typeof ProjectCompletePreviewSchema>;
+
+/** What completing closed. */
+export const ProjectCompletedSchema = z.object({
+	status: z.literal("completed"),
+	kind: EngagementKind,
+	ticketsClosed: z.number().int().min(0),
+	stagesClosed: z.number().int().min(0),
+});
+export type ProjectCompleted = z.infer<typeof ProjectCompletedSchema>;
+
+/**
+ * Reopen a completed engagement to extend it (`projects.reopen_project`; PRODUCT_SPEC §Extension
+ * Logic): `completed → active`, the client's, recorded in the status history. A completed engagement
+ * takes no new escrow, so extending it starts here.
+ */
+export const ReopenProjectSchema = z.object({
+	projectId: ProjectRef,
+	reason: z.string().trim().max(400).optional(),
+});
+export type ReopenProject = z.infer<typeof ReopenProjectSchema>;
+
+/** The reopened engagement's new state. */
+export const ProjectReopenedSchema = z.object({
+	status: z.literal("active"),
+	kind: EngagementKind,
+});
+export type ProjectReopened = z.infer<typeof ProjectReopenedSchema>;
+// #endregion

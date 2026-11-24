@@ -18,6 +18,10 @@ import { CreateStagePopover, type StageAnchor } from "../components/CreateStageP
 import { stagesCreatedEpoch } from "../core/stage-events.ts";
 import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
 import { CancelProjectDialog } from "../components/CancelProjectDialog.tsx";
+import { CompleteProjectDialog } from "../components/CompleteProjectDialog.tsx";
+import { ReopenProjectDialog } from "../components/ReopenProjectDialog.tsx";
+import { projectCompleteCopy } from "../core/project-complete-model.ts";
+import { SettlementService } from "../core/SettlementService.ts";
 import {
 	effectiveServiceRole,
 	isSettleFirstRefusal,
@@ -66,6 +70,7 @@ import { resolveBoardAccess } from "../core/board-access.ts";
 import {
 	canArchiveEngagement,
 	canCancelEngagement,
+	canReopenEngagement,
 	QUIET_NAV_ACTIVITY,
 } from "../types/projects-types.ts";
 import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.ts";
@@ -187,6 +192,10 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	const archiving = useSignal<boolean>(false);
 	// The kebab's Cancel confirmation — a brief or a bought service (Decisions #456, #467).
 	const cancelOpen = useSignal<boolean>(false);
+	// The kebab's Complete and Reopen confirmations (EX1, Decision #546).
+	const completeOpen = useSignal<boolean>(false);
+	const reopenOpen = useSignal<boolean>(false);
+	const reopening = useSignal<boolean>(false);
 	/** Mounted only when no other island has already put a stack up (they share one signal). */
 	const toastMounted = useSignal<boolean>(false);
 	const toast = useToast();
@@ -302,6 +311,16 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	useEffect(() => {
 		const onClick = (event: MouseEvent) => {
 			const target = event.target as Element | null;
+			if (target?.closest?.("[data-project-complete]")) {
+				event.preventDefault();
+				completeOpen.value = true;
+				return;
+			}
+			if (target?.closest?.("[data-project-reopen]")) {
+				event.preventDefault();
+				reopenOpen.value = true;
+				return;
+			}
 			if (!target?.closest?.("[data-project-cancel]")) return;
 			event.preventDefault();
 			cancelOpen.value = true;
@@ -432,6 +451,22 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		// Open and Share resolve inside the header; Archive and Cancel write, after a confirm.
 		if (action === "archive") archiveOpen.value = true;
 		if (action === "cancel") cancelOpen.value = true;
+		if (action === "complete") completeOpen.value = true;
+		if (action === "reopen") reopenOpen.value = true;
+	}
+
+	/** Reopen the completed engagement (EX1), then reload so every view shows it active again. */
+	async function reopenProject(): Promise<void> {
+		if (reopening.value || !detail) return;
+		reopening.value = true;
+		const res = await SettlementService.reopenProject(detail.slug);
+		reopening.value = false;
+		if (!res.ok) {
+			logger.error("Project reopen failed", { slug: detail.slug, message: res.message });
+			notify("danger", res.message ?? "That did not reopen — please try again.");
+			return;
+		}
+		globalThis.location.reload();
 	}
 
 	/** Push a toast, mounting a stack first when the page has none (they all render one signal). */
@@ -563,6 +598,14 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 						view.status,
 					)}
 					cancelLabel={projectCancelCopy(view.kind).commit}
+					canComplete={view.viewerCanComplete === true}
+					canReopen={canReopenEngagement(
+						view.kind,
+						effectiveServiceRole(view.kind, view.viewerRole, seam.value?.serviceSide),
+						view.status,
+					)}
+					completeLabel={projectCompleteCopy(view.kind).commit}
+					reopenLabel={projectCompleteCopy(view.kind).reopen}
 					onMenuAction={onMenuAction}
 				/>
 
@@ -683,6 +726,21 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 				title={view.title}
 				kind={view.kind}
 				onCancelled={() => globalThis.location.reload()}
+			/>
+
+			<CompleteProjectDialog
+				open={completeOpen}
+				projectId={view.slug}
+				title={view.title}
+				kind={view.kind}
+				onCompleted={() => globalThis.location.reload()}
+			/>
+
+			<ReopenProjectDialog
+				visible={reopenOpen}
+				title={view.title}
+				kind={view.kind}
+				onAccept={() => void reopenProject()}
 			/>
 
 			{toastMounted.value ? <Toast position="bottom-center" /> : null}

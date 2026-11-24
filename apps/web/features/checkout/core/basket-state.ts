@@ -46,6 +46,8 @@ export const displayCurrency = signal<string>("GBP");
 export const preselectProjectId = signal<string | null>(null);
 /** The `?service_id=` narrowing a checkout was opened with. */
 export const preselectServiceId = signal<string | null>(null);
+/** `?ticket_id=` narrowing (Decision #430): one ticket's stage lines. */
+export const preselectTicketId = signal<string | null>(null);
 /** The `?pay_in=` currency the payment step was opened with (Decision #435); `null` pays in the billing one. */
 export const payInCurrency = signal<string | null>(null);
 
@@ -57,6 +59,7 @@ export function currentCheckoutContext(): CheckoutContext {
 		display: displayCurrency.value,
 		projectId: preselectProjectId.value,
 		serviceId: preselectServiceId.value,
+		ticketId: preselectTicketId.value,
 		payIn: payInCurrency.value,
 	};
 }
@@ -71,6 +74,7 @@ export function seedCheckoutContext(seed: {
 	display: string;
 	projectId?: string | null;
 	serviceId?: string | null;
+	ticketId?: string | null;
 	payIn?: string | null;
 }): void {
 	activeBasketId.value = seed.basketId;
@@ -78,6 +82,7 @@ export function seedCheckoutContext(seed: {
 	displayCurrency.value = seed.display;
 	preselectProjectId.value = seed.projectId ?? null;
 	preselectServiceId.value = seed.serviceId ?? null;
+	preselectTicketId.value = seed.ticketId ?? null;
 	payInCurrency.value = seed.payIn ?? null;
 	if (seed.basketId) writeStored("local", LocalKeys.BASKET_LAST, seed.basketId);
 }

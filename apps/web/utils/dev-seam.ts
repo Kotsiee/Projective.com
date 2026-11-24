@@ -639,6 +639,16 @@ export type DevProposalAllowance =
 	| "team_draft"
 	| "team_small";
 
+/**
+ * The caller's own workload against their global cap (PROJECTS ST4) — the Workload Capacity Gauge and
+ * the capacity line beside Claim. `auto` shows the real read; `normal` leaves room, `near` leaves less
+ * than one standard ticket of room, and `at` fills the cap, so the over-cap copy shows before a click.
+ * Client-side only: `projects.check_ticket_capacity` still refuses from the real load.
+ *
+ * Its own axis because Σ W_i is a server fact no control reaches without claiming real tickets.
+ */
+export type DevWorkload = "auto" | "normal" | "near" | "at";
+
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
 export const DEV_SEAM_EVENT = "pj:devcontext";
 
@@ -704,6 +714,8 @@ export interface DevSeamState {
 	dataExport?: DevDataExport;
 	/** The simulated proposal allowance. Optional like `walletAurora`; absent reads as `auto`. */
 	proposalAllowance?: DevProposalAllowance;
+	/** The simulated workload. Optional like `walletAurora`; absent reads as `auto`. */
+	workload?: DevWorkload;
 	/** The simulated verification stamp. Optional like `walletAurora`; absent reads as `auto`. */
 	verificationStamp?: DevVerificationStamp;
 	/** The simulated trust signals. Optional like `walletAurora`; absent reads as `auto`. */
@@ -918,6 +930,7 @@ const PROPOSAL_ALLOWANCES: readonly DevProposalAllowance[] = [
 	"team_draft",
 	"team_small",
 ];
+const WORKLOADS: readonly DevWorkload[] = ["auto", "normal", "near", "at"];
 const VERIFICATION_STAMPS: readonly DevVerificationStamp[] = [
 	"auto",
 	"none",
@@ -1123,6 +1136,7 @@ export function readDevSeam(): DevSeamState | null {
 		accountLifecycle: coerce(ds.devAccountLifecycle, ACCOUNT_LIFECYCLES, "auto"),
 		dataExport: coerce(ds.devDataExport, DATA_EXPORTS, "auto"),
 		proposalAllowance: coerce(ds.devProposalAllowance, PROPOSAL_ALLOWANCES, "auto"),
+		workload: coerce(ds.devWorkload, WORKLOADS, "auto"),
 		verificationStamp: coerce(ds.devVerificationStamp, VERIFICATION_STAMPS, "auto"),
 		trustAdornments: coerce(ds.devTrustAdornments, TRUST_ADORNMENTS, "auto"),
 		fundingState: coerce(ds.devFundingState, FUNDING_STATES, "auto"),

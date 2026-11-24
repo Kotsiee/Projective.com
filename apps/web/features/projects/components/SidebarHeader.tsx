@@ -6,9 +6,11 @@ import { LaneBackLink } from "@projective/ui/navigation";
 import {
 	ArchiveIcon,
 	BookmarkIcon,
+	CheckIcon,
 	CloseIcon,
 	ExternalLinkIcon,
 	KebabIcon,
+	RevisionIcon,
 	ShareIcon,
 } from "./glyphs.tsx";
 
@@ -17,12 +19,13 @@ import {
  * `/projects` feed, and, right-aligned inline with it, a Star toggle + a kebab (`…`) menu carrying the
  * SAME actions as the feed cards (Open in new tab · Share · Cancel · Archive project): Cancel for the
  * client side of an engagement that has not ended — a brief's owner or a bought service's client
- * (Decisions #456, #467). Kept dumb — the island owns the star state and routes the archive and the
+ * (Decisions #456, #467). The lane adds Complete, when the server says the engagement may complete
+ * now, and Reopen on a completed one (EX1, Decision #546). Kept dumb — the island owns the star state and routes the archive and the
  * cancellation; open/share resolve client-side here.
  */
 
 /** The kebab menu actions — the feed card's `CardMenuAction` vocabulary. */
-export type SidebarMenuAction = "open" | "share" | "archive" | "cancel";
+export type SidebarMenuAction = "open" | "share" | "complete" | "reopen" | "archive" | "cancel";
 
 interface MenuItem {
 	action: SidebarMenuAction;
@@ -39,6 +42,8 @@ interface MenuItem {
 const MENU_ITEMS: readonly MenuItem[] = [
 	{ action: "open", label: "Open in new tab", icon: ExternalLinkIcon },
 	{ action: "share", label: "Share", icon: ShareIcon },
+	{ action: "complete", label: "Complete project", icon: CheckIcon },
+	{ action: "reopen", label: "Reopen project", icon: RevisionIcon },
 	{ action: "cancel", label: "Cancel project", icon: CloseIcon, danger: true },
 	{ action: "archive", label: "Archive project", icon: ArchiveIcon, danger: true },
 ];
@@ -58,21 +63,53 @@ export interface SidebarHeaderProps {
 	canCancel?: boolean;
 	/** Cancel's label — "Cancel project" on a brief, "Cancel service" on a bought service. */
 	cancelLabel?: string;
+	/** Whether the server says this viewer may complete the engagement now (`viewerCanComplete`). */
+	canComplete?: boolean;
+	/** Whether the viewer is the client side of a completed engagement, and so may reopen it. */
+	canReopen?: boolean;
+	/** Complete's and Reopen's labels, worded for the engagement's kind. */
+	completeLabel?: string;
+	reopenLabel?: string;
 	/** Archive and Cancel are routed to the island, which confirms and writes. */
 	onMenuAction?: (action: SidebarMenuAction) => void;
 }
 
 export function SidebarHeader(
-	{ slug, title, starred, onToggleStar, canArchive, canCancel = false, cancelLabel, onMenuAction }:
-		SidebarHeaderProps,
+	{
+		slug,
+		title,
+		starred,
+		onToggleStar,
+		canArchive,
+		canCancel = false,
+		cancelLabel,
+		canComplete = false,
+		canReopen = false,
+		completeLabel,
+		reopenLabel,
+		onMenuAction,
+	}: SidebarHeaderProps,
 ): JSX.Element {
 	const menuOpen = useSignal(false);
 	const href = `/projects/${slug}`;
 	const offered = MENU_ITEMS
-		.filter((mi) =>
-			mi.action === "archive" ? canArchive : mi.action === "cancel" ? canCancel : true
-		)
-		.map((mi) => mi.action === "cancel" && cancelLabel ? { ...mi, label: cancelLabel } : mi);
+		.filter((mi) => {
+			if (mi.action === "archive") return canArchive;
+			if (mi.action === "cancel") return canCancel;
+			if (mi.action === "complete") return canComplete;
+			if (mi.action === "reopen") return canReopen;
+			return true;
+		})
+		.map((mi) => {
+			const label = mi.action === "cancel"
+				? cancelLabel
+				: mi.action === "complete"
+				? completeLabel
+				: mi.action === "reopen"
+				? reopenLabel
+				: undefined;
+			return label ? { ...mi, label } : mi;
+		});
 
 	function handleMenu(action: SidebarMenuAction): void {
 		menuOpen.value = false;

@@ -262,6 +262,13 @@ export const ProjectDetailSchema = z.object({
 	 */
 	viewerCanConfigure: z.boolean(),
 	/**
+	 * Whether the acting user may complete the engagement now — `projects.can_complete_project`:
+	 * review authority, and nothing that blocks completing (money held or reserved, a dispute, an
+	 * ended or draft engagement; EX1, Decision #546). State-dependent, so the server answers it; the
+	 * lane offers Complete only when it is true. Absent reads as `false`.
+	 */
+	viewerCanComplete: z.boolean().optional(),
+	/**
 	 * How the acting user stands toward the engagement — owner, participant or prospect — and so what
 	 * its root address does for them (Decision #144, {@link landingFor}). Derived server-side beside
 	 * {@link viewerIsClient}: `viewerRole` cannot answer it, because a stranger on a public engagement

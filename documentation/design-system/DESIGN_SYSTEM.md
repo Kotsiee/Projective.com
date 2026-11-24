@@ -3605,6 +3605,24 @@ lane island) — moved, never shown beside the lane's; and an archive refused be
 (`settle_first`) opens it in the archive's place. Styles: `styles/project-cancel.css`. Not a
 conversion-lane surface (§3 gate 10 governs entity-view routes only).
 
+**`CompleteProjectDialog` and `ReopenProjectDialog` (`features/projects/components/`, EX1, Decision
+#546).** The client's Complete confirmation, built on `Dialog` (32rem), and the Reopen confirm, built
+on `ConfirmDialog`. `CompleteProjectDialog` props: `open: Signal<boolean>`, `projectId`, `title`,
+`kind`, `onCompleted(result, message)`; it reads `GET /api/projects/:id/complete` on open (a superseded
+answer is dropped), states what completing does (it closes and opens the reviews; nothing is held, so
+no money moves; reopen to extend), then a meta line of what closes (unfunded tickets · open stages ·
+"its reviews open"). The commit **Complete project** / **Complete service** is the core workflow fill
+(`Button`'s default), never the financial pill, because no money moves; the escape hatch **Not yet**
+holds initial focus. A blocked engagement shows an info `Message` in the server's reason
+(`core/project-complete-model.ts` words it) and no commit; a failed read a danger `Message` with a
+tier-4 **Try again**. `ReopenProjectDialog` props: `visible`, `title`, `kind`, `onAccept`; accept
+**Reopen project** / **Reopen service**, reject **Keep it completed**. Entry points: the lane kebab
+(`SidebarHeader`'s **Complete …**, only when the detail read's `viewerCanComplete` is true, and
+**Reopen …** on a completed engagement for its client side, `canReopenEngagement`); below
+`--bp-md`, the Overview header band's buttons (`ProjectOverviewHeader`, `.pjd-head__moved`,
+`data-project-complete` / `data-project-reopen`, answered by the still-mounted lane island) — moved,
+never shown beside the lane's. Styles: `styles/project-complete.css`. Not a conversion-lane surface.
+
 **`SittingRoomLink` (`features/projects/components/`, Decision #383, rulings R2 and R7).** A host's
 way out when a paid sitting has no room: a sentence, a link to Settings, the warning that a link they
 add cannot record attendance so the payout is held, then `InputText` (https only, checked by

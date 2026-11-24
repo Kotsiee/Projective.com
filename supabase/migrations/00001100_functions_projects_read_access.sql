@@ -1178,7 +1178,9 @@ $$;
 -- conditions"):
 --   • draft|on_hold -> active     : project must have a title and >= 1 stage defined.
 --   • active|on_hold -> completed : every ticket must be terminal (completed/cancelled) AND no
---                                   escrow may still be held (funds must be settled first).
+--                                   escrow may still be held (funds must be settled first); written
+--                                   by projects.fn_complete_project, which also asks that every live
+--                                   stage is paid or cancelled (EX1, Decision #546).
 --   • active -> on_hold           : always allowed by the owner.
 --   • draft|active|on_hold -> cancelled|archived : allowed by review authority once nothing is held
 --                                         or reserved (Decision #467, every project kind); money
@@ -1318,6 +1320,17 @@ BEGIN
         RAISE EXCEPTION 'Unsupported target status %.', p_to_status USING ERRCODE = 'check_violation';
     END IF;
 
+    -- Completing goes through projects.fn_complete_project (EX1, Decision #546), the one writer of
+    -- `completed`: it also asks that every live stage is settled, and it tells the other side.
+    IF p_to_status = 'completed'::project_status THEN
+        IF NOT projects.fn_complete_project(p_project_id, v_actor, p_reason, true) THEN
+            RAISE EXCEPTION 'Cannot complete: a stage is still open. Approve or cancel it, or use Complete project.'
+                USING ERRCODE = 'check_violation';
+        END IF;
+        RAISE LOG '[PROJECT_LIFECYCLE_RPC] set_project_status ok project=% % -> completed', p_project_id, v_from;
+        RETURN p_to_status;
+    END IF;
+
     -- ----- Apply -----
     -- `archived_at` is written in the SAME statement as the status, never a second one.
     -- `ck_projects_archived_at` is bidirectional — it asserts `(status = 'archived') = (archived_at
@@ -1372,6 +1385,383 @@ BEGIN
     RETURN p_to_status;
 END;
 $$;
+
+-- #region 3b. Completing and reopening an engagement (EX1, Decision #546)
+-- An engagement completes in two ways, both through projects.fn_complete_project: on its own, inside the
+-- door that settles its last money (projects.approve_stage on its last stage; PM-GH1's auto-approve once
+-- it lands), and by its client (projects.complete_project), which closes the open work nobody funded
+-- first. `completed` is terminal for money: the ended-engagement escrow guard refuses a completed
+-- engagement, and extending one starts with projects.reopen_project (`completed → active`).
+
+-- Why the client cannot complete an engagement right now, or NULL when they can. In the order the door
+-- checks: `ended` (completed, cancelled or archived); `draft` (nothing has started); `sessions` (a session
+-- engagement, whose seats complete on their own, USER_FLOWS MK-58); the cancel's money reasons, `dispute`,
+-- `sittings` and `settling` (projects.fn_project_cancel_blocked); and `held`, any escrow still held or
+-- reserved, which settles first by approving its stage or by cancelling. Read by the preview and by
+-- projects.can_complete_project, and re-checked by the door under the project lock. Internal.
+CREATE OR REPLACE FUNCTION projects.fn_project_complete_blocked(p_project_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_status public.project_status;
+    v_format public.project_format;
+    v_cancel text;
+BEGIN
+    SELECT p.status, p.format INTO v_status, v_format FROM projects.projects p WHERE p.id = p_project_id;
+    IF v_status IS NULL OR v_status IN ('completed'::public.project_status, 'cancelled'::public.project_status,
+                                        'archived'::public.project_status) THEN
+        RETURN 'ended';
+    END IF;
+    IF v_status = 'draft'::public.project_status THEN
+        RETURN 'draft';
+    END IF;
+    IF v_format = 'session'::public.project_format THEN
+        RETURN 'sessions';
+    END IF;
+    v_cancel := projects.fn_project_cancel_blocked(p_project_id);
+    IF v_cancel IS NOT NULL THEN
+        RETURN v_cancel;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM finance.escrows e
+          JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+         WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved')
+    ) THEN
+        RETURN 'held';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+-- Complete an engagement whose work and money have all settled, or do nothing. Settled means: it is
+-- active or on hold, every ticket is completed or cancelled, nothing is held or reserved (the checks
+-- set_project_status has always made), and every live stage is paid or cancelled. The last condition is
+-- what keeps a brief whose later stages are not staffed yet from completing, and unlocking its handover,
+-- when its first stage's last ticket is accepted. Locks the project row, then writes the status, its
+-- history and its activity. `p_actor` is who settled it; with no one acting (an automatic release) the
+-- client person stands in, as for a service's activation, and the activity says `automatic`. The
+-- handover unlocks with the status (trg_project_handover_on_complete). The other side is told with
+-- `project.completed` unless `p_notify` is false: approve_stage's handover notice already says the
+-- engagement is complete. Returns whether it completed. Internal: every caller has its own authority.
+CREATE OR REPLACE FUNCTION projects.fn_complete_project(
+    p_project_id uuid,
+    p_actor uuid,
+    p_reason text,
+    p_notify boolean DEFAULT true
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_project record;
+    v_actor uuid;
+    v_reason text := COALESCE(NULLIF(left(btrim(COALESCE(p_reason, '')), 400), ''), 'Every stage settled');
+    v_noun text;
+    a record;
+BEGIN
+    SELECT p.id, p.status, p.title, p.slug, p.owner_user_id, p.client_user_id
+      INTO v_project
+      FROM projects.projects p
+     WHERE p.id = p_project_id
+       FOR UPDATE;
+    IF v_project.id IS NULL
+        OR v_project.status NOT IN ('active'::public.project_status, 'on_hold'::public.project_status) THEN
+        RETURN false;
+    END IF;
+    IF EXISTS (SELECT 1 FROM projects.tickets t
+                WHERE t.project_id = p_project_id
+                  AND t.status NOT IN ('completed'::public.ticket_status, 'cancelled'::public.ticket_status))
+        OR EXISTS (SELECT 1 FROM finance.escrows e
+                     JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+                    WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved'))
+        OR EXISTS (SELECT 1 FROM projects.project_stages ps
+                    WHERE ps.project_id = p_project_id AND ps.archived_at IS NULL
+                      AND ps.status NOT IN ('paid'::public.stage_status, 'cancelled'::public.stage_status)) THEN
+        RETURN false;
+    END IF;
+
+    v_actor := COALESCE(p_actor, v_project.client_user_id, v_project.owner_user_id);
+    UPDATE projects.projects SET status = 'completed'::public.project_status, updated_at = now()
+     WHERE id = p_project_id;
+    INSERT INTO projects.project_status_history (project_id, actor_user_id, from_status, to_status, reason)
+    VALUES (p_project_id, v_actor, v_project.status, 'completed'::public.project_status, v_reason);
+    INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+    VALUES (
+        p_project_id, v_actor, 'project_status_changed',
+        jsonb_build_object('from', v_project.status, 'to', 'completed', 'reason', v_reason,
+                           'automatic', p_actor IS NULL),
+        'projects.projects', p_project_id
+    );
+
+    IF p_notify THEN
+        v_noun := CASE WHEN v_project.client_user_id IS NOT NULL THEN 'service' ELSE 'project' END;
+        FOR a IN
+            SELECT DISTINCT u.uid
+              FROM (
+                  SELECT sa.freelancer_profile_id AS uid
+                    FROM projects.stage_assignments sa
+                    JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+                   WHERE ps.project_id = p_project_id AND sa.assignee_type = 'freelancer'
+                     AND sa.status IN ('assigned', 'accepted', 'completed')
+                  UNION
+                  SELECT tm.user_id
+                    FROM projects.stage_assignments sa
+                    JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+                    JOIN org.team_members tm ON tm.team_id = sa.team_id AND tm.status = 'active'
+                   WHERE ps.project_id = p_project_id AND sa.assignee_type = 'team'
+                     AND sa.status IN ('assigned', 'accepted', 'completed')
+                  UNION
+                  SELECT v_project.owner_user_id
+                  UNION
+                  SELECT v_project.client_user_id
+              ) u
+             WHERE u.uid IS NOT NULL AND u.uid IS DISTINCT FROM p_actor
+             ORDER BY u.uid
+        LOOP
+            PERFORM comms.fn_notify(
+                a.uid, 'project.completed', initcap(v_noun) || ' completed',
+                format('"%s" is complete. Its reviews are open, and its rooms and files stay where they are.',
+                       COALESCE(v_project.title, 'A ' || v_noun || ' you work on')),
+                'projects', p_project_id,
+                jsonb_build_object('automatic', p_actor IS NULL),
+                p_actor, 'project', p_project_id, NULL, '/projects/' || v_project.slug
+            );
+        END LOOP;
+    END IF;
+    RETURN true;
+END;
+$$;
+
+-- Whether the caller may complete the engagement right now: review authority, and nothing blocking it
+-- (projects.fn_project_complete_blocked). The project detail read's `viewerCanComplete`, so the lane
+-- offers Complete only when the door would take it. False for anyone signed out or without authority.
+CREATE OR REPLACE FUNCTION projects.can_complete_project(p_project_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    RETURN auth.uid() IS NOT NULL
+       AND projects.can_review_project(p_project_id)
+       AND projects.fn_project_complete_blocked(p_project_id) IS NULL;
+END;
+$$;
+
+-- What completing an engagement closes, read without moving anything: the open tickets (none funded,
+-- or it would be blocked) that close as `cancelled`, and the open stages that close. `completable` is
+-- false, with `blocked` saying why. Review authority, like the door; anyone else `42501`. `kind` is
+-- `service` for a bought service and `project` otherwise.
+CREATE OR REPLACE FUNCTION projects.preview_project_complete(p_project_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_status public.project_status;
+    v_client uuid;
+    v_blocked text;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to complete a project.' USING ERRCODE = '42501';
+    END IF;
+    SELECT p.status, p.client_user_id INTO v_status, v_client FROM projects.projects p WHERE p.id = p_project_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+    END IF;
+    IF NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the client may complete this project.' USING ERRCODE = '42501';
+    END IF;
+    v_blocked := projects.fn_project_complete_blocked(p_project_id);
+    RETURN jsonb_build_object(
+        'project_id', p_project_id,
+        'kind', CASE WHEN v_client IS NOT NULL THEN 'service' ELSE 'project' END,
+        'status', v_status,
+        'completable', v_blocked IS NULL,
+        'blocked', v_blocked,
+        'tickets_to_close', (SELECT count(*) FROM projects.tickets tk
+                              WHERE tk.project_id = p_project_id
+                                AND tk.status NOT IN ('completed'::public.ticket_status,
+                                                      'cancelled'::public.ticket_status)),
+        'stages_to_close', (SELECT count(*) FROM projects.project_stages ps
+                             WHERE ps.project_id = p_project_id AND ps.archived_at IS NULL
+                               AND ps.status NOT IN ('paid'::public.stage_status, 'cancelled'::public.stage_status))
+    );
+END;
+$$;
+
+-- The client completes an engagement (EX1): review authority only (the client person, or a member of the
+-- paying client business); a provider and anyone else `42501`. The project row is locked, then the
+-- blocks are re-checked: an open dispute refuses through finance.fn_assert_no_open_dispute (`PD409`),
+-- held or reserved money and a session's sitting escrow with `PF409` (HINT `held` / `sittings`, the
+-- surface offers Approve or Cancel instead), an ended, draft, session or mid-payment engagement `55000`.
+-- Then every open ticket (none funded) closes as `cancelled`, with its history; every open stage closes,
+-- `paid` when work on it was paid (a released escrow) and `cancelled` when none was; a revision round
+-- awaiting payment is moot; and projects.fn_complete_project completes it and tells the other side.
+-- Nothing is deleted, and no money moves.
+CREATE OR REPLACE FUNCTION projects.complete_project(p_project_id uuid, p_reason text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_project record;
+    v_blocked text;
+    v_noun text;
+    t record;
+    v_tickets integer := 0;
+    v_stages integer := 0;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to complete a project.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the client may complete this project.' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT p.id, p.client_user_id INTO v_project FROM projects.projects p WHERE p.id = p_project_id FOR UPDATE;
+    IF v_project.id IS NULL THEN
+        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+    END IF;
+    v_noun := CASE WHEN v_project.client_user_id IS NOT NULL THEN 'service' ELSE 'project' END;
+
+    v_blocked := projects.fn_project_complete_blocked(p_project_id);
+    IF v_blocked = 'dispute' THEN
+        FOR t IN
+            SELECT e.id FROM finance.escrows e
+              JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+             WHERE ps.project_id = p_project_id AND e.status IN ('held', 'reserved')
+             ORDER BY e.id
+        LOOP
+            PERFORM finance.fn_assert_no_open_dispute(t.id);
+        END LOOP;
+    ELSIF v_blocked IN ('held', 'sittings') THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PF409',
+            MESSAGE = CASE WHEN v_blocked = 'sittings'
+                           THEN format('This %s holds escrow for booked sittings, which settle sitting by sitting.', v_noun)
+                           ELSE format('This %1$s still holds escrow. Approve the stages holding it, or cancel the %1$s, and it completes once the money settles.', v_noun) END,
+            DETAIL = jsonb_build_object('reason', v_blocked)::text,
+            HINT = v_blocked;
+    ELSIF v_blocked IS NOT NULL THEN
+        RAISE EXCEPTION '%', CASE v_blocked
+                WHEN 'ended' THEN format('This %s has already ended.', v_noun)
+                WHEN 'draft' THEN format('This %s has not started yet, so there is nothing to complete.', v_noun)
+                WHEN 'sessions' THEN 'A session engagement completes seat by seat as its sittings settle.'
+                ELSE 'A stage is being paid out right now. Try again once that settles.' END
+            USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
+
+    FOR t IN
+        SELECT tk.id, tk.status, tk.current_stage_id
+          FROM projects.tickets tk
+         WHERE tk.project_id = p_project_id
+           AND tk.status NOT IN ('completed'::public.ticket_status, 'cancelled'::public.ticket_status)
+         ORDER BY tk.id
+           FOR UPDATE
+    LOOP
+        UPDATE projects.tickets SET status = 'cancelled'::public.ticket_status, hidden_until = NULL WHERE id = t.id;
+        INSERT INTO projects.ticket_history
+            (ticket_id, actor_id, action_type, previous_stage_id, new_stage_id, previous_status, new_status, changes)
+        VALUES
+            (t.id, auth.uid(), 'status_changed', t.current_stage_id, t.current_stage_id, t.status,
+             'cancelled'::public.ticket_status,
+             jsonb_build_object('from_status', t.status, 'to_status', 'cancelled', 'reason', 'project_completed'));
+        v_tickets := v_tickets + 1;
+    END LOOP;
+
+    UPDATE projects.project_stages ps
+       SET status = CASE WHEN EXISTS (SELECT 1 FROM finance.escrows e
+                                       WHERE e.project_stage_id = ps.id AND e.status = 'released')
+                         THEN 'paid'::public.stage_status ELSE 'cancelled'::public.stage_status END,
+           completed_at = CASE WHEN EXISTS (SELECT 1 FROM finance.escrows e
+                                             WHERE e.project_stage_id = ps.id AND e.status = 'released')
+                               THEN COALESCE(ps.completed_at, now()) ELSE ps.completed_at END
+     WHERE ps.project_id = p_project_id AND ps.archived_at IS NULL
+       AND ps.status NOT IN ('paid'::public.stage_status, 'cancelled'::public.stage_status);
+    GET DIAGNOSTICS v_stages = ROW_COUNT;
+
+    UPDATE projects.stage_revision_requests r
+       SET status = 'cancelled'
+      FROM projects.project_stages ps
+     WHERE ps.id = r.project_stage_id AND ps.project_id = p_project_id AND r.status = 'awaiting_payment';
+
+    IF NOT projects.fn_complete_project(
+        p_project_id, auth.uid(),
+        COALESCE(NULLIF(left(btrim(COALESCE(p_reason, '')), 400), ''), 'Completed by the client'), true
+    ) THEN
+        RAISE EXCEPTION 'This % could not be completed. Try again.', v_noun
+            USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
+
+    RETURN jsonb_build_object(
+        'project_id', p_project_id,
+        'kind', v_noun,
+        'status', 'completed',
+        'tickets_closed', v_tickets,
+        'stages_closed', v_stages
+    );
+END;
+$$;
+
+-- The client reopens a completed engagement to extend it (PRODUCT_SPEC §Extension Logic): `completed →
+-- active`, recorded in the status history and the activity with the reason. Review authority only; a
+-- provider and anyone else `42501`; anything but a completed engagement `55000`. Seats, stages,
+-- reviews and the lifted protected phase stay as they are; new work is added and funded as on any
+-- active engagement. Its review offer closes until it completes again (reviews.fn_engagement_targets
+-- reads a completed engagement), and reopens then from the new completion.
+CREATE OR REPLACE FUNCTION projects.reopen_project(p_project_id uuid, p_reason text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_project record;
+    v_noun text;
+    v_reason text := COALESCE(NULLIF(left(btrim(COALESCE(p_reason, '')), 400), ''), 'Reopened by the client to extend it');
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to reopen a project.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the client may reopen this project.' USING ERRCODE = '42501';
+    END IF;
+    SELECT p.id, p.status, p.client_user_id INTO v_project
+      FROM projects.projects p WHERE p.id = p_project_id FOR UPDATE;
+    IF v_project.id IS NULL THEN
+        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+    END IF;
+    v_noun := CASE WHEN v_project.client_user_id IS NOT NULL THEN 'service' ELSE 'project' END;
+    IF v_project.status <> 'completed'::public.project_status THEN
+        RAISE EXCEPTION 'Only a completed % can be reopened (it is %).', v_noun, v_project.status
+            USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
+
+    UPDATE projects.projects SET status = 'active'::public.project_status, updated_at = now()
+     WHERE id = p_project_id;
+    INSERT INTO projects.project_status_history (project_id, actor_user_id, from_status, to_status, reason)
+    VALUES (p_project_id, auth.uid(), 'completed'::public.project_status, 'active'::public.project_status, v_reason);
+    INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+    VALUES (
+        p_project_id, auth.uid(), 'project_status_changed',
+        jsonb_build_object('from', 'completed', 'to', 'active', 'reason', v_reason),
+        'projects.projects', p_project_id
+    );
+    RETURN jsonb_build_object('project_id', p_project_id, 'kind', v_noun, 'status', 'active');
+END;
+$$;
+-- #endregion
 
 -- =============================================================================================
 -- 0122_project_card_summary.sql

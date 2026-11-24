@@ -450,6 +450,30 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects, org, security, auth;
 
+-- projects.get_my_workload_capacity() -> jsonb: the caller's own gauge figures (PROJECTS ST4). The one
+-- client door to the reader above, which answers for any user it is handed and so stays ungranted:
+-- this one takes no argument and passes auth.uid(), so it can never answer about anyone else. It adds
+-- `stages`, the caller's held W_i per stage, so Claim can say before the click that a stage's hard cap
+-- (which the board already shows) would be passed. Signed out it answers NULL.
+CREATE OR REPLACE FUNCTION projects.get_my_workload_capacity()
+RETURNS jsonb AS $$
+    SELECT projects.get_workload_capacity(auth.uid(), NULL)
+        || pg_catalog.jsonb_build_object('stages', COALESCE((
+            SELECT pg_catalog.jsonb_agg(
+                pg_catalog.jsonb_build_object('stage_id', s.stage_id, 'current', s.current)
+                ORDER BY s.stage_id)
+            FROM (
+                SELECT t.current_stage_id AS stage_id, pg_catalog.sum(t.workload_intensity) AS current
+                FROM projects.tickets t
+                WHERE t.current_assignee_id = auth.uid()
+                  AND t.current_stage_id IS NOT NULL
+                  AND t.status IN ('claimed'::public.ticket_status, 'in_progress'::public.ticket_status,
+                                   'in_review'::public.ticket_status, 'reported_hidden'::public.ticket_status)
+                GROUP BY t.current_stage_id
+            ) s
+        ), '[]'::jsonb));
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '';
+
 -- #endregion
 
 -- #region 5. Shared assignment core (capacity-enforcing) + reworked self-claim

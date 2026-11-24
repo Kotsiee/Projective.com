@@ -163,6 +163,7 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 		display,
 		projectId: session.preselect.projectId,
 		serviceId: session.preselect.serviceId,
+		ticketId: session.preselect.ticketId,
 	});
 	// #endregion
 

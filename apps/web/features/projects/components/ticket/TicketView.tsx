@@ -72,6 +72,8 @@ import { inclusionRefusal, pipelineLocks, removalRefusal } from "../../core/stag
 import { TicketMetaBar } from "./TicketMetaBar.tsx";
 import { TicketActivityPanel } from "./TicketActivityPanel.tsx";
 import { TicketFooter } from "./TicketFooter.tsx";
+import { claimCapacityLine } from "../../core/workload-copy.ts";
+import { effectiveWorkload, ensureWorkload } from "../../core/workload-state.ts";
 import { StageInspector } from "./StageInspector.tsx";
 import { TicketDetailsTab } from "./tabs/TicketDetailsTab.tsx";
 import { TicketStagesTab } from "./tabs/TicketStagesTab.tsx";
@@ -628,13 +630,30 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 		);
 	}
 
+	// What claiming would do to the freelancer's own load, before the click (PROJECTS ST4): the door's
+	// own sentence, and Claim disabled, when a cap would be passed. check_ticket_capacity still decides.
+	const claimOffered = Boolean(props.onClaim) && !creating && !dirty;
+	useEffect(() => {
+		if (claimOffered) ensureWorkload();
+	}, [claimOffered]);
+	const claimLoad = claimOffered
+		? claimCapacityLine(
+			effectiveWorkload.value,
+			server.workload,
+			server.stageId,
+			stages.find((s) => s.id === server.stageId)?.maxConcurrentIntensity ?? null,
+		)
+		: null;
+
 	function footerActions(): JSX.Element | null {
-		const claim = props.onClaim && !creating && !dirty
+		const claim = claimOffered
 			? (
 				<Button
 					variant="filled"
 					size="sm"
 					loading={props.claimBusy}
+					disabled={claimLoad?.verdict.allowed === false}
+					aria-describedby={claimLoad ? `${uid}-claim-load` : undefined}
 					onClick={() => props.onClaim?.(server)}
 				>
 					{server.pinnedToViewer ? "Accept ticket" : "Claim ticket"}
@@ -1053,6 +1072,18 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 						onOpenTab={(t) => (tab.value = t)}
 						status={creating || dirty
 							? <p class="tkv__gate" role="status">{gate.message}</p>
+							: claimLoad
+							? (
+								<p
+									id={`${uid}-claim-load`}
+									class={claimLoad.verdict.allowed
+										? "tkv__gate tkv__gate--load"
+										: "tkv__gate tkv__gate--load tkv__gate--over"}
+									role="status"
+								>
+									{claimLoad.text}
+								</p>
+							)
 							: funding && current !== "finances"
 							? fundingLine("tkv__fund")
 							: null}

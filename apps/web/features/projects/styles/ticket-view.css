@@ -1457,6 +1457,16 @@
 	color: var(--text-secondary);
 }
 
+/* The capacity line beside Claim (PROJECTS ST4): its figures change, and when a cap would be passed
+   it carries check_ticket_capacity's own sentence in the body ink. */
+.tkv__gate--load {
+	font-variant-numeric: tabular-nums;
+}
+
+.tkv__gate--over {
+	color: var(--on-surface);
+}
+
 .tkv-metric {
 	display: inline-flex;
 	align-items: center;

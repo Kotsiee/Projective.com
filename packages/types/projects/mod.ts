@@ -30,5 +30,6 @@ export * from "./hire.ts";
 export * from "./apply.ts";
 export * from "./invite-links.ts";
 export * from "./nav-activity.ts";
+export * from "./workload.ts";
 export * from "./sessions.ts";
 export * from "./rows.ts";

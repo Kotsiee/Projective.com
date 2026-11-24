@@ -110,6 +110,11 @@ export interface State {
 		 * authority, except on a service, whose seller alone configures it (Decision #427).
 		 */
 		canConfigure: boolean;
+		/**
+		 * Whether the server says the viewer may complete the engagement now (`viewerCanComplete`, EX1,
+		 * Decision #546). A simulated access other than the owner's withholds it.
+		 */
+		canComplete: boolean;
 		/** Whether the engagement runs on a freelancer's service (`kind === "service"`). */
 		service: boolean;
 		/** Whether the engagement has its discussion room (`discussionOf`), so a band may link it. */

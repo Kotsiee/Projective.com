@@ -95,6 +95,13 @@ GRANT EXECUTE ON FUNCTION projects.fn_can_fund_project (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION projects.fn_assert_business_actor (uuid, org.workspace_capability, boolean)
 FROM PUBLIC, anon, authenticated;
 
+-- The workload gauge (ST4): the caller's own Σ W_i against their cap. The self-reader takes no
+-- argument and passes auth.uid(). The two-argument reader answers for any user, so no client role
+-- may call it. Not `anon`: a signed-out caller holds no load.
+REVOKE ALL ON FUNCTION projects.get_workload_capacity (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.get_my_workload_capacity () FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_my_workload_capacity () TO authenticated;
+
 -- The doors the app calls with the user's JWT that are not granted elsewhere. Each resolves the caller
 -- from auth.uid() and checks its own authority (review, staffing or project access).
 GRANT EXECUTE ON FUNCTION projects.create_stage (uuid, text, jsonb, text, bigint, jsonb) TO authenticated;

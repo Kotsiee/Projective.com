@@ -523,9 +523,21 @@ grant. Unknown ticket → `P0001`; then `has_project_access` → `42501` — the
 project_current}` from live claimed / in-progress / in-review / reported-hidden intensity (a suspended
 ticket is still held — audit X4, DL W7). `STABLE`, `SECURITY DEFINER`,
 `search_path = public, projects, org, security, auth`; `EXECUTE`: `service_role` only — no client
-grant. Returns `NULL` for a `NULL` user. **No caller check** — moot for clients, because no client
-role holds `EXECUTE`; `p_user_id` is caller-supplied, so a caller can read any user's workload
-figures.
+grant, and `00002510` revokes it from `PUBLIC`, `anon` and `authenticated` by name. Returns `NULL`
+for a `NULL` user. **No caller check**: `p_user_id` is caller-supplied, so it answers for any user.
+That is why no client role may call it; the gauge's client door is the self-reader below.
+
+### `projects.get_my_workload_capacity() → jsonb`
+
+`00001140` §4 (PROJECTS ST4, Decision #550). The Workload Capacity Gauge's one client door: takes no
+argument and returns `get_workload_capacity(auth.uid(), NULL)` plus `stages`, an array of
+`{stage_id, current}` with the caller's held $W_i$ in each stage (the same four statuses), so Claim
+can say before the click that a stage's `max_concurrent_intensity` would be passed. `project_current`
+is always `NULL`. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = ''`; `EXECUTE`:
+`authenticated` (not `anon`). Signed in with no subject, it returns `NULL`. Zod:
+`WorkloadCapacityRowSchema` (`@projective/types/projects`, checked by `workload.contract.test.ts`);
+read by `ProjectWorkloadService.mine` → `GET /api/projects/workload`. Probe:
+`supabase/probes/workload_capacity_self.sql`.
 
 ---
 
@@ -1798,7 +1810,9 @@ splits, and `fundable`. `SECURITY DEFINER`, `search_path = public, projects, fin
 The review-authority state machine (Decision #163). `draft|on_hold → active` needs a title and ≥1
 non-archived stage;
 `active|on_hold →
-completed` needs every ticket terminal **and** no escrow still held; terminal
+completed` needs every ticket terminal **and** no escrow still held, and is written by
+`projects.fn_complete_project` (§ Completing and reopening an engagement), which also asks that every
+live stage is paid or cancelled (`23514` "a stage is still open" otherwise); terminal
 states are immutable. Writes `projects.project_status_history` and `projects.project_activity`.
 Publishing (`draft → active`) settles the staged seats: every `stage_assignments` row at
 `pending_funding` becomes `assigned` and an `open` stage holding one becomes `assigned` — except on a
@@ -1894,7 +1908,9 @@ the ledger; the conservation of each settlement is asserted in `brief_cancel.sql
   `fn_guard_escrow_on_ended_service` / `trg_escrows_ended_service_guard`), `BEFORE INSERT ON
   finance.escrows WHEN (NEW.status IN ('held', 'reserved') AND NEW.project_stage_id IS NOT NULL)`
   (`00001830`). Refuses (`55000`) new escrow on an engagement of any kind that is `cancelled` or
-  `archived` (#467). A `completed` one stays fundable (PRODUCT_SPEC §Extension Logic).
+  `archived` (#467), or `completed` ("Reopen it to fund more work on it", EX1, Decision #546): a
+  completed engagement is extended by `projects.reopen_project` first (PRODUCT_SPEC §Extension
+  Logic).
   `SECURITY DEFINER`, `search_path = public, projects`.
 
 Probes: `supabase/probes/brief_cancel.sql` (a brief: archive and cancel refused while money is held,
@@ -1968,13 +1984,64 @@ escrow is held (`55000`, Decision #456); `archived` is reachable from any non-te
 itself terminal. `fn_project_shape_lock` is `SECURITY DEFINER`, `search_path = public,
 projects`, bound in `00001820`; `EXECUTE` moot (a trigger).
 
+### Completing and reopening an engagement (EX1, Decision #546)
+
+`completed` is written by one function and reached two ways (owner ruling 1): on its own, inside the
+door that settles an engagement's last money, and by the client. It is terminal for money: the
+ended-engagement escrow guard refuses a completed engagement, and extending one starts with
+`reopen_project` (owner ruling 2). In `00001100` §3b, except the two callers in `00001150`; grants in
+`00002510`. No money moves in any of them. Probe: `supabase/probes/project_completion.sql`.
+
+- `projects.fn_project_complete_blocked(p_project_id uuid) → text` — internal, no grant. Why the
+  client cannot complete now, or NULL, in the order the door checks: `ended` (completed / cancelled /
+  archived), `draft`, `sessions` (a session engagement, whose seats complete on their own, MK-58),
+  then `fn_project_cancel_blocked`'s `dispute` · `sittings` · `settling`, then `held` (any escrow
+  `held` or `reserved`). `STABLE`, `SECURITY DEFINER`, `search_path = ''`.
+- `projects.fn_complete_project(p_project_id uuid, p_actor uuid, p_reason text, p_notify boolean
+  DEFAULT true) → boolean` — internal, no grant: **the one writer of `completed`**. Locks the project
+  row and completes it only when it is `active` or `on_hold`, every ticket is `completed` or
+  `cancelled`, nothing is `held` or `reserved`, and every live stage is `paid` or `cancelled` (the last
+  keeps a brief whose later stages are not staffed yet from completing, and unlocking its handover,
+  when an early stage's last ticket is accepted); otherwise it returns false and writes nothing.
+  Writes the status, a `project_status_history` row and a `project_status_changed` activity row
+  (`automatic: true` when no one acted, with the client person standing in as the actor, as in
+  `fn_activate_funded_service`), and — unless `p_notify` is false — `project.completed` to every live
+  or completed seat holder (team members included), the owner and the client person, the actor
+  excepted. Callers: `projects.approve_stage` once no stage is unsettled (quiet, `p_notify` false,
+  because its `project_handover` notice already says the engagement is complete), `complete_project`,
+  `set_project_status(…, 'completed')`, and PM-GH1's auto-approve once it lands. `SECURITY DEFINER`,
+  `search_path = ''`.
+- `projects.can_complete_project(p_project_id uuid) → boolean` — `authenticated`. Signed in,
+  `can_review_project`, and `fn_project_complete_blocked` NULL: the project detail read's
+  `viewerCanComplete`, so the lane offers Complete only when the door would take it. `STABLE`,
+  `SECURITY DEFINER`, `search_path = ''`.
+- `projects.preview_project_complete(p_project_id uuid) → jsonb` — `authenticated`; signed in, then
+  `can_review_project` (`42501`, a provider included). Moves nothing. `{ project_id, kind, status,
+  completable, blocked, tickets_to_close, stages_to_close }`.
+- `projects.complete_project(p_project_id uuid, p_reason text DEFAULT NULL) → jsonb` —
+  `authenticated`. Signed in and `can_review_project` (`42501`), then the project row's lock and the
+  blocks re-checked: `dispute` through `finance.fn_assert_no_open_dispute` (`PD409`), `held` and
+  `sittings` `PF409` (HINT `held` / `sittings`, DETAIL `{ reason }`), `ended` · `draft` · `sessions` ·
+  `settling` `55000`. Then every open ticket closes as `cancelled` (a `ticket_history` row, reason
+  `project_completed`), every open live stage closes `paid` when it has a released escrow and
+  `cancelled` otherwise, a revision round `awaiting_payment` is `cancelled`, and `fn_complete_project`
+  completes it (reason `p_reason`, else "Completed by the client"). `{ project_id, kind, status:
+  'completed', tickets_closed, stages_closed }`. `SECURITY DEFINER`, `search_path = ''`.
+- `projects.reopen_project(p_project_id uuid, p_reason text DEFAULT NULL) → jsonb` — `authenticated`.
+  Signed in and `can_review_project` (`42501`); anything but `completed` `55000`. `completed →
+  active`, with a history row and an activity row (reason `p_reason`, else "Reopened by the client to
+  extend it"). Seats, stages, reviews and `handover_unlocked_at` stay. Its review offer closes while it
+  is active (`reviews.fn_engagement_targets` reads a completed engagement) and opens again from the
+  next completion. `{ project_id, kind, status: 'active' }`. `SECURITY DEFINER`, `search_path = ''`.
+
 ### `projects.tg_project_handover_on_complete() → trigger`
 
 `trg_project_handover_on_complete` — `BEFORE UPDATE OF status ON projects.projects WHEN (NEW.status =
 'completed')`, bound in `00001820`, defined in `00001150`. Stamps `handover_unlocked_at = now()` if
-unset, so a project completed through `set_project_status` lifts the protected phase just as
-`approve_stage`'s last release does. `SECURITY INVOKER`, no `search_path`; `EXECUTE` moot (a
-trigger).
+unset, so a project completed by `projects.fn_complete_project` (from any door) lifts the protected
+phase just as `approve_stage`'s last release does. `SECURITY INVOKER`, `search_path = ''` (EX1: a
+trigger with none ran on its caller's path, so the unqualified `project_status` broke every
+`search_path = ''` door that completes); `EXECUTE` moot (a trigger).
 
 ### `projects.fn_check_public_project_footprint() → trigger`
 

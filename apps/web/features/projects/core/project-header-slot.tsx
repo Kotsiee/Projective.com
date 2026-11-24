@@ -4,6 +4,7 @@ import { previewAllowed } from "@projective/types/projects";
 import type { State } from "@web/utils/state.ts";
 import ProjectSetupHeader from "../islands/ProjectSetupHeader.island.tsx";
 import { ProjectOverviewHeader } from "../components/overview/ProjectOverviewHeader.tsx";
+import { projectCompleteCopy } from "./project-complete-model.ts";
 import { storedProjectAccess } from "./project-access.ts";
 import { resolveProjectSetup } from "./setup-ssr.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
@@ -79,6 +80,13 @@ export async function projectHeaderFor(
 		const cancelLabel = resolved.access === "owner" && !ended
 			? (resolved.service ? "Cancel service" : "Cancel project")
 			: null;
+		// Complete when the server says it may (EX1, Decision #546), Reopen on a completed one; both
+		// moved here from the lane's kebab below the same breakpoint.
+		const copy = projectCompleteCopy(resolved.service ? "service" : "project");
+		const completeLabel = resolved.canComplete ? copy.commit : null;
+		const reopenLabel = resolved.access === "owner" && resolved.status === "completed"
+			? copy.reopen
+			: null;
 		return (
 			<ProjectOverviewHeader
 				slug={slug}
@@ -86,6 +94,8 @@ export async function projectHeaderFor(
 				owner={configures}
 				canPreview={configures && !resolved.personal && previewAllowed(resolved.status, ladderDone)}
 				cancelLabel={cancelLabel}
+				completeLabel={completeLabel}
+				reopenLabel={reopenLabel}
 			/>
 		);
 	}

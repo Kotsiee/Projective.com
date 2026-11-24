@@ -41,6 +41,35 @@
 	letter-spacing: var(--tracking-tight);
 }
 
+/* A freelancer's workload gauge: below the title in a narrow page, beside it from 640px of page. */
+.prj-port__head--aside {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-1) var(--space-6);
+}
+
+.prj-port__aside {
+	margin-block-start: var(--space-3);
+}
+
+@container prj-port (min-width: 640px) {
+	.prj-port__head--aside {
+		grid-template-columns: minmax(0, 1fr) minmax(12rem, 18rem);
+		align-items: end;
+	}
+
+	.prj-port__head--aside .prj-port__title,
+	.prj-port__head--aside .prj-port__meta {
+		grid-column: 1;
+	}
+
+	.prj-port__aside {
+		grid-column: 2;
+		grid-row: 1 / span 2;
+		margin-block-start: 0;
+	}
+}
+
 .prj-port__meta {
 	display: flex;
 	flex-wrap: wrap;

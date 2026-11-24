@@ -3,18 +3,25 @@ import type {
 	ApproveStage,
 	CancelProject,
 	CancelStageFairExit,
+	CompleteProject,
 	FairExitBlocked,
 	FairExitPreview,
 	FairExitQuote,
 	FairExitTier,
 	PaidRevisionRaised,
 	PreviewProjectCancel,
+	PreviewProjectComplete,
 	PreviewStageFairExit,
 	ProjectCancelBlocked,
 	ProjectCancelled,
 	ProjectCancelPreview,
 	ProjectCancelStage,
+	ProjectCompleteBlocked,
+	ProjectCompleted,
+	ProjectCompletePreview,
 	ProjectExitQuote,
+	ProjectReopened,
+	ReopenProject,
 	RequestPaidRevision,
 	ReviewSubmission,
 	StageApproved,
@@ -588,5 +595,115 @@ export async function cancelProjectRow(
 	});
 	if (error) return { refusal: settlementRefusal(error, "tiers") };
 	return { data: toProjectCancelled((data ?? {}) as Record<string, unknown>) };
+}
+// #endregion
+
+// #region Completing and reopening an engagement (EX1, Decision #546)
+/** The notice a completed engagement answers with. */
+export function projectCompletedMessage(completed: ProjectCompleted): string {
+	const noun = completed.kind === "service" ? "Service" : "Project";
+	if (completed.ticketsClosed === 0) return `${noun} completed — its reviews are open.`;
+	const tickets = completed.ticketsClosed === 1
+		? "1 unfunded ticket"
+		: `${completed.ticketsClosed} unfunded tickets`;
+	return `${noun} completed — ${tickets} closed, and its reviews are open.`;
+}
+
+/** The notice a reopened engagement answers with. */
+export function projectReopenedMessage(reopened: ProjectReopened): string {
+	const noun = reopened.kind === "service" ? "Service" : "Project";
+	return `${noun} reopened — add and fund new work to extend it.`;
+}
+
+const COMPLETE_BLOCKS: readonly ProjectCompleteBlocked[] = [
+	"ended",
+	"draft",
+	"sessions",
+	"dispute",
+	"sittings",
+	"settling",
+	"held",
+];
+
+/**
+ * Map `projects.preview_project_complete`'s answer onto {@link ProjectCompletePreview}. An unknown
+ * `blocked` word is not trusted as a reason, and a preview naming none is completable only when the
+ * function says so — exported for its tests.
+ */
+export function toProjectCompletePreview(payload: Record<string, unknown>): ProjectCompletePreview {
+	const blocked = COMPLETE_BLOCKS.find((b) => b === payload.blocked) ?? null;
+	return {
+		kind: payload.kind === "service" ? "service" : "project",
+		completable: payload.completable === true && blocked === null,
+		blocked,
+		ticketsToClose: cents(payload.tickets_to_close),
+		stagesToClose: cents(payload.stages_to_close),
+	};
+}
+
+/** Map `projects.complete_project`'s answer onto {@link ProjectCompleted} — exported for its tests. */
+export function toProjectCompleted(payload: Record<string, unknown>): ProjectCompleted {
+	return {
+		status: "completed",
+		kind: payload.kind === "service" ? "service" : "project",
+		ticketsClosed: cents(payload.tickets_closed),
+		stagesClosed: cents(payload.stages_closed),
+	};
+}
+
+/**
+ * Read what completing an engagement closes, through `projects.preview_project_complete`. The
+ * function checks review authority itself (a 403 for anyone else, the provider included).
+ */
+export async function previewProjectCompleteRow(
+	actor: ReadActor & { accessToken: string },
+	input: PreviewProjectComplete,
+): Promise<WriteOutcome<ProjectCompletePreview>> {
+	const db = projectsDb(actor);
+	const projectId = await resolveProject(db, input.projectId);
+	if (!projectId) return null;
+
+	const { data, error } = await db.rpc("preview_project_complete", { p_project_id: projectId });
+	if (error) return { refusal: settlementRefusal(error, "projectId") };
+	return { data: toProjectCompletePreview((data ?? {}) as Record<string, unknown>) };
+}
+
+/**
+ * Complete an engagement through `projects.complete_project`: refused while anything is held or
+ * reserved (409 `settle_first`) or a dispute stands (409 `dispute_open`); otherwise the open,
+ * unfunded work closes and the engagement reads `completed`.
+ */
+export async function completeProjectRow(
+	actor: ReadActor & { accessToken: string },
+	input: CompleteProject,
+): Promise<WriteOutcome<ProjectCompleted>> {
+	const db = projectsDb(actor);
+	const projectId = await resolveProject(db, input.projectId);
+	if (!projectId) return null;
+
+	const { data, error } = await db.rpc("complete_project", {
+		p_project_id: projectId,
+		p_reason: input.reason ?? null,
+	});
+	if (error) return { refusal: settlementRefusal(error, "projectId") };
+	return { data: toProjectCompleted((data ?? {}) as Record<string, unknown>) };
+}
+
+/** Reopen a completed engagement through `projects.reopen_project` (`completed → active`). */
+export async function reopenProjectRow(
+	actor: ReadActor & { accessToken: string },
+	input: ReopenProject,
+): Promise<WriteOutcome<ProjectReopened>> {
+	const db = projectsDb(actor);
+	const projectId = await resolveProject(db, input.projectId);
+	if (!projectId) return null;
+
+	const { data, error } = await db.rpc("reopen_project", {
+		p_project_id: projectId,
+		p_reason: input.reason ?? null,
+	});
+	if (error) return { refusal: settlementRefusal(error, "projectId") };
+	const raw = (data ?? {}) as Record<string, unknown>;
+	return { data: { status: "active", kind: raw.kind === "service" ? "service" : "project" } };
 }
 // #endregion

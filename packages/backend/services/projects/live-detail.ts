@@ -599,6 +599,16 @@ async function fetchHasAccess(db: SupabaseClient, projectId: string): Promise<bo
 }
 
 /**
+ * Whether the viewer may complete the engagement now (`projects.can_complete_project`, EX1, Decision
+ * #546): review authority and nothing blocking. A read that fails answers `false`, so the lane offers
+ * no Complete it cannot stand behind; the door re-checks everything.
+ */
+async function fetchCanComplete(db: SupabaseClient, projectId: string): Promise<boolean> {
+	const { data, error } = await db.rpc("can_complete_project", { p_project_id: projectId });
+	return !error && data === true;
+}
+
+/**
  * The viewer's {@link ProjectAccess}, from the access predicate when it answered and otherwise from the
  * signals this read already holds: a participant row of their own, a stage held by a team they belong
  * to, or any room they may enter (`comms.has_channel_access` admits participants only). Any one of
@@ -1011,6 +1021,7 @@ export async function fetchProjectDetail(
 		fundingRows,
 		starredRooms,
 		dmRows,
+		viewerCanComplete,
 	] = await Promise.all([
 		fetchDetailRow(db, slug),
 		fetchStages(db, summary.id),
@@ -1021,6 +1032,7 @@ export async function fetchProjectDetail(
 		fetchFundingRows(db, summary.id),
 		fetchStarredChannelIds(actor),
 		fetchProjectDms(actor, summary.id),
+		fetchCanComplete(db, summary.id),
 	]);
 
 	const { general, stageAll, privateRooms } = partitionChannels(channelRows);
@@ -1090,6 +1102,7 @@ export async function fetchProjectDetail(
 		viewerRole: summary.viewerRole,
 		viewerIsClient,
 		viewerCanConfigure,
+		viewerCanComplete,
 		personal: detailRow?.is_personal === true,
 		currency,
 		// Review authority is the client side too: a member of the paying business owns the configuration.
