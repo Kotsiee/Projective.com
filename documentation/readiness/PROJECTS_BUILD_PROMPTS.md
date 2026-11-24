@@ -6,7 +6,7 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 22 open, 1 partly done (ST6, waiting only on 🧑 #427 (a)), 3 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 22 open, 0 partly done, 4 done (§0 ledger).
 > Runnable now: ST3, ST4, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -57,18 +57,15 @@ A prompt that lands gets a row here.
 | ST5 | Seats and participant rows are written only by their definer doors: the owner's two `FOR ALL` policies dropped, client `INSERT` / `UPDATE` / `DELETE` revoked; probe `seat_insert_consent.sql` | `70b0d8c5` (#554) | `f398cd9f` |
 | ST1 | A setup save names its version: `UpdateProject.expectedUpdatedAt` from `ProjectSetup.updatedAt`, `apply_write_batch`'s `version` op (lock, compare to the ms, advance), `409 stale_write` with `details.current`, `428` without one; the rigs' Reload notice; probe `setup_stale_write.sql` | `295f12f8` (#551) | `a9959c64` |
 | ST2 | The setup form's Remove reaches a door: `projects.delete_stage` refuses a stage with history `55000` before anything moves and deletes an untouched one; `projects.stage_removability` gives the setup DTO its `removable` flag; `DELETE /api/projects/:id/stages/:stageId`; a touched stage's Remove opens `StageLockedDialog`; the stub PATCH keeps an omitted stage as live does; probe `stage_removal.sql` | `60a0d652` (#553) | `4fed9f01` |
+| ST6 | A write by one party to a shared project shows on the other's next read, in every isolate: each cached project read is keyed by the project's KV version (`services/projects/freshness.ts`), bumped by every write path (#555 lists them); a KV-less isolate keeps its own bumps; a board reads around the cache while the claim sweep is due; #427 (a) confirmed and written into PRODUCT_SPEC | `08f27344` (#555) | `70f78452` |
 
 ### 0.1 Row → work order
 
-Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 05, 06, 08, 12, 16, 18, 19, 20 (ST5, #554), 24, 25
+Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 04 (ST6, #555), 05, 06, 08, 12, 16, 18, 19, 20 (ST5, #554), 24, 25
 (PM-WP1, `07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513).
 PJ-14 and PJ-74 are ⏸ (§0.4).
 
-**Project setup** (90%)
-
-| Row   | Now · Crit · Gate | Work order            | The row flips (or its note clears) when                                                               |
-| :---- | :---------------- | :-------------------- | :---------------------------------------------------------------------------------------------------- |
-| PJ-04 | 🟡 · High · MVP   | **ST6** step 5 (🧑 #427 (a); steps 1–4 landed in `08f27344`, #555) | (a) is confirmed as the spec's rule; the read lag (i) is closed (#555) and (b) by #456 |
+**Project setup** (100%): every row ✅.
 
 **Stages** (69%)
 
@@ -174,7 +171,7 @@ after PM-WP1. The paths follow §0.2's order:
 
 | Section                        | Today | Path                                                                                                              |
 | :----------------------------- | ----: | :---------------------------------------------------------------------------------------------------------------- |
-| Project setup                  |   90% | ST6 100%                                                                                                          |
+| Project setup                  |  100% | ✅ (ST1, ST6)                                                                                                      |
 | Stages                         |   69% | D7a 75% → ST3 81% → ST4 88% → WP4b 94% → D7b 100%                                                                 |
 | Hiring & members               |   83% | WP4b 92% → NO1 + CD2 + counsel 100%                                                                               |
 | Tickets & delivery             |   59% | WP8 62% → TK1 + TK2 66% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100%                    |
@@ -242,7 +239,6 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 **App lane** (up to three at once, file-disjoint):
 
 - **PM-WP8** now.
-- **ST6** step 5 only: 🧑 #427 (a). Steps 1–4 landed (`08f27344`, #555).
 - **TK2** (⏳ TK1).
 - **NO3** now.
 - **FL2**.
@@ -298,7 +294,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 5  | #430 (b): what a payee may see of prepaid stages                                                                                             | TK1           | Which stages are prepaid, never the amounts, for anyone with project access                                                                                                                                              |
 | 6  | #430 (c): a reservation whose stage is repriced                                                                                              | TK1           | It keeps the price it was bought at; the new price applies to unfunded stages only                                                                                                                                       |
 | 7  | #430 (d) a refund of one prepaid stage; (f) a card prepaying later stages                                                                    | TK1           | (d) a payer door while the stage is unclaimed; (f) a card funds the funding stage only, and Buy now says so                                                                                                              |
-| 13 | #427 (a): the client creates every ticket on a service engagement                                                                            | ST6           | Confirm it: PRODUCT_SPEC.md:629-631 already says so                                                                                                                                                                      |
+| 13 | #427 (a): the client creates every ticket on a service engagement                                                                            | ST6 ✅ (#555)  | **Ruled #555:** confirmed: the client creates every ticket on a service engagement, and the details the seller edits exclude tickets (PRODUCT_SPEC.md §Services)                                                         |
 | 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3           | Review authority pins among live-seat holders, capacity-checked; the assignee may hand it back before submitting                                                                                                         |
 | 15 | Where the workload gauge sits                                                                                                                | ST4           | Beside Claim (the ticket view, stage Tasks) and in the freelancer's Projects header; on `/home` once PRD-A1 lands                                                                                                        |
 | 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1 (#546)    | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
@@ -592,27 +588,6 @@ documentation/database/projects/Functions.md; Zod; ROUTING.md; the decision row.
 ```
 
 §1.2 rows: **PJ-11** 🟡 → ✅.
-
-### ST6 — The other side sees a write on its next read
-
-**Status: partly done (#555, `08f27344`, 2026-11-24).** Steps 1–4 landed: each cached project read is keyed by
-the project's KV version, which every write path bumps (the list is #555); a board reads around the
-cache while the claim sweep is due; the hit rate was measured (87.6 % → 83.8 %, stale reads 186 of
-1,200 → 0); PJ-04's (b) is corrected. Only step 5 is open, and PJ-04 flips 🟡 → ✅ when it is ruled.
-
-```text
-PROMPT ST6 (step 5 only): the owner rules #427 (a).
-
-🧑 DECISION (step 5 only): #427 (a). Ask me to confirm that the client creates every ticket on a
-service engagement and that the brief's project details exclude tickets (recommended: confirm).
-
-STEPS:
-  5. Put #427 (a) to me.
-
-SAME CHANGE: the decision row ((a) as I rule).
-```
-
-§1.2 rows: **PJ-04** 🟡 → ✅ once #427 (a) is confirmed.
 
 ---
 

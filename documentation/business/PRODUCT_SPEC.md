@@ -632,7 +632,7 @@ project's details, adds stages and staffs it. A seat is not a claim: a ticket th
 with nobody to pay until the seller, or a member of the seller's team, claims it, so the claim's
 workload cap applies and unclaimed money comes back on the prepaid window (Decision #466). The
 client reads those details and never edits them,
-and keeps every commercial act: creating tickets, funding them from their own wallet or card,
+and keeps every commercial act: creating every ticket (the project's details the seller edits never include its tickets: Decision #427 (a), confirmed 2026-11-24), funding them from their own wallet or card,
 reviewing and approving the work, paying for revisions, and completing, cancelling or archiving the
 engagement. The workspace opens on its **Overview** for both sides — for the client, the service's
 scope, its provider, its status and each stage's deliverables — and names the other party from the

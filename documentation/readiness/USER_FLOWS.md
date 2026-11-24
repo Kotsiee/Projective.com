@@ -33,9 +33,9 @@ signed-in person).
 
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
-| **Investor MVP** | **83%** |            61 | 42 |  18 |  1 |              14 |
-| **UAT**          | **72%** |           193 | 101 |  78 | 14 |              25 |
-| **Production**   | **66%** |           251 | 107 | 109 | 35 |              36 |
+| **Investor MVP** | **84%** |            61 | 43 |  17 |  1 |              14 |
+| **UAT**          | **73%** |           193 | 102 |  77 | 14 |              25 |
+| **Production**   | **66%** |           251 | 108 | 108 | 35 |              36 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,7 +45,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 25 |  7 |  2 |   70% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 29 | 36 | 10 |  2 |   64% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 30 | 35 | 10 |  2 |   65% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 26 | 14 |  3 |   61% |
 
 **Critical flows not yet ✅, by the tier they gate:**
@@ -258,7 +258,7 @@ PRODUCTION_READINESS.md.
 | PJ-01 | Quick-Init a project → draft; portfolio and proposals          | Client, Freelancer | `/projects` modal, `/api/projects/{create,list}` | ✅     | Critical | MVP  | —                                                                                                        |
 | PJ-02 | Configure (brief, IP, NDA, bonus, roles) and publish with lock | Client             | `/projects/:slug/details`, `/api/projects/setup` | ✅     | Critical | MVP  | — (a setup save names its version; a stale one is refused 409, never merged: ST1 `295f12f8`, #551)     |
 | PJ-03 | Preview before publishing                                      | Client             | `/projects/:slug/preview`                        | ✅     | Normal   | UAT  | —                                                                                                        |
-| PJ-04 | A service-backed engagement from "Add to Projects"             | Client, Seller     | Overview                                         | 🟡     | High     | MVP  | The client must create every ticket (#427 (a), #409): 🧑 put to the owner by ST6, ✅ on a confirm. (b) closed by #456: a funded service withholds Archive and the client cancels it instead (#479). (i) closed by ST6 (#555, `08f27344`): a write by either side shows on the other's next read, in every isolate |
+| PJ-04 | A service-backed engagement from "Add to Projects"             | Client, Seller     | Overview                                         | ✅     | High     | MVP  | — (the client creates every ticket and the details the seller edits exclude them, #427 (a) confirmed; either side's write shows on the other's next read: ST6 `08f27344`, #555)                                                                                                                                 |
 | PJ-05 | Overview and lane activity marks                               | Any                | `/projects/:slug`, `/api/projects/nav-seen`      | ✅     | Normal   | UAT  | — (#146)                                                                                                 |
 
 ### Stages
@@ -576,3 +576,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-24 | ST1 (#551): no row flips; PJ-02's note cleared (a setup save names the version it was made from; a stale one is refused 409 with the current version, never merged) | 83% | 72% | 66% |
 | 2026-11-24 | ST2 (#553): no row flips; PJ-09 narrowed (Remove deletes an untouched stage and it stays gone after a save and a reload; a touched stage is refused with its reason and nothing moves; its archive is PM-WP4b's) | 83% | 72% | 66% |
 | 2026-11-24 | ST6 (#555): no row flips; PJ-04's (i) closed (a write by either side to a shared project shows on the other's next read, in every isolate) and its (b) corrected (closed by #456); ✅ waits on 🧑 #427 (a) | 83% | 72% | 66% |
+| 2026-11-24 | ST6 (#555): PJ-04 🟡 → ✅ (#427 (a) confirmed: the client creates every ticket and the seller's details exclude them; either side's write shows on the other's next read) | 84% | 73% | 66% |
