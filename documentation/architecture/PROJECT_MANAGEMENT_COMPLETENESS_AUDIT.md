@@ -370,7 +370,7 @@ Two integrity notes behind the explorer:
   the target status, so a stale drag is last-writer-wins inside the database's authority rules. ⚠️
   **Status:** Partly fixed (moves carry `p_expected_updated_at` → `PS409`; PM-WP7, `3fcf2d54`; =
   S8). Setup saves: Fixed (they carry `expectedUpdatedAt`; `apply_write_batch`'s `version` op →
-  `409 stale_write`, no version → `428`; ST1, ST1_COMMIT, Decision #551). Ticket edits
+  `409 stale_write`, no version → `428`; ST1, `295f12f8`, Decision #551). Ticket edits
   (`commitTicketRow`): Open (no prompt).
 - **Stub parity.** The stub claim skips capacity, project access and Ready status (PBS:3093-3110);
   the stub move skips the client drag lock (PBS:3050); the stub `commitTicket` skips the
