@@ -9,6 +9,13 @@
 CREATE INDEX IF NOT EXISTS idx_project_messages_channel_recent
     ON comms.project_messages (channel_id, created_at DESC);
 
+-- One private room per stage, scope and team (PROJECTS CH2): what makes comms.open_private_rooms
+-- idempotent under concurrent seat moves (its INSERT … ON CONFLICT DO NOTHING). Archived rooms count,
+-- so a retired room is never re-opened beside its history.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_project_channels_private_room
+    ON comms.project_channels (stage_id, visibility, team_id) NULLS NOT DISTINCT
+    WHERE visibility IN ('team_private', 'business_private');
+
 -- The polymorphic attachment lookup. There is no foreign key on message_id —
 -- Postgres cannot point one column at two parents — so the discriminator pair is
 -- the only way in, and every rendered message asks it.

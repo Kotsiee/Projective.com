@@ -179,6 +179,7 @@ const CHANNEL_ICON: Record<ChannelKind, IconName> = {
 	general: "channel",
 	stage: "stages",
 	team: "members",
+	business: "building",
 	dm: "message",
 };
 

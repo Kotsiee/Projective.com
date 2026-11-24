@@ -920,7 +920,7 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 		// message page, the board, files, members — answers 404. A control that renders must do
 		// something (root CLAUDE.md §3 gate 11); mimicking the live tree's appearance without its
 		// substance is worse than differing from it visibly.
-		channels: { general: [], stages: [], teams: [], dms: [] },
+		channels: { general: [], stages: [], teams: [], business: [], dms: [] },
 		funding: null,
 	};
 }

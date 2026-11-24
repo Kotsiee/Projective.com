@@ -140,7 +140,7 @@ export type FileSortDir = z.infer<typeof FileSortDir>;
  * `projects/files.ts` narrows this back to its own `ChannelKind`; the literals are identical and the
  * narrowing is what keeps them from drifting.
  */
-export const AssetChannelKind = z.enum(["general", "stage", "team", "dm"]);
+export const AssetChannelKind = z.enum(["general", "stage", "team", "business", "dm"]);
 export type AssetChannelKind = z.infer<typeof AssetChannelKind>;
 
 /**

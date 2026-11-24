@@ -19,8 +19,13 @@ export function channelStarredIn(
 	detail: Pick<ProjectDetail, "channels">,
 	channelId: string,
 ): boolean {
-	const { general, stages, teams } = detail.channels;
-	const room = [...general, ...stages.map((s) => s.channel), ...teams.flatMap((t) => t.channels)]
+	const { general, stages, teams, business } = detail.channels;
+	const room = [
+		...general,
+		...stages.map((s) => s.channel),
+		...teams.flatMap((t) => t.channels),
+		...business,
+	]
 		.find((c) => c.id === channelId);
 	return room?.starred ?? false;
 }

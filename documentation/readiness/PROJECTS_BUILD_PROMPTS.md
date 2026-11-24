@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 14 open, 0 partly done, 12 done (§0 ledger).
-> Runnable now: CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 13 open, 0 partly done, 13 done (§0 ledger).
+> Runnable now: NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -65,11 +65,12 @@ A prompt that lands gets a row here.
 | EX3 | Raising a ticket dispute freezes its Evidence Vault in the same transaction: `finance.dispute_vaults` (manifest jsonb, `sha256` of its canonical text, `pending` → `ready`, `object_prefix`; immutable by trigger, RLS with no client policy), `fn_dispute_vault_manifest` (terms, escrows, history, submissions with their file hashes, the stage's rooms), `fn_freeze_dispute_vault` from `open_ticket_dispute`, `mark_dispute_vault_ready` (service role), `get_dispute_vault`, `get_dispute.vault`; the service copies the files to `evidence/vault/{dispute}/`; `GET /api/finance/disputes/[disputeId]/summary.pdf` and `…/vault`; the case dialog's and the desk's Evidence Vault line and links; probe `dispute_vault.sql` | `a91a5080` (#558) | `0e06fa9d` |
 | CH4 | A message and its files are one write, and a voice memo survives a reload: `comms.send_message` (invoker) writes the message, its `message_attachments` links and `channel_files` rows in one transaction and refuses the whole send on a refused file (PA422 → 422 `not_attached`); `message_attachments.audio_duration_ms` + `audio_peaks` (four CHECKs, `uq_message_attachments_one_memo`); `SendAudioSchema` names the memo's upload; `fetchMessageAttachments` returns the memo as the player on every read; `MessageAttachmentRowSchema`; probe `message_send.sql` | `1732ac6d` (#559) | `0e06fa9d` |
 | CH3 | Inside a project every DM and group opens in place, and reading marks it read: `comms.project_channel_reads` + `comms.mark_room_read` + `comms.unread_rooms` behind `POST /api/projects/messages/read` (the send's own pair; a `cht-` channel marks the thread, so `/messages` clears too) and the `ProjectChat` island's after-paint read; `comms.project_dm_threads` (groups, no 500 cap); the `cht-` Files and Members tabs; `comms.dm_thread_projects` + `comms.bring_dm_into_project` (the other told, `message.brought_into_project`) + `comms.take_dm_out_of_project` (stamps kept) behind `POST | DELETE /api/projects/messages/dm`, the Members "Message" action and the header's Take out; probe `room_read_marks.sql` | `619a3885` (#560) | `b14e115f` |
+| CH2 | A team's own room and a business's room on every stage they work on, opened in the transaction that makes them due: `comms.project_channels.team_id` + `ck_project_channels_team_room` + `uq_project_channels_private_room`; `comms.open_private_rooms` from three triggers (a team seat going live, a stage inserted, a project re-pointed at a business) and the lazy `get_stage_channels`; `can_access_scope`'s team arm is one team's (4-arg, `p_team_id`), the solo arm gone; the tree's Business group (`ProjectChannels.business`, `ChannelKind` `business`), team rooms joined by `team_id`; probe `private_rooms.sql` | `pending` (#561) | `47db5bca` |
 
 ### 0.1 Row → work order
 
 Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 04 (ST6, #555), 05, 06, 08, 11 (ST4, #550), 12, 13 (ST3, #547), 16, 18, 19, 20 (ST5, #554), 24, 25 (PM-WP1,
-`07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513); 50 (CH3, #560). PJ-14 and
+`07d853f6`, #516), 28, 41, 42, 45, 48 (CH2, #561), 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513); 50 (CH3, #560). PJ-14 and
 PJ-74 are ⏸ (§0.4).
 
 **Project setup** (100%): every row ✅.
@@ -126,12 +127,11 @@ PJ-74 are ⏸ (§0.4).
 
 The operator's ruling is MW-59; it is not this file's row.
 
-**Messaging** (59%)
+**Messaging** (61%)
 
 | Row   | Now · Crit · Gate | Work order                                        | The row flips when                                                                            |
 | :---- | :---------------- | :------------------------------------------------ | :-------------------------------------------------------------------------------------------- |
 | PJ-47 | 🟡 · Crit · MVP   | COMMS MS3 → MS5 step 3; **CH1**; T&S P2d (G5, G6) | Live delivery; edit and delete; persisted reactions; an archived room refuses at the database |
-| PJ-48 | 🟡 · Normal · UAT | **CH2** (🧑)                                      | Team and business rooms exist, and only their people read them                                |
 | PJ-49 | 🟡 · Crit · MVP   | COMMS MS3; T&S SN3                                | Live delivery; the group photo is screened                                                    |
 | PJ-52 | 🟡 · Normal · UAT | COMMS MS5                                         | Mute and delete persist on the server                                                         |
 | PJ-54 | 🟡 · High · UAT   | T&S LK1                                           | A link nobody could check goes through `/exit`                                                |
@@ -181,7 +181,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Tickets & delivery             |   59% | WP8 62% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100% (TK2 ✅, #557)               |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
-| Messaging                      |   59% | MS5 61% → CH1 + P2d 67% → CH2 70% (CH3 ✅, #560) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
+| Messaging                      |   61% | MS5 61% → CH1 + P2d 67% → CH2 ✅ (#561) (CH3 ✅, #560) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → NO2 + CD2 94% → NT5 + NO3 100%                                                                          |
 | Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
@@ -192,7 +192,7 @@ after PM-WP1. The paths follow §0.2's order:
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a) and PJ-60 (NO2 + CD2) (PJ-43 ✅, EX2 + EX3).
 Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a, EX1,
-CH2, FL3, FL4, CFG2 and LP1.
+FL3, FL4, CFG2 and LP1.
 
 ### 0.2 Run order
 
@@ -232,7 +232,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 6. **PM-WP9** (★00001150, ⏳ PM-WP8 step 4): PJ-27, PJ-38.
 7. **COMMS MS5** (⏳ MS3), then **CH1** (⏳ MS3): PJ-52, PJ-47.
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
-9. **CH2** (ST3 ✅, #547; ST4 ✅, #550).
+9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
 11. CH3 ✅ (#560) and CH4 ✅ (#559); next **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
     slug.
@@ -267,12 +267,12 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | File                                                     | Writers here                                                 | Writers elsewhere (never at the same time)                        |
 | :------------------------------------------------------- | :----------------------------------------------------------- | :---------------------------------------------------------------- |
 | `00001150` (stage funding, submissions, cancel, approve) | EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | FBP DB13, DB14                                                    |
-| `00001130` (stages, members, `apply_write_batch`)        | CH2; PM D7a, WP4a, WP4b, S3, D7b                             | —                                                                 |
+| `00001130` (stages, members, `apply_write_batch`)        | PM D7a, WP4a, WP4b, S3, D7b                             | —                                                                 |
 | `00001110` / `00001120` (ticket guards and doors)        | PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
 | `00001140` (claims, capacity, workload)                  | PM WP5a, D7b                                                 | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
 | `00000017` + `00001260` (disputes)                       | PM-WP4a step 6                                               | FBP DB21; MR3                                                     |
-| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2                                                     | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
+| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1                                                     | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
 | `00005010` (notification catalogue)                      | EX1, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1                  | COMMS MS4                                                         |
@@ -304,7 +304,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3 ✅ (#558) | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
 | 20 | Which workload verdict can be appealed                                                                                                       | EX4 (#552)    | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
 | 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1           | Edit for 15 minutes; delete for everyone at any time while the room is live; originals kept for evidence; nothing in an archived or disputed room changes                                                                |
-| 22 | Who gets team and business rooms, and when                                                                                                   | CH2           | Eagerly: at the team's seat going live, and at the business's first project access                                                                                                                                       |
+| 22 | Who gets team and business rooms, and when                                                                                                   | CH2 ✅ (#561) | **Ruled #561:** eagerly, as recommended: a team's room when its seat on a stage goes live, a business's on every stage of a business-client project. And a new contradiction, ruled: one room per team, so a second team or a solo freelancer on the stage never reads it; a released seat keeps nothing |
 | 23 | Who may bring a pair DM into a project                                                                                                       | CH3 ✅ (#560) | **Ruled #560:** as recommended: either participant, while both are on the project; the other is told; either may take it out, which hides it for both and keeps every stamp |
 | 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1           | Yes, as a transactional invite behind a switch until counsel answers; `application.received` joins the hourly digest                                                                                                     |
 | 25 | When a push device is dropped                                                                                                                | NO3           | At once on 404 / 410; otherwise after 5 failures over at least 24 h; Settings says so                                                                                                                                    |
@@ -687,52 +687,6 @@ decision row (CAS M11 closed).
 `projects/live-writes.ts:2631-2637`), and only a direct PostgREST insert passes (`00002012:60-64` →
 `00001300:154-177`). The note also gains room read marks (PRD-E13) and the missing body and rate
 caps (G6).
-
-### CH2 — Team and business rooms exist for the people they're for
-
-Closes PJ-48 (🟡 → ✅).
-
-```text
-PROMPT CH2: A team's private room and a business's private room exist on every project they
-work on, and only their people read them
-
-ROLE: Full-stack engineer. Queue S: 00001300, 00001130 (or 00001100), the stage tree.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - Nothing creates team_private or business_private rooms. Only comms.get_stage_channels
-    (00001300:227-297; granted 00002510:329) can, and nothing calls it from TS or SQL. The seed
-    writes stage_all rooms only (supabase/seeds/08_comms.sql:7). projects.create_stage opens the
-    stage's General room (00001130:385-400).
-  - The tree never draws business_private rooms (live-detail.ts:457, :468, :1117).
-  - The access check exists, comms.can_access_scope (00001300:126-145), and no probe covers its
-    private arms.
-  - Private rooms route by uuid today, an exception PRD-J1 tracks (#162 (h)); leave that to it.
-
-🧑 DECISION (before step 2): who gets the rooms, and when. Recommended: eagerly. A team_private
-room is created for a stage when a team's seat on it goes live (for that team's members); a
-business_private room is created when a business becomes the client (for its members with
-project access). Lazy provisioning stays for anything older.
-
-STEPS:
-  1. Red first: supabase/probes/private_rooms.sql. A team member opens a team-staffed stage and
-     no room exists; can_access_scope's arms (the client, a freelancer, a team member, a
-     released assignee, a business member) are each asserted.
-  2. Provision in the seat and access doors, in the same transaction, idempotently.
-  3. Draw a Business group in the stage tree; a released assignee loses access to new messages.
-  4. Seed one team-staffed stage and one business project with their rooms.
-
-ACCEPTANCE: the probe is green; live, a seeded team member sees the team room and the client does
-not; screenshots of the tree.
-
-SAME CHANGE: PRODUCT_SPEC.md (private rooms); documentation/database/comms/*; Seed.md; the
-decision row.
-```
-
-§1.2 rows: **PJ-48** 🟡 → ✅ (its text corrected: nothing created the rooms).
-
----
-
-## 6. Notices
 
 ### NO1 — An emailed invitation reaches someone who has no account yet
 

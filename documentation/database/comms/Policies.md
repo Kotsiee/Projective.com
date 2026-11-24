@@ -116,7 +116,9 @@ CLAUDE.md §6 — RLS is always on).
 | _view_own_room_reads_                 | `comms.project_channel_reads`        | `SELECT` | `user_id = auth.uid()` — one's own room read mark only (PROJECTS CH3). No write policy and no client write privilege (`00002520`): `comms.mark_room_read` is its one writer |
 
 Private-channel scoping and the PII handover gate are layered on top by migration 0311
-(`comms.can_access_scope`, `comms.has_channel_access`).
+(`comms.can_access_scope`, `comms.has_channel_access`). A `team_private` room is read by the active
+members of the one team it names (`project_channels.team_id`) only, a `business_private` room by the
+client side only (Decision #561); a released seat's holder reads neither, old messages included.
 
 An archived room (`archived_at`, set by `projects.sanitize_single_room_topology` — Decision #163) is
 filtered in `view_channels_if_member` only, never in `comms.has_channel_access`: the room stops being

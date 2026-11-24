@@ -1568,24 +1568,34 @@ context without "ping fatigue."
 
 ##### C. Team Channels (Private - Freelancer Side)
 
-- **Scope:** Internal to a Freelancer Team.
-- **Participants:** Only members of a specific Team.
-- **Logic:** If multiple teams are hired for one project, each team receives a separate, private
-  channel. The Client cannot see these messages.
-- **Access Control:** Talent-side only — an assigned freelancer or an active member of an assigned
-  team. The client/owner is locked out. (Enforced by `comms.can_access_scope` on the `team_private`
-  scope, at the channel-open RPC and in the comms row-level-security policies, so the channel never
-  leaks over the realtime stream.)
+- **Scope:** Internal to one hired Freelancer Team, on one stage.
+- **Participants:** Only the active members of that Team.
+- **Logic:** Each team holding a seat on a stage receives its own private room there; if several
+  teams are hired, even onto one stage, none reads another's. A solo freelancer has no team room.
+  The Client cannot see these messages.
+- **When it exists:** Eagerly. The room opens in the same transaction as the team's seat on the stage
+  going live (`assigned` or `accepted`), whichever door seats the team: an accepted application or
+  invitation, a service purchase, a publish. A Session or a Task keeps its one conversation and has
+  none (Decision #561).
+- **Access Control:** Talent-side only — an active member of the team the room belongs to, while that
+  team holds its seat. The client/owner is locked out. A team whose seat is released loses the room,
+  its earlier messages included; the room and its messages stay for the record. (Enforced by
+  `comms.can_access_scope` on the `team_private` scope and the room's team, at the channel-open RPC
+  and in the comms row-level-security policies, so the channel never leaks over the realtime stream.)
 - **Purpose:** Internal strategy, peer review, and task delegation.
 
 ##### D. Business Channels (Private - Client Side)
 
-- **Scope:** Internal to the Client's Business.
+- **Scope:** Internal to the Client's Business, on one stage.
 - **Participants:** Only verified (active) members of the Business entity, plus the project owner.
-- **Logic:** This channel is hidden from all freelancers.
+- **Logic:** This channel is hidden from all freelancers. Only a project whose client is a business has
+  one; a client with no business has no business room.
+- **When it exists:** Eagerly, on every stage of the project: when the stage is created, when one is
+  added, and when the project is re-pointed at a business (Decision #561).
 - **Access Control:** Client-side only — the project owner or an active member of the paying client
   business (`projects.can_review_project`). (Enforced by `comms.can_access_scope` on the
-  `business_private` scope in the comms RLS policies.)
+  `business_private` scope in the comms RLS policies.) The project's Business group lists these rooms
+  on the client side only.
 - **Purpose:** Budget discussions, internal stakeholder alignment, and freelancer performance
   reviews.
 

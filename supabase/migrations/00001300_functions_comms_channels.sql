@@ -100,12 +100,16 @@ BEGIN
 END;
 $$;
 
--- Does the current user belong to a given (project, stage, visibility) scope? Single source of truth
--- reused by has_channel_access, the channel opener and the channel lister.
+-- Does the current user belong to a given (project, stage, visibility, team) scope? Single source of
+-- truth reused by has_channel_access, the channel opener and the channel lister. `p_team_id` names the
+-- team a `team_private` room belongs to (PROJECTS CH2): one room per hired team, read by that team's
+-- active members only, so a second team or a solo freelancer on the same stage never reads it, and a
+-- talent room with no team is nobody's.
 CREATE OR REPLACE FUNCTION comms.can_access_scope(
     p_project_id uuid,
     p_stage_id uuid,
-    p_visibility text
+    p_visibility text,
+    p_team_id uuid DEFAULT NULL
 ) RETURNS boolean
 LANGUAGE plpgsql
 STABLE
@@ -127,18 +131,13 @@ BEGIN
         -- Client side only: owner or an active (verified) member of the paying business.
         RETURN projects.can_review_project(p_project_id);
     ELSIF p_visibility = 'team_private' THEN
-        -- Talent side only: an assigned freelancer or an active member of an assigned team.
-        RETURN EXISTS (
-            SELECT 1 FROM projects.stage_assignments sa
-            WHERE sa.project_stage_id = p_stage_id
-                AND sa.assignee_type = 'freelancer'
-                AND sa.freelancer_profile_id = auth.uid()
-                AND sa.status NOT IN ('released', 'cancelled', 'declined')
-        ) OR EXISTS (
+        -- One team's room: an active member of THAT team, while it holds a live seat on the stage.
+        RETURN p_team_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM projects.stage_assignments sa
             JOIN org.team_members tm ON tm.team_id = sa.team_id
             WHERE sa.project_stage_id = p_stage_id
                 AND sa.assignee_type = 'team'
+                AND sa.team_id = p_team_id
                 AND tm.user_id = auth.uid()
                 AND tm.status = 'active'
                 AND sa.status NOT IN ('released', 'cancelled', 'declined')
@@ -162,9 +161,10 @@ DECLARE
     v_project uuid;
     v_stage uuid;
     v_vis text;
+    v_team uuid;
 BEGIN
-    SELECT project_id, stage_id, visibility
-        INTO v_project, v_stage, v_vis
+    SELECT project_id, stage_id, visibility, team_id
+        INTO v_project, v_stage, v_vis, v_team
     FROM comms.project_channels
     WHERE id = p_channel_id;
 
@@ -172,7 +172,7 @@ BEGIN
         RETURN false;
     END IF;
 
-    RETURN comms.can_access_scope(v_project, v_stage, v_vis);
+    RETURN comms.can_access_scope(v_project, v_stage, v_vis, v_team);
 END;
 $$;
 
@@ -241,8 +241,6 @@ DECLARE
     v_project uuid;
     v_stage_name text;
     v_scopes text[] := ARRAY['stage_all', 'team_private', 'business_private'];
-    v_scope text;
-    v_label text;
 BEGIN
     -- An archived stage (projects.sanitize_single_room_topology) is gone from the product.
     SELECT ps.project_id, ps.name INTO v_project, v_stage_name
@@ -260,30 +258,24 @@ BEGIN
     -- A Session presents one room, its project-wide Discussion, so its stages (its sessions) are never
     -- given rooms of their own — provisioning here would undo the sanitizer on the next open. The
     -- existence test below deliberately counts archived rooms, so an archived scope is not re-created.
-    FOREACH v_scope IN ARRAY v_scopes LOOP
-        EXIT WHEN EXISTS (
-            SELECT 1 FROM projects.projects p WHERE p.id = v_project AND p.format::text = 'session'
-        );
-        IF NOT EXISTS (
+    -- The private rooms are comms.open_private_rooms' (eager, from the seat and stage triggers); calling
+    -- it here opens them for anything older than those triggers.
+    IF NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.id = v_project AND p.format::text = 'session')
+        AND NOT EXISTS (
             SELECT 1 FROM comms.project_channels pc
-            WHERE pc.project_id = v_project AND pc.stage_id = p_stage_id AND pc.visibility = v_scope
+            WHERE pc.project_id = v_project AND pc.stage_id = p_stage_id AND pc.visibility = 'stage_all'
         ) THEN
-            v_label := CASE v_scope
-                WHEN 'stage_all' THEN v_stage_name
-                WHEN 'team_private' THEN v_stage_name || ' — Team'
-                WHEN 'business_private' THEN v_stage_name || ' — Business'
-            END;
-            INSERT INTO comms.project_channels (project_id, stage_id, name, visibility)
-            VALUES (v_project, p_stage_id, v_label, v_scope);
-        END IF;
-    END LOOP;
+        INSERT INTO comms.project_channels (project_id, stage_id, name, visibility)
+        VALUES (v_project, p_stage_id, v_stage_name, 'stage_all');
+    END IF;
+    PERFORM comms.open_private_rooms(p_stage_id);
 
     RETURN QUERY
     SELECT
         pc.id,
         pc.visibility,
         pc.name,
-        comms.can_access_scope(v_project, p_stage_id, pc.visibility) AS accessible,
+        comms.can_access_scope(v_project, p_stage_id, pc.visibility, pc.team_id) AS accessible,
         projects.is_protected_phase(v_project) AS protected_phase,
         (SELECT p.handover_unlocked_at FROM projects.projects p WHERE p.id = v_project)
             AS handover_unlocked_at
@@ -292,7 +284,78 @@ BEGIN
         AND pc.stage_id = p_stage_id
         AND pc.archived_at IS NULL
         AND pc.visibility IN ('stage_all', 'team_private', 'business_private')
-    ORDER BY array_position(v_scopes, pc.visibility);
+    ORDER BY array_position(v_scopes, pc.visibility), pc.created_at;
+END;
+$$;
+
+-- Open a stage's private rooms (PROJECTS CH2): one `team_private` room for each team holding a live
+-- seat on it, and one `business_private` room when a business is the project's client. A client with
+-- no business, and a solo freelancer, get none. EAGER: the seat, stage and project triggers below
+-- (00001820) call it in the transaction that makes a room due, so every door that seats a team (an
+-- accepted application or invitation, a service purchase, a publish, the seed) opens its room without
+-- knowing about it; comms.get_stage_channels calls it on open for anything older. Idempotent through
+-- uq_project_channels_private_room, which counts archived rooms, so a retired room is never re-opened.
+-- One-room engagements get none: a Session's stages have no rooms of their own, and a Task (one_off +
+-- single_stage | single_task) presents one conversation (Decision #121), as the sanitizer keeps them.
+-- No caller grant (#477): reached from triggers and definers only.
+CREATE OR REPLACE FUNCTION comms.open_private_rooms(p_stage_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_project uuid;
+    v_name text;
+    v_business uuid;
+BEGIN
+    SELECT ps.project_id, ps.name, p.client_business_id INTO v_project, v_name, v_business
+    FROM projects.project_stages ps
+    JOIN projects.projects p ON p.id = ps.project_id
+    WHERE ps.id = p_stage_id
+        AND ps.archived_at IS NULL
+        AND p.format::text <> 'session'
+        AND NOT (p.format::text = 'one_off' AND p.structure_variation::text IN ('single_stage', 'single_task'));
+
+    IF v_project IS NULL THEN
+        RETURN;
+    END IF;
+
+    INSERT INTO comms.project_channels (project_id, stage_id, name, visibility, team_id)
+    SELECT DISTINCT v_project, p_stage_id, v_name || ' — Team', 'team_private', sa.team_id
+    FROM projects.stage_assignments sa
+    WHERE sa.project_stage_id = p_stage_id
+        AND sa.assignee_type = 'team'
+        AND sa.team_id IS NOT NULL
+        AND sa.status IN ('assigned', 'accepted')
+    ON CONFLICT DO NOTHING;
+
+    IF v_business IS NOT NULL THEN
+        INSERT INTO comms.project_channels (project_id, stage_id, name, visibility)
+        VALUES (v_project, p_stage_id, v_name || ' — Business', 'business_private')
+        ON CONFLICT DO NOTHING;
+    END IF;
+END;
+$$;
+
+-- The trigger body behind comms.open_private_rooms (00001820): a team seat going live opens its stage's
+-- rooms, a new stage opens its business room, and a project re-pointed at a business opens one on each
+-- of its stages.
+CREATE OR REPLACE FUNCTION comms.trg_open_private_rooms()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'projects' THEN
+        PERFORM comms.open_private_rooms(ps.id) FROM projects.project_stages ps WHERE ps.project_id = NEW.id;
+    ELSIF TG_TABLE_NAME = 'project_stages' THEN
+        PERFORM comms.open_private_rooms(NEW.id);
+    ELSE
+        PERFORM comms.open_private_rooms(NEW.project_stage_id);
+    END IF;
+    RETURN NULL;
 END;
 $$;
 

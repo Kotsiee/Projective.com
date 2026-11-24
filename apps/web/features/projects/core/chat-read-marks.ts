@@ -57,6 +57,7 @@ export function withChatReads(
 			...t,
 			channels: t.channels.map((c) => markRoom(c, [c.id], marks)),
 		})),
+		business: channels.business.map((c) => markRoom(c, [c.id], marks)),
 		dms: channels.dms.map((d) => (d.unread && marks[d.chatId] ? { ...d, unread: false } : d)),
 	};
 }

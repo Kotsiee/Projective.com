@@ -59,3 +59,19 @@ Deno.test("every private thread is with somebody on the roster, and never with t
 		}
 	}
 });
+
+Deno.test("only the client side of a business engagement draws the Business group, one room per stage", () => {
+	let drawn = 0;
+	for (const row of allProjects()) {
+		const detail = findProjectDetail(row.slug);
+		assert(detail);
+		const { business } = conditionalChannelGroups(detail.channels);
+		if (business.length === 0) continue;
+		drawn++;
+		assertEquals(row.scopeType, "business", `${row.slug} (${row.scopeType}) drew a Business group`);
+		assert(detail.viewerIsClient, `${row.slug}: a provider-side viewer drew the Business group`);
+		assertEquals(business.map((c) => c.name), detail.channels.stages.map((s) => s.name));
+		assert(business.every((c) => c.kind === "business"));
+	}
+	assert(drawn > 0, "no fixture reaches the Business group");
+});

@@ -346,7 +346,7 @@ GRANT EXECUTE ON FUNCTION org.fn_entity_currency (uuid, uuid, uuid) TO authentic
 -- --- from 0311_e7_private_channels_pii_handover.sql ---
 
 GRANT
-EXECUTE ON FUNCTION comms.can_access_scope (uuid, uuid, text) TO authenticated;
+EXECUTE ON FUNCTION comms.can_access_scope (uuid, uuid, text, uuid) TO authenticated;
 
 GRANT
 EXECUTE ON FUNCTION comms.has_channel_access (uuid) TO authenticated;

@@ -82,8 +82,6 @@ const ASSIGNMENT_LIMIT = 12;
 /** Ticket states that are no longer owed, and therefore not work. */
 const CLOSED_TICKET: ReadonlySet<string> = new Set(["completed", "cancelled"]);
 
-/** The stage-room visibilities that are a private side-room rather than the shared stage channel. */
-const PRIVATE_ROOM: ReadonlySet<string> = new Set(["team_private", "business_private"]);
 
 /** Zod bounds this read clamps against, named so a widened schema is one edit rather than a search. */
 const TITLE_MAX = 160;
@@ -382,11 +380,13 @@ function channelsOf(
 	return rows.slice(0, CHANNEL_LIMIT).map((row) => {
 		const kind: ChannelKind = !row.stage_id
 			? "general"
-			: PRIVATE_ROOM.has(row.visibility)
+			: row.visibility === "team_private"
 			? "team"
+			: row.visibility === "business_private"
+			? "business"
 			: "stage";
 		// A stage room is addressed by the STAGE, not by the room. Every other kind keeps its own id:
-		// a general room has no stage to be named by, and a private team room is reached as a room.
+		// a general room has no stage to be named by, and a private room is reached as a room.
 		const ref = kind === "stage" && row.stage_id
 			? stageSlugs.get(row.stage_id) ?? row.id
 			: row.id;

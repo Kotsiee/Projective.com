@@ -39,6 +39,7 @@ const KIND_LABEL: Record<ChannelMeta["kind"], string> = {
 	general: "Discussion",
 	stage: "Stage",
 	team: "Team channel",
+	business: "Business room",
 	dm: "Direct message",
 };
 

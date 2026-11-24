@@ -137,6 +137,14 @@ export const TeamsIcon = (
 	</Svg>
 );
 
+/** Business group — a building, the client business's private rooms (CH2). */
+export const BusinessIcon = (
+	<Svg>
+		<path d="M5 20V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15M15 9h3a1 1 0 0 1 1 1v10M3 20h18" />
+		<path d="M8.5 8h3M8.5 11.5h3M8.5 15h3" />
+	</Svg>
+);
+
 /** Direct messages group — a chat bubble. */
 export const DmIcon = (
 	<Svg>

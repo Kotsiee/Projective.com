@@ -232,7 +232,7 @@ export interface ChannelMeta {
 	title: string;
 	/** A short context sub-line under the title (the engagement it belongs to). */
 	sub: string;
-	/** Which of the four tree groups the channel belongs to (drives the leading mark glyph). */
+	/** Which tree group the channel belongs to (drives the leading mark glyph). */
 	kind: ChannelKind;
 	/**
 	 * A Private Messages row that is a group thread, not a pair DM. Only a pair can be taken out of the
@@ -252,7 +252,7 @@ export interface ChannelMeta {
  * headed "Discussion". Its `ref` stays the word, so every tab under it keeps the canonical address.
  */
 export function resolveChannelMeta(detail: ProjectDetail, ref: string): ChannelMeta | null {
-	const { general, stages, teams, dms } = detail.channels;
+	const { general, stages, teams, business, dms } = detail.channels;
 
 	if (isDiscussionRef(ref)) {
 		const room = discussionOf(detail);
@@ -307,6 +307,18 @@ export function resolveChannelMeta(detail: ProjectDetail, ref: string): ChannelM
 			if (c.id === ref) {
 				return { ref, channelId: c.id, stageId: null, title: c.name, sub: t.teamName, kind: "team" };
 			}
+		}
+	}
+	for (const c of business) {
+		if (c.id === ref) {
+			return {
+				ref,
+				channelId: c.id,
+				stageId: null,
+				title: c.name,
+				sub: "Business",
+				kind: "business",
+			};
 		}
 	}
 	for (const d of dms) {

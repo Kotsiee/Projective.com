@@ -38,8 +38,8 @@ export type FileChannelRoutes = Record<string, string>;
 
 /**
  * Every room of the engagement against the ref that routes it: the engagement's discussion by
- * `discussion` (Decision #133, whichever room it is), a stage by its `stg-…` slug, a general or team
- * channel by its id, a direct message by its thread.
+ * `discussion` (Decision #133, whichever room it is), a stage by its `stg-…` slug, a general, team or
+ * business channel by its id, a direct message by its thread.
  */
 export function fileChannelRoutes(
 	detail: Pick<ProjectDetail, "format" | "structure" | "channels">,
@@ -49,6 +49,7 @@ export function fileChannelRoutes(
 	for (const c of channels.general) routes[c.id] = c.id;
 	for (const s of channels.stages) routes[s.id] = s.slug;
 	for (const t of channels.teams) for (const c of t.channels) routes[c.id] = c.id;
+	for (const c of channels.business) routes[c.id] = c.id;
 	for (const d of channels.dms) routes[d.chatId] = d.chatId;
 	const discussion = discussionOf(detail);
 	if (discussion) {

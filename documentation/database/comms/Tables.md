@@ -439,6 +439,18 @@ specific stages.
 | `stage_id`    | uuid        | Optional FK → `projects.project_stages.id`.                                             |
 | `visibility`  | text        | `project_all` or restricted.                                                            |
 | `archived_at` | timestamptz | Nullable. Soft removal set by `projects.sanitize_single_room_topology` (Decision #163). |
+| `team_id`     | uuid        | FK → `org.teams.id`. The one team a `team_private` room belongs to; NULL on every other scope (`ck_project_channels_team_room`). Decision #561. |
+
+**Private rooms (PROJECTS CH2, Decision #561).** A stage's `team_private` room belongs to ONE hired
+team (`team_id`): a second team on the same stage gets its own, and a solo freelancer gets none. A
+`business_private` room is the business client's, one per stage of a project whose client is a
+business. Both are opened eagerly by `comms.open_private_rooms` from three triggers (00001820): a team
+seat going live (`assigned` / `accepted`), a stage inserted, and a project re-pointed at a business.
+`uq_project_channels_private_room` (`stage_id`, `visibility`, `team_id` NULLS NOT DISTINCT, private
+scopes only, archived rows included) keeps it to one room each, so the opener is idempotent and a
+retired room is never re-opened. A Session's stages and a Task (one conversation, Decision #121)
+get none. Who reads them is `comms.can_access_scope` ([Functions](Functions.md)).
+
 
 **`archived_at`: a retired room that carries history (Decision #163).** When a save leaves the
 project a Task (every non-root stage's rooms) or a Session (every stage-bound room),

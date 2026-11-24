@@ -148,21 +148,20 @@ interface ParticipantRow {
 	role: string;
 }
 
-/** One `comms.project_channels` row. `stage_id` discriminates a project room from a stage room. */
+/**
+ * One `comms.project_channels` row. `stage_id` discriminates a project room from a stage room;
+ * `team_id` names the one team a `team_private` room belongs to (PROJECTS CH2), null on every other.
+ */
 interface ChannelRow {
 	id: string;
 	name: string;
 	stage_id: string | null;
 	visibility: string;
+	team_id: string | null;
 	created_at: string;
 }
 
-/**
- * One `projects.get_viewer_hired_teams` row: a stage held by a team the viewer is an active member of.
- *
- * It is also how a `team_private` room is attributed to a team: `comms.project_channels` has a
- * `stage_id` and a `visibility` and no team column at all.
- */
+/** One `projects.get_viewer_hired_teams` row: a stage held by a team the viewer is an active member of. */
 interface HiredTeamRow {
 	team_id: string;
 	project_stage_id: string;
@@ -453,10 +452,9 @@ function buildStageChannels(
  * The Teams group: one entry per hired team the viewer is an active member of, carrying the stages it
  * holds and the talent rooms of those stages that have been provisioned.
  *
- * Built from the viewer's MEMBERSHIPS, not from the rooms. A room is provisioned lazily and says
- * nothing about teams — a solo freelancer's talent room and a team's look identical — so a group per
- * room would both miss a hired team whose room nobody has opened and invent a "team" around a
- * freelancer working alone. Client-side (`business_private`) rooms therefore have no group here.
+ * Built from the viewer's MEMBERSHIPS, so a hired team is listed even before its room exists; each
+ * room joins the team it names (`team_id`, PROJECTS CH2), so two teams on one stage never share a
+ * room or list each other's. Client-side (`business_private`) rooms are {@link buildBusinessChannels}'.
  *
  * `avatar` is the team's mark as {@link fetchMarks} resolved it, or `null` for the initials fallback.
  */
@@ -471,7 +469,6 @@ function buildTeamChannels(
 	const out: TeamChannel[] = [];
 
 	for (const [teamId, stageIds] of hired) {
-		const held = new Set(stageIds);
 		const assignedStages: string[] = [];
 		for (const stageId of stageIds) {
 			const name = stageNames.get(stageId);
@@ -483,12 +480,35 @@ function buildTeamChannels(
 			avatar: marks.get(teamId) ?? null,
 			assignedStages,
 			channels: talentRooms
-				.filter((room) => room.stage_id !== null && held.has(room.stage_id))
+				.filter((room) => room.team_id === teamId)
 				.map((room) => toProjectChannel(room, "team", stageNames.get(room.stage_id ?? "") ?? null)),
 		});
 	}
 
 	return out;
+}
+
+/**
+ * The Business group: the business client's private stage rooms the viewer reads, in stage order, each
+ * named by its stage (the group header says whose room it is). No membership read: the SELECT policy
+ * (`comms.can_access_scope`'s business arm, review authority) already narrowed the rows to the client
+ * side.
+ */
+function buildBusinessChannels(
+	privateRooms: readonly ChannelRow[],
+	stageNames: ReadonlyMap<string, string>,
+): ProjectChannel[] {
+	const order = [...stageNames.keys()];
+	return privateRooms
+		.filter((room) => room.visibility === VIS_BUSINESS_PRIVATE && room.stage_id !== null)
+		.sort((a, b) => order.indexOf(a.stage_id ?? "") - order.indexOf(b.stage_id ?? ""))
+		.map((room) =>
+			toProjectChannel(
+				{ ...room, name: stageNames.get(room.stage_id ?? "") ?? room.name },
+				"business",
+				null,
+			)
+		);
 }
 
 /** Mark every channel in the tree the viewer has starred. */
@@ -502,6 +522,7 @@ function withChannelStars(
 		general: channels.general.map(mark),
 		stages: channels.stages.map((s) => ({ ...s, channel: mark(s.channel) })),
 		teams: channels.teams.map((t) => ({ ...t, channels: t.channels.map(mark) })),
+		business: channels.business.map(mark),
 	};
 }
 
@@ -520,6 +541,7 @@ function withRoomUnread(
 		general: channels.general.map(mark),
 		stages: channels.stages.map((s) => ({ ...s, channel: mark(s.channel) })),
 		teams: channels.teams.map((t) => ({ ...t, channels: t.channels.map(mark) })),
+		business: channels.business.map(mark),
 	};
 }
 
@@ -655,7 +677,7 @@ function resolveViewerAccess(
  * second, weaker copy of a rule the database enforces — and the copy is the one that drifts.
  *
  * Ordered ascending because creation order is meaningful in this table: the General room is
- * provisioned first, and a stage's three rooms are inserted in the order `comms.get_stage_channels`
+ * provisioned first, then each stage's rooms as `comms.get_stage_channels`
  * iterates them.
  *
  * Throws: an engagement rendered with no channels is a claim about the engagement.
@@ -666,7 +688,7 @@ async function fetchChannels(
 ): Promise<ChannelRow[]> {
 	const { data, error } = await commsDb(actor)
 		.from("project_channels")
-		.select("id, name, stage_id, visibility, created_at")
+		.select("id, name, stage_id, visibility, team_id, created_at")
 		.eq("project_id", projectId)
 		.order("created_at", { ascending: true });
 	if (error) throw new Error(`comms.project_channels read failed: ${error.message}`);
@@ -1195,6 +1217,7 @@ export async function fetchProjectDetail(
 			general: general.map((row) => toProjectChannel(row, "general", null)),
 			stages: buildStageChannels(stages, stageAll),
 			teams: buildTeamChannels(hired, privateRooms, stageNames, teamNames, marks),
+			business: buildBusinessChannels(privateRooms, stageNames),
 			// The threads stamped with this project, by their `cht-` refs (see `fetchProjectDms`).
 			dms: dmRows.map((row) => toDmChannel(row, parties)),
 		}, starredRooms), unreadRooms),

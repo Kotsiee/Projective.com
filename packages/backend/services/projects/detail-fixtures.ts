@@ -253,6 +253,27 @@ function teamChannels(row: ProjectSummary, stages: StageChannel[]): TeamChannel[
 }
 
 /**
+ * The business client's private room on each stage (PROJECTS CH2): a business-scope engagement past
+ * draft, read from its client side. A Session or a Task keeps its one conversation, so neither has one.
+ */
+function businessChannels(
+	row: ProjectSummary,
+	stages: StageChannel[],
+	structure: ReturnType<typeof fixtureStructureOf>,
+): ProjectChannel[] {
+	if (row.scopeType !== "business" || row.status === "draft" || !viewerIsClient(row)) return [];
+	if (row.format === "session" || isTaskProject(row.format, structure)) return [];
+	return stages.map((stage, i) => ({
+		id: `business-${i}`,
+		chatId: `chan-${row.slug}-business-${i}`,
+		name: stage.name,
+		kind: "business",
+		sublabel: null,
+		unread: false,
+	}));
+}
+
+/**
  * The viewer's DM threads with the other people on the roster. `chatId` is the unified `dm-{handle}`
  * id — identical to that person's thread on the global messages page — so history is shared.
  *
@@ -360,6 +381,7 @@ function buildDetail(row: ProjectSummary): ProjectDetail {
 			general: generalChannels(row),
 			stages,
 			teams: teamChannels(row, stages),
+			business: businessChannels(row, stages, structure),
 			dms: dmChannels(row),
 		},
 		// Rolled up from the fixture board by `ProjectBackendService.detail` (this corpus has no tickets).

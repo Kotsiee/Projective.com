@@ -188,6 +188,7 @@ const CHANNELS = [
 		name: "Discussion",
 		stage_id: null,
 		visibility: "project_all",
+		team_id: null,
 		created_at: "2026-09-01T00:00:00Z",
 	},
 	{
@@ -195,6 +196,7 @@ const CHANNELS = [
 		name: "ignored",
 		stage_id: STAGE_1,
 		visibility: "stage_all",
+		team_id: null,
 		created_at: "2026-09-02T00:00:00Z",
 	},
 	{
@@ -202,6 +204,7 @@ const CHANNELS = [
 		name: "ignored",
 		stage_id: STAGE_2,
 		visibility: "stage_all",
+		team_id: null,
 		created_at: "2026-09-03T00:00:00Z",
 	},
 	{
@@ -209,6 +212,7 @@ const CHANNELS = [
 		name: "dupe",
 		stage_id: STAGE_1,
 		visibility: "stage_all",
+		team_id: null,
 		created_at: "2026-09-04T00:00:00Z",
 	},
 	{
@@ -216,6 +220,7 @@ const CHANNELS = [
 		name: "Talent room",
 		stage_id: STAGE_1,
 		visibility: "team_private",
+		team_id: TEAM_ID,
 		created_at: "2026-09-05T00:00:00Z",
 	},
 	{
@@ -223,7 +228,17 @@ const CHANNELS = [
 		name: "Client room",
 		stage_id: STAGE_1,
 		visibility: "business_private",
+		team_id: null,
 		created_at: "2026-09-06T00:00:00Z",
+	},
+	// Another team's room on the same stage (CH2): it belongs to that team, never under Northwind.
+	{
+		id: "c-team-other",
+		name: "Other talent room",
+		stage_id: STAGE_1,
+		visibility: "team_private",
+		team_id: "00000000-0000-4000-8000-0000000000ee",
+		created_at: "2026-09-07T00:00:00Z",
 	},
 ];
 
@@ -333,7 +348,7 @@ Deno.test("fetchProjectDetail builds the channel tree: general, one shared room 
 		);
 		assertEquals(detail.channels.stages[0].channel.name, "Discovery");
 
-		// The duplicated hired-team row folds; only the TALENT-side private room is listed under it.
+		// The duplicated hired-team row folds; only the team's OWN room is listed under it (CH2).
 		assertEquals(detail.channels.teams.length, 1);
 		const [team] = detail.channels.teams;
 		assertEquals(team.teamId, TEAM_ID);
@@ -343,6 +358,13 @@ Deno.test("fetchProjectDetail builds the channel tree: general, one shared room 
 			"c-team",
 			"team",
 			"Discovery",
+		]]);
+		// The client-side room is the Business group's, named by its stage.
+		assertEquals(detail.channels.business.map((c) => [c.id, c.kind, c.name, c.sublabel]), [[
+			"c-biz",
+			"business",
+			"Discovery",
+			null,
 		]]);
 		assertEquals(detail.channels.dms, []);
 	});

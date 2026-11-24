@@ -83,7 +83,8 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS an empty CREATE category leaves the stage untyped';
 
-    IF (SELECT count(*) FROM comms.project_channels c JOIN probe_made m ON m.stage_id = c.stage_id) <> 3 THEN
+    IF (SELECT count(*) FROM comms.project_channels c JOIN probe_made m ON m.stage_id = c.stage_id
+         WHERE c.visibility = 'stage_all') <> 3 THEN
         RAISE EXCEPTION 'FAIL a created stage opened no room';
     END IF;
     RAISE NOTICE 'PASS every created stage opened its room';

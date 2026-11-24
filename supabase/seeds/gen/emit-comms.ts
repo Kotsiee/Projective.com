@@ -17,7 +17,7 @@ export function emitComms(world: World): string {
 	const out: string[] = [
 		HEADER(
 			"08_comms.sql — project channels, direct messages, entity channels and notifications",
-			"A project gets a Discussion room plus one `stage_all` room per stage (the rooms comms.get_stage_channels would otherwise provision lazily). DM read state is per participant: `last_read_at` before the last message means unread.",
+			"A project gets a Discussion room plus one `stage_all` room per stage (the rooms comms.get_stage_channels would otherwise provision lazily); the private team and business rooms are opened by the seat and stage triggers as 06_projects.sql loads (comms.open_private_rooms). DM read state is per participant: `last_read_at` before the last message means unread.",
 		),
 	];
 

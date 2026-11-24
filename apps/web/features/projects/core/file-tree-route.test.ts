@@ -19,6 +19,7 @@ const CHANNELS = {
 	],
 	stages: [{ id: "s1", slug: "stg-a", stageId: "ps1", order: 0 }],
 	teams: [{ channels: [{ id: "t1", chatId: "t1", name: "Team", kind: "team", unread: false }] }],
+	business: [{ id: "b1", chatId: "b1", name: "Business", kind: "business", unread: false }],
 	dms: [{ chatId: "d1" }],
 };
 
@@ -26,7 +27,7 @@ Deno.test("fileChannelRoutes routes the discussion by `discussion`, a stage by i
 	const routes = fileChannelRoutes(
 		{ format: "pipeline", structure: "standard", channels: CHANNELS } as never,
 	);
-	assertEquals(routes, { g1: "discussion", g2: "g2", s1: "stg-a", t1: "t1", d1: "d1" });
+	assertEquals(routes, { g1: "discussion", g2: "g2", s1: "stg-a", t1: "t1", b1: "b1", d1: "d1" });
 	assertEquals(roomOfRef(routes, "stg-a"), "s1");
 	assertEquals(roomOfRef(routes, "discussion"), "g1");
 	assertEquals(roomOfRef(routes, "unknown"), "unknown");

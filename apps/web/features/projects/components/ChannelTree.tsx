@@ -3,7 +3,7 @@ import { Avatar } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
 import { LaneSection, LaneSections } from "@projective/ui/navigation";
-import { DmIcon, HashIcon, TeamsIcon } from "./detail-glyphs.tsx";
+import { BusinessIcon, DmIcon, HashIcon, TeamsIcon } from "./detail-glyphs.tsx";
 import { ChatIcon } from "./channel-glyphs.tsx";
 import { PlusIcon } from "./glyphs.tsx";
 import { StageStatusIcon } from "./StageStatusIcon.tsx";
@@ -18,7 +18,7 @@ import { isChannelStarred } from "../core/channel-stars.ts";
 
 /**
  * ChannelTree — the staged engagement's contextual body in the Project Details lane: its Discussion
- * and — only when the viewer has something in them — Teams and Private Messages. Each group
+ * and — only when the viewer has something in them — Teams, Business and Private Messages. Each group
  * collapses/expands independently. Every channel row is a real anchor into the project at
  * `/projects/{slug}/{channelId}` (see {@link channelHref}), so the conversation opens in-context; the
  * channel's unified `chatId` remains the shared thread identity the destination page loads
@@ -35,6 +35,8 @@ import { isChannelStarred } from "../core/channel-stars.ts";
  *   - **Teams**: rendered only for a member of a team the engagement hired
  *     ({@link conditionalChannelGroups}). A team can hold several stages and the viewer can be on
  *     several teams; a team whose room nobody has opened yet still shows who it is and what it holds.
+ *   - **Business**: rendered only on the client side of a business-client engagement — the business's
+ *     private room on each stage (PROJECTS CH2), each row named by its stage.
  *   - **Private Messages**: rendered only when the viewer has a thread with a project member that
  *     carries messages sent inside this project.
  *
@@ -262,7 +264,7 @@ export interface ChannelTreeProps {
 	stages: SidebarStageRow[];
 	/** The Discussion group's General row, or `null` when the engagement has no project-wide room. */
 	general: GeneralChannel | null;
-	/** Which groups are expanded (keyed `discussion|teams|dms`). */
+	/** Which groups are expanded (keyed `discussion|teams|business|dms`). */
 	openGroups: Record<string, boolean>;
 	onToggleGroup: (key: string) => void;
 	/** Whether the viewer authors stages here (`BoardAccess.canAddStage`, Decision #421). */
@@ -293,7 +295,7 @@ export function ChannelTree(
 		activeChannelId,
 	}: ChannelTreeProps,
 ): JSX.Element {
-	const { teams, dms } = conditionalChannelGroups(detail.channels);
+	const { teams, business, dms } = conditionalChannelGroups(detail.channels);
 	const slug = detail.slug;
 
 	// #region Quick-filter application (OR-combined; an active row narrows the tree to its matches)
@@ -329,6 +331,7 @@ export function ChannelTree(
 			.map((t) => ({ ...t, channels: t.channels.filter(matchChannel) }))
 			.filter((t) => t.channels.length > 0)
 		: teams;
+	const fBusiness = business.filter(matchChannel);
 	const fDms = dms.filter(matchDm);
 
 	// A group shows if we're not filtering (so empty groups keep their own note) or it has matches.
@@ -336,7 +339,10 @@ export function ChannelTree(
 	const show = (n: number) => !filtering || n > 0;
 	const groupOpen = (key: string) => (filtering ? true : !!openGroups[key]);
 
-	if (filtering && discussionCount === 0 && fTeams.length === 0 && fDms.length === 0) {
+	if (
+		filtering && discussionCount === 0 && fTeams.length === 0 && fBusiness.length === 0 &&
+		fDms.length === 0
+	) {
 		return (
 			<LaneSections>
 				<p class="proj-chan-empty">No channels match these filters.</p>
@@ -412,7 +418,23 @@ export function ChannelTree(
 				</AccordionGroup>
 			)}
 
-			{/* 3 — Private Messages: only once a thread with a member carries project messages */}
+			{/* 3 — Business: only on the client side of a business-client engagement */}
+			{fBusiness.length > 0 && (
+				<AccordionGroup
+					id="business"
+					icon={BusinessIcon}
+					label="Business"
+					open={groupOpen("business")}
+					onToggle={() => onToggleGroup("business")}
+					hasUnread={anyUnread(business)}
+				>
+					{fBusiness.map((c) => (
+						<ChannelRow key={c.id} channel={c} slug={slug} activeChannelId={activeChannelId} />
+					))}
+				</AccordionGroup>
+			)}
+
+			{/* 4 — Private Messages: only once a thread with a member carries project messages */}
 			{fDms.length > 0 && (
 				<AccordionGroup
 					id="dms"

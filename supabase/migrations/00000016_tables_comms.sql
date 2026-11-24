@@ -338,8 +338,14 @@ CREATE TABLE comms.project_channels (
     -- carries history is retired by a switch to a Task or Session; an empty room is deleted instead.
     -- An archived room is never listed (the SELECT policy hides it) but its messages and files stay.
     archived_at timestamp with time zone,
+    -- The team whose private room this is (PROJECTS CH2): a `team_private` room belongs to ONE hired
+    -- team on one stage, and only that team's active members read it (comms.can_access_scope). Every
+    -- other scope has none. Written only by comms.open_private_rooms.
+    team_id uuid,
     CONSTRAINT project_channels_pkey PRIMARY KEY (id),
-    CONSTRAINT project_channels_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id)
+    CONSTRAINT project_channels_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id),
+    CONSTRAINT project_channels_team_id_fkey FOREIGN KEY (team_id) REFERENCES org.teams(id),
+    CONSTRAINT ck_project_channels_team_room CHECK ((visibility = 'team_private') = (team_id IS NOT NULL))
 );
 
 CREATE TABLE comms.project_messages (

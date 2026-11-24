@@ -161,6 +161,7 @@ function engagement(
 			general: channels.general ?? [],
 			stages: channels.stages ?? [],
 			teams: [],
+			business: [],
 			dms: [],
 		},
 	};

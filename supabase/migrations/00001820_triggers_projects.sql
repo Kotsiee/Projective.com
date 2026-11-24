@@ -109,3 +109,22 @@ CREATE TRIGGER trg_project_invitations_mask_message
     BEFORE INSERT OR UPDATE OF message ON projects.project_invitations
     FOR EACH ROW
     EXECUTE FUNCTION projects.tg_mask_invitation_message();
+
+-- A stage's private rooms open in the transaction that makes them due (PROJECTS CH2): a team seat
+-- going live, a stage added, a project re-pointed at a business client (comms.open_private_rooms).
+CREATE TRIGGER trg_stage_assignments_open_rooms
+    AFTER INSERT OR UPDATE OF status ON projects.stage_assignments
+    FOR EACH ROW
+    WHEN (NEW.assignee_type = 'team' AND NEW.status IN ('assigned', 'accepted'))
+    EXECUTE FUNCTION comms.trg_open_private_rooms();
+
+CREATE TRIGGER trg_project_stages_open_rooms
+    AFTER INSERT ON projects.project_stages
+    FOR EACH ROW
+    EXECUTE FUNCTION comms.trg_open_private_rooms();
+
+CREATE TRIGGER trg_projects_open_business_rooms
+    AFTER UPDATE OF client_business_id ON projects.projects
+    FOR EACH ROW
+    WHEN (NEW.client_business_id IS NOT NULL AND NEW.client_business_id IS DISTINCT FROM OLD.client_business_id)
+    EXECUTE FUNCTION comms.trg_open_private_rooms();

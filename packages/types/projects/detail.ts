@@ -32,7 +32,8 @@ const uuid = z.string().regex(UUID_RE, "Expected a UUID.");
 
 // #region Channels
 /** Which of the four tree groups a channel belongs to (drives its icon + grouping). */
-export const ChannelKind = z.enum(["general", "stage", "team", "dm"]);
+/** The tree group a room belongs to; `business` is a business client's private stage room (CH2). */
+export const ChannelKind = z.enum(["general", "stage", "team", "business", "dm"]);
 export type ChannelKind = z.infer<typeof ChannelKind>;
 
 /**
@@ -206,26 +207,34 @@ export function findStageChannel(
 	return opts.task && isDiscussionRef(ref) ? rootStageOf(stages, (s) => s.order) : null;
 }
 
-/** The four communication-tree groups, pre-partitioned server-side. */
+/** The communication-tree groups, pre-partitioned server-side. */
 export const ProjectChannelsSchema = z.object({
 	general: z.array(ProjectChannelSchema),
 	stages: z.array(StageChannelSchema),
 	teams: z.array(TeamChannelSchema),
+	/**
+	 * The business client's private stage rooms the viewer reads (`business_private`, PROJECTS CH2):
+	 * one per stage of a project whose client is a business, read by its owner and the business's
+	 * active members only. Each room is named by its stage.
+	 */
+	business: z.array(ProjectChannelSchema),
 	dms: z.array(DmChannelSchema),
 });
 export type ProjectChannels = z.infer<typeof ProjectChannelsSchema>;
 
-/** The two channel-tree groups that exist only when the viewer has something in them. */
+/** The channel-tree groups that exist only when the viewer has something in them. */
 export interface ConditionalChannelGroups {
 	/** Hired teams the viewer is an active member of — each holding at least one stage. */
 	teams: TeamChannel[];
+	/** The business client's private rooms the viewer reads (client side only). */
+	business: ProjectChannel[];
 	/** Threads with project members that carry messages sent inside this project. */
 	dms: DmChannel[];
 }
 
 /**
- * The rows the Teams and Private Messages groups would draw. An EMPTY list means the group is not
- * rendered at all — no header and no empty note — because an empty "Teams" group asserts a
+ * The rows the Teams, Business and Private Messages groups would draw. An EMPTY list means the group
+ * is not rendered at all — no header and no empty note — because an empty "Teams" group asserts a
  * relationship to the project that the viewer does not have.
  *
  * Membership is decided by the server (see {@link TeamChannelSchema}); this only drops a team that
@@ -234,10 +243,11 @@ export interface ConditionalChannelGroups {
  * tree and the group-session tree cannot disagree about when a group exists.
  */
 export function conditionalChannelGroups(
-	channels: Pick<ProjectChannels, "teams" | "dms">,
+	channels: Pick<ProjectChannels, "teams" | "business" | "dms">,
 ): ConditionalChannelGroups {
 	return {
 		teams: channels.teams.filter((team) => team.assignedStages.length > 0),
+		business: channels.business,
 		dms: channels.dms.filter((dm) => dm.hasProjectContext),
 	};
 }

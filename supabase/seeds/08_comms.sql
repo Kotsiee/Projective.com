@@ -4,7 +4,7 @@
 -- GENERATED FILE — do not edit by hand. Regenerate with:
 --   deno run --allow-read --allow-write --allow-env supabase/seeds/generate.ts
 --
--- A project gets a Discussion room plus one `stage_all` room per stage (the rooms comms.get_stage_channels would otherwise provision lazily). DM read state is per participant: `last_read_at` before the last message means unread.
+-- A project gets a Discussion room plus one `stage_all` room per stage (the rooms comms.get_stage_channels would otherwise provision lazily); the private team and business rooms are opened by the seat and stage triggers as 06_projects.sql loads (comms.open_private_rooms). DM read state is per participant: `last_read_at` before the last message means unread.
 --
 -- Every insert is ON CONFLICT DO NOTHING and every id is derived deterministically from a natural
 -- key, so this file is idempotent: running it twice, or against a partially-seeded database, is safe.
