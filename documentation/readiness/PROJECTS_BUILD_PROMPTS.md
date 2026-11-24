@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 24 open, 0 partly done, 2 done (§0 ledger).
-> Runnable now: ST1, ST3, ST4, ST6, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 23 open, 1 partly done (ST6, waiting only on 🧑 #427 (a)), 2 done (§0 ledger).
+> Runnable now: ST1, ST3, ST4, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -68,7 +68,7 @@ PJ-14 and PJ-74 are ⏸ (§0.4).
 | Row   | Now · Crit · Gate | Work order            | The row flips (or its note clears) when                                                               |
 | :---- | :---------------- | :-------------------- | :---------------------------------------------------------------------------------------------------- |
 | PJ-02 | ✅ · Crit · MVP   | **ST1**               | A setup save carries a version and a stale save is refused (note clears)                              |
-| PJ-04 | 🟡 · High · MVP   | **ST6** (🧑 #427 (a)) | The other side sees a write on its next read; (a) is confirmed as the spec's rule; (b) closed by #456 |
+| PJ-04 | 🟡 · High · MVP   | **ST6** step 5 (🧑 #427 (a); steps 1–4 landed, #555) | (a) is confirmed as the spec's rule; the read lag (i) is closed (#555) and (b) by #456 |
 
 **Stages** (69%)
 
@@ -243,7 +243,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 
 - **PM-WP8** now.
 - **ST1** now. It moves to Queue S if `apply_write_batch` needs a version op.
-- **ST6** now.
+- **ST6** step 5 only: 🧑 #427 (a). Steps 1–4 landed (#555).
 - **TK2** (⏳ TK1).
 - **NO3** now.
 - **FL2**.
@@ -643,50 +643,24 @@ documentation/database/projects/Functions.md; Zod; ROUTING.md; the decision row.
 
 ### ST6 — The other side sees a write on its next read
 
-Closes PJ-04 (🟡 → ✅) with 🧑 #427 (a) confirmed.
+**Status: partly done (#555, 2026-11-24).** Steps 1–4 landed: each cached project read is keyed by
+the project's KV version, which every write path bumps (the list is #555); a board reads around the
+cache while the claim sweep is due; the hit rate was measured (87.6 % → 83.8 %, stale reads 186 of
+1,200 → 0); PJ-04's (b) is corrected. Only step 5 is open, and PJ-04 flips 🟡 → ✅ when it is ruled.
 
 ```text
-PROMPT ST6: A write by one party to a shared project shows on the other party's next read, not
-up to 30 seconds later
-
-ROLE: Backend engineer. App lane.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - The project read cache: READ_CACHE_TTL_MS = 30_000 (packages/backend/core/cache.ts:536),
-    per isolate (:549). invalidateProjects evicts only the writer's tenant
-    (ProjectBackendService.ts:608-610); invalidateUserProjects runs only on instantiation
-    (:616-618, :3878). So a seller's write reaches the client up to 30 s late, and later still
-    on another isolate (#427 (i)).
-  - The pattern to copy: the catalogue's KV version tag (live-catalog.ts:456-510, #339 N2,
-    cacheVersionTag).
-  - PJ-04's other notes: (a) "Manage tickets" admits only COALESCE(client_user_id,
-    owner_user_id) (00002011:362-381; guard 00001110:261-275), so the client creates every
-    ticket, as PRODUCT_SPEC.md:629-631 says; (b) is closed by #456 (a service withholds
-    Archive, feed.ts:112-114; the client has Cancel, #479).
+PROMPT ST6 (step 5 only): the owner rules #427 (a).
 
 🧑 DECISION (step 5 only): #427 (a). Ask me to confirm that the client creates every ticket on a
 service engagement and that the brief's project details exclude tickets (recommended: confirm).
 
 STEPS:
-  1. Red first: a unit test in which party A writes and party B reads the same project within
-     the TTL, and B sees the old state.
-  2. A per-project version key in KV, read on every cached project read and bumped by every
-     write path: every service write, and every cron route and webhook that changes a project
-     (claim sweep, auto-approve, settlements, dispute sweeps). List them all in the decision
-     row. A path that cannot bump (a pure SQL job) reads around the cache for that project.
-  3. Keep the cache for reads with no cross-party write in between; measure the hit rate before
-     and after, and report both.
-  4. Correct PJ-04's (b) text.
   5. Put #427 (a) to me.
 
-ACCEPTANCE: the unit test is green; live, the seeded seller moves a ticket and the seeded client
-sees it on the next navigation, across two dev-server isolates if you can start two.
-
-SAME CHANGE: SYSTEM_ARCHITECTURE.md (the cache contract); the decision row (#427 (i) closed;
-(a) as I rule).
+SAME CHANGE: the decision row ((a) as I rule).
 ```
 
-§1.2 rows: **PJ-04** 🟡 → ✅ once #427 (a) is confirmed; its (b) text corrected.
+§1.2 rows: **PJ-04** 🟡 → ✅ once #427 (a) is confirmed.
 
 ---
 

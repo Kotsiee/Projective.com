@@ -27,6 +27,8 @@ import { businessNotActiveRefusal } from "../../core/business-lifecycle.ts";
 import { legalAcceptanceRefusal } from "../../core/legal-gate.ts";
 import { spendGateRefusal } from "../../core/spend-gate.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
+import { touchProjectsOf } from "../projects/freshness.ts";
+import type { SupabaseClient } from "supabaseClient";
 import type { FailureDetails, FieldErrors } from "../ServiceResult.ts";
 import { moneyWritesLive, moneyWritesOffRefusal } from "./money-gate.ts";
 import type { FundingPaymentInput } from "./funding-state.ts";
@@ -815,6 +817,35 @@ export async function syncPayoutAccount(
 	return { account: payoutAccountOf(row.account as Row), payoutReady: row.payout_ready === true };
 }
 
+/**
+ * Bump the project behind a card payment once its door applied an event (ST6): a settled, refunded or
+ * disputed escrow lock changes both parties' boards. As the service role, like the door itself; a
+ * failed lookup leaves the TTL to clear it, and the outcome passes through untouched.
+ */
+async function touchPaymentProject(
+	outcome: EventOutcome,
+	match: { id?: string | null; providerRef?: string | null },
+): Promise<EventOutcome> {
+	if (outcome.outcome !== "applied" || !(match.id || match.providerRef)) return outcome;
+	try {
+		const payments = getServiceClient().schema("finance").from("inbound_payments")
+			.select("project_stage_id, ticket_id");
+		const { data } = await (match.id
+			? payments.eq("id", match.id)
+			: payments.eq("provider_ref", match.providerRef!)).limit(1).maybeSingle();
+		const row = data as { project_stage_id: string | null; ticket_id: string | null } | null;
+		if (row) {
+			await touchProjectsOf(getServiceClient().schema("projects") as unknown as SupabaseClient, {
+				stageIds: row.project_stage_id ? [row.project_stage_id] : [],
+				ticketIds: row.ticket_id ? [row.ticket_id] : [],
+			});
+		}
+	} catch {
+		// The TTL clears what a failed lookup could not bump.
+	}
+	return outcome;
+}
+
 /** What a processor door did with one event — the `outcome` it stored on the event's claim. */
 export interface EventOutcome {
 	outcome: "applied" | "replayed" | "unmatched" | "ignored";
@@ -846,7 +877,8 @@ export async function settleCardPayment(args: {
 	currency: string;
 	livemode: boolean;
 }): Promise<EventOutcome> {
-	return outcomeOf(
+	return touchPaymentProject(
+		outcomeOf(
 		await serviceRpc("settle_card_payment", {
 			p_event_id: args.eventId,
 			p_provider_ref: args.paymentIntent,
@@ -855,6 +887,8 @@ export async function settleCardPayment(args: {
 			p_livemode: args.livemode,
 			p_payment_id: args.paymentId,
 		}),
+		),
+		{ id: args.paymentId, providerRef: args.paymentIntent },
 	);
 }
 
@@ -963,7 +997,8 @@ export async function recordDisputeOpened(args: {
 	reason: string | null;
 	livemode: boolean;
 }): Promise<EventOutcome> {
-	return outcomeOf(
+	return touchPaymentProject(
+		outcomeOf(
 		await serviceRpc("record_dispute_opened", {
 			p_event_id: args.eventId,
 			p_dispute_ref: args.dispute,
@@ -973,6 +1008,8 @@ export async function recordDisputeOpened(args: {
 			p_reason: args.reason,
 			p_livemode: args.livemode,
 		}),
+		),
+		{ providerRef: args.paymentIntent },
 	);
 }
 // #endregion
@@ -992,7 +1029,8 @@ export async function recordDisputeClosed(args: {
 	reason: string | null;
 	livemode: boolean;
 }): Promise<EventOutcome> {
-	return outcomeOf(
+	return touchPaymentProject(
+		outcomeOf(
 		await serviceRpc("record_dispute_closed", {
 			p_event_id: args.eventId,
 			p_dispute_ref: args.dispute,
@@ -1003,6 +1041,8 @@ export async function recordDisputeClosed(args: {
 			p_currency: args.currency,
 			p_reason: args.reason,
 		}),
+		),
+		{ providerRef: args.paymentIntent },
 	);
 }
 
@@ -1024,7 +1064,8 @@ export async function recordDisputeUpdated(args: {
 	status: string;
 	livemode: boolean;
 }): Promise<EventOutcome> {
-	return outcomeOf(
+	return touchPaymentProject(
+		outcomeOf(
 		await serviceRpc("record_dispute_updated", {
 			p_event_id: args.eventId,
 			p_event_type: args.eventType,
@@ -1036,6 +1077,8 @@ export async function recordDisputeUpdated(args: {
 			p_status: args.status,
 			p_livemode: args.livemode,
 		}),
+		),
+		{ providerRef: args.paymentIntent },
 	);
 }
 
@@ -1052,7 +1095,8 @@ export async function recordChargeRefunded(args: {
 	refund: string | null;
 	livemode: boolean;
 }): Promise<EventOutcome> {
-	return outcomeOf(
+	return touchPaymentProject(
+		outcomeOf(
 		await serviceRpc("record_charge_refunded", {
 			p_event_id: args.eventId,
 			p_payment_intent: args.paymentIntent,
@@ -1061,6 +1105,8 @@ export async function recordChargeRefunded(args: {
 			p_refund_ref: args.refund,
 			p_livemode: args.livemode,
 		}),
+		),
+		{ providerRef: args.paymentIntent },
 	);
 }
 

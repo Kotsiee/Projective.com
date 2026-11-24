@@ -3541,6 +3541,33 @@ and manage ephemeral server state.
 - **Queues:** Leverage `kv.enqueue()` for background tasks like processing images via WASM or
   sending notifications without blocking the HTTP response.
 
+#### The project read cache contract (Decision #555)
+
+The fat layer's read caches (`core/cache.ts`: `projectsReadCache`, `messagingReadCache`) are
+per-isolate `ArcCache`s keyed by the reader's tenant, with a 30 s TTL as the backstop. A tenant key
+alone cannot see another party's write, so a project read is also keyed by the project's version
+(`services/projects/freshness.ts`):
+
+- **Read.** Every cached read that names a project reads `["cache","v","projects",<prj- slug>]`
+  from KV **before** its query and folds it into the key (`liveRead`'s `project` argument). The slug
+  is the scope because every reader holds it before it reads (Decision #88) and it never changes.
+  The feed's rows are keyed by the viewer's own scope (`["projects","person",userId]`) and
+  re-checked against the version of every project they list.
+- **Write.** Every path that changes a project bumps its version after the write commits:
+  `liveWrite` does it for every `ProjectBackendService` write (pass the slug as its `project`
+  argument when the subject is not the project), and a writer that holds only row ids calls
+  `touchProjectsOf(db, refs)`. A write that hands someone a project bumps their person scope. A
+  write that evicts before a read-back bumps there too, because a failed read-back answers a refusal.
+  Messaging sends and pins, wallet funding and the Stripe settlement, refund and dispute doors bump
+  the same way. The full list is Decision #555.
+- **Isolates.** A bump re-keys the writer's isolate at once and every other isolate within a second
+  (`VERSION_CHECK_MS`). Without KV (the `vite` dev server, a runtime without `--unstable-kv`) a bump
+  holds in its own isolate only, and other isolates fall back to the TTL.
+- **Pure SQL jobs** cannot reach KV. Where a cached answer shows that one is due, the read goes around
+  the cache until it has run: a board holding a claim past `claim_ttl_minutes` (`claimSweepDue`).
+  The other sweeps stay on the TTL (Decision #555 flag (b)).
+- **Kept.** A read with no write in between keeps its key and stays a hit.
+
 ### Browser Storage: Local vs. Session
 
 We strictly separate persistent configuration from transient session state to ensure a clean user

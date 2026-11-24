@@ -133,6 +133,9 @@ Deno.test("version key — without KV, a write elsewhere reaches the other isola
 		source.rev = 2;
 		writer.invalidateCatalog();
 		assertEquals(revision(await writer.loadCatalog()), 2, "the writer still reads its own write");
+		// Both simulated isolates share one kv.ts, so forget the version the writer's isolate now
+		// holds in memory without KV: a real second isolate never sees it.
+		setSharedKvForTesting(null);
 
 		await time.tickAsync(CATALOG_TTL_MS - 1);
 		assertEquals(revision(await reader.loadCatalog()), 1, "fresh until its TTL");

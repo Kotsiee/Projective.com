@@ -35,6 +35,28 @@ export async function messageTableOf(
 	return project.data ? "comms.project_messages" : null;
 }
 
+/**
+ * The project a message belongs to (a room message's channel, or a DM's stamp), or `null` — what a
+ * pin bumps so every party's room read shows it (ST6). A failed read is `null`: the TTL then clears it.
+ */
+export async function messageProjectIdOf(
+	actor: ReadActor & { accessToken: string },
+	messageId: string,
+): Promise<string | null> {
+	const db = commsClient(actor);
+	const [dm, room] = await Promise.all([
+		db.from("dm_messages").select("project_id").eq("id", messageId).maybeSingle(),
+		db.from("project_messages").select("channel_id").eq("id", messageId).maybeSingle(),
+	]);
+	const stamped = (dm.data as { project_id?: string | null } | null)?.project_id;
+	if (stamped) return stamped;
+	const channelId = (room.data as { channel_id?: string } | null)?.channel_id;
+	if (!channelId) return null;
+	const { data } = await db.from("project_channels").select("project_id").eq("id", channelId)
+		.maybeSingle();
+	return (data as { project_id?: string } | null)?.project_id ?? null;
+}
+
 // #endregion
 
 // #region Writes

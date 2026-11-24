@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import {
 	bumpCacheVersion,
 	cachedGlobal,
@@ -114,12 +114,19 @@ Deno.test("cachedGlobal — a value over 60 KiB is served from memory and never 
 
 // #region Version keys
 
-Deno.test("version keys without KV — constant, and a bump neither throws nor changes them", async () => {
+Deno.test("version keys without KV — a bump holds in its own isolate, past the version check", async () => {
 	setSharedKvForTesting(null);
 	assertEquals(await cacheVersion(["catalogue"]), null);
-	await bumpCacheVersion(["catalogue"]);
-	assertEquals(await cacheVersion(["catalogue"]), null);
 	assertEquals(await cacheVersionTag(["catalogue"]), "v0");
+	await bumpCacheVersion(["catalogue"]);
+	const bumped = await cacheVersion(["catalogue"]);
+	assert(bumped !== null, "the writer's isolate sees its own bump (ST6: the KV-less dev server)");
+	assertEquals(await cacheVersionTag(["catalogue"]), bumped);
+	assertEquals(await cacheVersion(["fx"]), null, "scopes are independent");
+	// Past VERSION_CHECK_MS the version is re-read, and must not lapse back to "v0" — that would
+	// re-key every reader onto entries stored before the bump.
+	await new Promise((resolve) => setTimeout(resolve, 1_100));
+	assertEquals(await cacheVersion(["catalogue"]), bumped);
 });
 
 Deno.test("version keys — the writer's isolate sees its bump at once, under the scope's KV key", async () => {

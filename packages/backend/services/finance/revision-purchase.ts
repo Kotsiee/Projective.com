@@ -14,6 +14,7 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
 import { moneyWritesLive, moneyWritesOff } from "./money-gate.ts";
 import { projectsDb } from "../projects/live-support.ts";
+import { touchProjects } from "../projects/freshness.ts";
 import type { ResolvedOwner } from "./commerce-owner.ts";
 import { fundingChargeFor } from "./funding-charge.ts";
 import { readQuote } from "./fx-quotes.ts";
@@ -286,6 +287,8 @@ async function fundFromWallet(
 		return fail(refused.status, { message: refused.message });
 	}
 	const escrowId = (data as { escrow_id?: string | null } | null)?.escrow_id ?? null;
+	// The freelancer's next read shows the round paid for (ST6).
+	await touchProjects([facts.project.slug]);
 	return ok({ method: "wallet", revisionId: facts.revision.id, escrowId }, {
 		message: "Revision paid for from your wallet — the work is back with the freelancer.",
 	});

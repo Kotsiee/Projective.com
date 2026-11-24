@@ -10,6 +10,15 @@ import {
 	tenantPrefix,
 } from "../../core/cache.ts";
 import { ANONYMOUS_READER, canReadLive, type ReadActor, tenantOf } from "../read-actor.ts";
+import {
+	boardSweepDue,
+	personVersion,
+	projectVersion,
+	touchPerson,
+	touchProjects,
+	touchProjectsOf,
+} from "./freshness.ts";
+import { projectsDb } from "./live-support.ts";
 import { fetchProjectBySlug, fetchProjectRows, scopesFromRows } from "./live-queries.ts";
 import { fetchBoardPage, fetchTicketLocation } from "./live-board.ts";
 import { fetchProjectDetail } from "./live-detail.ts";
@@ -578,20 +587,49 @@ async function liveRead<T>(
 	namespace: string,
 	key: unknown,
 	run: (actor: ReadActor & { accessToken: string }) => Promise<T | null>,
+	/**
+	 * The `prj-` slug the answer belongs to. Its version joins the key (`freshness.ts`), so a write
+	 * by any party to that project re-keys this read in every tenant and isolate (ST6).
+	 */
+	project?: string,
+	/**
+	 * Whether a pure SQL job (which cannot bump the version) is due on this answer. While it is, the
+	 * read goes around the cache: the answer is the database's and is not kept.
+	 */
+	around?: (value: T, actor: ReadActor & { accessToken: string }) => Promise<boolean>,
 ): Promise<LiveRead<T>> {
 	const gate = liveGate(actor);
 	if (gate.road !== "live") return gate;
 	try {
-		const value = await cachedRead(
-			projectsReadCache,
-			cacheKey(tenantOf(gate.actor), namespace, key),
-			() => run(gate.actor),
-		);
+		// Version first, query second: a write that commits during the query bumps past this key.
+		const v = project === undefined ? undefined : await projectVersion(project);
+		const cacheId = cacheKey(tenantOf(gate.actor), namespace, v === undefined ? key : { key, v });
+		let fresh = false;
+		const compute = () => {
+			fresh = true;
+			return run(gate.actor);
+		};
+		let value = await cachedRead(projectsReadCache, cacheId, compute);
+		if (value !== null && around && await around(value, gate.actor)) {
+			projectsReadCache.delete(cacheId);
+			if (!fresh) value = await compute();
+		}
 		return { road: "live", value };
 	} catch (error) {
 		liveFailed(method, error);
 		return { road: "refused", result: liveUnavailable() };
 	}
+}
+
+/**
+ * The versions of every project a feed lists, as one comparable string.
+ *
+ * shortcut: read after the rows, so a write that commits and bumps while the rows are being read is
+ * stored under its new version and served until the TTL; read the previous entry's versions first if
+ * that window ever shows.
+ */
+async function versionsOf(rows: readonly ProjectSummary[]): Promise<string> {
+	return (await Promise.all(rows.map((row) => projectVersion(row.slug)))).join(",");
 }
 
 // #region Write plumbing
@@ -614,10 +652,13 @@ function invalidateProjects(actor: ReadActor): void {
 
 /**
  * Evict every cached read of ANOTHER person, in every workspace they read from — the seller, when a
- * buyer's instantiation hands them a new engagement to own (Decision #427).
+ * buyer's instantiation hands them a new engagement to own (Decision #427). Their feed's version is
+ * bumped too, which reaches every other isolate (ST6).
  */
-function invalidateUserProjects(userId: string): void {
-	if (userId.length > 0) invalidatePrefix(projectsReadCache, `${userId}\u0000`);
+async function invalidateUserProjects(userId: string): Promise<void> {
+	if (userId.length === 0) return;
+	invalidatePrefix(projectsReadCache, `${userId}\u0000`);
+	await touchPerson(userId);
 }
 
 /**
@@ -919,6 +960,11 @@ async function liveWrite<T>(
 	run: (actor: ReadActor & { accessToken: string }) => Promise<WriteOutcome<T>>,
 	/** What `subject` names — see {@link notFound}. Defaults to a project, which most writes resolve. */
 	noun = "project",
+	/**
+	 * The `prj-` slug of the project the write changes, bumped once it commits so every other party's
+	 * next read misses (ST6). Defaults to `subject` when that is a project slug.
+	 */
+	project: string | null = isSlug(subject, "project") ? subject : null,
 ): Promise<ServiceResult<T> | undefined> {
 	if (!isProjectsBackendLive()) return undefined;
 	if (!canReadLive(actor)) {
@@ -929,6 +975,7 @@ async function liveWrite<T>(
 		if (outcome === null) return notFound<T>(noun, subject);
 		if ("refusal" in outcome) return refused<T>(outcome.refusal);
 		invalidateProjects(actor);
+		await touchProjects([project]);
 		return ok(outcome.data, {
 			message: typeof message === "function" ? message(outcome.data) : message,
 		});
@@ -1138,9 +1185,22 @@ export class ProjectBackendService {
 			// The ROWS are cached, not the composed payload: the filter/sort facets change on every
 			// keystroke of the lane's search, and caching per-facet-combination would miss constantly
 			// while holding many near-identical copies of one tenant's projects.
-			const key = cacheKey(tenantOf(gate.actor), "projects.rows");
-			const rows = await cachedRead(projectsReadCache, key, () => fetchProjectRows(gate.actor));
-			return ok(buildLiveFeed(rows, params));
+			// Keyed by the viewer's feed version (a project handed to them), and checked against the
+			// version of every project it lists (a write to one of them) — ST6.
+			const key = cacheKey(tenantOf(gate.actor), "projects.rows", {
+				v: await personVersion(gate.actor.userId),
+			});
+			const read = () =>
+				cachedRead(projectsReadCache, key, async () => {
+					const rows = await fetchProjectRows(gate.actor);
+					return { rows, versions: await versionsOf(rows) };
+				});
+			let held = await read();
+			if (held.versions !== await versionsOf(held.rows)) {
+				projectsReadCache.delete(key);
+				held = await read();
+			}
+			return ok(buildLiveFeed(held.rows, params));
 		} catch (error) {
 			liveFailed("list", error);
 			return liveUnavailable();
@@ -1158,6 +1218,7 @@ export class ProjectBackendService {
 			"projects.item",
 			{ slug },
 			(a) => fetchProjectBySlug(a, slug),
+			slug,
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -1205,6 +1266,7 @@ export class ProjectBackendService {
 			"projects.detail",
 			{ slug },
 			(a) => fetchProjectDetail(a, slug),
+			slug,
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -1265,6 +1327,7 @@ export class ProjectBackendService {
 			"projects.messages",
 			params,
 			(a) => fetchChannelMessagePage(a, params),
+			params.projectId,
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -1306,6 +1369,7 @@ export class ProjectBackendService {
 			"projects.files",
 			params,
 			(a) => fetchFilePage(a, params),
+			params.projectId,
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -1349,6 +1413,7 @@ export class ProjectBackendService {
 			"projects.submissions",
 			params,
 			(a) => fetchSubmissionPage(a, params),
+			params.projectId,
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -1391,6 +1456,8 @@ export class ProjectBackendService {
 			"projects.board",
 			params,
 			(a) => fetchBoardPage(a, params),
+			params.projectId,
+			(page, a) => boardSweepDue(page.cards, a.accessToken),
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -1502,6 +1569,8 @@ export class ProjectBackendService {
 			"projects.board",
 			boardParams,
 			(a) => fetchBoardPage(a, boardParams),
+			boardParams.projectId,
+			(page, a) => boardSweepDue(page.cards, a.accessToken),
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -1552,6 +1621,7 @@ export class ProjectBackendService {
 			"projects.members",
 			params,
 			(a) => fetchLiveMemberRoster(a, params),
+			params.projectId,
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -1612,6 +1682,7 @@ export class ProjectBackendService {
 				return { data: done };
 			},
 			"invitation",
+			input.projectId,
 		);
 		if (live !== undefined) return live;
 
@@ -1668,6 +1739,7 @@ export class ProjectBackendService {
 				return { data: { invite: outcome.data } };
 			},
 			"invitation",
+			input.projectId,
 		);
 		if (live !== undefined) return live;
 
@@ -1715,6 +1787,7 @@ export class ProjectBackendService {
 			message,
 			(a) => removeMemberRow(a, input),
 			"member",
+			input.projectId,
 		);
 		if (live !== undefined) return live;
 
@@ -2406,6 +2479,7 @@ export class ProjectBackendService {
 				return { data: { memberId, role: outcome.data.role, changed: outcome.data.changed } };
 			},
 			"member",
+			slug,
 		);
 		if (live !== undefined) return live;
 
@@ -2469,6 +2543,7 @@ export class ProjectBackendService {
 				};
 			},
 			"member",
+			slug,
 		);
 		if (live !== undefined) return live;
 
@@ -2605,7 +2680,13 @@ export class ProjectBackendService {
 			actor,
 			input.applicationId,
 			message,
-			(a) => withdrawApplicationLive(a, input.applicationId),
+			async (a) => {
+				const outcome = await withdrawApplicationLive(a, input.applicationId);
+				if (outcome && !("refusal" in outcome)) {
+					await touchProjectsOf(projectsDb(a), { applicationIds: [input.applicationId] });
+				}
+				return outcome;
+			},
 			"application",
 		);
 		if (live !== undefined) return live;
@@ -2694,10 +2775,13 @@ export class ProjectBackendService {
 				const answered: InvitationAnswered["answered"] = [];
 				for (const id of input.invitationIds) {
 					const outcome = await respondLive(a, id, input.accept);
-					if (outcome === null) return answered.length > 0 ? { data: { answered } } : null;
-					if ("refusal" in outcome) return answered.length > 0 ? { data: { answered } } : outcome;
+					if (outcome === null || "refusal" in outcome) {
+						if (answered.length === 0) return outcome;
+						break;
+					}
 					answered.push(outcome.data);
 				}
+				await touchProjectsOf(projectsDb(a), { invitationIds: answered.map((x) => x.id) });
 				return { data: { answered } };
 			},
 			"invitation",
@@ -2736,6 +2820,7 @@ export class ProjectBackendService {
 			async (a) => {
 				const outcome = await acceptApplicationLive(a, input.applicationId);
 				if (outcome === null || "refusal" in outcome) return outcome;
+				await touchProjectsOf(projectsDb(a), { applicationIds: [input.applicationId] });
 				return { data: done };
 			},
 			"application",
@@ -2778,6 +2863,7 @@ export class ProjectBackendService {
 			async (a) => {
 				const outcome = await rejectApplicationLive(a, input.applicationId);
 				if (outcome === null || "refusal" in outcome) return outcome;
+				await touchProjectsOf(projectsDb(a), { applicationIds: [input.applicationId] });
 				return { data: done };
 			},
 			"application",
@@ -2822,6 +2908,7 @@ export class ProjectBackendService {
 			"projects.setup",
 			{ slug },
 			(a) => fetchProjectSetup(a, slug),
+			slug,
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -2861,6 +2948,7 @@ export class ProjectBackendService {
 			"projects.overview",
 			{ slug },
 			(a) => fetchProjectOverview(a, slug),
+			slug,
 		);
 		if (live.road === "refused") return live.result;
 		if (live.road === "live") {
@@ -3145,6 +3233,7 @@ export class ProjectBackendService {
 				// on whatever happens next, so a re-read that fails must still leave the cache holding
 				// nothing rather than the board as it was before the ticket was created.
 				invalidateProjects(a);
+				await touchProjects([input.projectId]);
 				const page = await fetchBoardPage(a, { projectId: input.projectId, view: "stages" });
 				const card = page?.cards.find((c) => c.id === outcome.data);
 				// The board is re-read rather than a second card assembled here: composing one needs the
@@ -3256,12 +3345,14 @@ export class ProjectBackendService {
 				// `trg_ticket_escrow_sync`. Evict before the read-back so a failed re-read cannot leave a
 				// board cached in the column the ticket has already left.
 				invalidateProjects(a);
+				await touchProjects([input.projectId]);
 				const page = await fetchBoardPage(a, { projectId: input.projectId, view: "stages" });
 				const card = page?.cards.find((c) => c.id === outcome.data);
 				if (!card) return { refusal: { status: 502, message: "Ticket moved but not readable." } };
 				return { data: { card } };
 			},
 			"ticket",
+			input.projectId,
 		);
 		if (live) return live;
 
@@ -3343,12 +3434,14 @@ export class ProjectBackendService {
 				const outcome = await claimTicketRow(a, input);
 				if (outcome === null || "refusal" in outcome) return outcome;
 				invalidateProjects(a);
+				await touchProjects([input.projectId]);
 				const page = await fetchBoardPage(a, { projectId: input.projectId, view: "stages" });
 				const card = page?.cards.find((c) => c.id === outcome.data);
 				if (!card) return { refusal: { status: 502, message: "Ticket claimed but not readable." } };
 				return { data: { card } };
 			},
 			"ticket",
+			input.projectId,
 		);
 		if (live) return live;
 
@@ -3405,9 +3498,11 @@ export class ProjectBackendService {
 				const outcome = await deleteTicketRow(a, input);
 				if (outcome === null || "refusal" in outcome) return outcome;
 				invalidateProjects(a);
+				await touchProjects([input.projectId]);
 				return { data: { ticketId: outcome.data } };
 			},
 			"ticket",
+			input.projectId,
 		);
 		if (live) return live;
 
@@ -3468,6 +3563,7 @@ export class ProjectBackendService {
 				return { data: { unit: outcome.data } };
 			},
 			"stage",
+			input.projectId,
 		);
 		if (live) return live;
 
@@ -3537,6 +3633,7 @@ export class ProjectBackendService {
 					: "Submission accepted.",
 			(a) => reviewSubmissionRow(a, input),
 			"submission",
+			input.projectId,
 		);
 		if (live) return live;
 
@@ -3572,6 +3669,7 @@ export class ProjectBackendService {
 			"Revision ready to pay for.",
 			(a) => requestPaidRevisionRow(a, input),
 			"submission",
+			input.projectId,
 		);
 		return live ?? fail(503, { message: "Paid revisions need the live backend." });
 	}
@@ -3609,6 +3707,7 @@ export class ProjectBackendService {
 					: ""),
 			(a) => approveStageRow(a, input),
 			"stage",
+			input.projectId,
 		);
 		if (live) return live;
 
@@ -3674,6 +3773,7 @@ export class ProjectBackendService {
 			fairExitMessage,
 			(a) => exitStageRow(a, input),
 			"stage",
+			input.projectId,
 		);
 		if (live) return live;
 
@@ -3943,7 +4043,7 @@ export class ProjectBackendService {
 				if (outcome.data.created) {
 					invalidateProjects(actor);
 					// The seller owns what was just made (Decision #427); their feed must show it.
-					invalidateUserProjects(blueprint?.freelancer_profile_id ?? "");
+					await invalidateUserProjects(blueprint?.freelancer_profile_id ?? "");
 				}
 				return settled(outcome.data);
 			} catch (error) {

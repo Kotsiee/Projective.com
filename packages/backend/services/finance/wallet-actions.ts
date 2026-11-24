@@ -30,6 +30,8 @@ import type { ReadActor } from "../read-actor.ts";
 import { formatMoney, unpricedTicketsSentence } from "@projective/types/finance";
 import { LOCK_REASON, overviewOf } from "./live-wallet.ts";
 import { readStageFundingQuote } from "./stage-funding.ts";
+import { touchProjectsOf } from "../projects/freshness.ts";
+import { projectsDb } from "../projects/live-support.ts";
 import { createDepositRule, refusalOf, setIncomeSmoother } from "./live-payments.ts";
 import { moneyWritesLive, moneyWritesOff, refuseUnlessMoneyLive } from "./money-gate.ts";
 import { PaymentBackendService } from "./PaymentBackendService.ts";
@@ -501,6 +503,8 @@ export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, act
 		}
 		return moneyRefusal(error);
 	}
+	// Both parties' boards show the stage funded on their next read (ST6).
+	await touchProjectsOf(projectsDb(ctx.actor), { projectIds: [projectId] });
 	const waiting =
 		Number((data as { awaiting_claim_count?: number | string } | null)?.awaiting_claim_count) || 0;
 	const note = waiting === 0

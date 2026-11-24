@@ -73,7 +73,7 @@ import {
 	findConversationRoster,
 } from "./workspace-fixtures.ts";
 import { fetchAttachmentSources } from "./live-attachment-source.ts";
-import { UUID_RE } from "../projects/live-support.ts";
+import { projectsDb, UUID_RE } from "../projects/live-support.ts";
 import { findSettings } from "./settings-fixtures.ts";
 import {
 	fetchConversation,
@@ -129,7 +129,8 @@ import { promoteStubOnSend, setStubFolder, withStubFolder } from "./folder-store
 import { inPartition } from "./partition.ts";
 import { resolveLiveThread, resolveThreadRef, virtualSummary } from "./live-threads.ts";
 import { markLiveRead, setLiveFolder, setLiveMuted, setLiveStarred } from "./live-folders.ts";
-import { setMessagePin } from "./live-message-marks.ts";
+import { messageProjectIdOf, setMessagePin } from "./live-message-marks.ts";
+import { touchProjects, touchProjectsOf } from "../projects/freshness.ts";
 import { postRequestMessage, type RequestPosted } from "./live-requests.ts";
 import { fetchConversationContext } from "./live-context.ts";
 import { findConversationContext } from "./context-fixtures.ts";
@@ -317,7 +318,8 @@ export interface SendDeps {
  */
 interface SendTarget {
 	insert: (input: SendMessageInput) => Promise<ServiceResult<SentMessage>>;
-	bump: () => void;
+	/** After a send commits: evict the sender's reads, and bump the project's version (ST6). */
+	bump: () => void | Promise<void>;
 }
 
 /** A send the door refused before anything was written. */
@@ -395,8 +397,10 @@ async function threadTargetOf(
 				},
 				bump() {
 					bumpTenant(messagingReadCache, actor);
-					// A stamped message changes the project's Private Messages group too.
-					if (ref.project) bumpTenant(projectsReadCache, actor);
+					// A stamped message changes the project's Private Messages group too, for both sides.
+					if (!ref.project) return;
+					bumpTenant(projectsReadCache, actor);
+					return touchProjects([ref.project]);
 				},
 			};
 		} catch (error) {
@@ -497,7 +501,10 @@ async function roomTargetOf(
 						return failed();
 					}
 				},
-				bump: () => bumpTenant(projectsReadCache, actor),
+				bump: () => {
+					bumpTenant(projectsReadCache, actor);
+					return touchProjects([projectId]);
+				},
 			};
 		} catch (error) {
 			liveFailed("sendMessage", error);
@@ -769,7 +776,7 @@ export class MessagingBackendService {
 		// Tier 1 (SEC §2.3): the trust track's pre-filter goes here, before either store is written.
 
 		const sent = await target.insert(input);
-		if (sent.ok) target.bump();
+		if (sent.ok) await target.bump();
 		return sent;
 	}
 
@@ -914,6 +921,8 @@ export class MessagingBackendService {
 			const tenant = tenantPrefix(tenantOf(actor));
 			invalidatePrefix(messagingReadCache, tenant);
 			invalidatePrefix(projectsReadCache, tenant);
+			const projectId = await messageProjectIdOf(actor, messageId).catch(() => null);
+			if (projectId) await touchProjectsOf(projectsDb(actor), { projectIds: [projectId] });
 			return ok(outcome.data, { message: pinned ? "Message pinned." : "Message unpinned." });
 		} catch (error) {
 			liveFailed("setPinned", error);

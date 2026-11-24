@@ -130,7 +130,9 @@ export async function cachedGlobal<T>(
  * once its check lapses (at most a second), and the orphaned entry ages out under its own TTL.
  *
  * TTL is the guarantee, the version the optimisation: a write made outside the services (the SQL
- * console, a cron job), a lost bump and an isolate without KV are all covered by the TTL alone.
+ * console, a cron job) and a lost bump are covered by the TTL alone. An isolate without KV (the
+ * `vite` dev server, a runtime without `--unstable-kv`) keeps its versions in memory, so a bump
+ * still reaches every other tenant's read in that isolate; only other isolates fall back to the TTL.
  */
 
 /** How long an isolate trusts a version it read: at most one KV read per scope per second. */
@@ -142,6 +144,17 @@ const versions = new ArcCache<string | null>({
 	ttlMs: VERSION_CHECK_MS,
 });
 
+/**
+ * Without KV, each scope's version as this isolate bumped it. Never expires: a version that lapsed
+ * would revert its scope to `"v0"` and re-key every reader onto entries stored before the bump.
+ * shortcut: a scope evicted here within its readers' TTL of its bump can revive a pre-bump entry,
+ * which takes 4,096 other bumps in that window on one KV-less isolate; key by a per-isolate epoch then.
+ */
+const localVersions = new ArcCache<string>({
+	maxEntries: READ_CACHE_MAX_ENTRIES * 8,
+	ttlMs: Number.POSITIVE_INFINITY,
+});
+
 /** The KV key holding a scope's version. */
 function versionKey(scope: readonly string[]): Deno.KvKey {
 	return ["cache", "v", ...scope];
@@ -150,29 +163,36 @@ function versionKey(scope: readonly string[]): Deno.KvKey {
 /**
  * Bump `scope`'s version: a fresh random id under `["cache","v",...scope]`. Called by the writer
  * after its write commits. The writer's own isolate sees the new version at once; every other
- * isolate within {@link VERSION_CHECK_MS}. Without KV, or when the write fails, it does nothing (the
- * TTL backstops it). Resolves once written; never rejects.
+ * isolate within {@link VERSION_CHECK_MS}. Without KV the version is held in this isolate only
+ * ({@link localVersions}); when the KV write fails it does nothing (the TTL backstops it). Resolves
+ * once written; never rejects.
  */
 export async function bumpCacheVersion(scope: readonly string[]): Promise<void> {
 	const kv = await openSharedKv();
-	if (!kv) return;
 	const version = crypto.randomUUID();
-	const written = await kv.set(versionKey(scope), version).then(() => true, () => false);
-	if (!written) return;
 	const id = JSON.stringify(scope);
+	if (kv) {
+		const written = await kv.set(versionKey(scope), version).then(() => true, () => false);
+		if (!written) return;
+	} else {
+		localVersions.set(id, version);
+	}
 	versions.delete(id); // detaches a read from before the bump, so its answer cannot overwrite this
 	versions.set(id, version);
 }
 
 /**
  * `scope`'s current version, read from KV at most once a second per isolate (concurrent reads share
- * one). `null` until the scope is first bumped, and always without KV or on a failed read, so the
- * TTL governs. Never rejects. To key a cache by it, use {@link cacheVersionTag}.
+ * one). `null` until the scope is first bumped, and on a failed read, so the TTL governs. Without KV
+ * it is this isolate's own bump ({@link localVersions}). Never rejects. To key a cache by it, use
+ * {@link cacheVersionTag}.
  */
 export function cacheVersion(scope: readonly string[]): Promise<string | null> {
-	return versions.through(JSON.stringify(scope), async () => {
+	const id = JSON.stringify(scope);
+	return versions.through(id, async () => {
 		const kv = await openSharedKv();
-		const entry = kv ? await kv.get<string>(versionKey(scope)).catch(() => null) : null;
+		if (!kv) return localVersions.get(id) ?? null;
+		const entry = await kv.get<string>(versionKey(scope)).catch(() => null);
 		return entry?.value ?? null;
 	});
 }
@@ -195,5 +215,6 @@ export function setSharedKvForTesting(kv: Deno.Kv | null | undefined): void {
 	shared = kv === undefined ? undefined : Promise.resolve(kv);
 	globals.clear();
 	versions.clear();
+	localVersions.clear();
 }
 // #endregion
