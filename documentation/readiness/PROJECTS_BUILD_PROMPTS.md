@@ -305,7 +305,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2 (#548)    | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
 | 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2 (#548–549)| Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
 | 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3           | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
-| 20 | Which workload verdict can be appealed                                                                                                       | EX4           | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
+| 20 | Which workload verdict can be appealed                                                                                                       | EX4 (#552)    | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
 | 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1           | Edit for 15 minutes; delete for everyone at any time while the room is live; originals kept for evidence; nothing in an archived or disputed room changes                                                                |
 | 22 | Who gets team and business rooms, and when                                                                                                   | CH2           | Eagerly: at the team's seat going live, and at the business's first project access                                                                                                                                       |
 | 23 | Who may bring a pair DM into a project                                                                                                       | CH3           | Either participant, when both are on the project; the other is told                                                                                                                                                      |
@@ -1147,23 +1147,32 @@ SAME CHANGE: PRODUCT_SPEC.md §Dispute Mechanism (vault and PDF built); document
 
 Closes PJ-46 (🟡 → ✅) after PM-WP4a step 6.
 
+**Status (2026-11-24, #552):** stop 20 is ruled: the moderator's bad-faith flag only, once, within 7
+days, to a different operator. Nothing is built: PM-WP5a, T&S R3 and R4 have not landed. Premises
+corrected below: the flag writes a `discovery_rank` penalty, so a successful appeal restores the
+Explore rank through R4's `fn_reverse_penalty` and leaves Standing alone, and the cites moved. One
+question is open (#552 (a)): the client's "keep" answer, which PM-WP5a hands to EX4.
+
 ```text
 PROMPT EX4: A freelancer can appeal a moderator's bad-faith verdict on a workload report once,
 to a different operator, and a successful appeal reverses its penalty
 
 ROLE: Full-stack engineer. Queue S, after PM-WP5a and T&S R3 and R4 (R1 has landed).
 
-CONTEXT (verified at e1ff027b; re-check every line):
-  - This is W8 (PM §0.6's last bullet; PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md:536, :665), with no
+CONTEXT (verified at e1ff027b, cites re-checked at 5902b239; re-check every line):
+  - This is W8 (PM §0.6's last bullet; PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md:538, :667), with no
     prompt. projects.fn_flag_bad_faith_report (00001140:7) is ungranted, so no moderator can
     call it. /admin/disputes reads finance.disputes only.
-  - A workload report moves no money (#290, PRODUCT_SPEC.md:2963-2965), so its contest is an
+  - A workload report moves no money (#290, PRODUCT_SPEC.md:3069-3071), so its contest is an
     appeal against a penalty, not a finance.disputes row. Its home is ops.reports (T&S R1, landed; subject type workload_report), R3's
     /admin/reports desk and R4's penalty writer (TRUST_SAFETY_BUILD_PROMPTS.md:723-931).
 
-🧑 DECISION (before step 2): which verdict can be appealed. Recommended: only the moderator's
-bad-faith flag (the lapse penalty is mechanical); once, within 7 days, to a different operator;
-a successful appeal reverses the penalty through R4's writer and recomputes Standing.
+RULED (#552): only the moderator's bad-faith flag is appealable (the lapse penalty is
+mechanical); once, within 7 days of the flag, to a different operator. The flag writes a
+discovery_rank penalty (source_type workload_report, 00001140:29-35), so a successful appeal
+reverses it through R4's security.fn_reverse_penalty and restores the Explore rank. Standing is
+untouched: R5 computes it from trust_score penalties only.
+🧑 OPEN (#552 (a)): the client's "keep" answer (PM-WP5a hands it here; §Dispute Mechanism 4).
 
 STEPS:
   1. Red first: a probe in which a moderator flags a report and nothing can appeal it.
