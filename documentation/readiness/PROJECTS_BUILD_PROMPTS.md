@@ -68,7 +68,7 @@ PJ-14 and PJ-74 are ⏸ (§0.4).
 | Row   | Now · Crit · Gate | Work order            | The row flips (or its note clears) when                                                               |
 | :---- | :---------------- | :-------------------- | :---------------------------------------------------------------------------------------------------- |
 | PJ-02 | ✅ · Crit · MVP   | **ST1**               | A setup save carries a version and a stale save is refused (note clears)                              |
-| PJ-04 | 🟡 · High · MVP   | **ST6** step 5 (🧑 #427 (a); steps 1–4 landed, #555) | (a) is confirmed as the spec's rule; the read lag (i) is closed (#555) and (b) by #456 |
+| PJ-04 | 🟡 · High · MVP   | **ST6** step 5 (🧑 #427 (a); steps 1–4 landed in `08f27344`, #555) | (a) is confirmed as the spec's rule; the read lag (i) is closed (#555) and (b) by #456 |
 
 **Stages** (69%)
 
@@ -243,7 +243,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 
 - **PM-WP8** now.
 - **ST1** now. It moves to Queue S if `apply_write_batch` needs a version op.
-- **ST6** step 5 only: 🧑 #427 (a). Steps 1–4 landed (#555).
+- **ST6** step 5 only: 🧑 #427 (a). Steps 1–4 landed (`08f27344`, #555).
 - **TK2** (⏳ TK1).
 - **NO3** now.
 - **FL2**.
@@ -643,7 +643,7 @@ documentation/database/projects/Functions.md; Zod; ROUTING.md; the decision row.
 
 ### ST6 — The other side sees a write on its next read
 
-**Status: partly done (#555, 2026-11-24).** Steps 1–4 landed: each cached project read is keyed by
+**Status: partly done (#555, `08f27344`, 2026-11-24).** Steps 1–4 landed: each cached project read is keyed by
 the project's KV version, which every write path bumps (the list is #555); a board reads around the
 cache while the claim sweep is due; the hit rate was measured (87.6 % → 83.8 %, stale reads 186 of
 1,200 → 0); PJ-04's (b) is corrected. Only step 5 is open, and PJ-04 flips 🟡 → ✅ when it is ruled.
