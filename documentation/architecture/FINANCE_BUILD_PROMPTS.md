@@ -1403,9 +1403,10 @@ E2E_CHROMIUM or the Playwright cache, waitUntil "commit", hydration retries). Do
 
 CONTEXT: verifies the finance track against the rulings it built: Decision #337, rulings M1, M3,
 M5 (f), M6, M7, M8 and E3 D-13, and the readiness series end to end. Runs after the SQL lane
-(through DB21 and MR3) and UI2, UI3 and UI5. `deno task test:e2e` names a deleted spec
-(landing-hero.spec.ts, PRD-K3): that fix is SUBSCRIPTIONS_BUILD_PROMPTS S8 step 9's; if it has not
-landed, make it first, or E1 cannot run.
+(through DB21 and MR3) and UI2, UI3 and UI5. `deno task test:e2e` no longer names the deleted
+landing-hero.spec.ts (PRD-K3, PROJECTS TK2, #557); `test:e2e:funding` and its
+apps/web/tests/e2e/ticket-funding.spec.ts are the live-path pattern to copy (sign-in with a
+business context switch, psql fixtures, the Stripe webhook forwarder).
 
 FILES:
   - apps/web/tests/e2e/wallet.spec.ts (new); apps/web/tests/e2e/_finance-fixtures.ts (new:

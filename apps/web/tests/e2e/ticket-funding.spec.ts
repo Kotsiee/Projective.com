@@ -16,23 +16,23 @@ import {
  *   a. As the client (Hannah Cole, acting as Helia Finance), one stage goes into the basket through the
  *      funding line's picker, the checkout narrowed to the ticket pays it from the business wallet, and
  *      the line reads the money held.
- *   b. On a second ticket, the two later stages are prepaid through Buy now while the stage it sits in
- *      is still unfunded (once that stage is held the line offers nothing more to buy); the client's
- *      line names them, and the seeded freelancer on the project sees them marked, with no amount.
+ *   b. On a second ticket, one Buy now holds the stage it sits in and prepays the two later ones (once
+ *      that stage is held the line offers nothing more to buy, Decision #557 (b)); the client's line
+ *      names them with a Refund each, and the seeded freelancer sees the marks, with no amount.
  *   c. Buy now by card. Helia's owner (Priya Raman, the billing right) saves two business cards, one
  *      that asks for 3-D Secure on every use and a plain one; the client pays a stage with each. A card
  *      pays into the wallet first, the signed webhook credits it, and only then is the stage bought
  *      from the wallet. The stage is held, and a reload still says so.
- *   d. Refusals: a short wallet leaves Buy now unpayable and moves nothing; a prepaid stage is marked,
- *      not offered; and the basket door refuses a stage already held.
+ *   d. Refusals: a short wallet leaves Buy now unpayable and moves nothing; a later stage prepaid on
+ *      its own is then marked in Buy now, not offered; and the basket door refuses a stage already held.
  *
  * It drives a RUNNING dev server on the LIVE local database (`deno task dev`, FINANCE_BACKEND_LIVE on,
  * Stripe test keys in `.env.local`: the `web-checkout` launch config, port 13041). Each run inserts
  * its own tickets into Helia wallet redesign through `docker exec … psql` (titles start "E2E funding")
  * and leaves them: they hold escrow, and deleting money rows by hand would break the ledger. Run it on
- * a fresh `deno task db:reset`; it re-runs on the same database. Each run takes US$1,500 from Helia
- * Finance's vault (the cards top it up by what they buy) and US$2,500 of Hannah Cole's monthly cap,
- * and leaves two more test cards on Helia's account.
+ * a fresh `deno task db:reset`; it re-runs on the same database. Each run takes US$2,500 from Helia
+ * Finance's vault (the cards top it up by what they buy) and US$3,500 of Hannah Cole's monthly cap,
+ * and leaves two more test cards on Helia's account, so a reset is due every few runs.
  *
  * The webhook: nothing settles a card on the browser's word. With no `stripe listen` running, the
  * spec is the forwarder: it reads this run's PaymentIntents from `finance.inbound_payments`, fetches
@@ -49,7 +49,8 @@ import {
  * `docker`), `E2E_DB_CONTAINER` (default `supabase_db_Projective`), `E2E_PATIENCE_MS` (how long one
  * step may take, default 180000: a cold dev server compiles the board and its islands first),
  * `E2E_SHOTS` (a directory: every step is then captured at 1440 and 390 px, light and dark),
- * `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` (else read from `.env.local`, never printed).
+ * `E2E_TRACE=1` (print each step as it starts), `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` (else
+ * read from `.env.local`, never printed).
  */
 
 // #region Configuration
@@ -235,6 +236,7 @@ async function signIn(
 		},
 		// The `/api` write guard wants this site's Origin, which a browser would send.
 		headers: { origin: new URL(BASE).origin },
+		timeout: PATIENCE,
 	});
 	assertEquals(res.status(), 200, `sign-in as ${who} failed (${res.status()})`);
 	if (business) {
@@ -242,6 +244,7 @@ async function signIn(
 		const acting = await context.request.post("/api/context/switch", {
 			data: { contextType: "business", contextId: id },
 			headers: { origin: new URL(BASE).origin },
+			timeout: PATIENCE,
 		});
 		assertEquals(acting.status(), 200, `${who} could not act as ${business} (${acting.status()})`);
 	}
@@ -867,6 +870,7 @@ Deno.test({
 							replaceStages: true,
 						},
 						headers: { origin: new URL(BASE).origin },
+						timeout: PATIENCE,
 					});
 					const answer = await refused.json() as { ok?: boolean; message?: string };
 					assert(answer.ok === false, `the held stage is refused (${refused.status()})`);

@@ -4422,6 +4422,18 @@ Testing is mandatory and must use the native Deno test runner (`Deno.test`).
   `deno task test`, because it needs Docker and a seeded stack. There is no CI pipeline yet; when
   one exists, it runs `test:probes:fresh` against a throwaway stack. `name` arguments filter by
   probe file, and `--verbose` prints a failing probe's full output.
+- **Browser (e2e):** Playwright specs (`npm:playwright-core`) in `apps/web/tests/e2e/` drive a
+  RUNNING server, and each task's `$comment` in `deno.json` names the launch config it needs; none
+  is part of `deno task test`. `test:e2e` runs the catalogue, contact and landing suites,
+  `test:e2e:public` the public routes, and `test:e2e:funding` the ticket-funding path (PROJECTS TK2,
+  Decision #557) on the LIVE local database with Stripe TEST keys, on a fresh `db:reset` (it re-runs
+  on the same database). A live-path spec inserts its fixtures through `docker exec … psql`, signs in
+  through `/api/auth/login` (and `/api/context/switch` to act for a business), and checks money in
+  the database, not on the page. With no `stripe listen` running, the funding spec forwards its own
+  PaymentIntents' events to `/api/finance/webhooks/stripe`, signed with `STRIPE_WEBHOOK_SECRET`; a
+  live key stops it. `E2E_SHOTS` captures every step at 1440 and 390 px, light and dark. On a
+  checkout other sessions are editing, start the server with file watching off: a save elsewhere
+  makes Vite reload the page under a running spec.
 
 ---
 

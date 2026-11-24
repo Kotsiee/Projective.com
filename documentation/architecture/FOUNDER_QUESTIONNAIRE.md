@@ -1007,8 +1007,8 @@ skips it.
 - #410 (g), where the notification dispatcher runs: M·NT2's entry point.
 - Clone `Projective-Safety` beside this repo and finish TRUST §8.3 H1–H2: every T·SN prompt waits on
   the node.
-- `deno task test:e2e` names `landing-hero.spec.ts`, deleted in `21309eeb`: a one-line fix with no
-  prompt.
+- ~~`deno task test:e2e` names `landing-hero.spec.ts`, deleted in `21309eeb`~~: fixed with PROJECTS
+  TK2 (#557).
 
 ### B.5.2 The two SQL slots, as they free
 

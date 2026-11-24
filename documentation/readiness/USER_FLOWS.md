@@ -33,9 +33,9 @@ signed-in person).
 
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
-| **Investor MVP** | **84%** |            61 | 43 |  17 |  1 |              14 |
-| **UAT**          | **74%** |           193 | 104 |  77 | 12 |              25 |
-| **Production**   | **67%** |           251 | 110 | 108 | 33 |              36 |
+| **Investor MVP** | **85%** |            61 | 44 |  16 |  1 |              13 |
+| **UAT**          | **74%** |           193 | 105 |  76 | 12 |              24 |
+| **Production**   | **67%** |           251 | 111 | 107 | 33 |              35 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,12 +45,12 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 25 |  7 |  2 |   70% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 32 | 35 |  8 |  2 |   67% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 33 | 34 |  8 |  2 |   68% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 26 | 14 |  3 |   61% |
 
 **Critical flows not yet ✅, by the tier they gate:**
 
-- **MVP:** ID-31 ❌ · PJ-17, 23, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
+- **MVP:** ID-31 ❌ · PJ-17, 26, 27, 29, 30, 47, 49, 57 · MW-01, 15, 33, 38
 - **UAT:** ID-16, 20 · MK-29, MK-31 · PJ-21, 31 ❌, 39, 43, 60 · MW-14, 59
 - **PROD:** ID-11, 15, 24 ❌, 28, 29, 46 · MK-20, 41 · MW-19, 61 ❌, 62
 
@@ -292,7 +292,7 @@ PRODUCTION_READINESS.md.
 | ID    | Flow                                                | Persona            | Entry                                        | Status | Crit     | Gate | What's missing                                                                                                      |
 | :---- | :-------------------------------------------------- | :----------------- | :------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------ |
 | PJ-22 | Create or edit a ticket (stages, intensity, dates)  | Client             | board, `/api/projects/board/ticket`          | ✅     | Critical | MVP  | Ticket-versus-stage price contradiction (PM-P6, 🧑)                                                                 |
-| PJ-23 | Fund a ticket stage by stage (wallet or card)       | Client             | funding line → basket or Buy now             | 🟡     | Critical | MVP  | Live path not browser-driven (#430 (a), TK2). TK1 (#556, `592ccfc0`): everyone on a ticket sees which stages are prepaid, never the amounts; a reservation keeps its price; the payer refunds one prepaid stage while unreached; a ticket sent back to New gives its reservations back (probe `stage_funding_prepaid.sql` 9–13; walked as Maris and Hannah Cole) |
+| PJ-23 | Fund a ticket stage by stage (wallet or card)       | Client             | funding line → basket or Buy now             | ✅     | Critical | MVP  | Driven end to end in a browser on the live path (TK2, #557; `deno task test:e2e:funding`, two runs in a row on a fresh reset): one stage through the basket and the checkout narrowed to the ticket, paid from the business wallet; a stage held and two later ones prepaid in one Buy now, the freelancer seeing the marks; Buy now by a 3-D Secure card and a plain one, held after the signed webhook and after a reload; a short wallet and a paid-for stage refused. Open, not blocking: once the funding stage is held the ticket offers no later stage to buy (#557 (b)). TK1 (#556, `592ccfc0`): everyone on a ticket sees which stages are prepaid, never the amounts; a reservation keeps its price; the payer refunds one prepaid stage while unreached; a ticket sent back to New gives its reservations back (probe `stage_funding_prepaid.sql` 9–13; walked as Maris and Hannah Cole) |
 | PJ-24 | Claim a ticket                                      | Freelancer         | `/api/projects/ticket/claim`                 | ✅     | Critical | MVP  | — (seat, Ready, held escrow and capacity checked in SQL)                                                            |
 | PJ-25 | An expired claim releases and refunds               | System             | job `projects-release-expired-claims`        | ✅     | Critical | UAT  | PM-WP1 (#516, `07d853f6`, PRD-G2 ✅): every 15 minutes, a claim still only `claimed` after 24 hours goes back to the pool, skipped if its work is starting; the claimant and the client are told and one history row is written. An escrow held at the claim is refunded; a prepaid one is re-armed, the ticket back in Ready, still funded. Probes `claim_ttl_sweep.sql`, `claim_ttl_sweep_race.sql` |
 | PJ-26 | Move a ticket (drag, menus, drop refusals)          | Client, Freelancer | `/api/projects/ticket/move`                  | 🟡     | Critical | MVP  | Any participant moves unclaimed tickets; `canDrag` is not a server rule (PM-WP6)                                    |
@@ -581,3 +581,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-24 | ST3 (#547): PJ-13 ❌ → ✅ (a Manual stage's client pins a Ready ticket to a live-seat holder, who accepts it by claiming or declines it; nothing binds until then) | 83% | 73% | 66% |
 | 2026-11-24 | ST6 (#555): PJ-04 🟡 → ✅ (#427 (a) confirmed: the client creates every ticket and the seller's details exclude them; either side's write shows on the other's next read) | 84% | 73% | 67% |
 | 2026-11-24 | ST4 (#550): PJ-11 🟡 → ✅ (a freelancer reads only their own load; the `/projects` gauge and both Claim controls say what a claim adds, or the cap's refusal before the click) | 84% | 74% | 67% |
+| 2026-11-24 | TK2 (#557): PJ-23 🟡 → ✅ (driven end to end in a browser: the basket by wallet, Buy now by wallet and by card with and without 3-D Secure, the freelancer's prepaid marks, the refusals) | 85% | 74% | 67% |

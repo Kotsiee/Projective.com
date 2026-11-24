@@ -117,7 +117,7 @@
   `components/landing-hero.test.tsx`, `core/landing-routes.test.ts` (every `LANDING_PATHS` route
   strips `?tkv=` first), `core/demos/board-model.test.ts`,
   `packages/backend/services/explore/landing-hero.test.ts`, and the browser suite
-  `apps/web/tests/e2e/landing-hero.spec.ts` (`deno task test:e2e`).
+  `apps/web/tests/e2e/landing-hero.spec.ts` (deleted in `21309eeb`; `deno task test:e2e` runs `landing.spec.ts`).
 
 **L4 delivered (2026-10-19; review applied the same day, Decision #301).**
 

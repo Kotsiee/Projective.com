@@ -2,16 +2,6 @@
 	"version": "0.0.1",
 	"configurations": [
 		{
-			"name": "web-funding-e2e",
-			"runtimeExecutable": "powershell",
-			"runtimeArgs": [
-				"-NoProfile",
-				"-Command",
-				"$env:PORT = '13612'; deno task dev --config 'C:\\Users\\ahmed\\AppData\\Local\\Temp\\claude\\9c26d2113ae31113\\1d7d0eb7-50d8-4d0d-a889-3391d72afa0e\\scratchpad\\vite.nowatch.config.ts' --port 13612 --strictPort"
-			],
-			"port": 13612
-		},
-		{
 			"name": "web-sc6",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [

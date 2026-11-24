@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 18 open, 0 partly done, 8 done (§0 ledger).
-> Runnable now: TK2, EX3, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 17 open, 0 partly done, 9 done (§0 ledger).
+> Runnable now: EX3, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -32,7 +32,6 @@
 | Group   | Covers                                |
 | :------ | :------------------------------------ |
 | ST1–ST6 | Stages and staffing                   |
-| TK1–TK2 | Ticket funding                        |
 | EX1–EX4 | Completion, exit and disputes         |
 | CH1–CH4 | Chat                                  |
 | NO1–NO4 | Notices                               |
@@ -62,6 +61,7 @@ A prompt that lands gets a row here.
 | ST3 | Manual assignment: `set_stage_assignment_mode` granted (planned modes refused `0A000`); `tickets.pinned_assignee_id`; `assign_ticket_manual` pins on a Manual stage and binds nothing; `decline_ticket_pin`; `claim_ticket` takes the pinned freelancer's acceptance; the stage inspector's Routing control, Assign to… and its picker, Accept / Decline; Helia's Discovery stage seeded Manual with a pin; probe `seat_lock_and_capacity.sql` region 4 | `1929b313` (#547) | `9d55866d` |
 | ST6 | A write by one party to a shared project shows on the other's next read, in every isolate: each cached project read is keyed by the project's KV version (`services/projects/freshness.ts`), bumped by every write path (#555 lists them); a KV-less isolate keeps its own bumps; a board reads around the cache while the claim sweep is due; #427 (a) confirmed and written into PRODUCT_SPEC | `08f27344` (#555) | `70f78452` |
 | ST4 | The freelancer's own workload: `projects.get_my_workload_capacity()` (no argument, `auth.uid()`, per-stage split) granted to `authenticated` only, the any-user `get_workload_capacity` revoked by name; `WorkloadCapacitySchema`, `ProjectWorkloadService.mine`, `GET /api/projects/workload`; the `WorkloadGauge` island in the `/projects` header; the capacity line and over-cap refusal beside the ticket view's and the board card's Claim; dev axis `workload`; probe `workload_capacity_self.sql` | `97680598` (#550) | `97680598` |
+| TK2 | The funding path driven end to end in a real browser on the live path: `apps/web/tests/e2e/ticket-funding.spec.ts` (`deno task test:e2e:funding`). One stage through the basket picker and the checkout narrowed by `?ticket_id=`, paid from the business wallet; a stage held and two prepaid in one Buy now, the freelancer seeing the marks and no amounts; Buy now by a 3-D Secure card and a plain one, held after the signed webhook (the spec forwards it from Stripe test mode) and after a reload; a short wallet and a paid-for stage refused. The checkout's client re-read keeps `?ticket_id=` (it widened to the whole basket); `test:e2e` no longer names the deleted `landing-hero.spec.ts` (PRD-K3) | `TK2-COMMIT` (#557) | `TK2-PARENT` |
 
 ### 0.1 Row → work order
 
@@ -92,7 +92,7 @@ PJ-74 are ⏸ (§0.4).
 | Row   | Now · Crit · Gate | Work order                | The row flips (or its note clears) when                                                                      |
 | :---- | :---------------- | :------------------------ | :----------------------------------------------------------------------------------------------------------- |
 | PJ-22 | ✅ · Crit · MVP   | PM-P6                     | One price rule: a ticket's own price applies only to a single-stage ticket (note clears)                     |
-| PJ-23 | 🟡 · Crit · MVP   | **TK2** (TK1 ✅ #556) | A payee sees which stages are prepaid; the funding line, basket and Buy now are driven by wallet and by card |
+| PJ-23 | ✅ · Crit · MVP   | TK1 ✅ #556, TK2 ✅ #557   | A payee sees which stages are prepaid; the funding line, basket and Buy now are driven by wallet and by card |
 | PJ-26 | 🟡 · Crit · MVP   | PM-WP6 (🧑 PM #8)         | Only the move matrix's roles move a ticket; `canMove` is a server flag                                       |
 | PJ-27 | 🟡 · Crit · MVP   | PM-WP9                    | Drafts are private, in RLS and in realtime; inserts go through doors; draft + files are atomic               |
 | PJ-29 | 🟡 · Crit · MVP   | PM-D7a (🧑 PM #9) → PM-P6 | The next stage is validated, and the assignee's capacity and seat are checked there                          |
@@ -176,7 +176,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Project setup                  |  100% | ✅ (ST1, ST6)                                                                                                      |
 | Stages                         |   81% | D7a 88% → WP4b 94% → D7b 100%                                                                                     |
 | Hiring & members               |   83% | WP4b 92% → NO1 + CD2 + counsel 100%                                                                               |
-| Tickets & delivery             |   59% | WP8 62% → TK2 66% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100%                    |
+| Tickets & delivery             |   59% | WP8 62% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100% (TK2 ✅, #557)               |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   56% | WP4a 63% → EX3 81% → EX4 88% → LP1 100% (EX2 ✅, #548)                                                            |
 | Messaging                      |   57% | MS5 59% → CH1 + P2d 65% → CH2 67% → CH3 70% → LK1 74% → CH4 + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
@@ -184,8 +184,8 @@ after PM-WP1. The paths follow §0.2's order:
 | Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
 
-**What MVP needs from this cluster:** the nine Critical · MVP rows not yet ✅, which are PJ-17, 23,
-26, 27, 29, 30, 47, 49 and 57. Their work orders, in order: TK2, D7a + P6, S3, WP9, WP6, NO1
+**What MVP needs from this cluster:** the eight Critical · MVP rows not yet ✅, which are PJ-17,
+26, 27, 29, 30, 47, 49 and 57 (PJ-23 ✅, TK2). Their work orders, in order: D7a + P6, S3, WP9, WP6, NO1
 (+ CD2), and the chat chain (MS3, MS5, CH1, P2d, SN3, the T&S P-chain).
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX3; EX2 ✅) and PJ-60 (NO2 + CD2).
@@ -240,7 +240,6 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 **App lane** (up to three at once, file-disjoint):
 
 - **PM-WP8** now.
-- **TK2** now (TK1 ✅, #556).
 - **NO3** now.
 - **FL2**.
 - **FL3**'s CSP half.
@@ -482,48 +481,7 @@ its section (IDs are never reused), never silence. Finish with: what you built; 
 
 ## 3. Tickets & delivery
 
-### TK2 — Funding is driven end to end in a browser
-
-Closes PJ-23 (🟡 → ✅). TK1 landed (#556).
-
-```text
-PROMPT TK2: The ticket-funding path is driven end to end in a real browser: the funding line,
-the basket by wallet, and Buy now by card in Stripe test mode, stage by stage
-
-ROLE: Test engineer. App lane, after TK1.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - #430 (a): the live path (a real quote, the basket, and a card through Buy now) has never been
-    driven in a browser. apps/web/tests/e2e has billing, catalogue, contact, express-return,
-    landing, public-routes and screen-share specs, and none for funding. BuyNowModal is
-    untouched since 1d8fc3e6.
-  - The pieces: features/checkout/islands/BuyNowModal.island.tsx, core/buy-now-state.ts,
-    components/TicketBasketPicker.tsx; features/projects/components/FundingStatus.tsx;
-    routes/api/finance/escrow/{quote,intent}.ts; routes/api/basket/*.
-  - PRD-K3: `deno task test:e2e` names a deleted spec (landing-hero.spec.ts). Fix the task first
-    (FBP E1 says the same).
-  - Stripe is test mode only (.env.local). Never a live key; use the stripe:test-cards skill for
-    card numbers.
-
-STEPS:
-  1. Fix the e2e task (PRD-K3) if it still names a deleted spec.
-  2. apps/web/tests/e2e/ticket-funding.spec.ts, on a fresh `deno task db:reset`:
-     a. As the seeded client, fund one ticket's first stage from the wallet through the basket;
-        the funding line shows it held.
-     b. Prepay two later stages; as the seeded freelancer, see them marked prepaid (TK1).
-     c. Buy now by card (a 3-D Secure test card and a plain one); the stage is held after the
-        webhook; refresh survives.
-     d. Refusals: an insufficient wallet, and a stage that is not fundable.
-  3. Record screenshots of each step at 1440 and 390, in light and dark.
-
-ACCEPTANCE: the spec passes twice in a row on a fresh reset; finance_invariants.sql passes
-after it.
-
-SAME CHANGE: e2e harness notes in SYSTEM_ARCHITECTURE.md if the task changes; the decision row
-(#430 (a) closed).
-```
-
-§1.2 rows: **PJ-23** 🟡 → ✅.
+Both prompts landed: TK1 (#556) and TK2 (#557); their rows are in §0.0.
 
 ---
 

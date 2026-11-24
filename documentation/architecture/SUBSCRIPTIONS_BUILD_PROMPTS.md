@@ -538,6 +538,9 @@ ACCEPTANCE:
 
 ### S8 — Playwright pricing suite
 
+> **Status 2026-11-24:** step 9 (the `test:e2e` task's deleted spec, PRD-K3) landed with
+> PROJECTS TK2 (#557); steps 1–8 are open.
+
 ```text
 PROMPT S8: apps/web/tests/e2e/pricing.spec.ts
 
@@ -564,11 +567,6 @@ STEPS (each a t.step, each at 1440×900, 768×1024 and 390×844):
      scrolling.
   8. (S4 only) Choose Pro as individual_free → Stripe test Checkout URL returned (do not complete a
      real payment; stub at the network layer).
-  9. Fix the task first (PRD-K3): deno.json `test:e2e` (near :110) still lists
-     apps/web/tests/e2e/landing-hero.spec.ts, which 21309eeb deleted. Remove it from the list, and
-     drop the "landing-hero: /features' final search;" clause from `$comment:test:e2e` (near :109).
-     Check the exact text in deno.json before editing; the PUBLIC_ROUTES files that once owned this
-     leftover are deleted (text at f2e25929).
 
 ACCEPTANCE: `deno task test:e2e` runs catalogue + pricing green against a fresh `deno task dev`;
 PRD-K3 flips with it.

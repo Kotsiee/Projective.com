@@ -44,8 +44,8 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | Tier             |   Score | Rows counted | ✅ | 🟡 | ❌ | Critical ❌ |
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
-| **UAT**          | **71%** |           71 | 44 |  8 | 19 |           4 |
-| **Production**   | **49%** |          158 | 57 | 30 | 71 |          14 |
+| **UAT**          | **71%** |           71 | 44 |  9 | 18 |           4 |
+| **Production**   | **49%** |          158 | 57 | 31 | 70 |          14 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -61,7 +61,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
 | I. Data contract                   |    5 |  2 |  1 |  2 |   61% |
 | J. Routing, URLs & SEO             |    6 |  3 |  1 |  2 |   67% |
-| K. Quality gates & testing         |    6 |  2 |  1 |  3 |   38% |
+| K. Quality gates & testing         |    6 |  2 |  2 |  2 |   46% |
 | L. Design system & accessibility   |    6 |  1 |  2 |  3 |   33% |
 | M. Legal & compliance              |   10 |  1 |  3 |  6 |   28% |
 
@@ -293,7 +293,7 @@ Work orders for every open row, with the run order:
 | :----- | :-------------------------------------------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------- | :---- |
 | PRD-K1 | Type-check and lint clean                                             | ✅     | High     | MVP  | `deno task check` (every route file) and `deno lint` (4,211 files) exit 0                                | —     |
 | PRD-K2 | Unit, contract and probe suites exist                                 | ✅     | High     | UAT  | 786 test files, 28 contract tests, 150 probes                                                            | —     |
-| PRD-K3 | `deno task test:e2e` runs                                             | ❌     | High     | UAT  | It names `landing-hero.spec.ts`, deleted in `21309eeb` (`deno.json:95`); `billing.spec.ts` is in no task | —     |
+| PRD-K3 | `deno task test:e2e` runs                                             | 🟡     | High     | UAT  | It names only specs that exist (catalogue, contact, landing; `landing-hero.spec.ts` dropped, TK2 #557) and each type-checks; a green run needs their three launch configs, not run since. `test:e2e:funding` runs the funding spec green on the live path. `billing.spec.ts` is still in no task | TK2   |
 | PRD-K4 | CI runs check, lint and unit tests on every change                    | ❌     | Critical | PROD | No CI configuration in the repo                                                                          | —     |
 | PRD-K5 | CI runs the probes on a fresh stack and `smoke:stripe` on stripe-mock | ❌     | High     | PROD | Both manual (`test:probes:fresh`, `smoke:stripe`)                                                        | —     |
 | PRD-K6 | The unit suite is fully green                                         | 🟡     | Normal   | PROD | Known theme-engine failures (Decisions #96 (a), #157 (m)); not re-run in the 2026-11-18 audit            | —     |
@@ -494,3 +494,4 @@ Work orders for every open row, with the run order:
 | 2026-11-23 | DB21 (#542): PRD-F12 ❌ → 🟡 (a buyer cancels a digital product while its sale clears; a provider gives a session forfeit back; the product dispute and MR3's card refunds are left) | 76% | 71% | 49% |
 | 2026-11-23 | DB21 step 2 (#543): no row flips; PRD-F12 narrowed (a buyer reports a faulty or missing download while its sale clears; the seller's earnings are frozen and an operator rules; only MR3's card refunds are left) | 76% | 71% | 49% |
 | 2026-11-23 | CK4 (#544; #490): PRD-M5 ❌ → 🟡 (checkout and invoice tax built behind `tax_collection_enabled`, off until counsel; Stripe Tax not yet active on the account) | 76% | 71% | 49% |
+| 2026-11-24 | TK2 (#557): PRD-K3 ❌ → 🟡 (`test:e2e` names only specs that exist; a green run of its three servers is left); new `test:e2e:funding` drives ticket funding on the live path | 76% | 71% | 49% |
