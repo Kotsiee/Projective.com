@@ -54,7 +54,7 @@ A prompt that lands gets a row here.
 
 | ID  | What landed                                                                                                                                                                                    | Commit            | Text at    |
 | :-- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------- | :--------- |
-| ST5 | Seats and participant rows are written only by their definer doors: the owner's two `FOR ALL` policies dropped, client `INSERT` / `UPDATE` / `DELETE` revoked; probe `seat_insert_consent.sql` | ST5_COMMIT (#554) | `f398cd9f` |
+| ST5 | Seats and participant rows are written only by their definer doors: the owner's two `FOR ALL` policies dropped, client `INSERT` / `UPDATE` / `DELETE` revoked; probe `seat_insert_consent.sql` | `70b0d8c5` (#554) | `f398cd9f` |
 
 ### 0.1 Row → work order
 

@@ -284,7 +284,7 @@ PRODUCTION_READINESS.md.
 | PJ-17 | Invite to a project or stage (≤10, cooldowns)           | Client     | Members, `/api/projects/hire`                              | 🟡     | Critical | MVP  | `stage.invite` email and push never delivered (PRD-E4)                               |
 | PJ-18 | Accept or decline an invitation                         | Freelancer | context panel, `/projects`                                 | ✅     | Critical | MVP  | —                                                                                    |
 | PJ-19 | Stage invite link → ask to join                         | Freelancer | `/invite/:token`                                           | ✅     | Normal   | UAT  | —                                                                                    |
-| PJ-20 | Manage invitations, roles, admins, ticket grants        | Client     | `?view=invitations`, `/api/projects/:id/members/:mid/role` | ✅     | High     | UAT  | — (only definer doors write seats and participants: ST5 `ST5_COMMIT`, #554)          |
+| PJ-20 | Manage invitations, roles, admins, ticket grants        | Client     | `?view=invitations`, `/api/projects/:id/members/:mid/role` | ✅     | High     | UAT  | — (only definer doors write seats and participants: ST5 `70b0d8c5`, #554)            |
 | PJ-21 | Remove a member                                         | Client     | `/api/projects/members/remove`                             | 🟡     | Critical | UAT  | Releases held escrow 100% to the freelancer; the spec says refund or split (PM-WP4b) |
 
 ### Tickets & delivery
