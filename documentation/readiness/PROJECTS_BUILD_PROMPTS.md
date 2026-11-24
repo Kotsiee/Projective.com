@@ -302,8 +302,8 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3           | Review authority pins among live-seat holders, capacity-checked; the assignee may hand it back before submitting                                                                                                         |
 | 15 | Where the workload gauge sits                                                                                                                | ST4           | Beside Claim (the ticket view, stage Tasks) and in the freelancer's Projects header; on `/home` once PRD-A1 lands                                                                                                        |
 | 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1 (#546)    | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
-| 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2           | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
-| 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2           | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
+| 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2 (#548)    | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
+| 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2 (#548–549)| Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
 | 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3           | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
 | 20 | Which workload verdict can be appealed                                                                                                       | EX4           | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
 | 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1           | Edit for 15 minutes; delete for everyone at any time while the room is live; originals kept for evidence; nothing in an archived or disputed room changes                                                                |
@@ -994,6 +994,12 @@ owner that MK-32's live path no longer needs the seed.
 
 Narrows PJ-43 (❌ → 🟡); EX3 closes it.
 
+**Status (2026-11-24, #548, #549):** stopped at the 🧑 DECISION (questions 1–5, both NEW
+contradictions logged). Step 1's red probe `ticket_dispute.sql` is written and stays out of `main`
+while it fails. Premises that no longer hold: ruling 5's guard lives in `00001110` and `00001120`,
+which are Queue S's, not EX2's; the ticket primitives settle every held escrow of a ticket, not one;
+and §3.1's "work suspended" is the build tracker's state (#549). Steps 2–7 wait for the rulings.
+
 ```text
 PROMPT EX2: The client or the freelancer can raise a dispute on a ticket's held stage escrow,
 the other side responds, either can make an offer, and a ruling or an accepted offer moves the
@@ -1086,6 +1092,10 @@ ROUTING.md; FINANCE_BUILD_PROMPTS.md DB21 (reuse subject_kind); the decision row
 ### EX3 — The Evidence Vault snapshot and the case summary PDF
 
 Closes PJ-43 (🟡 → ✅).
+
+**Status (2026-11-24):** waits for EX2 (#548); its 🧑 (stop 19) is put to the owner. One premise
+no longer holds: CH1 has not landed, so `00000016` keeps only a message's current body and the
+vault can capture revisions only once CH1 does.
 
 ```text
 PROMPT EX3: Raising a dispute freezes a hashed snapshot of the evidence, and either party or the
