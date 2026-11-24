@@ -115,7 +115,7 @@ import {
 } from "@web/features/checkout/core/basket-state.ts";
 import { buyNowOpen, requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
-import { InlineNotice, Tooltip } from "@projective/ui/feedback";
+import { InlineNotice } from "@projective/ui/feedback";
 import { fundingRollup, prepaidRefundNotice, previewFunding } from "../core/funding-ui.ts";
 import { PaymentsService } from "@web/features/payments/core/PaymentsService.ts";
 import { FundStageDialog } from "@web/features/payments/components/FundStageDialog.tsx";
