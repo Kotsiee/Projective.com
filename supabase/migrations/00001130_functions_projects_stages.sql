@@ -3081,6 +3081,12 @@ $$;
 --   {"kind":"insert","table":T,"row":{col:value},"field"?:f,"ref"?:name}
 --   {"kind":"delete","table":T,"match":{col:value},"expect"?:bool,"field"?:f}
 --   {"kind":"rpc","fn":F,"args":{...},"field"?:f,"ref"?:name}
+--   {"kind":"version","id":project uuid,"expected":timestamptz,"field"?:f}
+-- `version` is a setup save's optimistic-concurrency check (ST1): it locks the project row under the
+-- caller's RLS, compares its `updated_at` with `expected` (the version the caller's copy was read at)
+-- to the millisecond, and touches the row so the save advances the version even when it writes only
+-- stages or roles. A mismatch raises SQLSTATE 'PS409' with the current version as its DETAIL; a row the
+-- caller may not update raises `not_written`, so a stranger learns no version.
 -- Any value of the exact shape {"$ref": name} is replaced by the value an earlier op stored under
 -- that name, so a stage created in the batch can be patched, given roles and ordered in the same
 -- batch. An UPDATE that touches no row (RLS filtered it, or the id names nothing) and a DELETE marked
@@ -3142,6 +3148,7 @@ DECLARE
     v_state  text;
     v_msg    text;
     v_detail text;
+    v_current timestamptz;
     i        integer;
 BEGIN
     IF auth.uid() IS NULL THEN
@@ -3211,6 +3218,20 @@ BEGIN
                 IF v_count = 0 AND COALESCE((v_op ->> 'expect')::boolean, false) THEN
                     RAISE EXCEPTION 'not_written' USING ERRCODE = 'PW403';
                 END IF;
+            WHEN 'version' THEN
+                SELECT p.updated_at INTO v_current
+                  FROM projects.projects p
+                 WHERE p.id = (v_op ->> 'id')::uuid
+                   FOR UPDATE;
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'not_written' USING ERRCODE = 'PW403';
+                END IF;
+                IF date_trunc('milliseconds', v_current)
+                    IS DISTINCT FROM date_trunc('milliseconds', (v_op ->> 'expected')::timestamptz) THEN
+                    RAISE EXCEPTION 'This project changed somewhere else. Your last change was not saved.'
+                        USING ERRCODE = 'PS409', DETAIL = to_jsonb(v_current) #>> '{}';
+                END IF;
+                UPDATE projects.projects SET updated_at = now() WHERE id = (v_op ->> 'id')::uuid;
             WHEN 'rpc' THEN
                 v_args := COALESCE(v_op -> 'args', '{}'::jsonb);
                 CASE v_op ->> 'fn'
@@ -3267,5 +3288,5 @@ END;
 $$;
 
 COMMENT ON FUNCTION projects.apply_write_batch (jsonb) IS
-'Runs a planned list of setup or ticket writes (allowlisted table updates/inserts/deletes and project RPCs) in ONE transaction as the caller (SECURITY INVOKER, RLS applies). {"$ref": name} values are bound to values stored by earlier ops. A no-op UPDATE raises PW403 not_written; every failure carries HINT field:<section>. Returns {"refs": {...}}. DL S7.';
+'Runs a planned list of setup or ticket writes (allowlisted table updates/inserts/deletes and project RPCs) in ONE transaction as the caller (SECURITY INVOKER, RLS applies). {"$ref": name} values are bound to values stored by earlier ops. A no-op UPDATE raises PW403 not_written; a version op whose expected updated_at differs from the project row raises PS409 with the current version as DETAIL (ST1); every failure carries HINT field:<section>. Returns {"refs": {...}}. DL S7.';
 -- #endregion

@@ -1,19 +1,21 @@
 import type { JSX } from "preact";
 import "../styles/stage-details-rig.css";
-import { Tooltip } from "@projective/ui/feedback";
+import { InlineNotice, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import type { ProjectSetup } from "../types/projects-types.ts";
+import { type ProjectSetup, STALE_SETUP_MESSAGE } from "../types/projects-types.ts";
 import {
 	autoSaveEnabled,
 	currentSetup,
 	discardSetup,
 	isOnline,
+	reloadSetup,
 	requestSave,
 	setupDirty,
 	setupDraft,
 	setupQueued,
 	setupSaving,
 	setupSavedAt,
+	setupStale,
 } from "../core/setup-state.ts";
 import { useSaveShortcut } from "../hooks/useSaveShortcut.ts";
 import { useRelativeClock } from "../hooks/useRelativeClock.ts";
@@ -90,7 +92,8 @@ export default function StageDetailsRig({ setup }: StageDetailsRigProps): JSX.El
 	 * ONE store. A mode that removed the controls on one surface and left them on the other would
 	 * make "does this form save by itself" depend on which route the owner happened to be standing on.
 	 */
-	const showSaveControls = dirty && !autoSave;
+	const stale = setupStale.value;
+	const showSaveControls = dirty && !autoSave && !stale;
 
 	const actions: RigAction[] = showSaveControls
 		? [
@@ -142,14 +145,27 @@ export default function StageDetailsRig({ setup }: StageDetailsRigProps): JSX.El
 				 * stack, and a second region reporting the same event announces it twice.
 				 */
 			}
-			<p class="proj-sdrig__status" data-tone={status.tone}>
-				{(status.tone === "offline" || status.tone === "archived") && (
-					<span class="proj-sdrig__statusmark" aria-hidden="true">
-						<Icon name={status.tone === "offline" ? "cloud-off" : "archive-box"} size="xs" />
-					</span>
+			{stale
+				? (
+					<InlineNotice
+						assertive
+						align="start"
+						text={STALE_SETUP_MESSAGE}
+						actionLabel="Reload"
+						onAction={() => void reloadSetup()}
+						busy={saving}
+					/>
+				)
+				: (
+					<p class="proj-sdrig__status" data-tone={status.tone}>
+						{(status.tone === "offline" || status.tone === "archived") && (
+							<span class="proj-sdrig__statusmark" aria-hidden="true">
+								<Icon name={status.tone === "offline" ? "cloud-off" : "archive-box"} size="xs" />
+							</span>
+						)}
+						{status.label}
+					</p>
 				)}
-				{status.label}
-			</p>
 
 			<div class="proj-sdrig__actions">
 				{actions.map((action) => (

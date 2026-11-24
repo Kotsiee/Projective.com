@@ -14,6 +14,7 @@
  */
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
 import { isSlug, mintSlug, slugPattern } from "@projective/types/slugs";
+import { SETUP_VERSION_ORIGIN } from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
 import { allProjects } from "./fixtures.ts";
 import { findProject } from "./query.ts";
@@ -261,7 +262,11 @@ Deno.test("RENAMING a project does not move its address", async () => {
 	);
 
 	const saved = expectData(
-		await ProjectBackendService.updateProject(made.slug, { title: "Something else entirely" }, who),
+		await ProjectBackendService.updateProject(
+			made.slug,
+			{ title: "Something else entirely", expectedUpdatedAt: SETUP_VERSION_ORIGIN },
+			who,
+		),
 		"a freshly created draft refused its own first save",
 	);
 	assertEquals(saved.setup.title, "Something else entirely");
@@ -282,7 +287,11 @@ Deno.test("an edit saved against a fixture project is visible when it is read ba
 	const row = sample();
 
 	expectData(
-		await ProjectBackendService.updateProject(row.slug, { title: "Renamed" }, who),
+		await ProjectBackendService.updateProject(
+			row.slug,
+			{ title: "Renamed", expectedUpdatedAt: SETUP_VERSION_ORIGIN },
+			who,
+		),
 		"the fixture project refused a save addressed by its slug",
 	);
 

@@ -23,10 +23,16 @@ async function stagesOf(): Promise<StageSetup[]> {
 	return read.data.setup.stages;
 }
 
+/** The version the form's copy carries, which every save names (Decision #551). */
+async function version(): Promise<string> {
+	return (await ProjectBackendService.setup(PROJECT, ALICE)).data!.setup.updatedAt;
+}
+
 /** The form's save as it sends one: every stage it holds, by id. */
 async function save(stages: readonly StageSetup[]): Promise<StageSetup[]> {
 	const res = await ProjectBackendService.updateProject(PROJECT, {
 		stages: stages.map((s) => ({ id: s.id })),
+		expectedUpdatedAt: await version(),
 	}, ALICE);
 	assert(res.ok && res.data, res.message);
 	return res.data.setup.stages;
@@ -38,6 +44,7 @@ async function addStage(name: string): Promise<StageSetup> {
 	const before = await stagesOf();
 	const res = await ProjectBackendService.updateProject(PROJECT, {
 		stages: [...before.map((s) => ({ id: s.id })), { name }],
+		expectedUpdatedAt: await version(),
 	}, ALICE);
 	assert(res.ok && res.data, res.message);
 	const added = res.data.setup.stages.find((s) => s.name === name);

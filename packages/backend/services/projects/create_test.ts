@@ -10,6 +10,7 @@ import {
 	CreateProjectSchema,
 	hasStagesFor,
 	projectSlugFrom,
+	SETUP_VERSION_ORIGIN,
 } from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
 import type { CreateProject, ProjectFeedParams, ProjectSetup } from "@projective/types/projects";
@@ -398,7 +399,11 @@ Deno.test("a freshly created project can be saved from the setup form", async ()
 	// navigated the owner to.
 	const saved = await ProjectBackendService.updateProject(
 		created.data.slug,
-		{ title: "Northwind Rebrand II", description: "<p>Sharpened.</p>" },
+		{
+			title: "Northwind Rebrand II",
+			description: "<p>Sharpened.</p>",
+			expectedUpdatedAt: SETUP_VERSION_ORIGIN,
+		},
 		ALICE,
 	);
 	assert(saved.ok, `save did not land: ${saved.message}`);

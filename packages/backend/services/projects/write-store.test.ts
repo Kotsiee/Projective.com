@@ -12,6 +12,7 @@ import {
 	MessagePageSchema,
 	normalizeMessageDelta,
 	type SendProjectMessage,
+	SETUP_VERSION_ORIGIN,
 	ticketIncludesStage,
 } from "@projective/types/projects";
 
@@ -239,7 +240,7 @@ Deno.test("a saved configuration survives the next setup read and re-derives the
 	resetWriteStore();
 	const saved = await ProjectBackendService.updateProject(
 		SLUG,
-		{ title: "Monarch Design System v2", status: "draft" },
+		{ title: "Monarch Design System v2", status: "draft", expectedUpdatedAt: SETUP_VERSION_ORIGIN },
 		ALICE,
 	);
 	assert(saved.ok, saved.message);
@@ -251,9 +252,60 @@ Deno.test("a saved configuration survives the next setup read and re-derives the
 	assert(reread.data!.setup.completeness < 100);
 });
 
+Deno.test("a save made from a stale copy is refused with the current version, never merged (ST1)", async () => {
+	resetWriteStore();
+	const read = await ProjectBackendService.setup(SLUG, ALICE);
+	const version = read.data!.setup.updatedAt;
+
+	// Two tabs read the same copy. The first save lands and moves the version on.
+	const first = await ProjectBackendService.updateProject(
+		SLUG,
+		{ description: "<p>Tab one.</p>", expectedUpdatedAt: version },
+		ALICE,
+	);
+	assert(first.ok, first.message);
+	assertNotEquals(first.data!.setup.updatedAt, version);
+
+	// The second still carries the version it was made from: refused, and told the current one.
+	const second = await ProjectBackendService.updateProject(
+		SLUG,
+		{ description: "<p>Tab two.</p>", expectedUpdatedAt: version },
+		ALICE,
+	);
+	assertEquals(second.status, 409);
+	assertEquals(second.errors?.form, "stale_write");
+	assertEquals(second.details?.current, first.data!.setup.updatedAt);
+	const after = await ProjectBackendService.setup(SLUG, ALICE);
+	assertEquals(after.data!.setup.description, "<p>Tab one.</p>");
+
+	// One tab alone keeps saving: each save carries the version the last one returned.
+	const next = await ProjectBackendService.updateProject(
+		SLUG,
+		{ description: "<p>Tab one, again.</p>", expectedUpdatedAt: first.data!.setup.updatedAt },
+		ALICE,
+	);
+	assert(next.ok, next.message);
+});
+
+Deno.test("a save that names no version is refused 428, never accepted (ST1)", async () => {
+	resetWriteStore();
+	const unversioned = await ProjectBackendService.updateProject(
+		SLUG,
+		{ title: "Old client" },
+		ALICE,
+	);
+	assertEquals(unversioned.status, 428);
+	const read = await ProjectBackendService.setup(SLUG, ALICE);
+	assertNotEquals(read.data!.setup.title, "Old client");
+});
+
 Deno.test("a saved title reaches the detail projection the sidebar renders", async () => {
 	resetWriteStore();
-	await ProjectBackendService.updateProject(SLUG, { title: "Renamed" }, ALICE);
+	await ProjectBackendService.updateProject(
+		SLUG,
+		{ title: "Renamed", expectedUpdatedAt: SETUP_VERSION_ORIGIN },
+		ALICE,
+	);
 	const detail = await ProjectBackendService.detail(SLUG, ALICE);
 	assertEquals(detail.data!.detail.title, "Renamed");
 });

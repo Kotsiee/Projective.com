@@ -2,10 +2,20 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/project-setup.css";
-import { ConfirmDialog, SaveStatus, type SaveStatusAction, Tooltip } from "@projective/ui/feedback";
+import {
+	ConfirmDialog,
+	InlineNotice,
+	SaveStatus,
+	type SaveStatusAction,
+	Tooltip,
+} from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { Icon, type IconName } from "@projective/ui/icons";
-import { type ProjectSetup, PUBLISH_LOCK_NOTICES } from "../types/projects-types.ts";
+import {
+	type ProjectSetup,
+	PUBLISH_LOCK_NOTICES,
+	STALE_SETUP_MESSAGE,
+} from "../types/projects-types.ts";
 import { useSaveShortcut } from "../hooks/useSaveShortcut.ts";
 import { useRelativeClock } from "../hooks/useRelativeClock.ts";
 import { resolveSaveStatus } from "../core/save-status.ts";
@@ -17,6 +27,7 @@ import {
 	hydrateAutoSave,
 	isOnline,
 	publishSetup,
+	reloadSetup,
 	requestSave,
 	setAutoSave,
 	setupDirty,
@@ -24,6 +35,7 @@ import {
 	setupQueued,
 	setupSavedAt,
 	setupSaving,
+	setupStale,
 } from "../core/setup-state.ts";
 
 /**
@@ -146,19 +158,33 @@ export default function ProjectSetupRig({ setup }: ProjectSetupRigProps): JSX.El
 
 	return (
 		<div class="psu-rig">
-			{/* No `announce`: the body already reports a save's outcome through the toast stack. */}
-			<SaveStatus
-				state={status.pip}
-				text={status.label}
-				actions={saveActions}
-				autoSave={{
-					value: autoSaveEnabled,
-					onChange: setAutoSave,
-					hint: autoSave
-						? "Auto-save is on — edits save when a field loses focus"
-						: "Auto-save is off — save with Save now or Ctrl+S",
-				}}
-			/>
+			{/* A stale copy (ST1) is refused until Reload, so the save line gives way to the one way on. */}
+			{setupStale.value
+				? (
+					<InlineNotice
+						assertive
+						align="start"
+						text={STALE_SETUP_MESSAGE}
+						actionLabel="Reload"
+						onAction={() => void reloadSetup()}
+						busy={saving}
+					/>
+				)
+				: (
+					/* No `announce`: the body already reports a save's outcome through the toast stack. */
+					<SaveStatus
+						state={status.pip}
+						text={status.label}
+						actions={saveActions}
+						autoSave={{
+							value: autoSaveEnabled,
+							onChange: setAutoSave,
+							hint: autoSave
+								? "Auto-save is on — edits save when a field loses focus"
+								: "Auto-save is off — save with Save now or Ctrl+S",
+						}}
+					/>
+				)}
 
 			<div class="psu-rig__actions">
 				{!archived && !service && (

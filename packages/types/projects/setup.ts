@@ -712,6 +712,9 @@ export const MAX_PROJECT_ATTACHMENTS = 10;
 // #endregion
 
 // #region The setup projection
+/** The version of a configuration no write has touched: what a fixture reads as. */
+export const SETUP_VERSION_ORIGIN = "1970-01-01T00:00:00.000Z";
+
 /** The whole editable configuration plus its derived completeness. */
 export const ProjectSetupSchema = z.object({
 	/**
@@ -744,6 +747,13 @@ export const ProjectSetupSchema = z.object({
 	 * the write path will refuse with a 409.
 	 */
 	archivedAt: z.string().max(40).nullable().default(null),
+	/**
+	 * The version this copy was read at: `projects.projects.updated_at`, which every setup save
+	 * advances. A save sends it back as {@link UpdateProject.expectedUpdatedAt}, and a save made from
+	 * an older copy is refused `409 stale_write` rather than merged (ST1). A configuration no write has
+	 * touched (a fixture) reads as {@link SETUP_VERSION_ORIGIN}.
+	 */
+	updatedAt: z.string().max(40).default(SETUP_VERSION_ORIGIN),
 	description: z.string().max(8000),
 	/** Reference files, capped at {@link MAX_PROJECT_ATTACHMENTS}. */
 	attachments: z.array(ProjectAttachmentSchema).max(MAX_PROJECT_ATTACHMENTS),
@@ -1665,6 +1675,7 @@ export function reconcileSetup(
 		// `?? null` rather than `??` down a chain: an archive is a fact about the row, and a patch that
 		// does not mention it must not clear it.
 		archivedAt: patch.archivedAt ?? base.archivedAt ?? null,
+		updatedAt: patch.updatedAt ?? base.updatedAt ?? SETUP_VERSION_ORIGIN,
 		description: patch.description ?? base.description ?? "",
 		attachments: patch.attachments ?? base.attachments ?? [],
 		budget: rolledUpBudget(format, structure, budget, stages),
@@ -1718,6 +1729,12 @@ export function reconcileSetup(
  * fat service's, not this schema's — the wire shape only has to make the three cases expressible.
  */
 export const UpdateProjectSchema = z.object({
+	/**
+	 * The {@link ProjectSetup.updatedAt} the copy this save was made from carried. Optional on the wire
+	 * only so an old client's save is answered `428` with a sentence rather than a field error: the
+	 * service refuses every save without it, and a stale one `409 stale_write` (ST1).
+	 */
+	expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
 	title: z.string().min(1).max(160).optional(),
 	format: ProjectFormat.optional(),
 	structure: ProjectStructure.optional(),
@@ -1735,6 +1752,22 @@ export const UpdateProjectSchema = z.object({
 	).max(20).optional(),
 });
 export type UpdateProject = z.infer<typeof UpdateProjectSchema>;
+
+/** The field error a stale setup save carries on `form`, beside `details.current`. */
+export const STALE_SETUP_WRITE = "stale_write";
+
+/** The sentence a stale setup save is refused with, shared by `apply_write_batch` and the stub. */
+export const STALE_SETUP_MESSAGE =
+	"This project changed somewhere else. Your last change was not saved.";
+
+/**
+ * Whether a save made from the copy read at `expected` is stale against the stored version
+ * `current`. Compared to the millisecond, as `apply_write_batch`'s version op compares them, because
+ * the version crosses JSON and `Date.parse` truncates past it; an unreadable version is stale.
+ */
+export function isStaleSetupWrite(expected: string, current: string): boolean {
+	return Date.parse(expected) !== Date.parse(current);
+}
 
 /**
  * The DELETE body — a soft archive, never a row removal (root CLAUDE.md §5). The reason is optional

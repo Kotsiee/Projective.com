@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
 	createFormatToColumns,
+	isStaleSetupWrite,
 	isStoredShapePair,
 	ONBOARDED_ASSIGNMENT_EXCLUDED,
 	ProjectFormat,
@@ -65,4 +66,27 @@ Deno.test("the onboarding deny-list is drawn from the seat vocabulary", () => {
 	for (const status of ONBOARDED_ASSIGNMENT_EXCLUDED) {
 		assert(StageAssignmentStatus.safeParse(status).success, status);
 	}
+});
+
+Deno.test("WriteBatch: the version check runs first and alone writes nothing (ST1)", () => {
+	const batch = new WriteBatch();
+	batch.version("p-1", "2026-11-24T10:00:00.123Z", "form");
+	assert(batch.empty, "a version check alone is never sent");
+	batch.update("projects", "p-1", { title: "x" });
+	batch.version("p-1", "2026-11-24T10:00:00.123Z", "form");
+	assertFalse(batch.empty);
+	assertEquals(batch.ops[0], {
+		kind: "version",
+		id: "p-1",
+		expected: "2026-11-24T10:00:00.123Z",
+		field: "form",
+	});
+});
+
+Deno.test("isStaleSetupWrite compares to the millisecond, as the batch's version op does (ST1)", () => {
+	// PostgREST writes microseconds; the client sends what it read, or the millisecond JSON keeps.
+	assertFalse(isStaleSetupWrite("2026-11-24T10:00:00.123Z", "2026-11-24T10:00:00.123456+00:00"));
+	assertFalse(isStaleSetupWrite("2026-11-24T11:00:00.123+01:00", "2026-11-24T10:00:00.123Z"));
+	assert(isStaleSetupWrite("2026-11-24T10:00:00.123Z", "2026-11-24T10:00:00.124Z"));
+	assert(isStaleSetupWrite("not a time", "2026-11-24T10:00:00.123Z"));
 });

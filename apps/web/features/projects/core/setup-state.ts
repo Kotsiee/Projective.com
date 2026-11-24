@@ -23,6 +23,7 @@ export {
 	discardSetup,
 	patchSetup,
 	refreshSetup,
+	reloadSetup,
 	resetSetupState,
 	seedSetup,
 	setupBaseline,
@@ -32,6 +33,7 @@ export {
 	setupReveal,
 	setupSavedAt,
 	setupSaving,
+	setupStale,
 	watchOnboardingSim,
 } from "./setup-signals.ts";
 // #endregion

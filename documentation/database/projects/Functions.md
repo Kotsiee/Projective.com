@@ -796,6 +796,17 @@ not already do one request at a time; it only removes the gaps between them. `au
 | `insert` | `{table, row:{col:value}, field?, ref?}` — stores the new `id` | `stage_staffing_roles`, `project_attachments`, `tickets` |
 | `delete` | `{table, match:{col:value}, expect?, field?}` | `stage_staffing_roles`, `project_attachments` |
 | `rpc` | `{fn, args:{…}, field?, ref?}` | `set_project_status`, `create_stage`, `delete_stage`, `reorder_stages`, `sanitize_single_room_topology`, `move_ticket` (with `p_expected_updated_at`) |
+| `version` | `{id, expected, field?}` — `id` is a project | `projects` only |
+
+`version` is a setup save's optimistic-concurrency check (ST1). It reads the project row
+`FOR UPDATE` under the caller's RLS and compares its `updated_at` with `expected`, the version the
+caller's copy was read at, truncated to milliseconds on both sides because the version crosses JSON.
+A mismatch raises SQLSTATE **`PS409`** "This project changed somewhere else. Your last change was not
+saved." with the current `updated_at` as its DETAIL. A row the caller may not update raises
+`not_written`, so a stranger learns no version. On a match it touches the row (the
+`trg_projects_touch_updated_at` trigger stamps `now()`), so a save that writes only stages or roles
+still advances the version. The service plans it first, so a stale save is refused before any other
+op runs, and the row lock serialises two concurrent saves.
 
 Any other table or function → `42501`; an unknown kind or an empty `patch` / `row` / `match` →
 `invalid_parameter_value`. Before each op runs, every value of the exact shape `{"$ref": name}` is

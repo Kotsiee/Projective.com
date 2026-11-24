@@ -61,10 +61,8 @@ export const setupSaving = signal<boolean>(false);
  * When this device last watched a save land, as epoch milliseconds, or `null`.
  *
  * The auto-save presentation replaces Save · Discard with a "last updated" line, and this is the
- * only honest source for it: `ProjectSetup` carries no `updatedAt`, so there is nothing on the
- * server projection to render. It therefore says what it means — the last save THIS BROWSER saw —
- * and is not offered as the project's modification time, which a second device editing the same
- * project would contradict.
+ * only honest source for it. It says what it means — the last save THIS BROWSER saw — and is not
+ * the project's version (`ProjectSetup.updatedAt`), which a write from any device moves.
  *
  * Persisted per {@link LocalKeys.PROJECT_SAVED_AT} so it survives a reload, and scoped to the
  * project id so opening a different engagement cannot inherit this one's timestamp.
@@ -80,6 +78,13 @@ export const setupSavedAt = signal<number | null>(null);
  * second one licenses telling the owner they can safely close the tab.
  */
 export const setupQueued = signal<boolean>(false);
+
+/**
+ * The server refused a save because this copy is older than the one it holds (`409 stale_write`,
+ * ST1). The draft stays on screen and auto-save stops until the owner presses Reload
+ * ({@link reloadSetup}); nothing is ever merged.
+ */
+export const setupStale = signal<boolean>(false);
 // #endregion
 
 // #region Outcome reporting
@@ -328,6 +333,7 @@ export function seedSetup(setup: ProjectSetup): void {
 	seededId = setup.id;
 	setupDraft.value = setup;
 	setupBaseline.value = setup;
+	setupStale.value = false;
 	clearOutcome();
 	setupReveal.value = false;
 	setupSavedAt.value = readSavedAt(setup.id);
@@ -421,6 +427,30 @@ export async function refreshSetup(): Promise<void> {
 }
 
 /**
+ * Reload after a stale save (ST1): the server's copy replaces the draft and the baseline, and the
+ * unsaved edits the conflict kept on screen go with it, queued copy included. The owner chose this
+ * by pressing Reload; nothing is merged.
+ */
+export async function reloadSetup(): Promise<void> {
+	const draft = setupDraft.peek();
+	if (!draft || setupSaving.peek()) return;
+	setupSaving.value = true;
+	const res = await ProjectSidebarService.setup(draft.slug, onboardingSim());
+	setupSaving.value = false;
+	if (!res.ok || !res.data) {
+		reportError(res.message ?? "That did not reload — please try again.");
+		return;
+	}
+	setupDraft.value = res.data.setup;
+	setupBaseline.value = res.data.setup;
+	setupStale.value = false;
+	setupQueued.value = false;
+	saveSession.autoSaveHeld = false;
+	clearOutcome();
+	void dequeueWrite(res.data.setup.id);
+}
+
+/**
  * Track the switcher and refetch when the onboarding axis moves.
  *
  * Returns its own unsubscribe, so the island that starts it can stop it on unmount. Only the ONE
@@ -508,6 +538,7 @@ export function resetSetupState(): void {
 	// The QUEUE is deliberately not cleared — it is durable by design and survives this surface. Only
 	// the in-memory flag is reset, and the next seed re-derives it from the store.
 	setupQueued.value = false;
+	setupStale.value = false;
 	clearOutcome();
 	resetFieldValidation();
 }

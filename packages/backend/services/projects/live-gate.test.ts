@@ -346,7 +346,12 @@ const WRITE_CASES: Record<string, (c: Corpus, a: ReadActor) => Promise<ServiceRe
 		ProjectBackendService.acceptApplication({ applicationId: "app-1" }, a),
 	rejectApplication: (_, a) =>
 		ProjectBackendService.rejectApplication({ applicationId: "app-1" } as never, a),
-	updateProject: (c, a) => ProjectBackendService.updateProject(c.slug, { title: "Renamed" }, a),
+	updateProject: (c, a) =>
+		ProjectBackendService.updateProject(
+			c.slug,
+			{ title: "Renamed", expectedUpdatedAt: "2026-11-24T00:00:00.000Z" },
+			a,
+		),
 	archiveProject: (c, a) => ProjectBackendService.archiveProject(c.slug, {} as never, a),
 	commitTicket: (c, a) =>
 		ProjectBackendService.commitTicket(

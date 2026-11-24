@@ -61,7 +61,12 @@ import {
 	type WriteOutcome,
 	type WriteRefusal,
 } from "./live-writes.ts";
-import { lockStateOf, onboardingLockRefusal, touchesLockableFields } from "./live-writes.ts";
+import {
+	lockStateOf,
+	onboardingLockRefusal,
+	staleSetupRefusal,
+	touchesLockableFields,
+} from "./live-writes.ts";
 import { CLAIM_REFUSAL, claimTicketRow } from "./live-claim.ts";
 import { DELETE_REFUSAL, deleteTicketRow } from "./live-ticket-delete.ts";
 import {
@@ -213,6 +218,7 @@ import {
 	memberStagePicture,
 	NO_REMOVAL_IMPACT,
 	providerScopedPage,
+	isStaleSetupWrite,
 	isTaskProject,
 	reconcileSetup,
 	requestsForScope,
@@ -3043,6 +3049,14 @@ export class ProjectBackendService {
 	): Promise<ServiceResult<{ setup: ProjectSetup }>> {
 		const denied = requireIdentity<{ setup: ProjectSetup }>(actor, "edit this project");
 		if (denied) return denied;
+		// A save that names no version cannot be told from one made from a stale copy (ST1).
+		if (!input.expectedUpdatedAt) {
+			return fail(428, {
+				message: "This page is out of date. Reload it, then make your change again.",
+				errors: { form: "version_required" },
+			});
+		}
+		const expected = input.expectedUpdatedAt;
 
 		const live = await liveWrite<{ setup: ProjectSetup }>(
 			"updateProject",
@@ -3083,9 +3097,17 @@ export class ProjectBackendService {
 				return fail(locked.status, { message: locked.message, errors: locked.errors });
 			}
 		}
+		// The live path's version op, at the same point: after the locks, before anything is stored.
+		if (isStaleSetupWrite(expected, current.updatedAt)) {
+			return refused(staleSetupRefusal(current.updatedAt));
+		}
 		// Keyed by the project's own identity rather than by the routed segment: the same project reached
-		// through its slug and through its uuid must accumulate ONE set of edits, not two.
-		let merged = mergeSetupPatch(owner, base, setupPatchFrom(input, current));
+		// through its slug and through its uuid must accumulate ONE set of edits, not two. The version
+		// moves on with every save, and strictly, so two saves in one millisecond are two versions.
+		let merged = mergeSetupPatch(owner, base, {
+			...setupPatchFrom(input, current),
+			updatedAt: new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString(),
+		});
 		// The live path's `sanitize_single_room_topology`, for the stub: a Task keeps its root stage
 		// only. The stub has no messages, files or money, so nothing here would ever be archived — the
 		// stages a previous shape left behind are simply dropped from the stored configuration.

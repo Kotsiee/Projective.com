@@ -777,6 +777,20 @@ same notice above its empty columns. A project's own lane says "This project can
 a `401` / `503` and keeps "Project not found" for a `404`. The project pages behind
 `resolveProjectAccess` still read a failed detail as a miss (PRD-B8).
 
+**Optimistic concurrency on project writes (DL S8; ST1, Decision #551).** A write made from a copy
+of a row names the version that copy was read at, and a stale one is refused, never merged. A board
+move carries the ticket's `updated_at` (`move_ticket`'s `p_expected_updated_at` → `PS409`). A setup
+save (`PATCH | PUT /api/projects/:id`, the Details and stage-details forms) carries
+`expectedUpdatedAt`, the `ProjectSetup.updatedAt` (`projects.projects.updated_at`) of the last copy
+the server acknowledged. `projects.apply_write_batch`'s first op, `version`, locks the project row,
+compares the two to the millisecond and advances the version in the save's own transaction, so a
+stage-only save moves it too. A stale save is a `409` with `errors.form = "stale_write"` and
+`details.current`. A save with no version is a `428`. The form keeps the owner's unsaved values on
+screen, stops auto-saving and offers Reload, which replaces them with the server's copy. The stub
+road applies the same `isStaleSetupWrite` rule. A stage created from the board, the timeline or the
+lane (`create_stage`) overwrites nothing and carries no version; the ticket composer's
+`commitTicketRow` is not yet versioned.
+
 ### Discovery (Explore) services
 
 The Explore feature is the second, **read-only** implementation of the contract: `ExploreService`

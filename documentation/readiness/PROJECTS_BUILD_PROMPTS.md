@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 23 open, 1 partly done (ST6, waiting only on 🧑 #427 (a)), 2 done (§0 ledger).
-> Runnable now: ST1, ST3, ST4, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 22 open, 1 partly done (ST6, waiting only on 🧑 #427 (a)), 3 done (§0 ledger).
+> Runnable now: ST3, ST4, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -55,11 +55,12 @@ A prompt that lands gets a row here.
 | ID  | What landed                                                                                                                                                                                    | Commit            | Text at    |
 | :-- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------- | :--------- |
 | ST5 | Seats and participant rows are written only by their definer doors: the owner's two `FOR ALL` policies dropped, client `INSERT` / `UPDATE` / `DELETE` revoked; probe `seat_insert_consent.sql` | `70b0d8c5` (#554) | `f398cd9f` |
+| ST1 | A setup save names its version: `UpdateProject.expectedUpdatedAt` from `ProjectSetup.updatedAt`, `apply_write_batch`'s `version` op (lock, compare to the ms, advance), `409 stale_write` with `details.current`, `428` without one; the rigs' Reload notice; probe `setup_stale_write.sql` | ST1_COMMIT (#551) | `a9959c64` |
 | ST2 | The setup form's Remove reaches a door: `projects.delete_stage` refuses a stage with history `55000` before anything moves and deletes an untouched one; `projects.stage_removability` gives the setup DTO its `removable` flag; `DELETE /api/projects/:id/stages/:stageId`; a touched stage's Remove opens `StageLockedDialog`; the stub PATCH keeps an omitted stage as live does; probe `stage_removal.sql` | `60a0d652` (#553) | `4fed9f01` |
 
 ### 0.1 Row → work order
 
-Rows not listed are ✅ with no note: PJ-01, 03, 05, 06, 08, 12, 16, 18, 19, 20 (ST5, #554), 24, 25
+Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 05, 06, 08, 12, 16, 18, 19, 20 (ST5, #554), 24, 25
 (PM-WP1, `07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513).
 PJ-14 and PJ-74 are ⏸ (§0.4).
 
@@ -67,7 +68,6 @@ PJ-14 and PJ-74 are ⏸ (§0.4).
 
 | Row   | Now · Crit · Gate | Work order            | The row flips (or its note clears) when                                                               |
 | :---- | :---------------- | :-------------------- | :---------------------------------------------------------------------------------------------------- |
-| PJ-02 | ✅ · Crit · MVP   | **ST1**               | A setup save carries a version and a stale save is refused (note clears)                              |
 | PJ-04 | 🟡 · High · MVP   | **ST6** step 5 (🧑 #427 (a); steps 1–4 landed in `08f27344`, #555) | (a) is confirmed as the spec's rule; the read lag (i) is closed (#555) and (b) by #456 |
 
 **Stages** (69%)
@@ -242,7 +242,6 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 **App lane** (up to three at once, file-disjoint):
 
 - **PM-WP8** now.
-- **ST1** now. It moves to Queue S if `apply_write_batch` needs a version op.
 - **ST6** step 5 only: 🧑 #427 (a). Steps 1–4 landed (`08f27344`, #555).
 - **TK2** (⏳ TK1).
 - **NO3** now.
@@ -271,7 +270,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | File                                                     | Writers here                                                 | Writers elsewhere (never at the same time)                        |
 | :------------------------------------------------------- | :----------------------------------------------------------- | :---------------------------------------------------------------- |
 | `00001150` (stage funding, submissions, cancel, approve) | TK1, EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | FBP DB13, DB14                                                    |
-| `00001130` (stages, members, `apply_write_batch`)        | ST1?, CH2; PM D7a, WP4a, WP4b, S3, D7b                       | —                                                                 |
+| `00001130` (stages, members, `apply_write_batch`)        | CH2; PM D7a, WP4a, WP4b, S3, D7b                             | —                                                                 |
 | `00001110` / `00001120` (ticket guards and doors)        | TK1; PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
 | `00001140` (claims, capacity, workload)                  | ST3, ST4; PM WP5a, D7b                                       | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
@@ -483,53 +482,6 @@ its section (IDs are never reused), never silence. Finish with: what you built; 
 ---
 
 ## 2. Project setup, stages & members
-
-### ST1 — A setup save carries a version; a stale save is refused, never merged
-
-Clears PJ-02's note.
-
-```text
-PROMPT ST1: A project setup save carries the version it was made from, and a save made from a
-stale copy is refused with the current copy, never silently merged
-
-ROLE: Full-stack engineer. App lane; it joins Queue S only if apply_write_batch needs a new op.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - Only moves are optimistic today: move_ticket takes p_expected_updated_at (00001120:547,
-    :583-584) and the batch's move op passes it on (00001130:3238-3244). Nothing else does.
-  - The setup save: PATCH /api/projects/:id (routes/api/projects/[id].ts:51-71) →
-    ProjectBackendService.updateProject (:2933) → applyProjectUpdate / reconcileStages
-    (packages/backend/services/projects/live-writes.ts:1323-1443) → projects.apply_write_batch
-    (00001130:3123). UpdateProjectSchema (packages/types/projects/setup.ts:1695) has no version.
-  - The client: ProjectSidebarService.update (features/projects/core/ProjectSidebarService.ts:
-    104-113) and setup-persistence.ts toPayload (:69-91), driven by autosave.
-  - A precedent to copy: the catalogue's expected-version write (live-catalogue-writes.ts,
-    routes/api/catalogue/update.ts).
-  - PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md:367-370 lists "other writes: Open (no prompt)".
-
-STEPS:
-  1. Red first: a unit test (and a probe if SQL changes) where two saves start from the same
-     version and the second silently overwrites the first.
-  2. UpdateProjectSchema gains expectedUpdatedAt (ISO). The service compares it with
-     projects.updated_at inside the same transaction as the write; if apply_write_batch has no
-     project-level version check, add one to its project op (edited in place, 00001130). On a
-     mismatch, refuse 409 `stale_write` with the current version.
-  3. Stage writes from the setup form ride the same check. So do the board and timeline rigs'
-     stage edits (create or edit a stage) if they write project or stage terms.
-  4. UI: on a 409 the autosave stops, keeps the user's unsaved values on screen, and shows an
-     InlineNotice ("This project changed somewhere else. Your last change was not saved.") with
-     Reload. Never merge.
-  5. A save with no expectedUpdatedAt (an old client) is refused 428, never accepted.
-
-ACCEPTANCE: two tabs as the seeded client, edit the brief in both, and the second save gets 409
-with its values still on screen; one tab alone saves as before; the unit test is green.
-
-SAME CHANGE: SYSTEM_ARCHITECTURE.md (the optimistic-concurrency rule now covers setup writes);
-PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md (the "other writes" status); Zod; ROUTING.md if a
-status code is documented there; the decision row.
-```
-
-§1.2 rows: **PJ-02**'s note cleared.
 
 ### ST3 — A client pins a ticket to a seat holder (manual assignment)
 

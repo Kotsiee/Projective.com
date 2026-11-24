@@ -1,5 +1,10 @@
 import { signal } from "@preact/signals";
-import type { ProjectRules, ProjectSetup, UpdateProject } from "../types/projects-types.ts";
+import {
+	type ProjectRules,
+	type ProjectSetup,
+	STALE_SETUP_WRITE,
+	type UpdateProject,
+} from "../types/projects-types.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { ProjectSidebarService } from "./ProjectSidebarService.ts";
 import { isSettleFirstRefusal, OPEN_PROJECT_CANCEL_EVENT } from "./project-cancel-model.ts";
@@ -18,6 +23,7 @@ import {
 	setupQueued,
 	setupReveal,
 	setupSaving,
+	setupStale,
 	stampSavedAt,
 } from "./setup-signals.ts";
 
@@ -110,10 +116,13 @@ function toPayload(setup: ProjectSetup): UpdateProject {
  */
 async function commit(
 	projectRef: string,
-	payload: UpdateProject,
+	form: UpdateProject,
 	notice: string | null,
 ): Promise<boolean> {
 	const draft = setupDraft.peek();
+	// The version of the last copy the SERVER acknowledged, never the draft's: a draft typed over an
+	// in-flight save still carries the version before it, and would refuse its own follow-up (ST1).
+	const payload: UpdateProject = { ...form, expectedUpdatedAt: setupBaseline.peek()?.updatedAt };
 
 	/*
 	 * Offline: store it and say so, rather than sending into the dark.
@@ -174,6 +183,11 @@ async function commit(
 			report("info", "You went offline mid-save — it is stored here and queued to sync.");
 			return false;
 		}
+		// Never merged (ST1): the draft stays on screen, auto-save stops, and the rig offers Reload.
+		if (res.errors?.form === STALE_SETUP_WRITE) {
+			setupStale.value = true;
+			return false;
+		}
 		reportError(res.message ?? "That did not save — please try again.");
 		return false;
 	}
@@ -226,7 +240,8 @@ async function commit(
  */
 async function saveSetup(): Promise<boolean> {
 	const draft = setupDraft.value;
-	if (!draft || setupSaving.value) return false;
+	// A stale copy is refused until Reload: sending it again can only be refused again.
+	if (!draft || setupSaving.value || setupStale.peek()) return false;
 	const blocker = firstBlocker(draft);
 	if (blocker) {
 		reportError(blocker);
@@ -365,7 +380,7 @@ export function hydrateAutoSave(): void {
  * is correctly not dirty and correctly does not save.
  */
 export function autoSaveOnBlur(): void {
-	if (!autoSaveEnabled.peek() || saveSession.autoSaveHeld) return;
+	if (!autoSaveEnabled.peek() || saveSession.autoSaveHeld || setupStale.peek()) return;
 	if (!setupDirty.peek()) return;
 	const draft = setupDraft.peek();
 	// An archived project refuses every write, and firstBlocker's refusals are for a deliberate press
@@ -522,6 +537,12 @@ export async function flushQueuedWrites(): Promise<void> {
 
 			if (!res.ok || !res.data) {
 				stalled = entry;
+				// A stale copy is a refusal by a reachable server, not an outage (ST1): it stays on this
+				// device until its form's Reload, and the entries behind it still sync.
+				if (res.errors?.form === STALE_SETUP_WRITE) {
+					if (active?.id === entry.projectId) setupStale.value = true;
+					continue;
+				}
 				break;
 			}
 

@@ -15,7 +15,10 @@ import {
 	STAGE_NOT_INCLUDED_MESSAGE,
 	STAGE_REMOVAL_LOCKED_MESSAGE,
 	STALE_MOVE_MESSAGE,
+	STALE_SETUP_MESSAGE,
+	STALE_SETUP_WRITE,
 	isSingleRoomEngagement,
+	isStaleSetupWrite,
 	isTaskProject,
 	liveVisibilityFor,
 	lockedStagePriceIds,
@@ -191,6 +194,8 @@ interface SetupProjectRow {
 	client_user_id?: string | null;
 	client_business_id: string | null;
 	archived_at: string | null;
+	/** The setup copy's version (ST1). */
+	updated_at: string;
 	auto_fund_override?: string | null;
 	/** Set on an engagement a buyer instantiated from a service (Decision #209). */
 	source_blueprint_id?: string | null;
@@ -275,6 +280,7 @@ const SETUP_PROJECT_COLUMNS = [
 	"client_user_id",
 	"client_business_id",
 	"archived_at",
+	"updated_at",
 	"auto_fund_override",
 	"is_personal",
 	"source_blueprint_id",
@@ -601,6 +607,7 @@ function toSetup(
 		// projection cannot fail its own schema on a row the database considers perfectly valid.
 		status: row.status === "archived" ? "on_hold" : row.status as ProjectSetup["status"],
 		archivedAt: row.archived_at,
+		updatedAt: row.updated_at,
 		description: richTextOf(row.description, row.description_text),
 		attachments: [...attachments],
 		budget: {
@@ -1182,6 +1189,19 @@ function notWritten(field?: string): WriteRefusal {
 }
 
 /**
+ * The refusal a setup save made from a stale copy earns (ST1): a conflict, never a merge. It names the
+ * version now stored so the surface knows its copy is behind; the live path and the stub share it.
+ */
+export function staleSetupRefusal(current: string): WriteRefusal {
+	return {
+		status: 409,
+		message: STALE_SETUP_MESSAGE,
+		errors: { form: STALE_SETUP_WRITE },
+		details: { current },
+	};
+}
+
+/**
  * Send a planned {@link WriteBatch} to `projects.apply_write_batch`, which runs it in one transaction
  * (DL S7), and return the values its kept ops stored — or the refusal for the op that failed, against
  * the form section it names. Nothing in the batch is committed when any op fails.
@@ -1197,6 +1217,10 @@ async function runWriteBatch(
 	if (error) {
 		const field = batchFieldOf((error as { hint?: string | null }).hint);
 		if ((error as { code?: string }).code === "PW403") return { refusal: notWritten(field) };
+		// The version op's PS409 carries the stored version as its DETAIL.
+		if (error.message === STALE_SETUP_MESSAGE) {
+			return { refusal: staleSetupRefusal((error as { details?: string | null }).details ?? "") };
+		}
 		return { refusal: refusalFrom(error.message, field) };
 	}
 	const refs = (data as { refs?: Record<string, unknown> } | null)?.refs ?? {};
@@ -2135,6 +2159,11 @@ export async function applyProjectUpdate(
 	// leaves nothing of the save behind. The order of the plan is the order the statements run in, so
 	// every ordering argument below still holds — inside one transaction instead of across several.
 	const batch = new WriteBatch();
+	// The copy this save was made from (ST1). The batch checks it against the row it locks, in the same
+	// transaction as the writes; a save that writes nothing is checked against the row read above, so a
+	// no-op save can never hand a stale copy the current version.
+	const expected = input.expectedUpdatedAt ?? "";
+	batch.version(row.id, expected, "form");
 
 	const patch = projectColumnPatch(input);
 	// An UPDATE whose RLS `USING` arm matches nothing affects zero rows and raises nothing; the batch
@@ -2201,6 +2230,9 @@ export async function applyProjectUpdate(
 	// this same save just reconciled.
 	if (singleRoom) batch.rpc("sanitize_single_room_topology", { p_project_id: row.id }, "stages");
 
+	if (batch.empty && isStaleSetupWrite(expected, row.updated_at)) {
+		return { refusal: staleSetupRefusal(row.updated_at) };
+	}
 	const ran = await runWriteBatch(db, batch);
 	if ("refusal" in ran) return { refusal: ran.refusal };
 

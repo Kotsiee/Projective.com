@@ -60,7 +60,8 @@ export type BatchOp =
 		expect?: boolean;
 		field?: string;
 	}
-	| { kind: "rpc"; fn: BatchFunction; args: Record<string, unknown>; field?: string; ref?: string };
+	| { kind: "rpc"; fn: BatchFunction; args: Record<string, unknown>; field?: string; ref?: string }
+	| { kind: "version"; id: string; expected: string; field?: string };
 // #endregion
 
 // #region Builder
@@ -120,9 +121,17 @@ export class WriteBatch {
 		return ref ? { $ref: ref } : null;
 	}
 
-	/** Whether anything was planned. An empty batch is never sent. */
+	/**
+	 * Lock the project row, refuse the batch `PS409` unless its `updated_at` is `expected`, and advance
+	 * it (ST1). Planned FIRST whenever it is called, so a stale save is refused before any write runs.
+	 */
+	version(projectId: string, expected: string, field?: string): void {
+		this.ops.unshift({ kind: "version", id: projectId, expected, field });
+	}
+
+	/** Whether any WRITE was planned; a version check alone writes nothing. An empty batch is never sent. */
 	get empty(): boolean {
-		return this.ops.length === 0;
+		return this.ops.every((op) => op.kind === "version");
 	}
 }
 
