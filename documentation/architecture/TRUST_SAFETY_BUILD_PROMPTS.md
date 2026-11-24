@@ -104,7 +104,7 @@ workload-verdict appeal on R1's sink (landed), R3 and R4.
 | :------------------------------------------------------ | :------------------------------------- | :---------------------------------------------------------------- |
 | `00005060` (jobs)                                       | SN1, SN2, R5, SN6                      | F, M, P, C, OPS, PROJECTS FL1 (one writer at a time)              |
 | `00001060` (erasure)                                    | none (R1's and P1d's arms go to I)     | I (ERA1), SEC G16                                                 |
-| `00001300` (comms)                                      | P1d, P2b, P2c, P2d, SN6                | COMMS MS4, MS5; PROJECTS CH1–CH4; every CAS messaging step        |
+| `00001300` (comms)                                      | P1d, P2b, P2c, P2d, SN6                | COMMS MS4, MS5; PROJECTS CH1–CH3; every CAS messaging step        |
 | `00002510` (grants)                                     | P1d, P2d, R3, R4, SN6                  | many                                                              |
 | `00002012` (comms policies)                             | P2d                                    | PROJECTS CH1                                                      |
 | `features/devtools` + `dev-seam.ts`                     | SN1, SN3, R3                           | identity SSO1, MFA1, MIN1; PROJECTS and PM (PROJECTS §0.2's list) |
@@ -112,11 +112,11 @@ workload-verdict appeal on R1's sink (landed), R3 and R4.
 | `00002520` (table grants)                               | P2d, R5                                | many                                                              |
 | `00000012` (security tables)                            | R4                                     | identity HK1 (Q0.2 (b) drops)                                     |
 | `00000013` (ops tables), `00001665` (R1's)              | P1d, R3, SN6                           | —                                                                 |
-| `00000016` (comms tables)                               | P2b, P2d                               | PROJECTS CH1–CH4                                                  |
-| `00001840` (comms triggers)                             | P2c, P2d, SN6                          | COMMS; PROJECTS CH1–CH4                                           |
+| `00000016` (comms tables)                               | P2b, P2d                               | PROJECTS CH1–CH3                                                  |
+| `00001840` (comms triggers)                             | P2c, P2d, SN6                          | COMMS; PROJECTS CH1–CH3                                           |
 | `00005001` (platform params)                            | P2b, P2d, R4, SN1, SN2, SN3, SN4, SN6  | F (FX margin and dials)                                           |
 | `00005010` (notification catalog)                       | R3, SN3                                | COMMS NT1–NT5                                                     |
-| `MessagingBackendService.ts`, `projects/live-writes.ts` | P1d, R2                                | COMMS MS3, MS5; PROJECTS CH1, CH3, CH4; O D-06 / SC-9             |
+| `MessagingBackendService.ts`, `projects/live-writes.ts` | P1d, R2                                | COMMS MS3, MS5; PROJECTS CH1, CH3; O D-06 / SC-9             |
 | `services/files/*`, `services/links/*`                  | LK1, SN1, SN2, SN3, H1                 | PROJECTS FL1–FL4                                                  |
 
 ### 0.3 These cannot run in parallel inside T

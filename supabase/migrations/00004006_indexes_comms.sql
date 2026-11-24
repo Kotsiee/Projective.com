@@ -20,6 +20,13 @@ CREATE INDEX IF NOT EXISTS idx_message_attachments_message
 CREATE INDEX IF NOT EXISTS idx_message_attachments_attachment
     ON comms.message_attachments (attachment_id);
 
+-- A message has at most one voice memo (CAS M18, PROJECTS CH4): the link row carrying its duration
+-- and waveform. comms.send_message writes one; a second would give the feed two players to choose
+-- between for one message.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_message_attachments_one_memo
+    ON comms.message_attachments (message_table, message_id)
+    WHERE audio_duration_ms IS NOT NULL;
+
 -- The channel Files tab. Same shape, different vocabulary: this table
 -- discriminates on the BARE 'project' / 'dm' pair, not the schema-qualified one
 -- above.

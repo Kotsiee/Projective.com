@@ -6,7 +6,7 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 17 open, 0 partly done, 9 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 16 open, 0 partly done, 10 done (§0 ledger).
 > Runnable now: EX3, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -62,6 +62,7 @@ A prompt that lands gets a row here.
 | ST6 | A write by one party to a shared project shows on the other's next read, in every isolate: each cached project read is keyed by the project's KV version (`services/projects/freshness.ts`), bumped by every write path (#555 lists them); a KV-less isolate keeps its own bumps; a board reads around the cache while the claim sweep is due; #427 (a) confirmed and written into PRODUCT_SPEC | `08f27344` (#555) | `70f78452` |
 | ST4 | The freelancer's own workload: `projects.get_my_workload_capacity()` (no argument, `auth.uid()`, per-stage split) granted to `authenticated` only, the any-user `get_workload_capacity` revoked by name; `WorkloadCapacitySchema`, `ProjectWorkloadService.mine`, `GET /api/projects/workload`; the `WorkloadGauge` island in the `/projects` header; the capacity line and over-cap refusal beside the ticket view's and the board card's Claim; dev axis `workload`; probe `workload_capacity_self.sql` | `97680598` (#550) | `97680598` |
 | TK2 | The funding path driven end to end in a real browser on the live path: `apps/web/tests/e2e/ticket-funding.spec.ts` (`deno task test:e2e:funding`). One stage through the basket picker and the checkout narrowed by `?ticket_id=`, paid from the business wallet; a stage held and two prepaid in one Buy now, the freelancer seeing the marks and no amounts; Buy now by a 3-D Secure card and a plain one, held after the signed webhook (the spec forwards it from Stripe test mode) and after a reload; a short wallet and a paid-for stage refused. The checkout's client re-read keeps `?ticket_id=` (it widened to the whole basket); `test:e2e` no longer names the deleted `landing-hero.spec.ts` (PRD-K3) | `f9bce8aa` (#557) | `288865a0` |
+| CH4 | A message and its files are one write, and a voice memo survives a reload: `comms.send_message` (invoker) writes the message, its `message_attachments` links and `channel_files` rows in one transaction and refuses the whole send on a refused file (PA422 → 422 `not_attached`); `message_attachments.audio_duration_ms` + `audio_peaks` (four CHECKs, `uq_message_attachments_one_memo`); `SendAudioSchema` names the memo's upload; `fetchMessageAttachments` returns the memo as the player on every read; `MessageAttachmentRowSchema`; probe `message_send.sql` | this commit (#559) | `0e06fa9d` |
 
 ### 0.1 Row → work order
 
@@ -133,7 +134,7 @@ The operator's ruling is MW-59; it is not this file's row.
 | PJ-50 | 🟡 · Normal · UAT | **CH3**                                           | Every project DM is reachable and readable in place, and reading marks it read                |
 | PJ-52 | 🟡 · Normal · UAT | COMMS MS5                                         | Mute and delete persist on the server                                                         |
 | PJ-54 | 🟡 · High · UAT   | T&S LK1                                           | A link nobody could check goes through `/exit`                                                |
-| PJ-56 | 🟡 · High · MVP   | **CH4**; T&S SN1                                  | Attachment inserts are checked; a voice note survives a reload; files are scanned             |
+| PJ-56 | 🟡 · High · MVP   | CH4 ✅ (#559); T&S SN1                                  | Files are scanned (M15 and M18 closed by CH4)             |
 | PJ-57 | 🟡 · Crit · MVP   | T&S P1d → P2a → P2b → P2c; SN6                    | Tiers 1–3, the marketplace window and the cooling-off run                                     |
 | PJ-58 | ❌ · High · PROD  | T&S R4 → R5 → R3 → R2 (R1 landed)               | A message or a file can be reported and triaged                                               |
 
@@ -179,7 +180,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Tickets & delivery             |   59% | WP8 62% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100% (TK2 ✅, #557)               |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   56% | WP4a 63% → EX3 81% → EX4 88% → LP1 100% (EX2 ✅, #548)                                                            |
-| Messaging                      |   57% | MS5 59% → CH1 + P2d 65% → CH2 67% → CH3 70% → LK1 74% → CH4 + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
+| Messaging                      |   57% | MS5 59% → CH1 + P2d 65% → CH2 67% → CH3 70% → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → NO2 + CD2 94% → NT5 + NO3 100%                                                                          |
 | Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
@@ -233,7 +234,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
 9. **CH2** (ST3 ✅, #547; ST4 ✅, #550).
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. **CH3**, then **CH4**'s audio column, **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
+11. **CH3** (CH4 ✅, #559), then **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
     slug.
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
@@ -271,14 +272,14 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001140` (claims, capacity, workload)                  | PM WP5a, D7b                                                 | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
 | `00000017` + `00001260` (disputes)                       | EX3; PM-WP4a step 6                                          | FBP DB21; MR3                                                     |
-| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3, CH4                                           | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
+| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3                                                | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
 | `00005010` (notification catalogue)                      | EX1, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1                  | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
 | `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1      | COMMS NT5; T&S R3                                                 |
-| `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3, CH4                                                | COMMS MS3, MS5; T&S R2                                            |
+| `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3                                                     | COMMS MS3, MS5; T&S R2                                            |
 | `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                         | O·WP6                                                             |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`               | every prompt                                                 | every readiness track: edit your rows and the computed lines only |
 
@@ -826,41 +827,6 @@ the decision row (#508 (c)-(g) closed).
 ```
 
 §1.2 rows: **PJ-50** 🟡 → ✅; PRD-E17, PRD-E13.
-
-### CH4 — Chat attachments are checked, and a voice note survives a reload
-
-Narrows PJ-56; T&S SN1 closes it.
-
-```text
-PROMPT CH4: Sending a message with attachments either saves every attachment or fails whole,
-and a voice note's audio survives a reload
-
-ROLE: Full-stack engineer. Queue S for the audio column (00000016), after COMMS MS3.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - M15: the attachment link inserts never read their errors (messaging/live-writes.ts:211-221;
-    projects/live-writes.ts:2731-2743). CAS:98, :527 "Open (no prompt)".
-  - M18: only is_audio is stored (messaging/live-writes.ts:198, :243-245;
-    projects/live-writes.ts:2718, :2780), while Zod carries audio: MessageAudioSchema
-    (types/projects/messages.ts:236; types/messaging/send.ts:107). CAS:101 "Open (no prompt)".
-  - One send door (#508, MessagingBackendService.sendMessage :754). The malware scan is T&S
-    SN1's (PRD-D3).
-
-STEPS:
-  1. Red first: a test in which a failing attachment insert still reports the send as sent, and
-     one in which a voice note loses its waveform and duration on reload.
-  2. M15: the attachment links are written inside the send door's transaction; any failure fails
-     the whole send with a clear error.
-  3. M18: persist the audio facts (duration, waveform) on the attachment row, in place
-     (00000016), with the Zod row schema and a probe; render from them after a reload.
-
-ACCEPTANCE: both tests are green; live, a voice note plays with its waveform after a reload.
-
-SAME CHANGE: documentation/database/comms/*; Zod; COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md (M15,
-M18 closed); the decision row.
-```
-
-§1.2 rows: **PJ-56** stays 🟡 until T&S SN1 (the note narrows to "unscanned, PRD-D3").
 
 ---
 

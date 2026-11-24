@@ -81,7 +81,7 @@ import { getUserClient } from "../../core/supabase.ts";
 import { AutoFundMode, PrepaidStageRowSchema } from "@projective/types/finance";
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
 import { fetchMessageAttachments } from "./message-attachments.ts";
-import { attachmentInserts, prepareLinkShares } from "../files/link-shares.ts";
+import { prepareLinkShares } from "../files/link-shares.ts";
 import { batchFieldOf, type BatchId, WriteBatch } from "./write-batch.ts";
 import {
 	REPLY_ORIGINAL_COLUMNS,
@@ -2809,8 +2809,13 @@ export async function resolveSendRoom(
  * Matching the wrong one returns zero rows and raises nothing, so the file would simply never appear
  * in the channel's Files tab and nothing would say why.
  *
- * A failed attachment link does NOT fail the send. The message is already committed at that point,
- * and refusing the whole call would report a failure for something the reader can see in the channel.
+ * ## The message and its files are one write
+ *
+ * Both registrations are written by `comms.send_message` (00001300) in the message's own transaction,
+ * as the caller, so every policy that guarded the separate inserts still applies. A file the
+ * database refuses fails the whole send ({@link sendRefusalFrom}): nothing is delivered, and the
+ * composer keeps the draft. A voice memo's length and envelope land on its own file's link row in
+ * the same write ({@link sendMessageArgs}), which is what a reload rebuilds the player from.
  *
  * ## A reply is checked before it is written, and again by the database
  *
@@ -2854,63 +2859,45 @@ export async function insertRoomMessage(
 		original = read.data as unknown as ReplyOriginalRow;
 	}
 
-	const attachmentIds = input.attachmentIds.filter((id) => UUID_RE.test(id));
-	const linkedIds = input.linkedFileIds;
-	const linkRefusal = await prepareLinkShares(actor, linkedIds);
+	const files = sendFilesOf(input);
+	if ("refusal" in files) return files;
+	const linkRefusal = await prepareLinkShares(actor, files.links);
 	if (linkRefusal) return { refusal: linkRefusal };
-	const fileIds = [...attachmentIds, ...linkedIds];
 	const body = clamp(input.text, RICH_TEXT_MAX);
+	// The RESOLVED room, never `input.channelId`: the route segment may be a `stg-…` address or the
+	// word `discussion`, and either one in a uuid column fails the write.
+	const sent = await db.rpc(
+		"send_message",
+		sendMessageArgs("room", channelId, body, input, files, {
+			replyToId: original?.id ?? null,
+			projectId: null,
+		}),
+	);
+	if (sent.error) return { refusal: sendRefusalFrom(sent.error.message) };
+	const messageId = typeof sent.data === "string" ? sent.data : null;
+	if (!messageId) return { refusal: refusalFrom("send_message returned no id", "text") };
+
+	// The STORED row: the PII mask may have rewritten the body and the clamp may have shortened it.
 	const { data, error } = await db
 		.from("project_messages")
-		.insert({
-			channel_id: channelId,
-			// Pinned to the caller rather than taken from the payload. The INSERT policy asserts the
-			// same thing, so a mismatch would be refused — but sending a value the policy has to reject
-			// is how a client comes to believe it may choose an author.
-			sender_user_id: actor.userId,
-			body,
-			// Only a Delta that spells the body actually being stored. The send schema's refine already
-			// ties it to `text`, but this module is also reached with typed values that never passed
-			// that refine, and `body` is `text` after the clamp — a Delta that disagrees with the stored
-			// body is one every reader would discard, so it is not written at all.
-			body_delta: input.delta && messageDeltaText(input.delta) === body ? input.delta : null,
-			reply_to_id: original?.id ?? null,
-			has_attachments: fileIds.length > 0,
-			is_audio: input.audio !== null,
-		})
 		.select("id, created_at, body, body_delta")
+		.eq("id", messageId)
 		.maybeSingle();
-	if (error) {
-		const field = error.message.includes(REPLY_REFUSAL_MESSAGE) ? "replyToId" : "text";
-		return { refusal: refusalFrom(error.message, field) };
-	}
-	const row = data as
-		| { id?: string; created_at?: string; body?: string; body_delta?: unknown }
-		| null;
-	if (!row?.id) return { refusal: refusalFrom("project_messages insert returned no id", "text") };
-
-	if (fileIds.length > 0) {
-		await db.from("message_attachments").insert(
-			attachmentInserts("comms.project_messages", row.id, attachmentIds, linkedIds),
-		);
-		// The RESOLVED room, never `input.channelId`: the route segment may be a `stg-…` address or the
-		// word `discussion`, and either one in this uuid column fails the insert without a trace.
-		await db.from("channel_files").insert(
-			fileIds.map((attachmentId) => ({
-				channel_type: "project",
-				channel_id: channelId,
-				attachment_id: attachmentId,
-			})),
-		);
-	}
+	if (error) throw new Error(`comms.project_messages read failed: ${error.message}`);
+	const row = (data ?? { id: messageId }) as {
+		id: string;
+		created_at?: string;
+		body?: string;
+		body_delta?: unknown;
+	};
 
 	const createdAt = row.created_at ?? new Date(now).toISOString();
 	const parties = await fetchParties(actor, [actor.userId, original?.sender_user_id]);
 	// Read back through the feed's own loader, so the echo and the next page agree on what each file
-	// is called and where it opens.
-	const attachments = fileIds.length > 0
-		? (await fetchMessageAttachments(actor, "comms.project_messages", [row.id])).get(row.id) ?? []
-		: [];
+	// is called, where it opens, and which one is the memo's player.
+	const media = files.copies.length + files.links.length > 0
+		? (await fetchMessageAttachments(actor, "comms.project_messages", [row.id])).get(row.id)
+		: undefined;
 	const text = clamp(row.body ?? body, RICH_TEXT_MAX);
 	return {
 		data: {
@@ -2937,14 +2924,91 @@ export async function insertRoomMessage(
 					actor.userId,
 				)
 				: null,
-			attachments,
-			audio: input.audio,
+			attachments: media?.attachments ?? [],
+			audio: media?.audio ?? null,
 			system: null,
 			reactions: [],
 			pinned: false,
 			favorited: false,
 		},
 	};
+}
+
+/** The sentence `comms.send_message` raises (PA422) when any file of a send cannot be linked. */
+export const NOT_ATTACHED_MESSAGE =
+	"A file could not be attached to this message, so nothing was sent.";
+
+/** A send's files, split the way `comms.send_message` takes them, or the refusal that ends the send. */
+export type SendFiles = { copies: string[]; links: string[] };
+
+/**
+ * The files of a send, or a refusal. A copy whose id is not a uuid could never be linked, and dropping
+ * it would post a message that says "see attached" without the file (the defect CAS M15 names), so it
+ * refuses the send instead of thinning the list. Link shares are checked by `prepareLinkShares`,
+ * which answers in the link share's own terms.
+ */
+export function sendFilesOf(
+	input: Pick<SendMessageInput, "attachmentIds" | "linkedFileIds">,
+): SendFiles | { refusal: WriteRefusal } {
+	if (!input.attachmentIds.every((id) => UUID_RE.test(id))) return { refusal: notAttached() };
+	return { copies: [...input.attachmentIds], links: [...input.linkedFileIds] };
+}
+
+/**
+ * The arguments of one `comms.send_message` call: the message, its files and its memo. Pure, so the
+ * thread and the room send build the same call. A Delta is passed only when it spells the body being
+ * stored (the clamp can shorten a send), and the memo names its own upload with the length and
+ * envelope the composer measured.
+ */
+export function sendMessageArgs(
+	kind: "room" | "dm",
+	targetId: string,
+	body: string,
+	input: Pick<SendMessageInput, "delta" | "audio">,
+	files: SendFiles,
+	extra: { replyToId: string | null; projectId: string | null },
+): Record<string, unknown> {
+	return {
+		p_kind: kind,
+		p_target_id: targetId,
+		p_body: body,
+		p_body_delta: input.delta && messageDeltaText(input.delta) === body ? input.delta : null,
+		p_reply_to_id: extra.replyToId,
+		p_project_id: extra.projectId,
+		p_copies: files.copies,
+		p_links: files.links,
+		p_audio: input.audio
+			? {
+				attachmentId: input.audio.attachmentId,
+				durationMs: input.audio.durationMs,
+				peaks: input.audio.peaks,
+			}
+			: null,
+	};
+}
+
+/** The refusal for a file the database would not link: the whole send, named on the attachments. */
+function notAttached(): WriteRefusal {
+	return { status: 422, message: NOT_ATTACHED_MESSAGE, errors: { attachmentIds: "not_attached" } };
+}
+
+/**
+ * Map a `comms.send_message` failure onto the send's refusal: a refused file (PA422) names the
+ * attachments, a malformed memo (`audio: …`, 22023) names the memo, a refused reply names the reply,
+ * and anything else is {@link refusalFrom}'s on the text.
+ */
+export function sendRefusalFrom(message: string): WriteRefusal {
+	if (message.includes(NOT_ATTACHED_MESSAGE)) return notAttached();
+	const memo = /^audio:\s*(.+)$/.exec(message.trim());
+	if (memo) {
+		return {
+			status: 422,
+			message: clampOr(memo[1], 200, "The voice memo is not valid."),
+			errors: { audio: "invalid" },
+		};
+	}
+	const field = message.includes(REPLY_REFUSAL_MESSAGE) ? "replyToId" : "text";
+	return refusalFrom(message, field);
 }
 // #endregion
 

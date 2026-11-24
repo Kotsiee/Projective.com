@@ -11,7 +11,6 @@ import {
 } from "./live-support.ts";
 import {
 	type ChatMessage,
-	type MessageAttachment,
 	messageDeltaFor,
 	type MessagePage,
 	type MessagePageParams,
@@ -21,7 +20,7 @@ import {
 } from "@projective/types/projects";
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
 import { REPLY_ORIGINAL_COLUMNS, replyFromRow, type ReplyOriginalRow } from "./message-replies.ts";
-import { fetchMessageAttachments } from "./message-attachments.ts";
+import { fetchMessageAttachments, type MessageMedia } from "./message-attachments.ts";
 
 /**
  * live-messages — the RLS-scoped Postgres read path for ONE project channel's conversation
@@ -35,15 +34,11 @@ import { fetchMessageAttachments } from "./message-attachments.ts";
  *
  * ## What this module cannot resolve, and returns neutral rather than guessing
  *
- * Four fields on {@link ChatMessage} have no live source at all. They are listed here rather than
- * only at their call sites because each one looks like an omission:
+ * Three fields on {@link ChatMessage} have no live source at all. They are listed here rather than
+ * only at their call sites because each one looks like an omission. (`audio` used to be a fourth: a
+ * voice memo's length and envelope now live on its link row, and `fetchMessageAttachments` returns
+ * the player, CAS M18.)
  *
- * - **`audio` is always `null`.** `MessageAudioSchema` requires `durationMs`, a `m:ss`
- *   `durationLabel` and a `peaks` envelope of up to 512 normalised samples. There is no waveform
- *   column, no duration column and no envelope column anywhere in `comms`, so a voice memo cannot be
- *   projected — a player rendered over a zero-length track with a flat envelope would be a control
- *   that is offered and then does nothing. An audio file that arrived as a real
- *   `comms.message_attachments` row still surfaces, as an ordinary attachment tile.
  * - **`system` is always `null` and `type` is always `"user"`.** There is no system-message table and
  *   `comms.project_messages` has no `type`, `kind` or `activity` column, so
  *   `ChatMessageType === "system"` is unreachable from this schema. The lifecycle notices the
@@ -194,7 +189,7 @@ interface CursorAnchor {
 /** The per-page facts no single message row carries, resolved once and shared by every bubble. */
 interface MessageContext {
 	parties: Map<string, PartyRow>;
-	attachments: Map<string, MessageAttachment[]>;
+	media: Map<string, MessageMedia>;
 	reactions: Map<string, MessageReaction[]>;
 	pinnedIds: ReadonlySet<string>;
 	favoritedIds: ReadonlySet<string>;
@@ -636,8 +631,8 @@ function toChatMessage(row: MessageRow, ctx: MessageContext): ChatMessage {
 		text,
 		delta: messageDeltaFor(row.body_delta, text),
 		replyTo: row.reply_to_id ? replyOf(row.reply_to_id, ctx) : null,
-		attachments: ctx.attachments.get(row.id) ?? [],
-		audio: null,
+		attachments: ctx.media.get(row.id)?.attachments ?? [],
+		audio: ctx.media.get(row.id)?.audio ?? null,
 		system: null,
 		reactions: ctx.reactions.get(row.id) ?? [],
 		pinned: ctx.pinnedIds.has(row.id),
@@ -760,7 +755,7 @@ export async function fetchChannelMessagePage(
 		...[...originals.values()].map((row) => row.sender_user_id),
 	];
 
-	const [parties, attachments, reactions, favoritedIds] = await Promise.all([
+	const [parties, media, reactions, favoritedIds] = await Promise.all([
 		fetchParties(actor, senderIds),
 		fetchMessageAttachments(actor, PROJECT_MESSAGE_TABLE, subjectIds),
 		fetchReactions(actor, subjectIds, actor.userId),
@@ -769,7 +764,7 @@ export async function fetchChannelMessagePage(
 
 	const ctx: MessageContext = {
 		parties,
-		attachments,
+		media,
 		reactions,
 		pinnedIds,
 		favoritedIds,

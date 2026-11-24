@@ -222,15 +222,11 @@ export async function dispatchDraft(
 		...(memoId ? [memoId] : []),
 	];
 	const linkedFileIds = [...uploaded.ids.slice(copies, copies + links), ...draft.linkedAssetIds];
+	// The memo names its own upload, so the server stores the length and envelope on that file's link
+	// row (CAS M18). The playable address and the `m:ss` label are the server's: a URL minted here
+	// would be an object URL that dies with this page.
 	const audio = memo && memoId
-		? {
-			// The server resolves the playable address from the asset the memo was uploaded as;
-			// a URL minted here would be an object URL that dies with this page.
-			url: "",
-			durationMs: memo.durationMs,
-			durationLabel: memo.durationLabel,
-			peaks: memo.peaks,
-		}
+		? { attachmentId: memoId, durationMs: memo.durationMs, peaks: memo.peaks }
 		: null;
 	// One payload, two routes to the one server door. The conversation route is addressed by the
 	// conversation's own id (the `channelId` slot — a conversation mount passes it in both), the

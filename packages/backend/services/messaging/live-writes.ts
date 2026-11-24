@@ -1,4 +1,4 @@
-import { type ChatMessage, messageDeltaText } from "@projective/types/projects";
+import type { ChatMessage } from "@projective/types/projects";
 import {
 	dmHandleOf,
 	OpenedDmThreadSchema,
@@ -6,11 +6,18 @@ import {
 } from "@projective/types/messaging";
 import { isSlug } from "@projective/types/slugs";
 import type { ReadActor } from "../read-actor.ts";
-import { refusalFrom, type WriteOutcome, type WriteRefusal } from "../projects/live-writes.ts";
+import {
+	refusalFrom,
+	sendFilesOf,
+	sendMessageArgs,
+	sendRefusalFrom,
+	type WriteOutcome,
+	type WriteRefusal,
+} from "../projects/live-writes.ts";
 import { fetchMessageAttachments } from "../projects/message-attachments.ts";
-import { attachmentInserts, prepareLinkShares } from "../files/link-shares.ts";
+import { prepareLinkShares } from "../files/link-shares.ts";
 import { projectsDb, UUID_RE } from "../projects/live-support.ts";
-import { REPLY_REFUSAL_MESSAGE, replyRefusal } from "../projects/message-replies.ts";
+import { replyRefusal } from "../projects/message-replies.ts";
 import { DM_SHIELDED, isAgeRestricted } from "../../core/age-gate.ts";
 import {
 	commsClient,
@@ -176,72 +183,56 @@ export async function insertThreadMessage(
 		original = read.data as unknown as DmMessageRow;
 	}
 
-	const attachmentIds = input.attachmentIds.filter((id) => UUID_RE.test(id));
-	const linkedIds = input.linkedFileIds;
-	const linkRefusal = await prepareLinkShares(actor, linkedIds);
+	const files = sendFilesOf(input);
+	if ("refusal" in files) return files;
+	const linkRefusal = await prepareLinkShares(actor, files.links);
 	if (linkRefusal) return { refusal: linkRefusal };
-	const fileIds = [...attachmentIds, ...linkedIds];
 	const body = input.text.length <= MESSAGE_TEXT_MAX
 		? input.text
 		: input.text.slice(0, MESSAGE_TEXT_MAX);
-	const { data, error } = await db
-		.from("dm_messages")
-		.insert({
-			thread_id: threadId,
-			sender_user_id: actor.userId,
-			body,
-			// Only a Delta that spells the body actually stored: the clamp above can shorten an 8,000
-			// character send to 4,000, and a Delta that no longer agrees is one every reader discards.
-			body_delta: input.delta && messageDeltaText(input.delta) === body ? input.delta : null,
-			reply_to_id: original?.id ?? null,
-			has_attachments: fileIds.length > 0,
-			is_audio: input.audio !== null,
-			...(projectId ? { project_id: projectId } : {}),
-		})
-		.select(DM_MESSAGE_COLUMNS)
-		.maybeSingle();
-	if (isAgeRestricted(error)) return { refusal: { ...DM_SHIELDED } };
-	if (error) {
-		const field = error.message.includes(REPLY_REFUSAL_MESSAGE) ? "replyToId" : "text";
-		return { refusal: refusalFrom(error.message, field) };
-	}
-	const row = data as unknown as DmMessageRow | null;
-	if (!row?.id) return { refusal: refusalFrom("dm_messages insert returned no id", "text") };
+	// The message, its file links, its Files-tab rows and its memo's facts: one transaction
+	// (`comms.send_message`, CAS M15), so a refused file leaves nothing delivered.
+	const sent = await db.rpc(
+		"send_message",
+		sendMessageArgs("dm", threadId, body, input, files, {
+			replyToId: original?.id ?? null,
+			projectId,
+		}),
+	);
+	if (isAgeRestricted(sent.error)) return { refusal: { ...DM_SHIELDED } };
+	if (sent.error) return { refusal: sendRefusalFrom(sent.error.message) };
+	const messageId = typeof sent.data === "string" ? sent.data : null;
+	if (!messageId) return { refusal: refusalFrom("send_message returned no id", "text") };
 
-	if (fileIds.length > 0) {
-		await db.from("message_attachments").insert(
-			attachmentInserts("comms.dm_messages", row.id, attachmentIds, linkedIds),
-		);
-		await db.from("channel_files").insert(
-			fileIds.map((attachmentId) => ({
-				channel_type: "dm",
-				channel_id: threadId,
-				attachment_id: attachmentId,
-			})),
-		);
-	}
+	// The STORED row: the PII mask may have rewritten the body, and the thread binding the project.
+	const read = await db
+		.from("dm_messages")
+		.select(DM_MESSAGE_COLUMNS)
+		.eq("id", messageId)
+		.maybeSingle();
+	if (read.error) throw new Error(`comms.dm_messages read failed: ${read.error.message}`);
+	const row = read.data as unknown as DmMessageRow | null;
+	if (!row?.id) return { refusal: refusalFrom("dm_messages read returned no row", "text") };
 
 	const parties = await fetchParties(
 		actor,
 		original ? [actor.userId, original.sender_user_id] : [actor.userId],
 	);
-	// The sender's own echo carries its files too, read back through the same loader the feed uses,
-	// so the bubble that appears on send is the bubble a reload draws — not a text-only row whose
-	// attachments only show up after a refresh.
-	const attachments = fileIds.length > 0
+	// The sender's own echo carries its files and its memo's player too, read back through the same
+	// loader the feed uses, so the bubble that appears on send is the bubble a reload draws.
+	const media = files.copies.length + files.links.length > 0
 		? await fetchMessageAttachments(actor, "comms.dm_messages", [row.id])
 		: undefined;
-	const message = toChatMessage(
-		{ ...row, created_at: row.created_at ?? new Date(now).toISOString() },
-		parties,
-		actor.userId,
-		now,
-		NO_INTERACTIONS,
-		original ? new Map([[original.id, original]]) : undefined,
-		attachments,
-	);
-	// The memo's projection is the caller's — the row only records `is_audio`, and the feed's own
-	// read has no waveform column to rebuild it from (see `toChatMessage`).
-	return { data: { ...message, audio: input.audio } };
+	return {
+		data: toChatMessage(
+			{ ...row, created_at: row.created_at ?? new Date(now).toISOString() },
+			parties,
+			actor.userId,
+			now,
+			NO_INTERACTIONS,
+			original ? new Map([[original.id, original]]) : undefined,
+			media,
+		),
+	};
 }
 // #endregion

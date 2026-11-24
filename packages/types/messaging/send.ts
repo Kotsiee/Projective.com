@@ -1,7 +1,8 @@
 import { z } from "zod";
 import {
-	MessageAudioSchema,
 	MessageFileIdsSchema,
+	sendAudioAgrees,
+	SendAudioSchema,
 	sendDeltaAgrees,
 	sendFilesAgree,
 } from "../projects/messages.ts";
@@ -103,8 +104,8 @@ const messageFields = {
 	attachmentIds: MessageFileIdsSchema.default([]),
 	/** The sender's own files shared as a link (Decision #401), as `files.items` ids. */
 	linkedFileIds: MessageFileIdsSchema.default([]),
-	/** The voice memo's persisted projection; its own bytes are one of {@link attachmentIds}. */
-	audio: MessageAudioSchema.nullable().default(null),
+	/** The voice memo: which of {@link attachmentIds} it is, its length and its envelope. */
+	audio: SendAudioSchema.nullable().default(null),
 };
 
 /** The send rules every wire shares: a message has content, its Delta spells it, its files fit. */
@@ -120,6 +121,9 @@ function withSendRules<T extends z.ZodType<z.infer<z.ZodObject<typeof messageFie
 	}).refine(sendFilesAgree, {
 		message: "A message carries up to 20 files, each sent once.",
 		path: ["linkedFileIds"],
+	}).refine(sendAudioAgrees, {
+		message: "The voice memo must be one of this message's own uploads.",
+		path: ["audio"],
 	});
 }
 

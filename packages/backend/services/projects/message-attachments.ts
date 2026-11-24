@@ -1,6 +1,12 @@
 import type { ReadActor } from "../read-actor.ts";
 import { clamp, clampOr, commsDb, filesDb } from "./live-support.ts";
-import type { MessageAttachment, MessageAttachmentKind } from "@projective/types/projects";
+import {
+	memoAudioOf,
+	type MessageAttachment,
+	type MessageAttachmentKind,
+	type MessageAudio,
+} from "@projective/types/projects";
+import { MEMO_PEAKS_MAX } from "@projective/types/messaging";
 import {
 	assetIdOf,
 	describeFile,
@@ -44,6 +50,14 @@ import { metadataOf } from "../files/asset-row.ts";
  * asset keeps its own target and a mounted connector file its provider page; anything else has no
  * address and renders as a named file tile. The tile also carries the file's own id (`assetId`), its
  * MIME type, and the dimensions and BlurHash read at upload, so a bubble lays out before the bytes land.
+ *
+ * ## A voice memo is a player, not a tile
+ *
+ * A memo is uploaded as an ordinary file, and `comms.send_message` writes its length and envelope on
+ * that file's link row (`audio_duration_ms`, `audio_peaks`; CAS M18). Such a row becomes the message's
+ * `audio` and leaves the tile list, so a reload draws the same player the send's echo drew rather than
+ * a bare `voice-message-….webm` tile. A memo whose file has no servable address stays a tile: a player
+ * over a track that cannot load would be a control that does nothing.
  */
 
 // #region Limits
@@ -66,7 +80,23 @@ interface AttachmentLinkRow {
 	/** `copy` or `link` (Decision #401); anything else reads as a copy. */
 	mode?: string | null;
 	created_at: string;
+	/** The memo's length, set only on the one link row that is the message's voice memo. */
+	audio_duration_ms?: number | null;
+	/** The memo's envelope (`real[]`), set together with {@link audio_duration_ms}. */
+	audio_peaks?: unknown;
 }
+
+/** What one message carries: its file tiles, and its voice memo when it has one. */
+export interface MessageMedia {
+	attachments: MessageAttachment[];
+	audio: MessageAudio | null;
+}
+
+/** A message with no files. */
+export const NO_MEDIA: MessageMedia = Object.freeze({
+	attachments: [],
+	audio: null,
+}) as MessageMedia;
 
 /** The `files.items` columns a tile needs. */
 const FILE_COLUMNS = [
@@ -173,6 +203,54 @@ function sizeOf(raw: FileRow["size_bytes"]): number | null {
 	const n = typeof raw === "string" ? Number(raw) : raw;
 	return typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
+
+/**
+ * The memo facts a link row holds, or `null` when it is not a memo or the stored facts are not ones
+ * the player can draw. The table's CHECKs already bound both columns; this is the read side's own
+ * guard, so a malformed row degrades to a tile instead of failing the page's schema parse.
+ */
+export function memoFactsOf(
+	link: Pick<AttachmentLinkRow, "audio_duration_ms" | "audio_peaks">,
+): { durationMs: number; peaks: number[] } | null {
+	const duration = link.audio_duration_ms;
+	const peaks = link.audio_peaks;
+	if (typeof duration !== "number" || !Number.isSafeInteger(duration) || duration < 0) return null;
+	if (!Array.isArray(peaks) || peaks.length > MEMO_PEAKS_MAX) return null;
+	if (!peaks.every((p) => typeof p === "number" && Number.isFinite(p) && p >= 0 && p <= 1)) {
+		return null;
+	}
+	return { durationMs: duration, peaks: peaks as number[] };
+}
+
+/**
+ * Fold one message's link rows and their files into its {@link MessageMedia}, pure so the split is
+ * testable without a database. Rows keep their order; a row whose file did not come back is dropped
+ * (see the module note). The first memo row with a servable address is the player; every other row
+ * is a tile.
+ */
+export function toMessageMedia(
+	links: readonly Pick<
+		AttachmentLinkRow,
+		"id" | "mode" | "attachment_id" | "audio_duration_ms" | "audio_peaks"
+	>[],
+	files: ReadonlyMap<string, FileRow>,
+): MessageMedia {
+	const attachments: MessageAttachment[] = [];
+	let audio: MessageAudio | null = null;
+	for (const link of links) {
+		const file = files.get(link.attachment_id);
+		if (!file) continue;
+		const tile = toAttachment(link, file);
+		const facts = audio === null && tile.mode === "copy" ? memoFactsOf(link) : null;
+		const url = facts ? urlFor(file, "audio") : "";
+		if (facts && url.length > 0) {
+			audio = memoAudioOf(url, facts);
+			continue;
+		}
+		attachments.push(tile);
+	}
+	return { attachments, audio };
+}
 // #endregion
 
 // #region Read
@@ -197,7 +275,8 @@ async function fetchFiles(
 }
 
 /**
- * Attachments per message id, in the order they were attached.
+ * Each message's files, by message id: its tiles in the order they were attached, and its voice memo
+ * as a player ({@link toMessageMedia}). A message with no readable file has no entry.
  *
  * `messageTable` must be the SCHEMA-QUALIFIED discriminator (`'comms.dm_messages'`), not the bare
  * `'dm'` that `comms.channel_files` uses for the same idea — the wrong one matches zero rows and
@@ -207,13 +286,13 @@ export async function fetchMessageAttachments(
 	actor: ReadActor & { accessToken: string },
 	messageTable: MessageTable,
 	messageIds: readonly string[],
-): Promise<Map<string, MessageAttachment[]>> {
-	const out = new Map<string, MessageAttachment[]>();
+): Promise<Map<string, MessageMedia>> {
+	const out = new Map<string, MessageMedia>();
 	if (messageIds.length === 0) return out;
 
 	const { data, error } = await commsDb(actor)
 		.from("message_attachments")
-		.select("id, message_id, attachment_id, mode, created_at")
+		.select("id, message_id, attachment_id, mode, created_at, audio_duration_ms, audio_peaks")
 		.eq("message_table", messageTable)
 		.in("message_id", messageIds as string[])
 		.order("created_at", { ascending: true })
@@ -223,12 +302,15 @@ export async function fetchMessageAttachments(
 	if (links.length === 0) return out;
 
 	const files = await fetchFiles(actor, links.map((link) => link.attachment_id));
+	const byMessage = new Map<string, AttachmentLinkRow[]>();
 	for (const link of links) {
-		const file = files.get(link.attachment_id);
-		if (!file) continue;
-		const list = out.get(link.message_id) ?? [];
-		list.push(toAttachment(link, file));
-		out.set(link.message_id, list);
+		const list = byMessage.get(link.message_id) ?? [];
+		list.push(link);
+		byMessage.set(link.message_id, list);
+	}
+	for (const [messageId, rows] of byMessage) {
+		const media = toMessageMedia(rows, files);
+		if (media.attachments.length > 0 || media.audio !== null) out.set(messageId, media);
 	}
 	return out;
 }

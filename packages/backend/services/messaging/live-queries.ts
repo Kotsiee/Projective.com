@@ -11,13 +11,9 @@ import {
 	InboxFolder,
 	InboxTailRowSchema,
 } from "@projective/types/messaging";
-import {
-	type ChatMessage,
-	type MessageAttachment,
-	messageDeltaFor,
-	type MessagePage,
-} from "@projective/types/projects";
+import { type ChatMessage, messageDeltaFor, type MessagePage } from "@projective/types/projects";
 import { replyFromRow } from "../projects/message-replies.ts";
+import type { MessageMedia } from "../projects/message-attachments.ts";
 
 /**
  * live-queries — the RLS-scoped Postgres read path for the global inbox (`/messages`).
@@ -196,7 +192,7 @@ export const DM_MESSAGE_COLUMNS = `${DM_TAIL_COLUMNS}, body_delta, reply_to_id, 
 export type ReplyOriginals = ReadonlyMap<string, DmMessageRow>;
 
 /** No attachments: a page whose messages carry none, and the degraded path. */
-const NO_ATTACHMENTS: ReadonlyMap<string, MessageAttachment[]> = new Map();
+const NO_ATTACHMENTS: ReadonlyMap<string, MessageMedia> = new Map();
 
 /** No originals: a page with no replies, and the degraded path. */
 export const NO_ORIGINALS: ReplyOriginals = new Map();
@@ -393,11 +389,15 @@ export function toConversationSummary(
 
 	const lastAt = ctx.last?.created_at ?? row.created_at;
 	const readAt = ctx.viewer?.last_read_at;
+	// A message with no words previews as what it carries: `comms.send_message` writes `is_audio` and
+	// `has_attachments` in the message's own transaction (CAS M15), so a memo or a file-only send
+	// never previews as an empty "You:".
+	const said = ctx.last
+		? ctx.last.body.trim() ||
+			(ctx.last.is_audio ? "Voice message" : ctx.last.has_attachments ? "Attachment" : "")
+		: "";
 	const preview = ctx.last
-		? clamp(
-			ctx.last.sender_user_id === ctx.viewerId ? `You: ${ctx.last.body}` : ctx.last.body,
-			PREVIEW_MAX,
-		)
+		? clamp(ctx.last.sender_user_id === ctx.viewerId ? `You: ${said}` : said, PREVIEW_MAX)
 		: "";
 	const folder = InboxFolder.safeParse(ctx.viewer?.inbox_folder).data ?? "primary";
 
@@ -757,9 +757,9 @@ export async function fetchMessageInteractions(
  *   second query keyed on the page's ids. The `has_attachments` flag on the row is a denormalised
  *   boolean that **no trigger maintains**, so it is never consulted. This used to be hard-coded empty,
  *   which is why every file sent in a conversation stored correctly and then rendered as nothing.
- * - `audio` — there is no waveform column anywhere. `MessageAudio.peaks` is `max(512)` with each
- *   element bounded `0..1`, and nothing in the schema can produce it. `is_audio` has the same
- *   unmaintained-flag problem as `has_attachments`.
+ * - `audio` is POPULATED from the same map: a voice memo's length and envelope live on its own
+ *   `comms.message_attachments` row (CAS M18), and the loader returns it as the player instead of a
+ *   tile. `is_audio` is never consulted, for the same reason as `has_attachments`.
  * - `reactions` / `pinned` / `favorited` are POPULATED, via {@link fetchMessageInteractions}. These
  *   three tables had RLS switched off entirely while the schema granted `ALL ... TO authenticated`;
  *   they now carry policies keyed on `comms.can_read_message()`, so the read is both possible and
@@ -784,7 +784,7 @@ export function toChatMessage(
 	now: number,
 	interactions: MessageInteractions = NO_INTERACTIONS,
 	originals: ReplyOriginals = NO_ORIGINALS,
-	attachments: ReadonlyMap<string, MessageAttachment[]> = NO_ATTACHMENTS,
+	attachments: ReadonlyMap<string, MessageMedia> = NO_ATTACHMENTS,
 ): ChatMessage {
 	const party = parties.get(row.sender_user_id);
 	const text = clamp(row.body, MESSAGE_TEXT_MAX);
@@ -813,8 +813,8 @@ export function toChatMessage(
 				viewerId,
 			)
 			: null,
-		attachments: attachments.get(row.id) ?? [],
-		audio: null,
+		attachments: attachments.get(row.id)?.attachments ?? [],
+		audio: attachments.get(row.id)?.audio ?? null,
 		system: null,
 		reactions: interactions.reactions.get(row.id) ?? [],
 		pinned: interactions.pinned.has(row.id),
@@ -864,7 +864,7 @@ export function toMessagePage(
 	now: number,
 	interactions: MessageInteractions = NO_INTERACTIONS,
 	originals: ReplyOriginals = NO_ORIGINALS,
-	attachments: ReadonlyMap<string, MessageAttachment[]> = NO_ATTACHMENTS,
+	attachments: ReadonlyMap<string, MessageMedia> = NO_ATTACHMENTS,
 ): MessagePage {
 	const messages = rows.map((row) =>
 		toChatMessage(row, parties, viewerId, now, interactions, originals, attachments)

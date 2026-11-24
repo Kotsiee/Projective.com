@@ -16,6 +16,8 @@
 -- Folded columns (rich messages — inline formatting + replies):
 --   * comms.dm_messages       += body_delta (+ object CHECK), reply_to_id (+ self-FK)
 --   * comms.project_messages  += body_delta (+ object CHECK), reply_to_id (+ self-FK)
+-- Folded columns (voice memos, CAS M18):
+--   * comms.message_attachments += audio_duration_ms, audio_peaks (+ four CHECKs)
 -- New tables (audit gap-close): comms.auto_responses, comms.message_reactions, comms.message_pins,
 --   comms.message_favorites. The newsletter opt-in moved to community.newsletter_subscriptions
 --   (00000025, Decision #274).
@@ -413,8 +415,30 @@ CREATE TABLE comms.message_attachments (
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
+    -- The voice memo (CAS M18, PROJECTS CH4). Set on the one `copy` row whose file IS the message's
+    -- recorded memo, by comms.send_message in the same transaction as the message, and on no other
+    -- row. The feed rebuilds the player from them after a reload: the duration it prints and the
+    -- amplitude envelope it draws (newest last, each sample 0..1, at most 512, matching
+    -- MessageAudioSchema.peaks). No UPDATE policy exists, so the facts are written once.
+    audio_duration_ms integer NULL,
+    audio_peaks real[] NULL,
         CONSTRAINT message_attachments_pkey PRIMARY KEY (id),
-        CONSTRAINT message_attachments_attachment_id_fkey FOREIGN KEY (attachment_id) REFERENCES files.items (id)
+        CONSTRAINT message_attachments_attachment_id_fkey FOREIGN KEY (attachment_id) REFERENCES files.items (id),
+        CONSTRAINT message_attachments_audio_pair
+            CHECK ((audio_duration_ms IS NULL) = (audio_peaks IS NULL)),
+        CONSTRAINT message_attachments_audio_copy
+            CHECK (audio_duration_ms IS NULL OR mode = 'copy'),
+        CONSTRAINT message_attachments_audio_duration
+            CHECK (audio_duration_ms IS NULL OR audio_duration_ms >= 0),
+        CONSTRAINT message_attachments_audio_peaks CHECK (
+            audio_peaks IS NULL OR (
+                cardinality(audio_peaks) <= 512
+                AND (cardinality(audio_peaks) = 0 OR array_ndims(audio_peaks) = 1)
+                AND array_position(audio_peaks, NULL) IS NULL
+                AND 0 <= ALL (audio_peaks)
+                AND 1 >= ALL (audio_peaks)
+            )
+        )
 );
 
 -- #region Message interactions — reactions, pins, favourites

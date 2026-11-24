@@ -138,8 +138,8 @@ These cannot run in parallel because they edit the same files:
   (`bumpCacheVersion`, `cacheVersion`, `cacheVersionTag` in `packages/backend/core/kv.ts`) and SR3
   `cachedGlobal(key, ttlMs, fetch)` from the same file. No prompt here edits `core/cache.ts`.
 - **`MessagingBackendService.ts`, `conversations-ssr.ts`, `live-queries.ts`,
-  `ChatFeed.island.tsx`.** MS3 and MS5 here; PROJECTS CH1, CH3, CH4 and T&S R2 elsewhere (one at a
-  time).
+  `ChatFeed.island.tsx`.** MS3 and MS5 here; PROJECTS CH1 and CH3 and T&S R2 elsewhere (one at a time;
+  PROJECTS CH4 landed, #559).
 - **`00001400`, `00002510` and the `search` schema.** The identity track's erasure (SEC G16, CAS
   S17) and the trust track's search grants and policies (SEC G13–G15, T&S P2d step 5) never run
   beside SR3.

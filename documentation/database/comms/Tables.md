@@ -546,12 +546,22 @@ Poly-morphic link table connecting messages to `files.items`.
 | `message_id`    | uuid        | ID from the specified message table (no FK — two possible parents).       |
 | `attachment_id` | uuid        | FK → `files.items.id` — the asset the proxy and the inspector address.    |
 | `mode`          | `comms.attachment_mode` | `copy` (default) · `link` (Decision #401). A `link` row is the sender's own file shared in place: drawn as a link card, readable through `files.fn_can_read` only while the file is not `private`. No UPDATE policy, so a mode is never rewritten. |
-| `created_at`    | timestamptz | When the link was written.                                                |
+| `created_at`    | timestamptz | When the link was written. `comms.send_message` writes a send's links a microsecond apart, so `(created_at, id)` is the order they were attached. |
+| `audio_duration_ms` | integer NULL | The voice memo's length (CAS M18, PROJECTS CH4). Set only on the one `copy` row whose file is the message's recorded memo, by `comms.send_message`; ≥ 0. |
+| `audio_peaks`   | real[] NULL | The memo's amplitude envelope: newest last, each sample 0..1, at most 512 (`MessageAudioSchema.peaks`). Set together with `audio_duration_ms`. |
+
+CHECKs: `message_attachments_audio_pair` (both memo columns or neither), `_audio_copy` (only a `copy`
+row is a memo), `_audio_duration` (≥ 0) and `_audio_peaks` (one dimension, ≤ 512 samples, no NULL,
+each 0..1). There is no UPDATE policy, so a memo's facts are written once. The read side
+(`fetchMessageAttachments`) turns the memo row into the message's `audio` player and leaves it out of
+the tile list. Zod: `MessageAttachmentRowSchema` (`@projective/types/messaging`, held to this table by
+`messaging-tables.contract.test.ts`).
 
 Indexes (`00004006`): `idx_message_attachments_message (message_table, message_id)` — the files of a
 page of messages; `idx_message_attachments_attachment (attachment_id)` — the reverse lookup, the
 messages one file was posted in (`MessagingBackendService.attachmentSource`, the preview modal's
-source message and "Go to message", Decision #162).
+source message and "Go to message", Decision #162); `uq_message_attachments_one_memo (message_table,
+message_id) WHERE audio_duration_ms IS NOT NULL` — at most one voice memo per message.
 
 ### `comms.channel_files`
 

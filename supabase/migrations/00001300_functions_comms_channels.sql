@@ -2127,3 +2127,167 @@ $$;
 COMMENT ON FUNCTION comms.inbox_tails(uuid[], integer) IS
 'The newest p_k (1..20) undeleted messages of each listed thread (first 200 ids), newest first, threads in the order given. SECURITY INVOKER: RLS on dm_threads / dm_messages is the guard, so a non-participant gets no rows. k = 1 reads through dm_threads.last_message_id.';
 -- #endregion
+
+-- #region The send: a message and its files in one transaction (CAS M15, M18; PROJECTS CH4)
+-- MessagingBackendService.sendMessage, the one send door (#508), used to write a message as three
+-- PostgREST calls: the message row, then its comms.message_attachments links, then its
+-- comms.channel_files rows, never reading the answer of the second or third. A link the database
+-- refused (a file the sender cannot read, one deleted meanwhile) left a message that said "see
+-- attached" with nothing attached, already delivered, and the door reported it sent. This is that
+-- write as one statement of one transaction: every row lands, or none does.
+--
+-- SECURITY INVOKER on purpose. It adds no authority: the INSERT policies of the four tables
+-- (00002012), the column grants (00002520), the reply guards, the DM shield and the PII mask
+-- (00001840) all run exactly as they did for the separate inserts, as the caller. It cannot write a
+-- message the caller could not already write.
+--
+-- p_kind 'room' writes comms.project_messages into the room p_target_id; 'dm' writes
+-- comms.dm_messages into the thread p_target_id, with p_project_id when the thread was opened inside
+-- a project (comms.tg_bind_dm_project decides whether it is kept). p_copies are the files sent as
+-- copies and p_links the sender's own files shared as links (Decision #401), both files.items ids
+-- in the order the sender attached them; the links are written in that order, a microsecond apart,
+-- so the feed's (created_at, id) order is the attach order rather than a uuid shuffle.
+--
+-- p_audio is the voice memo, or NULL: {"attachmentId": uuid, "durationMs": int, "peaks": [0..1]}.
+-- Its file must be one of p_copies. Its facts land on that one link row (audio_duration_ms,
+-- audio_peaks), which is what the feed rebuilds the player from after a reload. A malformed memo is
+-- refused 22023 before anything is written. Any refused link raises PA422 with one sentence the
+-- send door answers in its own words, the cause in DETAIL. Returns the new message id.
+CREATE OR REPLACE FUNCTION comms.send_message(
+    p_kind text,
+    p_target_id uuid,
+    p_body text,
+    p_body_delta jsonb DEFAULT NULL,
+    p_reply_to_id uuid DEFAULT NULL,
+    p_project_id uuid DEFAULT NULL,
+    p_copies uuid[] DEFAULT '{}'::uuid[],
+    p_links uuid[] DEFAULT '{}'::uuid[],
+    p_audio jsonb DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_copies   uuid[] := COALESCE(p_copies, '{}'::uuid[]);
+    v_links    uuid[] := COALESCE(p_links, '{}'::uuid[]);
+    v_has_files boolean;
+    v_table    text;
+    v_channel  text;
+    v_id       uuid;
+    v_memo     uuid;
+    v_duration integer;
+    v_peaks    real[];
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to send a message.' USING ERRCODE = '42501';
+    END IF;
+    IF p_kind IS NULL OR p_kind NOT IN ('room', 'dm') THEN
+        RAISE EXCEPTION 'send_message: p_kind must be room or dm.' USING ERRCODE = '22023';
+    END IF;
+    IF array_position(v_copies, NULL) IS NOT NULL OR array_position(v_links, NULL) IS NOT NULL THEN
+        RAISE EXCEPTION 'send_message: a file id is missing.' USING ERRCODE = '22023';
+    END IF;
+    v_has_files := cardinality(v_copies) + cardinality(v_links) > 0;
+
+    -- #region The memo, checked before anything is written
+    IF p_audio IS NOT NULL THEN
+        IF pg_catalog.jsonb_typeof(p_audio) IS DISTINCT FROM 'object'
+           OR pg_catalog.jsonb_typeof(p_audio -> 'durationMs') IS DISTINCT FROM 'number'
+           OR pg_catalog.jsonb_typeof(p_audio -> 'peaks') IS DISTINCT FROM 'array'
+           OR COALESCE(p_audio ->> 'attachmentId', '')
+              !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        THEN
+            RAISE EXCEPTION 'audio: The voice memo is incomplete.' USING ERRCODE = '22023';
+        END IF;
+        v_memo := (p_audio ->> 'attachmentId')::uuid;
+        IF NOT (v_memo = ANY (v_copies)) THEN
+            RAISE EXCEPTION 'audio: The voice memo must be one of this message''s own uploads.'
+                USING ERRCODE = '22023';
+        END IF;
+        IF (p_audio ->> 'durationMs')::numeric <> trunc((p_audio ->> 'durationMs')::numeric)
+           OR (p_audio ->> 'durationMs')::numeric NOT BETWEEN 0 AND 2147483647
+        THEN
+            RAISE EXCEPTION 'audio: The voice memo has no valid length.' USING ERRCODE = '22023';
+        END IF;
+        v_duration := (p_audio ->> 'durationMs')::integer;
+        IF pg_catalog.jsonb_array_length(p_audio -> 'peaks') > 512
+           OR EXISTS (
+               SELECT 1 FROM pg_catalog.jsonb_array_elements(p_audio -> 'peaks') AS e(v)
+                WHERE CASE WHEN pg_catalog.jsonb_typeof(e.v) = 'number'
+                           THEN (e.v #>> '{}')::numeric NOT BETWEEN 0 AND 1
+                           ELSE true END
+           )
+        THEN
+            RAISE EXCEPTION 'audio: The voice memo''s waveform is not valid.' USING ERRCODE = '22023';
+        END IF;
+        v_peaks := ARRAY(
+            SELECT (e.v #>> '{}')::real
+              FROM pg_catalog.jsonb_array_elements(p_audio -> 'peaks') WITH ORDINALITY AS e(v, ord)
+             ORDER BY e.ord
+        );
+    END IF;
+    -- #endregion
+
+    -- #region The message, as the caller
+    IF p_kind = 'room' THEN
+        v_table := 'comms.project_messages';
+        v_channel := 'project';
+        INSERT INTO comms.project_messages
+            (channel_id, sender_user_id, body, body_delta, reply_to_id, has_attachments, is_audio)
+        VALUES
+            (p_target_id, auth.uid(), p_body, p_body_delta, p_reply_to_id, v_has_files, p_audio IS NOT NULL)
+        RETURNING id INTO v_id;
+    ELSE
+        v_table := 'comms.dm_messages';
+        v_channel := 'dm';
+        INSERT INTO comms.dm_messages
+            (thread_id, sender_user_id, project_id, body, body_delta, reply_to_id, has_attachments, is_audio)
+        VALUES
+            (p_target_id, auth.uid(), p_project_id, p_body, p_body_delta, p_reply_to_id, v_has_files,
+             p_audio IS NOT NULL)
+        RETURNING id INTO v_id;
+    END IF;
+    -- #endregion
+
+    -- #region Its files: every link lands, or the message does not
+    IF v_has_files THEN
+        BEGIN
+            INSERT INTO comms.message_attachments
+                (message_table, message_id, attachment_id, mode, created_at, audio_duration_ms, audio_peaks)
+            SELECT v_table, v_id, f.id, f.mode::comms.attachment_mode,
+                   pg_catalog.now() + pg_catalog.make_interval(secs => f.ord / 1000000.0),
+                   CASE WHEN f.mode = 'copy' AND f.id = v_memo THEN v_duration END,
+                   CASE WHEN f.mode = 'copy' AND f.id = v_memo THEN v_peaks END
+              FROM (
+                  SELECT c.id, 'copy'::text AS mode, c.ord
+                    FROM unnest(v_copies) WITH ORDINALITY AS c(id, ord)
+                  UNION ALL
+                  SELECT l.id, 'link'::text, cardinality(v_copies) + l.ord
+                    FROM unnest(v_links) WITH ORDINALITY AS l(id, ord)
+              ) f
+             ORDER BY f.ord;
+
+            INSERT INTO comms.channel_files (channel_type, channel_id, attachment_id)
+            SELECT v_channel, p_target_id, f.id
+              FROM (
+                  SELECT c.id, c.ord FROM unnest(v_copies) WITH ORDINALITY AS c(id, ord)
+                  UNION ALL
+                  SELECT l.id, cardinality(v_copies) + l.ord FROM unnest(v_links) WITH ORDINALITY AS l(id, ord)
+              ) f
+             ORDER BY f.ord;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE EXCEPTION 'A file could not be attached to this message, so nothing was sent.'
+                USING ERRCODE = 'PA422', DETAIL = SQLSTATE || ' ' || SQLERRM;
+        END;
+    END IF;
+    -- #endregion
+
+    RETURN v_id;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.send_message(text, uuid, text, jsonb, uuid, uuid, uuid[], uuid[], jsonb) IS
+'The send door write (CAS M15, M18; PROJECTS CH4): one message (room: comms.project_messages; dm: comms.dm_messages) and every comms.message_attachments and comms.channel_files row for its files, in one transaction, as the caller (SECURITY INVOKER: every table policy, column grant and trigger applies). A voice memo (p_audio) is checked first (22023) and its duration and waveform land on its own link row. Any refused link fails the whole send with PA422. Returns the message id.';
+-- #endregion

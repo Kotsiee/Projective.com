@@ -12,6 +12,7 @@ import {
 	type MemberInvite,
 	type MemberRole,
 	type MemberRosterPage,
+	memoAudioOf,
 	type MessageAttachment,
 	messageDeltaFor,
 	type MessagePage,
@@ -2019,8 +2020,13 @@ export function buildStubMessage(
 	now: number,
 	replyTo: MessageReply | null = null,
 ): ChatMessage {
+	// The memo's upload is its player, not a tile, exactly as the live loader splits it (CAS M18).
+	const memoId = input.audio?.attachmentId ?? null;
 	const attachments: MessageAttachment[] = [
-		...input.attachmentIds.map((id) => ({ id, mode: "copy" as const })),
+		...input.attachmentIds.filter((id) => id !== memoId).map((id) => ({
+			id,
+			mode: "copy" as const,
+		})),
 		...input.linkedFileIds.map((id) => ({ id, mode: "link" as const })),
 	].map(({ id, mode }, index) => ({
 		id,
@@ -2044,7 +2050,7 @@ export function buildStubMessage(
 		delta: messageDeltaFor(input.delta, input.text),
 		replyTo,
 		attachments,
-		audio: input.audio,
+		audio: input.audio ? memoAudioOf(`/api/files/${input.audio.attachmentId}`, input.audio) : null,
 		system: null,
 		reactions: [],
 		pinned: false,

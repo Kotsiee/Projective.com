@@ -1437,6 +1437,14 @@ REVOKE ALL ON FUNCTION comms.send_request_message(uuid, text, uuid) FROM public,
 
 GRANT EXECUTE ON FUNCTION comms.send_request_message(uuid, text, uuid) TO authenticated;
 
+-- --- the send door's write (00001300: send_message; CAS M15, M18; PROJECTS CH4) ---
+
+-- SECURITY INVOKER: the message, attachment and channel-file INSERT policies are the access decision,
+-- exactly as for the three inserts it replaces, so EXECUTE grants nothing the caller lacked. A
+-- signed-out caller has no row it could write, so anon is not granted.
+GRANT EXECUTE ON FUNCTION comms.send_message(text, uuid, text, jsonb, uuid, uuid, uuid[], uuid[], jsonb)
+    TO authenticated;
+
 -- The DM PII filter's two lookups answer "which projects is this OTHER person party to" — a question
 -- no client should be able to ask about anyone. Reached only from the definer trigger.
 REVOKE ALL ON FUNCTION comms.fn_dm_protected_project(uuid, uuid, uuid) FROM public, anon, authenticated;

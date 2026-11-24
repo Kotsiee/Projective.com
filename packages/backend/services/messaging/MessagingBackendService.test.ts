@@ -298,21 +298,23 @@ Deno.test("one door: a thread send and a room send both go through sendMessage(r
 	const me = liveActor("00000000-0000-4000-8000-0000000000c1");
 	const limiter = new SlidingWindowLimiter(MESSAGE_SEND_RULE);
 	await withEnv(FAKE_LIVE, async () => {
+		const roomMessage = "55555555-5555-4555-8555-555555555555";
 		await withPostgrest({
 			"comms.dm_threads": threadsRoute([{ id: THREAD, ref: REF }]),
-			"comms.dm_messages": (req: FakeRequest) =>
-				req.method === "POST" ? [storedDm(me.userId, "To the thread.")] : [],
+			"comms.dm_messages": [storedDm(me.userId, "To the thread.")],
 			"projects.projects": [{ id: PROJECT }],
 			"comms.project_channels": [{ id: ROOM, project_id: PROJECT }],
-			"comms.project_messages": (req: FakeRequest) =>
-				req.method === "POST"
-					? [{
-						id: "55555555-5555-4555-8555-555555555555",
-						created_at: AT,
-						body: "To the room.",
-						body_delta: null,
-					}]
-					: [],
+			"comms.project_messages": [{
+				id: roomMessage,
+				created_at: AT,
+				body: "To the room.",
+				body_delta: null,
+			}],
+			// The one write (CAS M15): the message and its files in one transaction.
+			"comms.rpc.send_message": (req: FakeRequest) =>
+				(req.body as { p_kind?: string }).p_kind === "dm"
+					? storedDm(me.userId, "To the thread.").id
+					: roomMessage,
 		}, async (calls) => {
 			const thread = await MessagingBackendService.sendMessage(
 				me,
@@ -323,9 +325,10 @@ Deno.test("one door: a thread send and a room send both go through sendMessage(r
 			assert(thread.ok, thread.message);
 			assertEquals(thread.data?.ref, REF);
 			assertEquals(thread.data?.message.text, "To the thread.");
-			const dmInsert = callsTo(calls, "comms.dm_messages").find((c) => c.method === "POST");
-			assertEquals((dmInsert?.body as { thread_id?: string }).thread_id, THREAD);
-			assertEquals((dmInsert?.body as { sender_user_id?: string }).sender_user_id, me.userId);
+			const [dmSend] = callsTo(calls, "comms.rpc.send_message");
+			assertEquals((dmSend?.body as { p_target_id?: string }).p_target_id, THREAD);
+			// The author is never the payload's: the function writes auth.uid().
+			assert(!("p_sender_user_id" in (dmSend?.body as object)));
 
 			const room = await MessagingBackendService.sendMessage(
 				me,
@@ -336,8 +339,11 @@ Deno.test("one door: a thread send and a room send both go through sendMessage(r
 			assert(room.ok, room.message);
 			assertEquals(room.data?.message.text, "To the room.");
 			assertEquals(room.data?.ref, undefined);
-			const roomInsert = callsTo(calls, "comms.project_messages").find((c) => c.method === "POST");
-			assertEquals((roomInsert?.body as { channel_id?: string }).channel_id, ROOM);
+			const roomSend = callsTo(calls, "comms.rpc.send_message")[1];
+			assertEquals((roomSend?.body as { p_kind?: string }).p_kind, "room");
+			assertEquals((roomSend?.body as { p_target_id?: string }).p_target_id, ROOM);
+			// No table is written row by row any more.
+			assertEquals(calls.filter((c) => !c.rpc && c.method === "POST"), []);
 		});
 	});
 	// Both were counted by the one limiter: the same door, whichever store it wrote.
@@ -350,8 +356,8 @@ Deno.test("one door: a thread opened inside a project stamps the message with it
 		await withPostgrest({
 			"comms.dm_threads": threadsRoute([{ id: THREAD, ref: REF }]),
 			"projects.projects": [{ id: PROJECT }],
-			"comms.dm_messages": (req: FakeRequest) =>
-				req.method === "POST" ? [storedDm(me.userId, "From the project.")] : [],
+			"comms.dm_messages": [storedDm(me.userId, "From the project.")],
+			"comms.rpc.send_message": storedDm(me.userId, "From the project.").id,
 		}, async (calls) => {
 			const sent = await MessagingBackendService.sendMessage(
 				me,
@@ -360,8 +366,8 @@ Deno.test("one door: a thread opened inside a project stamps the message with it
 				{ limiter: new SlidingWindowLimiter(MESSAGE_SEND_RULE) },
 			);
 			assert(sent.ok, sent.message);
-			const insert = callsTo(calls, "comms.dm_messages").find((c) => c.method === "POST");
-			assertEquals((insert?.body as { project_id?: string }).project_id, PROJECT);
+			const [send] = callsTo(calls, "comms.rpc.send_message");
+			assertEquals((send?.body as { p_project_id?: string }).p_project_id, PROJECT);
 		});
 	});
 });

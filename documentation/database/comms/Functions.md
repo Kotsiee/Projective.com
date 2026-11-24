@@ -676,6 +676,34 @@ message from another room would show that room's words to readers who may not be
 the guard's refusal of a cross-room reply and of a self-reply, an `UPDATE` moving a reply out of its
 room, a soft-deleted original accepted, and `body_delta` nulled by both mask triggers.
 
+## The send: a message and its files in one write (`00001300`, CAS M15, M18; PROJECTS CH4)
+
+### `comms.send_message(p_kind text, p_target_id uuid, p_body text, p_body_delta jsonb, p_reply_to_id uuid, p_project_id uuid, p_copies uuid[], p_links uuid[], p_audio jsonb) → uuid`
+
+The one send door's write (`MessagingBackendService.sendMessage`, #508), for a stage room
+(`p_kind 'room'` → `comms.project_messages` in room `p_target_id`) and a DM (`'dm'` →
+`comms.dm_messages` in thread `p_target_id`, with `p_project_id` when the thread was opened inside a
+project). In ONE transaction it writes the message, a `comms.message_attachments` row per file
+(`p_copies` then `p_links`, in the order attached, a microsecond apart) and a `comms.channel_files`
+row per file. It used to be three PostgREST calls whose second and third answers were never read, so a
+refused link left a delivered message with nothing attached, reported as sent.
+
+- **SECURITY INVOKER** (`search_path = ''`): it adds no authority. The INSERT policies of the four
+  tables ([Policies.md](Policies.md)), the column grants (`00002520`), the DM shield, the reply guards
+  and the PII mask all run as the caller, exactly as for the separate inserts. Granted to
+  `authenticated` only (`00002510`).
+- **Any refused link fails the whole send:** `PA422` "A file could not be attached to this message, so
+  nothing was sent.", with the cause in DETAIL. The send door answers 422 with
+  `errors.attachmentIds = "not_attached"`, and the composer keeps the draft.
+- **The voice memo** (`p_audio` = `{attachmentId, durationMs, peaks}`): its file must be one of
+  `p_copies`; a whole-millisecond length ≥ 0; at most 512 samples, each a number in 0..1. A malformed
+  memo is refused `22023` `audio: …` before anything is written. Its length and envelope land on that
+  file's own link row (`audio_duration_ms`, `audio_peaks`, [Tables.md](Tables.md)), which the feed
+  rebuilds the player from after a reload. The message's `is_audio` and `has_attachments` are set
+  from the arguments.
+- Returns the new message id; the door reads the stored row back (the mask may have rewritten it).
+- Probe: `supabase/probes/message_send.sql`.
+
 ## Conversation stars (`00001300`, Decision #180)
 
 ### `comms.set_dm_starred(p_thread_id uuid, p_starred boolean) → boolean`

@@ -325,6 +325,59 @@ Deno.test("fetchChannelMessagePage pages backwards from a cursor with a (created
 		},
 	);
 });
+
+Deno.test("a voice memo survives a reload: its player, duration and waveform come back from the link row", async () => {
+	const memoFile = "77777777-7777-4777-8777-777777777777";
+	const memoLink = "88888888-8888-4888-8888-888888888888";
+	const peaks = [0.125, 0.5, 0.875, 0.25];
+	const memoRow = message(M2, {
+		body: "",
+		has_attachments: true,
+		is_audio: true,
+		created_at: "2026-10-04T15:30:00.000Z",
+	});
+	await withPostgrest(
+		messageRoutes({
+			"comms.project_messages": messagesRoute({ page: [ROW_M3, memoRow, ROW_M1] }),
+			"comms.message_attachments": [{
+				id: memoLink,
+				message_id: M2,
+				attachment_id: memoFile,
+				mode: "copy",
+				created_at: "2026-10-04T15:30:00.000Z",
+				audio_duration_ms: 42_000,
+				audio_peaks: peaks,
+			}],
+			"files.items": [{
+				id: memoFile,
+				display_name: "voice-message-20261004-153000.webm",
+				original_name: "voice-message-20261004-153000.webm",
+				mime_type: "audio/webm",
+				source: "supabase",
+				status: "uploaded",
+				link_url: null,
+				external_web_url: null,
+				metadata: {},
+				size_bytes: 52_000,
+			}],
+		}),
+		async () => {
+			const page = await fetchChannelMessagePage(OWNER, PARAMS, NOW);
+			assert(page);
+			MessagePageSchema.parse(page);
+			const memo = page.messages.find((m) => m.id === M2);
+			assert(memo);
+			assertEquals(memo.audio, {
+				url: `/api/media/proxy/${memoFile}`,
+				durationMs: 42_000,
+				durationLabel: "0:42",
+				peaks,
+			});
+			// The memo is the player, never a second, bare file tile beneath it.
+			assertEquals(memo.attachments, []);
+		},
+	);
+});
 // #endregion
 
 // #region Authorization-relevant resolution

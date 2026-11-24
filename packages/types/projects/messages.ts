@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { MessageDeltaSchema, messageDeltaText, MessageReplySchema } from "./message-rich.ts";
 import { AssetIdSchema } from "../files/assets.ts";
-import { BlurHashSchema } from "../files/metadata.ts";
+import { BlurHashSchema, durationLabelOf } from "../files/metadata.ts";
 
 /**
  * projects.messages — the Zod SSOT for a project channel's CONVERSATION read
@@ -158,6 +158,44 @@ export const MessageAudioSchema = z.object({
 	peaks: z.array(z.number().min(0).max(1)).max(512),
 });
 export type MessageAudio = z.infer<typeof MessageAudioSchema>;
+
+/**
+ * The voice memo as a send carries it (CAS M18, PROJECTS CH4): which of the send's own uploads IS the
+ * memo (`attachmentId`, one of `attachmentIds`), and the length and envelope the composer measured.
+ * `comms.send_message` stores the two facts on that file's link row; the playable address and the
+ * `m:ss` label are derived on every read ({@link memoAudioOf}), so the client never sends either.
+ */
+export const SendAudioSchema = z.object({
+	attachmentId: z.string().regex(
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+		"The voice memo must name its upload.",
+	),
+	durationMs: MessageAudioSchema.shape.durationMs,
+	peaks: MessageAudioSchema.shape.peaks,
+});
+export type SendAudio = z.infer<typeof SendAudioSchema>;
+
+/**
+ * The player a stored memo renders: its file's address plus the facts its link row holds. The one
+ * projection, shared by the send's echo, the feed's reload and the fixture store, so the bubble that
+ * appears on send is the bubble every later read draws.
+ */
+export function memoAudioOf(
+	url: string,
+	facts: { durationMs: number; peaks: number[] },
+): MessageAudio {
+	return {
+		url,
+		durationMs: facts.durationMs,
+		durationLabel: durationLabelOf(facts.durationMs),
+		peaks: facts.peaks,
+	};
+}
+
+/** The send rule for a memo: its file is one of the copies the same send attaches. */
+export function sendAudioAgrees(v: { audio: SendAudio | null; attachmentIds: string[] }): boolean {
+	return v.audio === null || v.attachmentIds.includes(v.audio.attachmentId);
+}
 // #endregion
 
 // #region System activity
@@ -355,8 +393,8 @@ export const SendProjectMessageSchema = z.object({
 	attachmentIds: MessageFileIdsSchema.default([]),
 	/** The sender's own files shared as a link (Decision #401), as `files.items` ids. */
 	linkedFileIds: MessageFileIdsSchema.default([]),
-	/** The voice memo's persisted projection; its own bytes are one of {@link attachmentIds}. */
-	audio: MessageAudioSchema.nullable().default(null),
+	/** The voice memo: which of {@link attachmentIds} it is, its length and its envelope. */
+	audio: SendAudioSchema.nullable().default(null),
 }).refine(
 	(v) =>
 		v.text.trim().length > 0 || v.attachmentIds.length > 0 || v.linkedFileIds.length > 0 ||
@@ -368,6 +406,9 @@ export const SendProjectMessageSchema = z.object({
 }).refine(sendFilesAgree, {
 	message: "A message carries up to 20 files, each sent once.",
 	path: ["linkedFileIds"],
+}).refine(sendAudioAgrees, {
+	message: "The voice memo must be one of this message's own uploads.",
+	path: ["audio"],
 });
 export type SendProjectMessage = z.infer<typeof SendProjectMessageSchema>;
 // #endregion

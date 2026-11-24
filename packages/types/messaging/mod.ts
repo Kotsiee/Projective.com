@@ -16,3 +16,4 @@ export * from "./contacts.ts";
 export * from "./folders.ts";
 export * from "./activity.ts";
 export * from "./context.ts";
+export * from "./rows.ts";
