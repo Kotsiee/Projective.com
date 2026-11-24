@@ -388,6 +388,8 @@ Full predicate, path convention and the metering consequence:
 ## `storage.objects` — the `evidence` bucket (T&S R1)
 
 - **No policy at all** — service-role only, like `verification`. The reports service copies a reported
-  file's bytes to `evidence/{report_id}/{file_id}` at filing ([Storage.md](Storage.md)).
+  file's bytes to `evidence/{report_id}/{file_id}` at filing, and the dispute service a ticket case's
+  Evidence Vault files to `evidence/vault/{dispute_id}/{file_id}` at raise (PROJECTS EX3)
+  ([Storage.md](Storage.md)).
 
 See also [Tables.md](Tables.md) · [Functions.md](Functions.md) · [Storage.md](Storage.md).

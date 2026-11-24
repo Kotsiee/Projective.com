@@ -431,6 +431,15 @@ export function evidenceLocation(reportId: string, fileId: string): StorageLocat
 }
 
 /**
+ * `evidence/vault/{disputeId}/{fileId}` — a ticket dispute's Evidence Vault copy of a submitted file,
+ * frozen as the case was raised; service-role ONLY, under `finance.dispute_vaults.object_prefix`
+ * (PROJECTS EX3).
+ */
+export function vaultLocation(disputeId: string, fileId: string): StorageLocation {
+	return { bucket: "evidence", path: join("vault", disputeId, fileId) };
+}
+
+/**
  * Where a public RENDITION lives — the cropped copy cut for one surface:
  * `{bucket}/{ownerId}/{surface}/{renditionId}/{filename}`, anchored on the OWNING entity (a user, or
  * the team / business / enterprise whose profile it is) exactly as the seeded branding assets

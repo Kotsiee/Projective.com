@@ -12,12 +12,14 @@ import {
 	type UploadControls,
 	type UploadFile,
 } from "@projective/ui/fields";
-import { MoneyView, Tag } from "@projective/ui/display";
+import { MetaLine, MoneyView, Tag } from "@projective/ui/display";
 import {
 	type DisputeCase,
 	disputeOfferSplit,
 	type DisputeParty,
 	type DisputeSummary,
+	disputeSummaryHref,
+	disputeVaultFacts,
 	ticketDisputeSideLabel,
 	ticketDisputeSideOf,
 	type TicketDisputeWindow,
@@ -520,6 +522,29 @@ export function DisputeCaseDialog(props: DisputeCaseDialogProps): JSX.Element {
 												}, unchanged since they were agreed.`
 												: "The stored terms no longer match the reference both parties agreed. An auditor will review the record."}
 										</p>
+									</section>
+								)
+								: null}
+
+							{d.vault
+								? (
+									<section class="dispute-dlg__section" aria-label="Evidence Vault">
+										<h3 class="dispute-dlg__heading">Evidence Vault</h3>
+										<MetaLine
+											size="xs"
+											items={[
+												disputeVaultFacts(d.vault).state,
+												`frozen ${disputeTimeLabel(d.vault.createdAt)}`,
+												{
+													text: disputeVaultFacts(d.vault).reference,
+													title: d.vault.sha256,
+													tabular: true,
+												},
+											]}
+										/>
+										<a class="dispute-dlg__file" href={disputeSummaryHref(d.id)} download>
+											Download the case summary (PDF)
+										</a>
 									</section>
 								)
 								: null}

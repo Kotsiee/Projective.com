@@ -1,5 +1,7 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
+import { getServiceClient, getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
+import { copyObject } from "../../core/storage-signed.ts";
+import { renderPdf } from "../../core/pdf.ts";
 import { refuseUnlessMoneyLive } from "./money-gate.ts";
 import {
 	type DisputeCase,
@@ -9,13 +11,25 @@ import {
 	type DisputeResolveInput,
 	type DisputeRespondInput,
 	type DisputeStatus,
+	type DisputeVaultRead,
 	type OpenTicketDisputeInput,
 	type ReportOrderProblemInput,
 	type TicketDisputeState,
 	TicketDisputeStateSchema,
 } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
-import { type RawDispute, type RawQueue, toDisputeCase, toDisputeQueue } from "./dispute-model.ts";
+import { vaultLocation } from "@projective/types/files";
+import {
+	type RawDispute,
+	type RawQueue,
+	toDisputeCase,
+	toDisputeQueue,
+	toDisputeVaultRead,
+	type VaultFile,
+	vaultFilesOf,
+} from "./dispute-model.ts";
+import type { RenderedDocument } from "./finance-documents.ts";
+import { disputeSummaryDocument, disputeSummaryFilename } from "./dispute-summary-pdf.ts";
 
 /**
  * DisputeBackendService — the `DisputeService` PRODUCT_SPEC §Dispute Resolution names (Decision #212):
@@ -29,7 +43,9 @@ import { type RawDispute, type RawQueue, toDisputeCase, toDisputeQueue } from ".
  * a ticket's money here too ({@link DisputeBackendService.open}, with its offers, PROJECTS EX2); the
  * sweep that audits and auto-escalates
  * runs in the database (`finance-dispute-sweep`). Evidence files are served by the files pipeline
- * (`/api/media/proxy/:id`), which `files.fn_can_read` opens to a dispute's parties.
+ * (`/api/media/proxy/:id`), which `files.fn_can_read` opens to a dispute's parties. A ticket case's
+ * Evidence Vault (PROJECTS EX3) is frozen by the raise itself; this service copies its files' bytes
+ * into the `evidence` bucket and reads it back, with the case summary PDF.
  *
  * Live only: a dispute is money held against a real escrow, so there is no fixture world — the stub
  * answers 503 rather than inventing a case.
@@ -84,6 +100,52 @@ async function guarded<T>(
 		console.error(`[disputes:${label}]`, error instanceof Error ? error.message : error);
 		return UNREACHABLE as ServiceResult<T>;
 	}
+}
+// #endregion
+
+// #region The Evidence Vault
+/**
+ * Copy a vault's files into the `evidence` bucket under `vault/{disputeId}/` and stamp it ready
+ * (`finance.mark_dispute_vault_ready`, service role: no client can say the bytes were copied). What is
+ * already there is skipped, so a retry finishes a copy cut short; false leaves the vault pending, and
+ * never fails the raise that froze it.
+ */
+async function sealVault(disputeId: string, files: readonly VaultFile[]): Promise<boolean> {
+	try {
+		const service = getServiceClient();
+		const { data: present } = await service.storage.from("evidence")
+			.list(`vault/${disputeId}`, { limit: 1000 });
+		const have = new Set((present ?? []).map((o) => o.name));
+		for (const f of files) {
+			if (have.has(f.file_id)) continue;
+			const to = vaultLocation(disputeId, f.file_id);
+			if (!(await copyObject(f.bucket, f.path, to.bucket, to.path))) {
+				console.error(
+					`[disputes:vault] ${disputeId}: copying ${f.file_id} failed; the vault stays pending`,
+				);
+				return false;
+			}
+		}
+		const { error } = await service.schema("finance").rpc("mark_dispute_vault_ready", {
+			p_dispute_id: disputeId,
+		});
+		return !error;
+	} catch (error) {
+		console.error("[disputes:vault]", error instanceof Error ? error.message : error);
+		return false;
+	}
+}
+
+/** `finance.get_dispute_vault` as the caller: the vault, or null when it admits them to none. */
+async function readVault(disputeId: string, accessToken: string): Promise<DisputeVaultRead | null> {
+	const { data, error } = await getUserClient(accessToken).schema("finance").rpc(
+		"get_dispute_vault",
+		{
+			p_dispute_id: disputeId,
+		},
+	);
+	if (error) throw new Error(`finance.get_dispute_vault failed: ${error.message}`);
+	return toDisputeVaultRead(data as Record<string, unknown> | null);
 }
 // #endregion
 
@@ -245,9 +307,63 @@ export class DisputeBackendService {
 				},
 			);
 			if (error) return refusal(error, "That ticket doesn't exist.");
-			const out = data as { dispute_id: string; status: DisputeStatus };
+			const out = data as {
+				dispute_id: string;
+				status: DisputeStatus;
+				vault: { files: VaultFile[] | null } | null;
+			};
+			if (out.vault) await sealVault(out.dispute_id, out.vault.files ?? []);
 			return ok({ disputeId: out.dispute_id, status: out.status }, {
 				message: "Dispute raised. The other side has 48 hours to respond or make an offer.",
+			});
+		});
+	}
+
+	/**
+	 * A ticket case's Evidence Vault as the caller may see it (PROJECTS EX3): a party reads the manifest
+	 * and its hash, an operator the raw snapshot with where its bytes are; 404 for anyone else. An
+	 * operator's read finishes a copy the raise left pending.
+	 */
+	static vault(
+		disputeId: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ vault: DisputeVaultRead }>> {
+		return guarded("vault", async () => {
+			const blocked = gate<{ vault: DisputeVaultRead }>(actor);
+			if (blocked) return blocked;
+			const vault = await readVault(disputeId, actor.accessToken!);
+			if (!vault) return fail(404, { message: "That dispute doesn't exist." });
+			if (
+				vault.role === "operator" && vault.status === "pending" &&
+				await sealVault(disputeId, vaultFilesOf(vault.manifest))
+			) {
+				return ok({ vault: { ...vault, status: "ready" as const } });
+			}
+			return ok({ vault });
+		});
+	}
+
+	/**
+	 * The case summary as a PDF (PROJECTS EX3): the case, its timeline, statements, offers, ruling and
+	 * the vault's hash, for its parties and operators; 404 for anyone else, exactly as the case read.
+	 */
+	static async summaryPdf(
+		disputeId: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<RenderedDocument>> {
+		const got = await DisputeBackendService.get(disputeId, actor);
+		if (!got.ok || !got.data) {
+			return fail(got.status, {
+				message: got.message,
+				details: { code: got.status === 404 ? "not_found" : "unavailable" },
+			});
+		}
+		const dispute = got.data.dispute;
+		return guarded("summary-pdf", async () => {
+			const vault = dispute.vault ? await readVault(disputeId, actor.accessToken!) : null;
+			return ok({
+				filename: disputeSummaryFilename(dispute.id),
+				bytes: renderPdf(disputeSummaryDocument(dispute, vault)),
 			});
 		});
 	}

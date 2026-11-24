@@ -197,6 +197,12 @@ CREATE TRIGGER trg_dispute_offers_immutable
     FOR EACH ROW
     EXECUTE FUNCTION finance.fn_dispute_records_immutable ();
 
+-- A vault is stamped ready once and otherwise never changes (PROJECTS EX3).
+CREATE TRIGGER trg_dispute_vaults_immutable
+    BEFORE UPDATE OR DELETE ON finance.dispute_vaults
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_dispute_records_immutable ();
+
 -- TRUNCATE skips row triggers, so it is refused per statement.
 CREATE TRIGGER trg_disputes_no_truncate
     BEFORE TRUNCATE ON finance.disputes

@@ -123,6 +123,7 @@ const PROJECTION_ONLY: readonly string[] = [
 	"finance.dispute_messages",
 	"finance.dispute_evidence",
 	"finance.dispute_offers",
+	"finance.dispute_vaults",
 	"finance.ratings",
 	"finance.promo_codes",
 	"finance.baskets",

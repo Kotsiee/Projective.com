@@ -93,6 +93,29 @@ DECLARE
     v_state text;
 BEGIN
     -- #region 0. Fixture (as postgres)
+    -- The seed's state drifts as sessions drive the shared DB, so the probe makes its own fixture: a funded
+    -- ticket at work (or in review) on its current stage, put in review with a submission awaiting review.
+    SELECT tk.id INTO v_ticket
+      FROM projects.tickets tk
+      JOIN projects.projects p ON p.id = tk.project_id
+      JOIN finance.escrows e ON e.ticket_id = tk.id AND e.project_stage_id = tk.current_stage_id
+                            AND e.status = 'held' AND e.payee_id IS NOT NULL
+     WHERE p.status = 'active' AND p.format <> 'session' AND tk.current_assignee_id IS NOT NULL
+       AND tk.status IN ('claimed', 'in_progress', 'in_review')
+       AND NOT finance.fn_escrow_has_open_dispute(e.id)
+       AND NOT EXISTS (SELECT 1 FROM finance.escrows o
+                        WHERE o.ticket_id = tk.id AND o.status = 'held' AND o.id <> e.id)
+     ORDER BY (tk.status = 'in_review') DESC, tk.id
+     LIMIT 1;
+    PERFORM pg_temp.ok(v_ticket IS NOT NULL, 'fixture: a funded ticket at work on its current stage');
+    UPDATE projects.tickets SET status = 'in_review' WHERE id = v_ticket AND status <> 'in_review';
+    INSERT INTO projects.stage_submissions (project_stage_id, ticket_id, submitted_by, title, status)
+    SELECT tk.current_stage_id, tk.id, tk.current_assignee_id, 'Probe delivery', 'pending_review'
+      FROM projects.tickets tk
+     WHERE tk.id = v_ticket
+       AND NOT EXISTS (SELECT 1 FROM projects.stage_submissions ss
+                        WHERE ss.ticket_id = tk.id AND ss.project_stage_id = tk.current_stage_id
+                          AND ss.status = 'pending_review');
     SELECT p.id, p.client_business_id, tk.id, e.project_stage_id, e.id, ss.id,
            COALESCE(p.client_user_id, p.owner_user_id),
            CASE WHEN e.payee_type = 'team' THEN t.owner_user_id ELSE e.payee_id END,
@@ -106,7 +129,7 @@ BEGIN
       JOIN projects.stage_submissions ss ON ss.ticket_id = tk.id AND ss.project_stage_id = e.project_stage_id
                                         AND ss.status = 'pending_review'
       LEFT JOIN org.teams t ON t.id = e.payee_id AND e.payee_type = 'team'
-     WHERE p.status = 'active' AND p.format <> 'session' AND tk.status = 'in_review'
+     WHERE tk.id = v_ticket AND p.status = 'active' AND p.format <> 'session' AND tk.status = 'in_review'
        AND NOT finance.fn_escrow_has_open_dispute(e.id)
        AND NOT EXISTS (SELECT 1 FROM finance.escrows o
                         WHERE o.ticket_id = tk.id AND o.status = 'held' AND o.id <> e.id)

@@ -237,6 +237,54 @@ export function ticketDisputeSideLabel(side: TicketDisputeSide): string {
 	return side === "payer" ? "The client" : "The freelancer";
 }
 
+/** An Evidence Vault's state: `pending` until the service has copied its files, then `ready`. */
+export const DisputeVaultStatus = z.enum(["pending", "ready"]);
+export type DisputeVaultStatus = z.infer<typeof DisputeVaultStatus>;
+
+/**
+ * A ticket case's Evidence Vault as the case read names it (`finance.get_dispute.vault`, PROJECTS EX3):
+ * the snapshot frozen as the case was raised, and the SHA-256 of its canonical manifest. The manifest
+ * itself is `finance.get_dispute_vault`'s.
+ */
+export const DisputeVaultSchema = z.object({
+	status: DisputeVaultStatus,
+	sha256: z.string().regex(/^[0-9a-f]{64}$/),
+	createdAt: timestamp,
+});
+export type DisputeVault = z.infer<typeof DisputeVaultSchema>;
+
+/**
+ * A vault as its reader may see it (`finance.get_dispute_vault`): the parties read the manifest and its
+ * hash; an operator reads the raw snapshot with where its bytes are (`objectPrefix`, null to a party).
+ */
+export const DisputeVaultReadSchema = DisputeVaultSchema.extend({
+	disputeId: uuid,
+	role: DisputeRole,
+	/** The canonical manifest the hash is over: terms, escrows, history, submissions and rooms at raise. */
+	manifest: z.record(z.string(), z.unknown()),
+	objectPrefix: z.string().max(80).nullable(),
+});
+export type DisputeVaultRead = z.infer<typeof DisputeVaultReadSchema>;
+
+/** Where a case's summary PDF downloads (PROJECTS EX3): its parties and operators only. */
+export function disputeSummaryHref(disputeId: string): string {
+	return `/api/finance/disputes/${encodeURIComponent(disputeId)}/summary.pdf`;
+}
+
+/** Where a case's Evidence Vault reads as JSON: the manifest for a party, the raw snapshot for an operator. */
+export function disputeVaultHref(disputeId: string): string {
+	return `/api/finance/disputes/${encodeURIComponent(disputeId)}/vault`;
+}
+
+/** A vault's state and hash as MetaLine facts: what it holds, and the hash's short form. */
+export function disputeVaultFacts(vault: DisputeVault): { state: string; reference: string } {
+	return {
+		state: vault.status === "ready" ? "Evidence Vault sealed" : "Evidence Vault copying files",
+		// A non-breaking hyphen: the name never splits across lines on a phone.
+		reference: `SHA\u2011256 ${vault.sha256.slice(0, 12)}`,
+	};
+}
+
 /** A dispute as its reader may see it — `finance.get_dispute`, mapped. */
 export const DisputeCaseSchema = z.object({
 	id: uuid,
@@ -292,6 +340,8 @@ export const DisputeCaseSchema = z.object({
 	ticket: DisputeTicketSchema.nullable().optional(),
 	/** A ticket case's offers, oldest first; empty on any other. */
 	offers: z.array(DisputeOfferSchema).max(200).optional(),
+	/** A ticket case's Evidence Vault (PROJECTS EX3); null on any other. */
+	vault: DisputeVaultSchema.nullable().optional(),
 	canRespond: z.boolean(),
 	canEscalate: z.boolean(),
 	/** The caller may make an offer (a party, on a live ticket case). */

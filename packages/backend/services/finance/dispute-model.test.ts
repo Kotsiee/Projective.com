@@ -5,6 +5,8 @@ import {
 	type RawQueueItem,
 	toDisputeCase,
 	toDisputeQueue,
+	toDisputeVaultRead,
+	vaultFilesOf,
 } from "./dispute-model.ts";
 
 /*
@@ -315,5 +317,46 @@ Deno.test("a queue drops a status it does not list and only an under-review case
 	assertEquals(q.items[0].overdue, false);
 	assertEquals(q.counts, { open: 0, awaitingResponse: 0, underReview: 0, overdue: 0 });
 	assertEquals(toDisputeQueue(null).items, []);
+});
+// #endregion
+
+// #region The Evidence Vault (PROJECTS EX3)
+Deno.test("a ticket case carries its vault's state and hash; a malformed hash carries none", () => {
+	const HASH = "a".repeat(64);
+	const vault = { status: "ready", sha256: HASH, created_at: "2026-11-24T10:00:00.000Z" };
+	const d = toDisputeCase(raw({ kind: "ticket", vault }))!;
+	assertEquals(d.vault, { status: "ready", sha256: HASH, createdAt: "2026-11-24T10:00:00.000Z" });
+	assertEquals(DisputeCaseSchema.safeParse(d).success, true);
+	assertEquals(toDisputeCase(raw({ vault: { ...vault, sha256: "XYZ" } }))!.vault, null);
+	assertEquals(toDisputeCase(raw())!.vault, null);
+});
+
+Deno.test("a vault read maps for its reader, and the copy list is every distinct, complete file", () => {
+	const manifest = {
+		submissions: [
+			{
+				files: [{ file_id: FILE, bucket: "project-files", path: "a/b" }, {
+					file_id: ID,
+					bucket: "x",
+				}],
+			},
+			{ files: [{ file_id: FILE, bucket: "project-files", path: "a/b" }] },
+			{ files: null },
+		],
+	};
+	const read = toDisputeVaultRead({
+		dispute_id: ID,
+		role: "operator",
+		status: "pending",
+		sha256: "0".repeat(64),
+		created_at: "2026-11-24T10:00:00.000Z",
+		manifest,
+		object_prefix: `vault/${ID}/`,
+	});
+	assertEquals([read?.role, read?.objectPrefix], ["operator", `vault/${ID}/`]);
+	assertEquals(toDisputeVaultRead(null), null);
+	assertEquals(toDisputeVaultRead({ dispute_id: ID, role: "stranger" }), null);
+	assertEquals(vaultFilesOf(manifest), [{ file_id: FILE, bucket: "project-files", path: "a/b" }]);
+	assertEquals(vaultFilesOf({}), []);
 });
 // #endregion

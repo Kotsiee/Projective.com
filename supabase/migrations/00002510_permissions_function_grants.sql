@@ -2669,6 +2669,14 @@ REVOKE ALL ON FUNCTION finance.accept_dispute_offer (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.accept_dispute_offer (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION finance.ticket_dispute_state (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.ticket_dispute_state (uuid) TO authenticated;
+-- The Evidence Vault (PROJECTS EX3): the parties and operators read it; only the dispute service, as the
+-- service role, says its bytes are copied; the manifest builder and the freeze are internal.
+REVOKE ALL ON FUNCTION finance.get_dispute_vault (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.get_dispute_vault (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.mark_dispute_vault_ready (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.mark_dispute_vault_ready (uuid) TO service_role;
+REVOKE ALL ON FUNCTION finance.fn_dispute_vault_manifest (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_freeze_dispute_vault (uuid) FROM PUBLIC, anon, authenticated, service_role;
 -- Its internals: the sides, the contested escrows, an offer's arithmetic and the settlement.
 REVOKE ALL ON FUNCTION finance.fn_ticket_escrow_side (uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_ticket_dispute_escrows (uuid) FROM PUBLIC, anon, authenticated, service_role;

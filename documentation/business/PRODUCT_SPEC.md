@@ -3803,8 +3803,16 @@ mutual agreement.
 > who releases, refunds or splits. While a dispute stands the ticket neither moves nor is claimed, and
 > the board shows it Disputed (#549). A ruling on money already released takes back what the
 > freelancer is no longer due from their clearing earnings and returns it to the client with the
-> platform fee on it. **Not built yet:** the Evidence Vault snapshot of §1 and the Dispute Summary PDF
-> of §5 (PROJECTS EX3; USER_FLOWS PJ-43).
+> platform fee on it. The Evidence Vault of §1 is built for a ticket dispute (PROJECTS EX3; #548
+> (6)): the raise itself freezes, in the same transaction, a manifest of the ticket's and stage's terms
+> as they stood, the contested escrows, the ticket's history, every submission on the stage with its
+> files (each by its stored hash), and the messages of the stage's rooms (each one's current text; the
+> edit history joins once CH1 keeps it). The manifest's SHA-256 is fixed with it, and the files' bytes
+> are copied into a private store no client can reach. The parties read the manifest and its hash, a
+> Projective auditor the raw snapshot; nothing purges it (⚖️ retention is counsel's, FOUNDER_QUESTIONNAIRE
+> E2.5). The Dispute Summary PDF of §5 (the case, its timeline, statements, offers, ruling and the
+> vault's hash) downloads from the case for either party or an auditor at any point, not only after a
+> ruling. The board, session presence metadata and Business/Team channels are not in the vault yet.
 
 #### 1. The Evidence Vault (Immutable Audit)
 

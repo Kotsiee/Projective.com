@@ -35,6 +35,8 @@
 --   6b. Product dispute     open_order_line_dispute · order_line_disputes · fn_settle_order_line_dispute
 --   6c. Ticket dispute      open_ticket_dispute · propose_dispute_offer · accept_dispute_offer ·
 --                           fn_settle_ticket_dispute · fn_ticket_has_live_dispute (Decisions #548, #549)
+--   6d. Evidence Vault      fn_dispute_vault_manifest · fn_freeze_dispute_vault ·
+--                           mark_dispute_vault_ready · get_dispute_vault (PROJECTS EX3)
 --   7. Operator doors       list_disputes_for_review · resolve_dispute — security.is_admin() only
 --   8. The sweep            sweep_disputes — scheduled every 15 minutes (00005060)
 --   9. Immutability         fn_dispute_records_immutable (trigger function)
@@ -851,6 +853,10 @@ BEGIN
         ),
         'can_respond', v_live AND v_role IN ('claimant', 'respondent'),
         'can_escalate', v_d.status = 'awaiting_response' AND v_role IN ('claimant', 'respondent'),
+        -- The Evidence Vault (PROJECTS EX3): its state and hash; the manifest is finance.get_dispute_vault's.
+        'vault', (SELECT pg_catalog.jsonb_build_object('status', v.status, 'sha256', v.sha256,
+                                                       'created_at', v.created_at)
+                    FROM finance.dispute_vaults v WHERE v.dispute_id = v_d.id),
         'can_offer', v_live AND v_d.subject_kind = 'ticket_escrow' AND v_d.status <> 'open'
                      AND v_role IN ('claimant', 'respondent'),
         'can_resolve', v_live AND v_role = 'operator'
@@ -1285,6 +1291,7 @@ DECLARE
     v_id uuid;
     v_message uuid;
     v_ctx record;
+    v_vault jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to raise a dispute' USING ERRCODE = '42501';
@@ -1380,6 +1387,8 @@ BEGIN
     RETURNING id INTO v_message;
     INSERT INTO finance.dispute_evidence (dispute_id, message_id, file_id, submitted_by)
     SELECT DISTINCT v_id, v_message, f.id, v_uid FROM pg_catalog.unnest(v_files) f(id);
+    -- The Evidence Vault freezes now, in this transaction (PROJECTS EX3): nothing after the raise reaches it.
+    v_vault := finance.fn_freeze_dispute_vault(v_id);
 
     SELECT * INTO v_ctx FROM finance.fn_dispute_context(v_id);
     IF v_ctx.owner_user_id IS NOT NULL THEN
@@ -1397,7 +1406,8 @@ BEGIN
         );
     END IF;
     RETURN pg_catalog.jsonb_build_object('dispute_id', v_id, 'status', 'awaiting_response',
-        'respond_by', v_respond_by, 'window', v_window, 'amount_minor', v_amount, 'currency', v_currency);
+        'respond_by', v_respond_by, 'window', v_window, 'amount_minor', v_amount, 'currency', v_currency,
+        'vault', v_vault);
 END;
 $$;
 
@@ -1742,6 +1752,174 @@ $$;
 -- #endregion
 
 
+-- #region 6d. The Evidence Vault (PROJECTS EX3; Decision #548 (6))
+-- The snapshot a ticket dispute freezes as it is raised (PRODUCT_SPEC §Dispute Resolution 1), so neither
+-- side can "clean up" afterwards: the ticket's and stage's terms at raise (their rows as they stood),
+-- the contested escrows, the ticket's history, every submission on the stage with its files (each by
+-- the hash `files.items` stored and its object's place), and the stage's rooms' messages. The manifest
+-- is jsonb, so its text is canonical (sorted keys, one spacing): `sha256` is that text's SHA-256 and
+-- re-reading it hashes the same. The messages are each one's current body: the revision history is
+-- CH1's, and the vault reads it once CH1 keeps it. The files' bytes are copied by the dispute service
+-- into the policy-less `evidence` bucket under `vault/{dispute_id}/` (bytes cannot be copied in SQL),
+-- and finance.mark_dispute_vault_ready stamps the vault ready. Nothing purges it (⚖️ counsel's).
+
+-- The manifest for a ticket dispute (internal). NULL for any other kind of dispute.
+CREATE OR REPLACE FUNCTION finance.fn_dispute_vault_manifest(p_dispute_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.jsonb_build_object(
+        'version', 1,
+        'dispute', pg_catalog.jsonb_build_object(
+            'id', d.id, 'subject_kind', d.subject_kind, 'reason', d.reason, 'claimant_side', d.claimant_side,
+            'opened_by', d.opened_by_profile, 'opened_at', d.created_at),
+        'ticket', pg_catalog.to_jsonb(tk),
+        'stage', pg_catalog.to_jsonb(ps),
+        'escrows', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'id', e.id, 'amount_cents', e.amount_cents, 'currency', e.currency, 'status', e.status,
+                       'payee_type', e.payee_type, 'payee_id', e.payee_id, 'created_at', e.created_at)
+                   ORDER BY e.id)
+              FROM finance.escrows e
+             WHERE e.id = ANY (finance.fn_ticket_dispute_escrows(d.id))
+        ), '[]'::jsonb),
+        'history', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'id', h.id, 'actor_id', h.actor_id, 'action_type', h.action_type,
+                       'previous_stage_id', h.previous_stage_id, 'new_stage_id', h.new_stage_id,
+                       'previous_status', h.previous_status, 'new_status', h.new_status,
+                       'changes', h.changes, 'created_at', h.created_at)
+                   ORDER BY h.created_at, h.id)
+              FROM projects.ticket_history h
+             WHERE h.ticket_id = d.ticket_id
+        ), '[]'::jsonb),
+        'submissions', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'id', ss.id, 'number', ss.number, 'title', ss.title, 'status', ss.status,
+                       'notes', ss.notes, 'description', ss.description, 'revision_of', ss.revision_of,
+                       'submitted_by', ss.submitted_by, 'created_at', ss.created_at,
+                       'reviewed_at', ss.reviewed_at, 'feedback', ss.feedback,
+                       'files', COALESCE((
+                           SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                                      'file_id', i.id, 'name', i.display_name, 'mime_type', i.mime_type,
+                                      'size_bytes', i.size_bytes, 'content_hash', i.content_hash,
+                                      'hash_algo', i.hash_algo, 'bucket', i.bucket_id, 'path', i.storage_path)
+                                  ORDER BY i.id)
+                             FROM projects.submission_files sf
+                             JOIN files.items i ON i.id = sf.file_id
+                            WHERE sf.submission_id = ss.id
+                       ), '[]'::jsonb))
+                   ORDER BY ss.created_at, ss.id)
+              FROM projects.stage_submissions ss
+             WHERE ss.ticket_id = d.ticket_id AND ss.project_stage_id = d.stage_id
+        ), '[]'::jsonb),
+        'messages', COALESCE((
+            SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'id', m.id, 'channel_id', c.id, 'channel', c.name, 'sender_user_id', m.sender_user_id,
+                       'body', m.body, 'created_at', m.created_at, 'edited_at', m.edited_at,
+                       'deleted_at', m.deleted_at)
+                   ORDER BY m.created_at, m.id)
+              FROM comms.project_channels c
+              JOIN comms.project_messages m ON m.channel_id = c.id
+             WHERE c.stage_id = d.stage_id
+        ), '[]'::jsonb)
+    )
+      FROM finance.disputes d
+      JOIN projects.tickets tk ON tk.id = d.ticket_id
+      JOIN projects.project_stages ps ON ps.id = d.stage_id
+     WHERE d.id = p_dispute_id AND d.subject_kind = 'ticket_escrow';
+$$;
+
+-- Freeze a ticket dispute's vault (internal; open_ticket_dispute calls it in its own transaction).
+-- Returns the hash, the prefix and every file the service is to copy there, each with its source.
+CREATE OR REPLACE FUNCTION finance.fn_freeze_dispute_vault(p_dispute_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_manifest jsonb := finance.fn_dispute_vault_manifest(p_dispute_id);
+    v_sha text;
+    v_prefix text := 'vault/' || p_dispute_id::text || '/';
+BEGIN
+    IF v_manifest IS NULL THEN
+        RETURN NULL;
+    END IF;
+    v_sha := pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(v_manifest::text, 'UTF8')), 'hex');
+    INSERT INTO finance.dispute_vaults (dispute_id, manifest, sha256, object_prefix)
+    VALUES (p_dispute_id, v_manifest, v_sha, v_prefix);
+    RETURN pg_catalog.jsonb_build_object(
+        'sha256', v_sha,
+        'object_prefix', v_prefix,
+        'files', COALESCE((
+            SELECT pg_catalog.jsonb_agg(DISTINCT pg_catalog.jsonb_build_object(
+                       'file_id', f ->> 'file_id', 'bucket', f ->> 'bucket', 'path', f ->> 'path'))
+              FROM pg_catalog.jsonb_array_elements(v_manifest -> 'submissions') s,
+                   pg_catalog.jsonb_array_elements(s -> 'files') f
+        ), '[]'::jsonb)
+    );
+END;
+$$;
+
+-- The service's word that every file of the vault now sits under its prefix (service role only: no
+-- client can claim bytes were copied). Idempotent; returns the status, NULL for an unknown vault.
+CREATE OR REPLACE FUNCTION finance.mark_dispute_vault_ready(p_dispute_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_status text;
+BEGIN
+    UPDATE finance.dispute_vaults SET status = 'ready'
+     WHERE dispute_id = p_dispute_id AND status = 'pending';
+    SELECT v.status INTO v_status FROM finance.dispute_vaults v WHERE v.dispute_id = p_dispute_id;
+    RETURN v_status;
+END;
+$$;
+
+-- A dispute's vault for its reader (read): the parties read the manifest and its hash; an operator
+-- reads the raw snapshot, with where its bytes are (`object_prefix`). NULL for anyone else, and for a
+-- dispute with no vault.
+CREATE OR REPLACE FUNCTION finance.get_dispute_vault(p_dispute_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_role text;
+    v finance.dispute_vaults;
+BEGIN
+    SELECT * INTO v FROM finance.dispute_vaults WHERE dispute_id = p_dispute_id;
+    IF NOT FOUND OR v_uid IS NULL THEN
+        RETURN NULL;
+    END IF;
+    v_role := finance.fn_dispute_party(p_dispute_id, v_uid);
+    IF v_role IS NULL AND security.is_admin() THEN
+        v_role := 'operator';
+    END IF;
+    IF v_role IS NULL THEN
+        RETURN NULL;
+    END IF;
+    RETURN pg_catalog.jsonb_build_object(
+        'dispute_id', v.dispute_id, 'role', v_role, 'status', v.status, 'sha256', v.sha256,
+        'created_at', v.created_at, 'manifest', v.manifest,
+        'object_prefix', CASE WHEN v_role = 'operator' THEN v.object_prefix END
+    );
+END;
+$$;
+-- #endregion
+
 -- #region 7. The operator doors
 -- The operator queue (`/admin/disputes`): every LIVE dispute, or those in one live status, with what a
 -- reviewer triages on — the parties, the money at stake, the sitting, the deadline that applies and
@@ -2007,6 +2185,14 @@ BEGIN
             RETURN NEW;
         END IF;
         RAISE EXCEPTION 'An offer is never changed once made' USING ERRCODE = '42501';
+    END IF;
+    -- A vault (PROJECTS EX3) moves pending -> ready once; its manifest and hash never change.
+    IF TG_TABLE_NAME = 'dispute_vaults' THEN
+        IF OLD.status = 'pending' AND NEW.status = 'ready'
+           AND (pg_catalog.to_jsonb(NEW) - 'status') = (pg_catalog.to_jsonb(OLD) - 'status') THEN
+            RETURN NEW;
+        END IF;
+        RAISE EXCEPTION 'An Evidence Vault is never changed once frozen' USING ERRCODE = '42501';
     END IF;
     IF TG_TABLE_NAME <> 'disputes' THEN
         RAISE EXCEPTION '% rows are never changed once filed', TG_TABLE_NAME USING ERRCODE = '42501';

@@ -752,7 +752,11 @@ not counted present to the end.
 
 **Rules.** A dispute is **never deleted** and a resolved one is **final** — enforced by trigger for
 every role (§5.4); statements and evidence are append-only, and an evidence file cannot be deleted
-while its case is live. At most one live dispute per escrow. While a dispute is live the escrow is
+while its case is live. A ticket case's **Evidence Vault** (PROJECTS EX3, `finance.dispute_vaults`) is
+frozen by the raise itself and has two states of its own, no more: **Pending** (the manifest and its
+hash are fixed; the files' bytes are being copied) → **Ready** (every file copied, stamped once by the
+dispute service as the service role). Neither its manifest nor its hash ever changes, and it is never
+deleted. At most one live dispute per escrow. While a dispute is live the escrow is
 not released by any path (`finance.fn_escrow_has_open_dispute`). The seat follows its money: a refund
 ends it `cancelled`, a release or split `completed`, once nothing else is held on it. A provider
 cannot open a no-show claim: an attendee who does not come is paid out to the provider anyway

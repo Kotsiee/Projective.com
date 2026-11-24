@@ -39,7 +39,7 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `contact`       | Private     | 10 MiB · img,pdf,txt | `{user_id}`    | Files attached to a `/contact` request (Decision #276). **Operator read; service-role write.** |
 | `data_exports`  | **Service** | 50 MiB · zip     | `{user_id}`        | A person's copy of their own data (Decision #450). **Service-role only;** downloaded through a link minted per read. |
 | `originals`     | **Service** | 50 MiB · any     | `{product_id}`     | Sale originals frozen at publish (Decision #488, ruling A6). **Service-role only;** streamed to a buyer only by `/api/downloads/[entitlement]/[fileId]`. |
-| `evidence`      | **Service** | 50 MiB · any     | `{report_id}`      | A reported file's bytes, frozen at filing (T&S R1). **Service-role only;** read for a reviewer. |
+| `evidence`      | **Service** | 50 MiB · any     | `{report_id}` · `vault/{dispute_id}` | A reported file's bytes, frozen at filing (T&S R1), and a ticket dispute's Evidence Vault files, frozen at raise (PROJECTS EX3). **Service-role only;** read for a reviewer. |
 
 ---
 
@@ -327,10 +327,21 @@ has no bytes of ours and is not copied. There is **no storage policy at all**, l
 and no `files.items` row points here. The 50 MiB ceiling and any type follow the library the bytes
 come from. How long a copy stays is the I1 retention table's, through identity's erasure chain.
 
+A ticket dispute's **Evidence Vault** (PROJECTS EX3) lives under `vault/`: the raise freezes the
+manifest (`finance.dispute_vaults`), and `DisputeBackendService.open` then copies every file its
+submissions name to `vault/{dispute_id}/{file_id}` as the service role (`vaultLocation`), skipping what
+is already there, and stamps the vault `ready` (`finance.mark_dispute_vault_ready`). A copy cut short
+leaves it `pending`, and an operator's read of the vault finishes it. Each file's `content_hash` is in
+the manifest, so a copy can be checked against the hash frozen with it. Nothing purges `vault/` (⚖️
+retention is counsel's, FOUNDER_QUESTIONNAIRE E2.5).
+
 ```text
 evidence/
-└── [report_id]/
-    └── [file_id]
+├── [report_id]/
+│   └── [file_id]
+└── vault/
+    └── [dispute_id]/
+        └── [file_id]
 ```
 
 ### `quarantine` (Restricted)

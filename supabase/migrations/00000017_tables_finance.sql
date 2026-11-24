@@ -1544,6 +1544,24 @@ CREATE TABLE finance.dispute_offers (
     CONSTRAINT ck_dispute_offers_accepted CHECK ((accepted_at IS NULL) = (accepted_by IS NULL)),
     CONSTRAINT ck_dispute_offers_other_side CHECK (accepted_by IS NULL OR accepted_by <> proposed_by)
 );
+
+-- The Evidence Vault (PRODUCT_SPEC §Dispute Resolution 1; PROJECTS EX3, Decision #548 (6)): the
+-- point-in-time snapshot a ticket dispute freezes in the transaction that raises it. `manifest` is the
+-- record — the ticket's and stage's terms at raise, the contested escrows, the ticket's history, every
+-- submission on the stage with its files (each by its stored hash) and the stage's rooms' messages —
+-- and `sha256` the SHA-256 (hex) of its canonical text (`manifest::text`). The dispute service copies
+-- the files' bytes into the policy-less `evidence` bucket under `object_prefix` (`vault/{dispute_id}/`)
+-- and finance.mark_dispute_vault_ready moves `status` pending → ready. Immutable but for that one
+-- move, never deleted (finance.fn_dispute_records_immutable, 00001830), and never purged: ⚖️ retention
+-- is counsel's (FOUNDER_QUESTIONNAIRE E2.5).
+CREATE TABLE finance.dispute_vaults (
+    dispute_id uuid PRIMARY KEY REFERENCES finance.disputes (id) ON DELETE RESTRICT,
+    manifest jsonb NOT NULL,
+    sha256 text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'ready')),
+    object_prefix text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
 -- #endregion
 
 -- #region The pending window — earned money clearing to Available (finance-model.md §7, Decision #191)

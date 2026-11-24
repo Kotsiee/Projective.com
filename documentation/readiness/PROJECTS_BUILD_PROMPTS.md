@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 16 open, 0 partly done, 10 done (§0 ledger).
-> Runnable now: EX3, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 15 open, 0 partly done, 11 done (§0 ledger).
+> Runnable now: CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -62,6 +62,7 @@ A prompt that lands gets a row here.
 | ST6 | A write by one party to a shared project shows on the other's next read, in every isolate: each cached project read is keyed by the project's KV version (`services/projects/freshness.ts`), bumped by every write path (#555 lists them); a KV-less isolate keeps its own bumps; a board reads around the cache while the claim sweep is due; #427 (a) confirmed and written into PRODUCT_SPEC | `08f27344` (#555) | `70f78452` |
 | ST4 | The freelancer's own workload: `projects.get_my_workload_capacity()` (no argument, `auth.uid()`, per-stage split) granted to `authenticated` only, the any-user `get_workload_capacity` revoked by name; `WorkloadCapacitySchema`, `ProjectWorkloadService.mine`, `GET /api/projects/workload`; the `WorkloadGauge` island in the `/projects` header; the capacity line and over-cap refusal beside the ticket view's and the board card's Claim; dev axis `workload`; probe `workload_capacity_self.sql` | `97680598` (#550) | `97680598` |
 | TK2 | The funding path driven end to end in a real browser on the live path: `apps/web/tests/e2e/ticket-funding.spec.ts` (`deno task test:e2e:funding`). One stage through the basket picker and the checkout narrowed by `?ticket_id=`, paid from the business wallet; a stage held and two prepaid in one Buy now, the freelancer seeing the marks and no amounts; Buy now by a 3-D Secure card and a plain one, held after the signed webhook (the spec forwards it from Stripe test mode) and after a reload; a short wallet and a paid-for stage refused. The checkout's client re-read keeps `?ticket_id=` (it widened to the whole basket); `test:e2e` no longer names the deleted `landing-hero.spec.ts` (PRD-K3) | `f9bce8aa` (#557) | `288865a0` |
+| EX3 | Raising a ticket dispute freezes its Evidence Vault in the same transaction: `finance.dispute_vaults` (manifest jsonb, `sha256` of its canonical text, `pending` → `ready`, `object_prefix`; immutable by trigger, RLS with no client policy), `fn_dispute_vault_manifest` (terms, escrows, history, submissions with their file hashes, the stage's rooms), `fn_freeze_dispute_vault` from `open_ticket_dispute`, `mark_dispute_vault_ready` (service role), `get_dispute_vault`, `get_dispute.vault`; the service copies the files to `evidence/vault/{dispute}/`; `GET /api/finance/disputes/[disputeId]/summary.pdf` and `…/vault`; the case dialog's and the desk's Evidence Vault line and links; probe `dispute_vault.sql` | (#558) | `0e06fa9d` |
 | CH4 | A message and its files are one write, and a voice memo survives a reload: `comms.send_message` (invoker) writes the message, its `message_attachments` links and `channel_files` rows in one transaction and refuses the whole send on a refused file (PA422 → 422 `not_attached`); `message_attachments.audio_duration_ms` + `audio_peaks` (four CHECKs, `uq_message_attachments_one_memo`); `SendAudioSchema` names the memo's upload; `fetchMessageAttachments` returns the memo as the player on every read; `MessageAttachmentRowSchema`; probe `message_send.sql` | `1732ac6d` (#559) | `0e06fa9d` |
 
 ### 0.1 Row → work order
@@ -114,11 +115,11 @@ PJ-74 are ⏸ (§0.4).
 | PJ-39 | 🟡 · Crit · UAT   | PM-WP4a (🧑 PM #3; with MR2's project cancel) | Fair Exit pays at least its floor: on a stage, on a ticket and in a project cancel |
 | PJ-40 | ❌ · High · UAT   | **EX1** (🧑)                                  | A project completes at its last settlement or by the client, and its reviews open  |
 
-**Disputes** (38%)
+**Disputes** (75%)
 
 | Row   | Now · Crit · Gate | Work order               | The row flips when                                                                                        |
 | :---- | :---------------- | :----------------------- | :-------------------------------------------------------------------------------------------------------- |
-| PJ-43 | 🟡 · Crit · UAT   | EX2 ✅ (#548) → **EX3**   | ✅ after EX3 (the vault snapshot and PDF)                                                                |
+| PJ-43 | ✅ · Crit · UAT   | EX2 ✅ (#548) → EX3 ✅ (#558) | ✅ (EX3: the vault snapshot and PDF)                                                                |
 | PJ-44 | 🟡 · High · UAT   | **LP1** (you)            | The three audit outcomes are recorded on live Zoom, Teams and Meet                                        |
 | PJ-46 | ❌ · Normal · UAT | PM-WP4a step 6 → **EX4** | 🟡 after WP4a's Fair Exit contest; ✅ after EX4 (the workload-verdict appeal)                             |
 
@@ -179,7 +180,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Hiring & members               |   83% | WP4b 92% → NO1 + CD2 + counsel 100%                                                                               |
 | Tickets & delivery             |   59% | WP8 62% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100% (TK2 ✅, #557)               |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
-| Disputes                       |   56% | WP4a 63% → EX3 81% → EX4 88% → LP1 100% (EX2 ✅, #548)                                                            |
+| Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
 | Messaging                      |   57% | MS5 59% → CH1 + P2d 65% → CH2 67% → CH3 70% → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → NO2 + CD2 94% → NT5 + NO3 100%                                                                          |
 | Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
@@ -189,7 +190,7 @@ after PM-WP1. The paths follow §0.2's order:
 26, 27, 29, 30, 47, 49 and 57 (PJ-23 ✅, TK2). Their work orders, in order: D7a + P6, S3, WP9, WP6, NO1
 (+ CD2), and the chat chain (MS3, MS5, CH1, P2d, SN3, the T&S P-chain).
 
-**What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX3; EX2 ✅) and PJ-60 (NO2 + CD2).
+**What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a) and PJ-60 (NO2 + CD2) (PJ-43 ✅, EX2 + EX3).
 Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a, EX1,
 CH2, FL3, FL4, CFG2 and LP1.
 
@@ -217,8 +218,7 @@ lane's coordinator before taking one.
 3. **EX2** ✅ (#548, #549): the ticket escrow on DB21's dispute subject; PM-WP4a step 6 reuses it.
 4. **PM-WP4a** (PJ-39, PJ-46's half), then **PM-WP4b** (PJ-09, PJ-21, PJ-34). They run right after
    EX2, never beside DB21 or MR3, which touch `00001200`.
-5. **EX3** (PJ-43 → ✅). It edits `00000017`, so it belongs to this lane. It may run after any
-   money-lane turn that leaves `00000017` alone.
+5. **EX3** ✅ (#558): PJ-43 → ✅.
 
 **Queue S — the second SQL slot.** It holds projects, comms and files SQL in priority order, one at
 a time. It shares the slot with other tracks' second-session prompts (SBP, SAC, T&S). A prompt
@@ -271,7 +271,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001110` / `00001120` (ticket guards and doors)        | PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
 | `00001140` (claims, capacity, workload)                  | PM WP5a, D7b                                                 | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
-| `00000017` + `00001260` (disputes)                       | EX3; PM-WP4a step 6                                          | FBP DB21; MR3                                                     |
+| `00000017` + `00001260` (disputes)                       | PM-WP4a step 6                                               | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3                                                | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
@@ -301,7 +301,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1 (#546)    | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
 | 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2 ✅ (#548) | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
 | 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2 ✅ (#549) | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
-| 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3 (#548)    | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
+| 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3 ✅ (#558) | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
 | 20 | Which workload verdict can be appealed                                                                                                       | EX4 (#552)    | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
 | 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1           | Edit for 15 minutes; delete for everyone at any time while the room is live; originals kept for evidence; nothing in an archived or disputed room changes                                                                |
 | 22 | Who gets team and business rooms, and when                                                                                                   | CH2           | Eagerly: at the team's seat going live, and at the business's first project access                                                                                                                                       |
@@ -321,7 +321,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 - NO1's lawful basis for mailing someone who has no account.
 - CH1: keeping a message's original after its author deletes it for everyone. This is evidence
   retention against erasure.
-- EX3: the Evidence Vault's retention period, and the weight of the dispute summary PDF.
+- EX3 (built with no purge, #558): the Evidence Vault's retention period, and the weight of the dispute summary PDF.
 
 ### 0.4 Not in this file
 
@@ -576,60 +576,6 @@ documentation/database/projects/*; Zod; ROUTING.md; the decision row.
 
 §1.2 rows: **PJ-40** ❌ → ✅ (its "only draft|active|on_hold" text corrected). Tell the reviews
 owner that MK-32's live path no longer needs the seed.
-
-### EX3 — The Evidence Vault snapshot and the case summary PDF
-
-Closes PJ-43 (🟡 → ✅).
-
-**Status (2026-11-24):** EX2 has landed (#548, #549), so EX3 may take its money-lane turn; its 🧑 (stop 19)
-is ruled as recommended (#548 (6)). One premise no longer holds: CH1 has not landed, so `00000016` keeps only a message's current body and the
-vault can capture revisions only once CH1 does.
-
-```text
-PROMPT EX3: Raising a dispute freezes a hashed snapshot of the evidence, and either party or the
-operator can download a case summary PDF that names the snapshot's hash
-
-ROLE: Full-stack engineer. Queue M (00000017), after EX2.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - The spec: the Evidence Vault is a point-in-time snapshot of the board, the chat, the files
-    and the metadata (PRODUCT_SPEC.md:3577-3589), and the summary PDF carries the vault's hash
-    (:3641-3648). What exists is per-statement evidence files (00000017:352-354).
-  - The PDF precedent: renderPdf (packages/backend/core/pdf.ts:156), used by
-    finance-documents.ts (renderInvoicePdf :52, renderStatementPdf :117). pgcrypto is installed
-    (00000002).
-  - Bytes cannot be copied in SQL. The CK1 pattern (#488) copies sale originals service-side
-    into a policy-less private bucket, and a definer marks them ready: reuse it.
-  - CH1 keeps every message revision; the vault reads originals, never only the latest body.
-
-🧑 DECISION (before step 2): what the vault captures and who reads it. Recommended:
-  - it captures the stage's rooms' messages with their revisions, the ticket's history, every
-    submission with its file versions (each object's sha256), and the ticket and stage terms at
-    raise;
-  - a canonical JSON manifest is hashed with sha256;
-  - the parties read the manifest and the PDF, and operators read the raw snapshot.
-  ⚖️ Retention is counsel's: build with no purge.
-
-STEPS:
-  1. Red first: a probe in which raising a ticket dispute leaves no snapshot.
-  2. finance.dispute_vaults (dispute_id, manifest jsonb, sha256, status pending | ready,
-     object_prefix, created_at), immutable by trigger. The manifest is written in
-     open_ticket_dispute's own transaction; a service step copies the file bytes into a
-     policy-less private bucket and a definer marks the vault ready.
-  3. GET /api/finance/disputes/[ref]/summary.pdf (use the dispute's slug if one exists; Decision
-     #88): the case, the timeline, the offers, the ruling and the vault hash, from renderPdf.
-     Gate it to the parties and operators.
-  4. The case dialog shows the vault's state and hash as MetaLine text; /admin/disputes opens
-     the raw snapshot.
-
-ACCEPTANCE: the probe is green; a raised case's manifest hash is stable across reads; the PDF
-renders for each party and 404s for anyone else; screenshots of the PDF's first page.
-
-SAME CHANGE: PRODUCT_SPEC.md §Dispute Mechanism (vault and PDF built); documentation/database/
-{finance,files}/*; Zod; ROUTING.md; the decision row.
-```
-
-§1.2 rows: **PJ-43** 🟡 → ✅.
 
 ### EX4 — A moderator's workload verdict can be appealed once
 

@@ -13,6 +13,10 @@ import {
 	type DisputeSettlement,
 	DisputeStatus,
 	type DisputeTicket,
+	type DisputeVault,
+	type DisputeVaultRead,
+	DisputeVaultReadSchema,
+	DisputeVaultSchema,
 	formatMoney,
 	TicketDisputeSide,
 	TicketDisputeWindow,
@@ -104,6 +108,8 @@ export interface RawDispute {
 	/** A ticket case's ticket and offers (PROJECTS EX2); null or absent on any other. */
 	ticket?: RawTicket | null;
 	offers?: RawOffer[] | null;
+	/** A ticket case's Evidence Vault (PROJECTS EX3); null or absent on any other. */
+	vault?: { status: string; sha256: string; created_at: string } | null;
 	can_respond: boolean;
 	can_escalate: boolean;
 	can_offer?: boolean;
@@ -228,6 +234,50 @@ function ticketOf(raw: RawTicket | null | undefined): DisputeTicket | null {
 }
 
 /** A ticket case's offers, dropping one this build cannot read. */
+function vaultOf(raw: RawDispute["vault"]): DisputeVault | null {
+	const vault = raw && DisputeVaultSchema.safeParse({
+		status: raw.status,
+		sha256: raw.sha256,
+		createdAt: raw.created_at,
+	});
+	return vault?.success ? vault.data : null;
+}
+
+/** `finance.get_dispute_vault`'s answer, mapped; null for a reader it admits nothing to. */
+export function toDisputeVaultRead(raw: Record<string, unknown> | null): DisputeVaultRead | null {
+	const vault = raw && DisputeVaultReadSchema.safeParse({
+		disputeId: raw.dispute_id,
+		role: raw.role,
+		status: raw.status,
+		sha256: raw.sha256,
+		createdAt: raw.created_at,
+		manifest: raw.manifest,
+		objectPrefix: raw.object_prefix ?? null,
+	});
+	return vault?.success ? vault.data : null;
+}
+
+/** A file the vault holds a copy of: its id and where its bytes were when the case was raised. */
+export interface VaultFile {
+	file_id: string;
+	bucket: string;
+	path: string;
+}
+
+/** Every distinct file a manifest's submissions name (what the vault's copy step copies). */
+export function vaultFilesOf(manifest: Record<string, unknown>): VaultFile[] {
+	const seen = new Map<string, VaultFile>();
+	const submissions = Array.isArray(manifest.submissions) ? manifest.submissions : [];
+	for (const s of submissions as { files?: unknown }[]) {
+		for (const f of (Array.isArray(s?.files) ? s.files : []) as Partial<VaultFile>[]) {
+			if (f?.file_id && f.bucket && f.path) {
+				seen.set(f.file_id, { file_id: f.file_id, bucket: f.bucket, path: f.path });
+			}
+		}
+	}
+	return [...seen.values()];
+}
+
 function offersOf(raw: RawOffer[] | null | undefined): DisputeOffer[] {
 	return (raw ?? []).slice(0, 200).flatMap((o) => {
 		if (o.party !== "claimant" && o.party !== "respondent") return [];
@@ -308,6 +358,7 @@ export function toDisputeCase(raw: RawDispute | null): DisputeCase | null {
 		agreedTerms: agreedTermsOf(raw.agreed_terms),
 		ticket: ticketOf(raw.ticket),
 		offers: offersOf(raw.offers),
+		vault: vaultOf(raw.vault),
 		canRespond: !!raw.can_respond,
 		canEscalate: !!raw.can_escalate,
 		canOffer: !!raw.can_offer,

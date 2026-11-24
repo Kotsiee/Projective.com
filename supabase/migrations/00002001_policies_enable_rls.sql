@@ -663,6 +663,10 @@ ALTER TABLE finance.dispute_evidence ENABLE ROW LEVEL SECURITY;
 -- parties read them through finance.get_dispute and write them through its offer doors (00001260).
 ALTER TABLE finance.dispute_offers ENABLE ROW LEVEL SECURITY;
 
+-- The Evidence Vault (PROJECTS EX3): no client policy; the parties and operators read it through
+-- finance.get_dispute_vault, and only its definers write it.
+ALTER TABLE finance.dispute_vaults ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE finance.promo_codes ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.ratings ENABLE ROW LEVEL SECURITY;

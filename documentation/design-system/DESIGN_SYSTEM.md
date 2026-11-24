@@ -3685,6 +3685,13 @@ never a box (§3 gate 6). A board card with a live case wears a **Disputed** `Ta
 rounded — a lifecycle status, derived from the dispute row, §3 gate 7). The `ticketDispute` dev axis
 (Auto · None · Raisable) previews the line. Styles: `styles/ticket-view.css` (`tkv-dispute*`),
 `styles/session-disputes.css` (`dispute-dlg__split`, `dispute-dlg__offer`).
+**The Evidence Vault (PROJECTS EX3).** On a ticket case with a vault, an **Evidence Vault** section
+(before the ruling) is one `MetaLine` (`xs`: sealed or copying files · frozen when · `SHA-256` and the
+hash's first 12 characters, `tabular-nums`, the full hash as its `title`) and one text link, **Download
+the case summary (PDF)** (`/api/finance/disputes/:id/summary.pdf`), never a box (§3 gates 6, 7). The
+operator's `DisputeRulingDialog` shows the same section with two links: **Open the raw snapshot** (the
+vault's JSON, `/api/finance/disputes/:id/vault`, new tab) and the PDF. The labels are
+`disputeVaultFacts` (`@projective/types/finance`).
 
 **`SessionForfeits` (`features/projects/components/`, FBP DB21).** The host's forfeits, mounted in
 `ProjectSidebar` under `SessionDisputes` with the same props. Static text and controls under the same
@@ -3788,7 +3795,8 @@ danger **Overdue** `Tag` when the review SLA has passed (a required disclosure).
 (`components/`, `Dialog` 40rem; props `open: Signal<boolean>`, `item`, `onRuled`) reads the case
 (`GET /api/finance/disputes/:id`): the status `Tag` (+ **Overdue**) and an operator sentence, a `dl` of
 facts (claimant · provider · session · payment held · raised · response due · under review since ·
-ruling due), the attendance-audit line, the claim and every statement with its evidence links
+ruling due), the attendance-audit line, a ticket case's Evidence Vault line and links (PROJECTS EX3),
+the claim and every statement with its evidence links
 (`/api/media/proxy/:id`), then — while `canResolve` — the ruling form: a `SelectButton` (Pay the
 provider · Refund the attendee · Split; on a product case Pay the seller · Refund the buyer, never
 Split, `outcomesFor`) with a one-line hint, a `NumberInput` for the provider's share

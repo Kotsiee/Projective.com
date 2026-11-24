@@ -48,6 +48,8 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
 		"Service role: the payout-schedule cron's claim. Not user-initiated; the run refuses while the switch is off.",
 	"live-payments.ts#claim_due_deposit_rules":
 		"Service role: the recurring-deposit cron's claim. Not user-initiated; the run refuses while the switch is off.",
+	"DisputeBackendService.ts#mark_dispute_vault_ready":
+		"Service role: the dispute service's word that an Evidence Vault's files are copied (finance.dispute_vaults pending -> ready); moves no money. Reached from open, after the raise passed the switch, and from an operator's vault read (PROJECTS EX3, #558).",
 	"checkout-tax.ts#record_tax_calculation":
 		"Service role: records what Stripe Tax answered for a checkout preview (finance.tax_calculations) and moves no money; the order door that charges the tax is behind the switch (Decision #490, CK4).",
 	"checkout-tax.ts#record_tax_transaction":

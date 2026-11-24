@@ -4,12 +4,15 @@ import { useRef } from "preact/hooks";
 import "../styles/dispute-desk.css";
 import { Dialog, Message } from "@projective/ui/feedback";
 import { Button, NumberInput, SelectButton, Textarea } from "@projective/ui/fields";
-import { Tag } from "@projective/ui/display";
-import type {
-	DisputeCase,
-	DisputeOutcome,
-	DisputeParty,
-	DisputeQueueItem,
+import { MetaLine, Tag } from "@projective/ui/display";
+import {
+	type DisputeCase,
+	type DisputeOutcome,
+	type DisputeParty,
+	type DisputeQueueItem,
+	disputeSummaryHref,
+	disputeVaultFacts,
+	disputeVaultHref,
 } from "@projective/types/finance";
 import { mediaProxyHref } from "@projective/types/files";
 import {
@@ -252,6 +255,43 @@ export function DisputeRulingDialog(props: DisputeRulingDialogProps): JSX.Elemen
 
 							{d.audit ? <DisputeRoomLog audit={d.audit} /> : null}
 							{d.room ? <p class="ddesk-dlg__text">{roomAccessLine(d.room)}</p> : null}
+
+							{d.vault
+								? (
+									<section class="ddesk-dlg__section" aria-label="Evidence Vault">
+										<h3 class="ddesk-dlg__heading">Evidence Vault</h3>
+										<MetaLine
+											size="xs"
+											items={[
+												disputeVaultFacts(d.vault).state,
+												`frozen ${disputeTimeLabel(d.vault.createdAt)}`,
+												{
+													text: disputeVaultFacts(d.vault).reference,
+													title: d.vault.sha256,
+													tabular: true,
+												},
+											]}
+										/>
+										<ul class="ddesk-dlg__files">
+											<li>
+												<a
+													class="ddesk-dlg__file"
+													href={disputeVaultHref(d.id)}
+													target="_blank"
+													rel="noopener"
+												>
+													Open the raw snapshot
+												</a>
+											</li>
+											<li>
+												<a class="ddesk-dlg__file" href={disputeSummaryHref(d.id)} download>
+													Download the case summary (PDF)
+												</a>
+											</li>
+										</ul>
+									</section>
+								)
+								: null}
 
 							<section class="ddesk-dlg__section" aria-label="Statements and evidence">
 								<h3 class="ddesk-dlg__heading">Statements &amp; evidence</h3>
