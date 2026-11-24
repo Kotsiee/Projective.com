@@ -133,11 +133,13 @@ conversion margin (#337 M5), the fee an Agency's contract rate applies to (#252)
 
 ### 0.6 Roadmap — no build prompt
 
-- **Round robin and parallel stream** (DL D6, audit X6; ruling P3: **Planned**). `open_pull` ships;
-  manual assignment's door (`assign_ticket_manual`) exists but has no caller and no control, which
-  PROJECTS ST3 builds. When the Agency tier needs team fairness: grant `auto_assign_round_robin` and
-  `assign_parallel_stream` (each already checks `can_review_project`), let ST3's routing control
-  offer them with their Dev axis, and lift PRODUCT_SPEC's Planned markers.
+- **Round robin and parallel stream** (DL D6, audit X6; ruling P3: **Planned**). `open_pull` and
+  manual assignment ship (PROJECTS ST3, Decision #547: the client pins, the freelancer accepts by
+  claiming). When the Agency tier needs team fairness: grant `auto_assign_round_robin` and
+  `assign_parallel_stream` (each already checks `can_review_project`), lift
+  `set_stage_assignment_mode`'s `feature_not_supported` refusal of them, add them to
+  `ShippingAssignmentMode` and the inspector's Routing control with their Dev axis, and lift
+  PRODUCT_SPEC's Planned markers.
 - **The Global Workload Kanban** (DL D15; ruling P3: **Planned**): a read-only board over
   `check_ticket_capacity`'s sums and `get_workload_capacity`, on `@projective/ui/kanban`.
 - **Kanban column windowing** (DL D8; ruling P3: keep the DOM). Measure first; Z1 records the

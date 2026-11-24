@@ -29,6 +29,7 @@ import {
 	type ProjectSummary,
 	reconcileSetup,
 	type SendProjectMessage,
+	type StageAssignmentMode,
 	stageCostCents,
 	stageDefaultIntensity,
 	stageIntensityLocked,
@@ -169,6 +170,8 @@ interface OwnerBucket {
 	cards: Map<string, Map<string, BoardCard>>;
 	/** Tickets the client deleted, keyed by project id — withheld from every board read after. */
 	deletedCards: Map<string, Set<string>>;
+	/** Stage routing the client chose (Decision #547), keyed by project id then stage id. */
+	stageModes: Map<string, Map<string, StageAssignmentMode>>;
 	/** Sent messages, keyed by {@link channelKey}, oldest first. */
 	messages: Map<string, ChatMessage[]>;
 	/** Created submission units, keyed by project id, newest first. */
@@ -258,6 +261,7 @@ function bucketFor(owner: string): OwnerBucket {
 		aliases: new Map(),
 		cards: new Map(),
 		deletedCards: new Map(),
+		stageModes: new Map(),
 		messages: new Map(),
 		submissions: new Map(),
 		hires: new Map(),
@@ -471,6 +475,19 @@ export function putTicketCard(owner: string, projectId: string, card: BoardCard)
 }
 
 /** Record a deleted ticket: its stored card goes, and the corpus card is withheld from now on. */
+/** Record the routing the client chose for one stage (`set_stage_assignment_mode`'s stub). */
+export function recordStageMode(
+	owner: string,
+	projectId: string,
+	stageId: string,
+	mode: StageAssignmentMode,
+): void {
+	const modes = bucketFor(owner).stageModes;
+	const forProject = modes.get(projectId) ?? new Map<string, StageAssignmentMode>();
+	forProject.set(stageId, mode);
+	modes.set(projectId, forProject);
+}
+
 export function recordTicketDeletion(owner: string, projectId: string, ticketId: string): void {
 	const bucket = bucketFor(owner);
 	bucket.cards.get(projectId)?.delete(ticketId);
@@ -1170,10 +1187,11 @@ export function overlayBoardPage(page: BoardPage, actor?: ReadActor): BoardPage 
 	if (!bucket) return page;
 	const stored = bucket.cards.get(page.projectId);
 	const deleted = bucket.deletedCards.get(page.projectId);
+	const modes = bucket.stageModes.get(page.projectId);
 	// Through the resolver, because a board page carries only the routed segment: the alias table is
 	// what lets a board opened by slug still see stages added through a save made by uuid.
 	const setup = storedSetupFor(writeOwnerOf(actor), [page.projectId])?.patch;
-	if (!stored?.size && !setup?.stages?.length && !deleted?.size) return page;
+	if (!stored?.size && !setup?.stages?.length && !deleted?.size && !modes?.size) return page;
 
 	// A stage board is addressed by its channel id, and the fixture corpus mints a stage and its room
 	// with the SAME id (`stage-N`), which is also what `findBoardPage` matches on. Scope is therefore a
@@ -1195,10 +1213,20 @@ export function overlayBoardPage(page: BoardPage, actor?: ReadActor): BoardPage 
 		}
 	}
 
-	const stages = overlayStages(page.stages, setup?.stages, cards);
+	const stages = overlayStages(page.stages, setup?.stages, cards).map((stage) => ({
+		...stage,
+		assignmentMode: modes?.get(stage.id) ?? stage.assignmentMode,
+	}));
+	// Leaving Manual clears the stage's pins, as `set_stage_assignment_mode` does.
+	const routed = cards.map((card) => {
+		const stage = stages.find((s) => s.id === card.stageId);
+		return card.pinnedTo && stage?.assignmentMode !== "manual"
+			? { ...card, pinnedTo: null, pinnedToViewer: false }
+			: card;
+	});
 	return {
 		...page,
-		cards,
+		cards: routed,
 		total: cards.length,
 		stages,
 		// Recomputed rather than carried: a column list built before a stage was added would render a
@@ -1948,6 +1976,9 @@ export function claimedStubCard(card: BoardCard, assignee: ProjectParty, now: nu
 		claimed: true,
 		claimedAt: iso,
 		assignee,
+		// The claim consumes a pin: it is the pinned freelancer's acceptance (Decision #547).
+		pinnedTo: null,
+		pinnedToViewer: false,
 	};
 	return {
 		...claimed,

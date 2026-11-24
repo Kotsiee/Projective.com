@@ -67,7 +67,14 @@ import {
 	staleSetupRefusal,
 	touchesLockableFields,
 } from "./live-writes.ts";
-import { CLAIM_REFUSAL, claimTicketRow } from "./live-claim.ts";
+import {
+	assignTicketRow,
+	CLAIM_REFUSAL,
+	claimTicketRow,
+	declineTicketPinRow,
+	PIN_REFUSAL,
+	setStageAssignmentModeRow,
+} from "./live-claim.ts";
 import { DELETE_REFUSAL, deleteTicketRow } from "./live-ticket-delete.ts";
 import {
 	applyOnboardingSim,
@@ -107,6 +114,7 @@ import {
 	recordMemberRemoval,
 	recordProjectArchive,
 	recordRoleChange,
+	recordStageMode,
 	recordTicketDeletion,
 	recordTicketManager,
 	setupPatchFrom,
@@ -168,14 +176,18 @@ import type {
 	SubmissionReviewed,
 } from "@projective/types/projects";
 import {
+	type AssignTicket,
 	type ClaimTicket,
 	composeWorkspace,
+	type DeclineTicketPin,
 	type DeleteStage,
 	type DeleteTicket,
+	isPinnable,
 	isSelfClaimable,
 	NEW_LANE_REFUSAL_MESSAGE,
 	type ProjectWorkspace,
 	SERVICE_STAGE_REFUSAL_MESSAGE,
+	type SetStageAssignmentMode,
 	STAGE_NOT_INCLUDED_MESSAGE,
 	STAGE_REMOVAL_LOCKED_MESSAGE,
 	STALE_MOVE_MESSAGE,
@@ -3477,7 +3489,10 @@ export class ProjectBackendService {
 		if (current.claimed) return refused(CLAIM_REFUSAL.alreadyClaimed);
 		if (!current.hasDescription) return refused(CLAIM_REFUSAL.undescribed);
 		const stage = page.stages.find((s) => s.id === current.stageId);
-		if (stage && stage.assignmentMode !== "open_pull") return refused(CLAIM_REFUSAL.notOpenPull);
+		const accepting = stage?.assignmentMode === "manual" && current.pinnedToViewer;
+		if (stage && stage.assignmentMode !== "open_pull" && !accepting) {
+			return refused(CLAIM_REFUSAL.notOpenPull);
+		}
 		if (!current.escrowHeld && current.funding?.state !== "funded") {
 			return refused(CLAIM_REFUSAL.needsFunding);
 		}
@@ -3489,6 +3504,170 @@ export class ProjectBackendService {
 		invalidateProjects(actor);
 		return ok({ card }, { message: "Ticket claimed — it's yours." });
 	}
+
+	// #region Manual assignment (Decision #547)
+
+	/**
+	 * Route one stage by open pull or by hand (`projects.set_stage_assignment_mode`, review authority
+	 * and `hire`). Leaving Manual clears the stage's pins. The stub mirrors the board's `canPin`.
+	 */
+	static async setStageAssignmentMode(
+		input: SetStageAssignmentMode,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ stageId: string; mode: SetStageAssignmentMode["mode"] }>> {
+		type Out = { stageId: string; mode: SetStageAssignmentMode["mode"] };
+		const denied = requireIdentity<Out>(actor, "route a stage");
+		if (denied) return denied;
+		const message = input.mode === "manual"
+			? "Tickets here are now assigned by the client."
+			: "Freelancers on this stage can claim its tickets again.";
+
+		const live = await liveWrite<Out>(
+			"setStageAssignmentMode",
+			actor,
+			input.stageId,
+			message,
+			async (a) => {
+				const outcome = await setStageAssignmentModeRow(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				return { data: { stageId: input.stageId, mode: input.mode } };
+			},
+			"stage",
+			input.projectId,
+		);
+		if (live) return live;
+
+		const board = findBoardPage({ projectId: input.projectId, view: "stages" });
+		if (!board) return noSuchProject(input.projectId);
+		const page = overlayBoardPage(board, actor);
+		if (!page.canPin) return refused(PIN_REFUSAL.notPermitted);
+		if (!page.stages.some((s) => s.id === input.stageId)) {
+			return notFound<Out>("stage", input.stageId);
+		}
+		recordStageMode(writeOwnerOf(actor), input.projectId, input.stageId, input.mode);
+		invalidateProjects(actor);
+		return ok({ stageId: input.stageId, mode: input.mode }, { message });
+	}
+
+	/**
+	 * Pin one ticket on a manual stage to a live-seat holder (`projects.assign_ticket_manual`). The pin
+	 * holds nothing: the freelancer accepts by claiming it, or declines. The stub refuses what the door
+	 * refuses in its words ({@link PIN_REFUSAL}), from the same {@link isPinnable} and seat list.
+	 */
+	static async assignTicket(
+		input: AssignTicket,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ card: BoardCard }>> {
+		const denied = requireIdentity<{ card: BoardCard }>(actor, "assign a ticket");
+		if (denied) return denied;
+
+		const live = await liveWrite<{ card: BoardCard }>(
+			"assignTicket",
+			actor,
+			input.ticketId,
+			(d) => `Assigned to ${d.card.pinnedTo?.name ?? "them"}. They'll accept it to start.`,
+			async (a) => {
+				const outcome = await assignTicketRow(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				invalidateProjects(a);
+				await touchProjects([input.projectId]);
+				const page = await fetchBoardPage(a, { projectId: input.projectId, view: "stages" });
+				const card = page?.cards.find((c) => c.id === outcome.data);
+				if (!card) {
+					return { refusal: { status: 502, message: "Ticket assigned but not readable." } };
+				}
+				return { data: { card } };
+			},
+			"ticket",
+			input.projectId,
+		);
+		if (live) return live;
+
+		const board = findBoardPage({ projectId: input.projectId, view: "stages" });
+		if (!board) return noSuchProject(input.projectId);
+		const owner = writeOwnerOf(actor);
+		const page = overlayBoardPage(board, actor);
+		const current = storedTicketCard(owner, input.projectId, input.ticketId) ??
+			page.cards.find((card) => card.id === input.ticketId);
+		if (!current) return fail(404, { message: "That ticket is no longer on this board." });
+		if (!page.canPin) return refused(PIN_REFUSAL.notPermitted);
+		const stage = page.stages.find((s) => s.id === current.stageId);
+		if (stage?.assignmentMode !== "manual") return refused(PIN_REFUSAL.notManual);
+		const candidate = (stage.pinnable ?? []).find((c) => c.userId === input.assigneeId);
+		if (!candidate) return refused(PIN_REFUSAL.noSeat);
+		if (!isPinnable(current, stage)) return refused(PIN_REFUSAL.notOpen);
+		const cap = stage.maxConcurrentIntensity;
+		if (cap !== null && candidate.load + current.workload > cap) {
+			return fail(409, {
+				message: `This ticket (intensity ${current.workload}) would put them at ${
+					candidate.load + current.workload
+				} against their stage cap of ${cap}, so it cannot be assigned to them.`,
+				errors: { ticket: "not_allowed" },
+			});
+		}
+
+		const card: BoardCard = {
+			...current,
+			pinnedTo: candidate.party,
+			pinnedToViewer: candidate.userId === actor.userId,
+		};
+		putTicketCard(owner, input.projectId, card);
+		invalidateProjects(actor);
+		return ok({ card }, {
+			message: `Assigned to ${candidate.party.name}. They'll accept it to start.`,
+		});
+	}
+
+	/**
+	 * The pinned freelancer declines a pin (`projects.decline_ticket_pin`). Nothing was held, so
+	 * nothing moves: the pin clears and the client is told.
+	 */
+	static async declineTicketPin(
+		input: DeclineTicketPin,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ card: BoardCard }>> {
+		const denied = requireIdentity<{ card: BoardCard }>(actor, "decline a ticket");
+		if (denied) return denied;
+		const message = "Declined. The client can assign it to someone else.";
+
+		const live = await liveWrite<{ card: BoardCard }>(
+			"declineTicketPin",
+			actor,
+			input.ticketId,
+			message,
+			async (a) => {
+				const outcome = await declineTicketPinRow(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				invalidateProjects(a);
+				await touchProjects([input.projectId]);
+				const page = await fetchBoardPage(a, { projectId: input.projectId, view: "stages" });
+				const card = page?.cards.find((c) => c.id === outcome.data);
+				if (!card) {
+					return { refusal: { status: 502, message: "Ticket declined but not readable." } };
+				}
+				return { data: { card } };
+			},
+			"ticket",
+			input.projectId,
+		);
+		if (live) return live;
+
+		const board = findBoardPage({ projectId: input.projectId, view: "stages" });
+		if (!board) return noSuchProject(input.projectId);
+		const owner = writeOwnerOf(actor);
+		const page = overlayBoardPage(board, actor);
+		const current = storedTicketCard(owner, input.projectId, input.ticketId) ??
+			page.cards.find((card) => card.id === input.ticketId);
+		if (!current) return fail(404, { message: "That ticket is no longer on this board." });
+		if (!current.pinnedToViewer) return refused(PIN_REFUSAL.notYours);
+
+		const card: BoardCard = { ...current, pinnedTo: null, pinnedToViewer: false };
+		putTicketCard(owner, input.projectId, card);
+		invalidateProjects(actor);
+		return ok({ card }, { message });
+	}
+
+	// #endregion
 
 	/**
 	 * Delete one ticket from the board — PRODUCT_SPEC §Deletion Protocol.

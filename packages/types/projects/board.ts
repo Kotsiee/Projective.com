@@ -759,6 +759,14 @@ export const BoardCardSchema = z.object({
 	/** The freelancer who claimed it (folds `claimed`/`in_progress`); `null` = unclaimed. */
 	assignee: ProjectPartySchema.nullable(),
 	/**
+	 * The live-seat holder a manual stage's client pinned this ticket to (`projects.tickets.
+	 * pinned_assignee_id`, Decision #547), or `null`. A reservation: nothing is held until they
+	 * accept by claiming it.
+	 */
+	pinnedTo: ProjectPartySchema.nullable().optional(),
+	/** Whether the pin names the acting viewer, who may then accept (claim) or decline it. Absent reads as `false`. */
+	pinnedToViewer: z.boolean().optional(),
+	/**
 	 * The CLIENT-side member accountable for this ticket inside a multi-member workspace — the person
 	 * who briefs it, answers questions about it and reviews what comes back.
 	 *
@@ -923,6 +931,26 @@ export const ASSIGNMENT_MODE_LABEL: Record<StageAssignmentMode, string> = {
 };
 
 /**
+ * The routing modes a client may choose today (Decision #338, ruling P3): Round Robin and Parallel
+ * Stream are Planned, and `projects.set_stage_assignment_mode` refuses them.
+ */
+export const ShippingAssignmentMode = z.enum(["open_pull", "manual"]);
+export type ShippingAssignmentMode = z.infer<typeof ShippingAssignmentMode>;
+
+/** One freelancer a manual stage's ticket may be pinned to, with what they already hold there. */
+export const PinCandidateSchema = z.object({
+	/** Their user id — what the pin names (`assign_ticket_manual`'s `p_assignee_id`). */
+	userId: z.string().min(1).max(80),
+	party: ProjectPartySchema,
+	/** The summed $W_i$ of the tickets they hold on this stage now (the stage cap's measure). */
+	load: z.number().min(0),
+});
+export type PinCandidate = z.infer<typeof PinCandidateSchema>;
+
+/** What a freelancer reads on a manual stage's open ticket in place of Claim. */
+export const PINNED_BY_CLIENT_LABEL = "Assigned by the client";
+
+/**
  * The stage descriptor the ticket composer's pipeline renders and prices against. Richer than the
  * old name-only shape because every fact the composer shows about a stage — its rate, its roster,
  * its live load, its routing — is the client's evidence for the two decisions the modal asks of
@@ -958,6 +986,12 @@ export const BoardStageRefSchema = z.object({
 	createCategory: CreateCategory.nullable().optional(),
 	/** The freelancers assigned to this stage — the composer's cascading avatar stack. */
 	members: z.array(ProjectPartySchema).max(50),
+	/**
+	 * Who a ticket here may be pinned to (Decision #547): the freelancers holding a live seat on the
+	 * stage (`projects.fn_holds_live_seat`), each with the $W_i$ they hold on it. Filled only when the
+	 * board's {@link BoardPageSchema} `canPin` is set; a non-seat-holder is never in it. Absent reads as none.
+	 */
+	pinnable: z.array(PinCandidateSchema).max(50).optional(),
 	/** Live ticket count already routed through this stage (the inspector's load figure). */
 	ticketCount: z.number().int().min(0),
 	/**
@@ -1087,6 +1121,11 @@ export const BoardPageSchema = z.object({
 	view: BoardView,
 	/** Whether the acting user is the client — gates ticket moves, stage reorder + the create actions. */
 	viewerIsClient: z.boolean(),
+	/**
+	 * Whether the acting user may route stages and pin tickets (Decision #547): review authority on a
+	 * project with a roster, i.e. not a personal one. The doors re-check it, with `hire` on a business.
+	 */
+	canPin: z.boolean().optional(),
 	/**
 	 * Who architected the engagement (Decision #421): a client `project`, or a `service` the client
 	 * bought, whose stages only the freelancer working it adds ({@link canAddStage}).
@@ -1475,17 +1514,64 @@ export function ticketIncludesStage(
 /**
  * Whether a ticket is open for a self-claim: Ready (`todo`), unclaimed, described (the purchasing
  * gate), not on a personal project (only its owner holds those) and on a stage whose routing is an
- * open pull. Capacity, funding and payout readiness are the server's to answer, so they are not
- * guessed here.
+ * open pull — or a manual stage whose client pinned it to this viewer, whose claim is their
+ * acceptance (Decision #547). Capacity, funding and payout readiness are the server's to answer, so
+ * they are not guessed here.
  */
 export function isSelfClaimable(
-	card: Pick<BoardCard, "status" | "claimed" | "hasDescription" | "stageId" | "personal">,
+	card: Pick<BoardCard, "status" | "claimed" | "hasDescription" | "stageId" | "personal"> & {
+		pinnedToViewer?: boolean;
+	},
 	stage: Pick<BoardStageRef, "assignmentMode"> | undefined,
 ): boolean {
 	if (card.status !== "todo" || card.claimed || !card.hasDescription || !card.stageId) return false;
 	if (card.personal) return false;
+	if (stage?.assignmentMode === "manual") return card.pinnedToViewer === true;
 	return stage?.assignmentMode === "open_pull";
 }
+
+/**
+ * Whether review authority is offered a pin on this ticket (`projects.assign_ticket_manual`'s gates,
+ * mirrored to decide what to offer): on a manual stage, Ready, unclaimed, described, not frozen and not
+ * on a personal project. Ready rather than the door's New-or-Ready, because Ready is what the pinned
+ * freelancer can accept ({@link isSelfClaimable}). The seat, the caps, payout and `hire` are the door's.
+ */
+export function isPinnable(
+	card: Pick<
+		BoardCard,
+		"status" | "claimed" | "hasDescription" | "stageId" | "personal" | "frozen"
+	>,
+	stage: Pick<BoardStageRef, "assignmentMode"> | undefined,
+): boolean {
+	if (!card.stageId || card.claimed || card.frozen || card.personal || !card.hasDescription) {
+		return false;
+	}
+	if (card.status !== "todo") return false;
+	return stage?.assignmentMode === "manual";
+}
+
+/** `POST /api/projects/stages/assignment-mode` — route one stage by open pull or by hand. */
+export const SetStageAssignmentModeSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	stageId: z.string().min(1).max(120),
+	mode: ShippingAssignmentMode,
+});
+export type SetStageAssignmentMode = z.infer<typeof SetStageAssignmentModeSchema>;
+
+/** `POST /api/projects/ticket/assign` — pin one ticket to one of its stage's live-seat holders. */
+export const AssignTicketSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	ticketId: z.string().min(1).max(120),
+	assigneeId: z.string().min(1).max(80),
+});
+export type AssignTicket = z.infer<typeof AssignTicketSchema>;
+
+/** `POST /api/projects/ticket/decline-pin` — the pinned freelancer turns the pin down. */
+export const DeclineTicketPinSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	ticketId: z.string().min(1).max(120),
+});
+export type DeclineTicketPin = z.infer<typeof DeclineTicketPinSchema>;
 // #endregion
 
 // #region Create stage (write)

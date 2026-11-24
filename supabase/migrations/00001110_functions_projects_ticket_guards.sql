@@ -43,20 +43,24 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = '';
 
 -- #endregion
 
 -- #region 4b. Ticket Lifecycle State Machine
 
 -- Keep updated_at fresh so "order by updated_at DESC" (non-backlog stages) stays accurate.
+--
+-- These ticket triggers pin their own empty search path (Decision #547 (b)): a trigger without one
+-- runs on its caller's, so an unqualified type here broke every `search_path = ''` door that writes
+-- a ticket.
 CREATE OR REPLACE FUNCTION projects.fn_ticket_touch_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at := now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = '';
 
 -- Creation with only a title is allowed; a purchase/checkout transition requires a description.
 CREATE OR REPLACE FUNCTION projects.fn_enforce_ticket_checkout_desc()
@@ -65,10 +69,10 @@ DECLARE
     v_entering_checkout boolean;
 BEGIN
     v_entering_checkout :=
-        (NEW.payment_status = 'escrow_funded'::payment_status
-            AND OLD.payment_status IN ('unpaid'::payment_status, 'needs_funding'::payment_status))
-        OR (NEW.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status)
-            AND OLD.status NOT IN ('claimed'::ticket_status, 'in_progress'::ticket_status));
+        (NEW.payment_status = 'escrow_funded'::public.payment_status
+            AND OLD.payment_status IN ('unpaid'::public.payment_status, 'needs_funding'::public.payment_status))
+        OR (NEW.status IN ('claimed'::public.ticket_status, 'in_progress'::public.ticket_status)
+            AND OLD.status NOT IN ('claimed'::public.ticket_status, 'in_progress'::public.ticket_status));
 
     IF v_entering_checkout THEN
         IF (NEW.text_description IS NULL OR btrim(NEW.text_description) = '')
@@ -79,19 +83,19 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = '';
 
 -- Manual sort_order is only valid in the backlog ("New") stage; other stages auto-order by updated_at.
 CREATE OR REPLACE FUNCTION projects.fn_ticket_ordering_guard()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.sort_order IS DISTINCT FROM OLD.sort_order
-        AND NEW.status <> 'backlog'::ticket_status THEN
+        AND NEW.status <> 'backlog'::public.ticket_status THEN
         RAISE EXCEPTION 'Manual ticket ordering is only permitted in the backlog (New) stage.';
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = '';
 
 -- Who may move a claimed ticket between status columns (Decision #293; PRODUCT_SPEC §Ticket
 -- Movement, §The Claim-and-Commit Protocol). Raises 42501, or returns when the move is allowed.
@@ -222,12 +226,20 @@ DECLARE
     v_reviewer boolean;
     -- The columns the client's composer writes (ProjectBackendService.commitTicket), plus the stamp
     -- trg_ticket_touch_updated_at keeps; a ticket manager's statement may move these and no others.
+    -- `pinned_assignee_id` rides along because a stage move clears it (below); naming one is refused
+    -- for every client statement.
     v_composer CONSTANT text[] := ARRAY[
         'title', 'description', 'text_description', 'current_stage_id', 'owner_user_id', 'priority',
         'workload_intensity', 'required_stages', 'tasks', 'due_date', 'unit_price_cents', 'sort_order',
-        'updated_at'
+        'updated_at', 'pinned_assignee_id'
     ];
 BEGIN
+    -- A pin names a live-seat holder on the ticket's stage (Decision #547), so a ticket that leaves
+    -- its stage, by any path, leaves unpinned.
+    IF TG_OP = 'UPDATE' AND NEW.current_stage_id IS DISTINCT FROM OLD.current_stage_id THEN
+        NEW.pinned_assignee_id := NULL;
+    END IF;
+
     IF current_user IN ('anon', 'authenticated') THEN
         IF TG_OP = 'INSERT' THEN
             IF NEW.payment_status IS DISTINCT FROM 'unpaid'::payment_status
@@ -254,6 +266,15 @@ BEGIN
             RAISE EXCEPTION USING
                 ERRCODE = '42501',
                 MESSAGE = 'A ticket is claimed or assigned through the board, not written to '
+                    || 'somebody directly.';
+        END IF;
+        -- The same for a pin: only projects.assign_ticket_manual names one, after the routing mode,
+        -- the live seat and the caps. A statement may clear one, never name or move it.
+        IF NEW.pinned_assignee_id IS NOT NULL
+            AND (TG_OP = 'INSERT' OR NEW.pinned_assignee_id IS DISTINCT FROM OLD.pinned_assignee_id) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'A ticket is assigned to a freelancer through the board, not written to '
                     || 'somebody directly.';
         END IF;
 
@@ -363,19 +384,19 @@ RETURNS TRIGGER AS $$
 BEGIN
     -- Claim: freelancer attaches themselves (or status flips to 'claimed')
     IF (OLD.current_assignee_id IS NULL AND NEW.current_assignee_id IS NOT NULL)
-        OR (OLD.status <> 'claimed'::ticket_status AND NEW.status = 'claimed'::ticket_status) THEN
+        OR (OLD.status <> 'claimed'::public.ticket_status AND NEW.status = 'claimed'::public.ticket_status) THEN
         NEW.claimed_at := now();
     END IF;
 
     -- Freelancer removed mid-work: send the ticket back to the backlog.
     IF OLD.current_assignee_id IS NOT NULL AND NEW.current_assignee_id IS NULL THEN
-        NEW.status := 'backlog'::ticket_status;
+        NEW.status := 'backlog'::public.ticket_status;
         NEW.claimed_at := NULL;
     END IF;
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = '';
 
 -- Escrow money movement (funds delegated to finance.* SECURITY DEFINER helpers in 0009), and the
 -- work-start gate: no hold, no work (Decision #165). On the trigger rather than in each RPC so every
@@ -447,9 +468,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 -- Prepaid later stages follow the ticket (Decision #430). Arriving in a stage holds what was prepaid
 -- there (finance.fn_activate_ticket_reservation), however the stage was reached: the Chain Reaction, a
 -- move, a funding placement. A stage taken off the ticket gives its prepayment back, and a ticket that
--- ends (completed or cancelled) gives back every stage it never reached. AFTER the escrow sync, so a
--- completion's release has run; its own writes touch no column it fires on. A personal project carries
--- no money.
 CREATE OR REPLACE FUNCTION projects.fn_ticket_prepay_sync()
 RETURNS TRIGGER AS $$
 DECLARE

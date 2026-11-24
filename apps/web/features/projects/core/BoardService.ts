@@ -1,6 +1,7 @@
 import { getProjects, postProjects } from "./api.ts";
 import { announceStageCreated } from "./stage-events.ts";
 import type {
+	AssignTicket,
 	BoardCard,
 	BoardListParams,
 	BoardPage,
@@ -8,8 +9,10 @@ import type {
 	CommitTicket,
 	CreatedStage,
 	CreateStageInput,
+	DeclineTicketPin,
 	DeleteTicket,
 	MoveTicket,
+	SetStageAssignmentMode,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
 
@@ -101,5 +104,22 @@ export const BoardService = {
 	 */
 	remove(payload: DeleteTicket): Promise<ProjectsResult<{ ticketId: string }>> {
 		return postProjects<{ ticketId: string }>("/api/projects/ticket/delete", payload);
+	},
+
+	/** Route one stage by open pull or by hand (Decision #547). Not optimistic. */
+	setAssignmentMode(
+		payload: SetStageAssignmentMode,
+	): Promise<ProjectsResult<{ stageId: string; mode: SetStageAssignmentMode["mode"] }>> {
+		return postProjects("/api/projects/stages/assignment-mode", payload);
+	},
+
+	/** Pin a manual stage's ticket to a live-seat holder; answers with the pinned card. Holds nothing. */
+	assign(payload: AssignTicket): Promise<ProjectsResult<{ card: BoardCard }>> {
+		return postProjects<{ card: BoardCard }>("/api/projects/ticket/assign", payload);
+	},
+
+	/** The pinned freelancer declines the pin; answers with the unpinned card. */
+	declinePin(payload: DeclineTicketPin): Promise<ProjectsResult<{ card: BoardCard }>> {
+		return postProjects<{ card: BoardCard }>("/api/projects/ticket/decline-pin", payload);
 	},
 };

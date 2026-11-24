@@ -177,3 +177,42 @@ Deno.test("a stage column links to its channel and the client may add a stage", 
 	);
 	assertEquals(keys(rows), ["column-new-ticket", "column-open-stage", "column-add-stage"]);
 });
+
+// #region Manual assignment (Decision #547)
+Deno.test("a client offered a pin sees Assign to…; re-pinning reads Assign to someone else…", () => {
+	const run = { ...noop, assign: () => {} };
+	assertEquals(
+		row(ticketMenuModel(facts({ canPin: true }), run), "ticket-assign")?.label,
+		"Assign to…",
+	);
+	const pinned = facts({
+		canPin: true,
+		card: card({ pinnedTo: { name: "Ivy", avatar: null, handle: "ivy" } }),
+	});
+	assertEquals(
+		row(ticketMenuModel(pinned, run), "ticket-assign")?.label,
+		"Assign to someone else…",
+	);
+	assertEquals(row(ticketMenuModel(facts({ canPin: false }), run), "ticket-assign"), undefined);
+});
+
+Deno.test("the pinned freelancer is offered Accept ticket and Decline assignment", () => {
+	const run = { ...noop, declinePin: () => {} };
+	const rows = ticketMenuModel(
+		facts({
+			isClient: false,
+			isFreelancer: true,
+			canClaim: true,
+			card: card({ pinnedToViewer: true }),
+		}),
+		run,
+	);
+	assertEquals(row(rows, "ticket-claim")?.label, "Accept ticket");
+	assertEquals(row(rows, "ticket-decline-pin")?.label, "Decline assignment");
+	const open = ticketMenuModel(facts({ isClient: false, isFreelancer: true, canClaim: true }), run);
+	assertEquals([row(open, "ticket-claim")?.label, row(open, "ticket-decline-pin")], [
+		"Claim ticket",
+		undefined,
+	]);
+});
+// #endregion

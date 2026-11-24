@@ -677,7 +677,8 @@ END;
 $$;
 
 -- Reworked self-claim (supersedes 0115): a freelancer may only self-claim when the stage is in
--- 'open_pull' mode; every other mode routes work through the owner/system RPCs below. Capacity is
+-- 'open_pull' mode, or accept the ticket a manual stage's client pinned to them (Decision #547); every
+-- other mode routes work through the owner/system RPCs. Capacity is
 -- always enforced. Returns the held escrow's id, or NULL when the hold was refused: the claim did not
 -- happen and the ticket is now Needs funding (fn_assign_ticket_core, Decision #165).
 --
@@ -721,7 +722,11 @@ BEGIN
     END IF;
     v_mode := COALESCE(v_mode, 'open_pull'::projects.assignment_routing_mode);
 
-    IF v_mode <> 'open_pull'::projects.assignment_routing_mode THEN
+    -- On a manual stage the client's pin names who may take the ticket, and this claim is that
+    -- person's acceptance (Decision #547): every gate below still applies to it.
+    IF v_mode <> 'open_pull'::projects.assignment_routing_mode
+        AND NOT (v_mode = 'manual'::projects.assignment_routing_mode
+            AND (SELECT t.pinned_assignee_id FROM projects.tickets t WHERE t.id = p_ticket_id) IS NOT DISTINCT FROM v_actor) THEN
         RAISE EXCEPTION 'This stage uses % assignment; tickets here are routed by the project owner, not self-claimed.',
             replace(v_mode::text, '_', ' ')
             USING ERRCODE = 'check_violation';

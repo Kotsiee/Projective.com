@@ -525,3 +525,12 @@
    board to `block-size: auto` with a `100dvh`-derived floor, which is the same guess the base rule
    just dropped (and it keyed off 768px, one pixel wide of the shell's own 767px mobile boundary, so at
    exactly 768px the desktop lane was still mounted while the board had already switched models). */
+
+/* #region Manual assignment (Decision #547) */
+/* Who routes a manual stage's open ticket: non-actionable meta text in the card's action slot. */
+.brd-pin {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+/* #endregion */

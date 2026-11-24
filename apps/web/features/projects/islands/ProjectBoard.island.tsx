@@ -27,7 +27,10 @@ import {
 	type BoardView,
 	buildBoardColumns,
 	formatTicketMoney,
+	isPinnable,
+	PINNED_BY_CLIENT_LABEL,
 	providerVisibleCards,
+	type ShippingAssignmentMode,
 	STALE_MOVE_MESSAGE,
 	ticketWorkLocked,
 } from "../types/projects-types.ts";
@@ -59,6 +62,7 @@ import { TicketCard } from "../components/TicketCard.tsx";
 import { BoardColumnHeader } from "../components/BoardColumnHeader.tsx";
 import { BoardEmptyColumn } from "../components/BoardEmptyColumn.tsx";
 import { DeleteTicketDialog } from "../components/DeleteTicketDialog.tsx";
+import { AssignTicketDialog } from "../components/AssignTicketDialog.tsx";
 import { columnMenuModel, ticketMenuModel } from "../core/board-menus.ts";
 import { channelHref } from "../core/chat-context.ts";
 import { TicketListView } from "../components/TicketListView.tsx";
@@ -280,6 +284,13 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	/** The card a right-click Delete is confirming, and the dialog that confirms it. */
 	const deleteTarget = useSignal<BoardCard | null>(null);
 	const deleteOpen = useSignal(false);
+	/** The ticket the "Assign to…" picker is open for (Decision #547), and the pick in flight. */
+	const assignTarget = useSignal<BoardCard | null>(null);
+	const assignOpen = useSignal(false);
+	const assignBusy = useSignal<string | null>(null);
+	const assignError = useSignal<string | null>(null);
+	/** The stage whose routing switch is in flight. */
+	const routingStage = useSignal<string | null>(null);
 	const notice = useSignal("");
 	const newIdRef = useRef(0);
 	const searchRef = useRef<HTMLDivElement>(null);
@@ -719,6 +730,104 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	}
 	// #endregion
 
+	// #region Manual assignment (Decision #547)
+	function stageOfCard(card: BoardCard): BoardStageRef | undefined {
+		return stages.value.find((s) => s.id === card.stageId);
+	}
+
+	/** The server's `canPin` on the effective client seat, over the ticket's own pin gate. */
+	function viewerCanPin(card: BoardCard): boolean {
+		return (initial?.canPin ?? false) && access.value.isClient &&
+			isPinnable(card, stageOfCard(card));
+	}
+
+	function requestAssign(card: BoardCard): void {
+		assignTarget.value = card;
+		assignError.value = null;
+		assignOpen.value = true;
+	}
+
+	/** Pin the picked seat holder. Not optimistic: the card changes when the server's answer lands. */
+	async function pickAssignee(userId: string): Promise<void> {
+		const card = assignTarget.peek();
+		if (!card || assignBusy.value) return;
+		assignBusy.value = userId;
+		assignError.value = null;
+		const res = await BoardService.assign({
+			projectId: props.projectId,
+			ticketId: card.id,
+			assigneeId: userId,
+		});
+		assignBusy.value = null;
+		if (!res.ok || !res.data) {
+			assignError.value = res.message ?? "That ticket couldn't be assigned.";
+			return;
+		}
+		const saved = res.data.card;
+		cards.value = cards.value.map((c) => (c.id === saved.id ? saved : c));
+		assignOpen.value = false;
+		assignTarget.value = null;
+		toast(res.message ?? "Ticket assigned.");
+	}
+
+	async function declinePin(card: BoardCard): Promise<void> {
+		const res = await BoardService.declinePin({ projectId: props.projectId, ticketId: card.id });
+		if (!res.ok || !res.data) {
+			toast(res.message ?? "That assignment couldn't be declined.");
+			return;
+		}
+		const saved = res.data.card;
+		cards.value = cards.value.map((c) => (c.id === saved.id ? saved : c));
+		toast(res.message ?? "Declined.");
+	}
+
+	/** Route one stage by open pull or by hand; leaving Manual clears its pins, as the door does. */
+	async function routeStage(stageId: string, mode: ShippingAssignmentMode): Promise<void> {
+		if (routingStage.value) return;
+		routingStage.value = stageId;
+		const res = await BoardService.setAssignmentMode({ projectId: props.projectId, stageId, mode });
+		routingStage.value = null;
+		if (!res.ok) {
+			toast(res.message ?? "That stage's routing couldn't be changed.");
+			return;
+		}
+		stages.value = stages.value.map((s) => (s.id === stageId ? { ...s, assignmentMode: mode } : s));
+		if (mode !== "manual") {
+			cards.value = cards.value.map((c) =>
+				c.stageId === stageId && c.pinnedTo ? { ...c, pinnedTo: null, pinnedToViewer: false } : c
+			);
+		}
+		toast(res.message ?? "Routing saved.");
+	}
+
+	/**
+	 * A card's action slot: Claim (Accept, on a ticket pinned to the viewer), or on a manual stage's open
+	 * ticket the line that says who routes it — the client, or for the client who it is waiting on.
+	 */
+	function itemAction(c: BoardCard): JSX.Element | null {
+		if (viewerCanClaim(c, stages.value, providerStageIds, access.value.isClient)) {
+			const verb = c.pinnedToViewer ? "Accept" : "Claim";
+			return (
+				<Button
+					variant="outlined"
+					size="sm"
+					rounded
+					label={verb}
+					aria-label={`${verb} ${c.title}`}
+					loading={claimingId.value === c.id}
+					disabled={claimingId.value !== null && claimingId.value !== c.id}
+					onClick={() => void claimTicket(c)}
+				/>
+			);
+		}
+		if (c.claimed || stageOfCard(c)?.assignmentMode !== "manual") return null;
+		if (access.value.isClient) {
+			return c.pinnedTo ? <span class="brd-pin">Waiting on {c.pinnedTo.name}</span> : null;
+		}
+		return <span class="brd-pin">{PINNED_BY_CLIENT_LABEL}</span>;
+	}
+	// #endregion
+
 	/**
 	 * Splice the card into its new lane, optimistically.
 	 *
@@ -1026,6 +1135,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			isFreelancer: access.value.isFreelancer,
 			boardHref: boardUrl,
 			canClaim: viewerCanClaim(c, stages.value, providerStageIds, access.value.isClient),
+			canPin: viewerCanPin(c),
 			canMove: canDrag(c),
 			dropRefusal: (col) => dropRefusal(c, col),
 		}, {
@@ -1037,6 +1147,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			moveTo: (columnId) => moveToColumn(c, columnId),
 			copied: (ok) => toast(ok ? "Ticket link copied." : "That link couldn't be copied."),
 			remove: () => requestDelete(c),
+			assign: () => requestAssign(c),
+			declinePin: () => void declinePin(c),
 		});
 		return <ActionMenu model={model} surface={surface} aria-label={`Actions for ${c.title}`} />;
 	}
@@ -1297,21 +1409,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 								/>
 							)}
 							onItemActivate={openDetail}
-							renderItemActions={(c) =>
-								viewerCanClaim(c, stages.value, providerStageIds, access.value.isClient)
-									? (
-										<Button
-											variant="outlined"
-											size="sm"
-											rounded
-											label="Claim"
-											aria-label={`Claim ${c.title}`}
-											loading={claimingId.value === c.id}
-											disabled={claimingId.value !== null && claimingId.value !== c.id}
-											onClick={() => void claimTicket(c)}
-										/>
-									)
-									: null}
+							renderItemActions={itemAction}
 							renderColumnHeader={(ctx) => (
 								<BoardColumnHeader
 									ctx={ctx}
@@ -1388,6 +1486,10 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 							? (c) => void claimTicket(c)
 							: undefined}
 						claimBusy={claimingId.value === viewing.id}
+						onRoute={(initial?.canPin ?? false) && access.value.isClient
+							? (stageId, mode) => void routeStage(stageId, mode)
+							: undefined}
+						routingStageId={routingStage.value}
 					/>
 				)
 				: null}
@@ -1469,6 +1571,19 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 				visible={deleteOpen}
 				title={deleteTarget.value?.title ?? null}
 				onAccept={() => void deleteTicket()}
+			/>
+
+			<AssignTicketDialog
+				visible={assignOpen}
+				title={assignTarget.value?.title ?? null}
+				candidates={(assignTarget.value && stageOfCard(assignTarget.value)?.pinnable) ?? []}
+				cap={(assignTarget.value && stageOfCard(assignTarget.value)?.maxConcurrentIntensity) ??
+					null}
+				workload={assignTarget.value?.workload ?? 0}
+				pinnedName={assignTarget.value?.pinnedTo?.name ?? null}
+				busyId={assignBusy.value}
+				error={assignError.value}
+				onPick={(userId) => void pickAssignee(userId)}
 			/>
 
 			<BoardWarnings

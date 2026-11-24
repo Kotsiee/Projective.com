@@ -72,6 +72,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"stage.deadline_approaching",
 	"stage.deadline_missed",
 	"ticket.assigned",
+	"ticket.pin_declined",
 	"ticket.claimed",
 	"ticket.revision_requested",
 	"ticket.completed",

@@ -27,6 +27,7 @@ import type {
 	BoardCard,
 	BoardStageRef,
 	ProjectParty,
+	ShippingAssignmentMode,
 	TicketStageRef,
 } from "../../types/projects-types.ts";
 import { isSharedWorkspace, stageIntensityLocked } from "../../types/projects-types.ts";
@@ -193,6 +194,13 @@ export interface TicketViewProps {
 	onClaim?: (card: BoardCard) => void;
 	/** A claim the host started is in flight. */
 	claimBusy?: boolean;
+	/**
+	 * Route a stage by open pull or by hand (Decision #547) — the inspector's Routing control. Passed
+	 * only where the viewer may (the board's `canPin` on a client seat); absent, Routing is a fact.
+	 */
+	onRoute?: (stageId: string, mode: ShippingAssignmentMode) => void;
+	/** The stage whose routing switch is in flight. */
+	routingStageId?: string | null;
 }
 
 export function TicketView(props: TicketViewProps): JSX.Element {
@@ -589,6 +597,12 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 						run: () => placeInPipeline(id, { kind: "seam", before: card.stages.length }),
 					}
 					: null}
+				routing={props.onRoute
+					? {
+						busy: props.routingStageId === id,
+						onChange: (mode) => props.onRoute?.(id, mode),
+					}
+					: null}
 				onClose={closeInspector}
 				onPatch={(sp) => patchStage(id, sp)}
 				onParallel={(parallel) => setParallel(id, parallel)}
@@ -606,7 +620,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 					loading={props.claimBusy}
 					onClick={() => props.onClaim?.(server)}
 				>
-					Claim ticket
+					{server.pinnedToViewer ? "Accept ticket" : "Claim ticket"}
 				</Button>
 			)
 			: null;

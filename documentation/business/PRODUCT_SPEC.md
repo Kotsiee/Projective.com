@@ -2766,7 +2766,18 @@ Clients can configure how work is distributed within a stage:
   capacity.
 - **Round Robin — Planned (Decision #338, ruling P3):** The system automatically assigns the next
   ticket to the freelancer with the lowest current $W_i$.
-- **Manual Assignment:** The Client/Business must explicitly assign tickets to specific freelancers.
+- **Manual Assignment (Decision #547):** The Client/Business assigns each Ready ticket to a freelancer
+  who holds a live seat on the stage, and that freelancer accepts it before anything binds. The
+  assignment (a _pin_) holds no money and counts against no capacity; it is a reservation that only
+  the pinned freelancer may take. They are told (`ticket.assigned`) and either **Accept** it, which
+  is their own claim, with the IP Transfer Deed, the capacity check, the escrow hold and the claim
+  window a self-claim has, or **Decline** it, which clears the pin and tells the client
+  (`ticket.pin_declined`). The client may move the pin to someone else at any time before it is
+  accepted. A pin is offered only for someone hired on the stage, refused when the ticket would take
+  them past their stage or global cap, and cleared when the ticket leaves the stage or the stage
+  leaves Manual. Other freelancers on a Manual stage claim nothing there; they read "Assigned by
+  the client". A pin on a ticket that is not yet funded stays off the freelancer's board until it is
+  (freelancers never see unpaid tickets), though the notice reaches them at once.
 - **Parallel Stream (One-Offs) — Planned (ruling P3):** In one-off projects, all freelancers work on
   the stage objectives simultaneously. Payouts are tied to their individual seat contracts rather
   than specific ticket units.
@@ -2776,14 +2787,18 @@ are built.
 
 > **Implementation:** a stage's `assignment_mode` (`projects.assignment_routing_mode` enum:
 > `open_pull` | `round_robin` | `manual` | `parallel_stream`, set via
-> `projects.set_stage_assignment_mode`) governs routing. Self-claim (`projects.claim_ticket`) is
-> permitted **only** in `open_pull`; the other modes route through owner/system RPCs —
-> `auto_assign_round_robin` (next ready ticket → the capacity-cleared roster member with the lowest
-> current $W_i$), `assign_ticket_manual` (owner pin, override), and `assign_parallel_stream` (fan
-> the stage's ready tickets across the roster for concurrent execution). Every path funnels through
-> `projects.fn_assign_ticket_core`, so the concurrency caps above are always enforced. The owner
-> selects the mode — and triggers a round-robin / parallel-stream pass — from the **Assignment
-> routing** control in the stage's Staffing tab; the current mode is surfaced through
+> `projects.set_stage_assignment_mode`, which refuses the two planned modes) governs routing.
+> Self-claim (`projects.claim_ticket`) is permitted in `open_pull`, and on a `manual` stage only to
+> the freelancer the ticket is pinned to (`tickets.pinned_assignee_id`), whose claim is the
+> acceptance. `projects.assign_ticket_manual` pins and binds nothing; `projects.decline_ticket_pin`
+> declines. `auto_assign_round_robin` (next ready ticket → the capacity-cleared roster member with
+> the lowest current $W_i$) and `assign_parallel_stream` (fan the stage's ready tickets across the
+> roster) stay ungranted until their modes ship. Every claim funnels through
+> `projects.fn_assign_ticket_core`, so the concurrency caps above are always enforced. Review
+> authority (with `hire` on a business project) selects the mode from the **Routing** control in a
+> stage's Operating settings (the ticket view's stage inspector, Stage overview), and pins from a
+> ticket's **Assign to…** menu row, a picker of the stage's live-seat holders and their load. The
+> current mode is surfaced on the board (`BoardStageRef.assignmentMode`) and through
 > `projects.get_stage_details`.
 
 #### 5. Ticket Lifecycle & Business Rules

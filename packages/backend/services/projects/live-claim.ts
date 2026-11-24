@@ -1,4 +1,9 @@
-import type { ClaimTicket } from "@projective/types/projects";
+import type {
+	AssignTicket,
+	ClaimTicket,
+	DeclineTicketPin,
+	SetStageAssignmentMode,
+} from "@projective/types/projects";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { legalAcceptanceRefusal } from "../../core/legal-gate.ts";
 import { isPayoutNotReady, payoutNotReadyRefusal } from "../../core/payout-gate.ts";
@@ -105,3 +110,112 @@ export async function claimTicketRow(
 	if (data === null) return { refusal: CLAIM_REFUSAL.needsFunding };
 	return { data: input.ticketId };
 }
+
+// #region Manual assignment (Decision #547)
+
+/**
+ * Map a routing, pin or decline door's failure (`set_stage_assignment_mode`, `assign_ticket_manual`,
+ * `decline_ticket_pin`) onto a refusal. Each door words its rules for the reader: a planned mode
+ * (`0A000`), a check (`23514`: not manual, no live seat, over a cap, not open) and a refusal of this
+ * caller (`42501`). The payout gate names the assignee here, never the caller. `missing_permission:
+ * hire` and anything else fall through to {@link refusalFrom}.
+ */
+export function pinRefusal(error: ClaimDbError, field = "ticket"): WriteRefusal {
+	if (isPayoutNotReady(error)) {
+		return {
+			status: 409,
+			message: "That freelancer can't be paid yet, so no work can be assigned to them.",
+			errors: { [field]: "payout_not_ready" },
+		};
+	}
+	if (error.code === "0A000") {
+		return { status: 422, message: error.message, errors: { mode: "planned" } };
+	}
+	if (error.code === "23514") {
+		return { status: 409, message: error.message, errors: { [field]: "not_allowed" } };
+	}
+	if (error.code === "42501" && !error.message.startsWith("permission denied")) {
+		return { status: 403, message: error.message, errors: { [field]: "not_permitted" } };
+	}
+	return refusalFrom(error.message, field);
+}
+
+/** Route one stage by open pull or by hand, through `projects.set_stage_assignment_mode`. */
+export async function setStageAssignmentModeRow(
+	actor: ReadActor & { accessToken: string },
+	input: SetStageAssignmentMode,
+): Promise<WriteOutcome<string>> {
+	if (!UUID_RE.test(input.stageId)) return null;
+	const { error } = await projectsDb(actor).rpc("set_stage_assignment_mode", {
+		p_stage_id: input.stageId,
+		p_mode: input.mode,
+	});
+	if (error) {
+		return error.code === "P0001" && error.message.includes("not found")
+			? null
+			: { refusal: pinRefusal(error, "mode") };
+	}
+	return { data: input.stageId };
+}
+
+/** Pin one ticket to a live-seat holder, through `projects.assign_ticket_manual`. Holds nothing. */
+export async function assignTicketRow(
+	actor: ReadActor & { accessToken: string },
+	input: AssignTicket,
+): Promise<WriteOutcome<string>> {
+	if (!UUID_RE.test(input.ticketId) || !UUID_RE.test(input.assigneeId)) return null;
+	const { error } = await projectsDb(actor).rpc("assign_ticket_manual", {
+		p_ticket_id: input.ticketId,
+		p_assignee_id: input.assigneeId,
+	});
+	if (error) {
+		return error.code === "P0001" && error.message.includes("not found")
+			? null
+			: { refusal: pinRefusal(error) };
+	}
+	return { data: input.ticketId };
+}
+
+/** The pinned freelancer declines, through `projects.decline_ticket_pin`. Nothing was held. */
+export async function declineTicketPinRow(
+	actor: ReadActor & { accessToken: string },
+	input: DeclineTicketPin,
+): Promise<WriteOutcome<string>> {
+	if (!UUID_RE.test(input.ticketId)) return null;
+	const { error } = await projectsDb(actor).rpc("decline_ticket_pin", {
+		p_ticket_id: input.ticketId,
+	});
+	if (error) return error.code === "P0002" ? null : { refusal: pinRefusal(error) };
+	return { data: input.ticketId };
+}
+
+// #endregion
+
+/** The pin doors' refusals in their own words, shared by the live and stub paths (stub parity). */
+export const PIN_REFUSAL = {
+	notPermitted: {
+		status: 403,
+		message: "Only the project owner may pin an assignee.",
+		errors: { ticket: "not_permitted" },
+	},
+	notManual: {
+		status: 409,
+		message: "Only a ticket on a stage set to manual assignment can be assigned to someone.",
+		errors: { ticket: "not_allowed" },
+	},
+	noSeat: {
+		status: 409,
+		message: "That person is not hired on this ticket's stage, so it cannot be assigned to them.",
+		errors: { ticket: "not_allowed" },
+	},
+	notOpen: {
+		status: 409,
+		message: "This ticket is not open to claim.",
+		errors: { ticket: "not_allowed" },
+	},
+	notYours: {
+		status: 403,
+		message: "Only the freelancer this ticket is assigned to can decline it.",
+		errors: { ticket: "not_permitted" },
+	},
+} as const satisfies Record<string, WriteRefusal>;

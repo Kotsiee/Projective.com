@@ -12,8 +12,10 @@ import {
 	countsAsOnboarded,
 	engagementArchetype,
 	formatTicketMoney,
+	HELD_TICKET_STATUSES,
 	isDiscussionRef,
 	isTaskProject,
+	type PinCandidate,
 	type ProjectFormat,
 	type ProjectParty,
 	type ProjectStructure,
@@ -296,6 +298,7 @@ const TICKET_COLUMNS = [
 	"project_id",
 	"current_stage_id",
 	"current_assignee_id",
+	"pinned_assignee_id",
 	"owner_user_id",
 	"title",
 	"text_description",
@@ -362,6 +365,7 @@ interface TicketRow {
 	project_id: string;
 	current_stage_id: string | null;
 	current_assignee_id: string | null;
+	pinned_assignee_id: string | null;
 	owner_user_id: string | null;
 	title: string | null;
 	text_description: string | null;
@@ -1308,6 +1312,8 @@ interface CardContext {
 	billing: TicketBillingFacts;
 	/** A personal project (Decision #192): its cards carry no funding line. */
 	personal: boolean;
+	/** The acting user, whom a pin may name ({@link BoardCard.pinnedToViewer}). */
+	viewerId: string;
 }
 
 /**
@@ -1367,6 +1373,9 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 		status: toTicketStatus(ticket.status) as TicketStatus,
 		stageId: ticket.current_stage_id,
 		assignee,
+		pinnedTo: partyFor(ticket.pinned_assignee_id, ctx.parties),
+		pinnedToViewer: ticket.pinned_assignee_id !== null &&
+			ticket.pinned_assignee_id === ctx.viewerId,
 		owner: partyFor(ticket.owner_user_id, ctx.parties),
 		contributors: contributorsOf(history),
 		// `claimed_at` is stamped by `projects.fn_ticket_claim_before` when an assignee attaches.
@@ -1709,6 +1718,39 @@ async function fetchViewerSeats(
 
 // #endregion
 
+// #region Pin candidates
+
+/**
+ * Who a ticket on this stage may be pinned to (Decision #547): each freelancer holding a LIVE seat on
+ * it — `assigned` or `accepted`, the statuses `projects.fn_holds_live_seat` reads — with the summed
+ * $W_i$ of the tickets they hold on it now. A team seat's members are live-seat holders too, but their
+ * roster is the team's own read, so they are not listed here (the door still accepts them).
+ */
+function pinCandidatesOf(
+	stageId: string,
+	assignments: readonly AssignmentRow[],
+	tickets: readonly TicketRow[],
+	parties: Map<string, PartyRow>,
+): PinCandidate[] {
+	const out: PinCandidate[] = [];
+	for (const row of assignments) {
+		const userId = row.freelancer_profile_id;
+		if (row.project_stage_id !== stageId || row.assignee_type !== "freelancer" || !userId) continue;
+		if (row.status !== "assigned" && row.status !== "accepted") continue;
+		if (out.some((c) => c.userId === userId)) continue;
+		const load = tickets
+			.filter((t) =>
+				t.current_stage_id === stageId && t.current_assignee_id === userId &&
+				HELD_TICKET_STATUSES.has(toTicketStatus(t.status) as TicketStatus)
+			)
+			.reduce((sum, t) => sum + (Number(t.workload_intensity) || 0), 0);
+		out.push({ userId: clamp(userId, 80), party: boardParty(parties.get(userId)), load });
+	}
+	return out.slice(0, 50);
+}
+
+// #endregion
+
 // #region The read
 
 /**
@@ -1788,6 +1830,7 @@ export async function fetchBoardPage(
 	const personParticipants = participantRows.filter((p) => p.profile_type === "freelancer");
 	const parties = await fetchParties(actor, [
 		...ticketRows.map((t) => t.current_assignee_id),
+		...ticketRows.map((t) => t.pinned_assignee_id),
 		...ticketRows.map((t) => t.owner_user_id),
 		...ticketRows.flatMap((t) => taskCompleterIds(t.tasks)),
 		...historyRows.map((h) => h.actor_id),
@@ -1819,9 +1862,13 @@ export async function fetchBoardPage(
 	}
 
 	const windows = stageWindows(stageRows);
-	const stages: BoardStageRef[] = stageRows.map((stage) =>
-		toStageRef(stage, { tickets: ticketRows, rosters, assignmentCounts, windows })
-	);
+	// Review authority on a project with a roster routes and pins (Decision #547); the doors re-check
+	// it, `hire` included.
+	const canPin = viewerIsClient && !personal;
+	const stages: BoardStageRef[] = stageRows.map((stage) => ({
+		...toStageRef(stage, { tickets: ticketRows, rosters, assignmentCounts, windows }),
+		pinnable: canPin ? pinCandidatesOf(stage.id, assignmentRows, ticketRows, parties) : [],
+	}));
 	// #endregion
 
 	// #region Cards
@@ -1845,6 +1892,7 @@ export async function fetchBoardPage(
 		lockPayments,
 		billing,
 		personal,
+		viewerId: actor.userId,
 	};
 
 	const allCards = ticketRows.map((ticket) => toCard(ticket, cardContext));
@@ -1973,6 +2021,7 @@ export async function fetchBoardPage(
 		currency,
 		view,
 		viewerIsClient,
+		canPin,
 		engagementKind: summary.kind,
 		viewerStageIds,
 		columns,

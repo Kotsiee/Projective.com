@@ -8,7 +8,9 @@ import {
 	engagementArchetype,
 	type FileItem,
 	formatTicketMoney,
+	HELD_TICKET_STATUSES,
 	isTaskProject,
+	type PinCandidate,
 	type ProjectDetail,
 	type ProjectParty,
 	type StageAssignmentMode,
@@ -1162,6 +1164,27 @@ function corpusCards(detail: ProjectDetail): BoardCard[] {
 	return kept ? [kept] : [];
 }
 
+/**
+ * A fixture stage's pin candidates (Decision #547): its roster, each under a stable stub user id
+ * (`fx-<handle>`), with the $W_i$ they hold on the stage. The live read lists live seats the same way.
+ */
+function fixturePinCandidates(
+	stageId: string,
+	members: readonly ProjectParty[],
+	cards: readonly BoardCard[],
+): PinCandidate[] {
+	return members.map((party, i) => ({
+		userId: `fx-${party.handle ?? i}`,
+		party,
+		load: cards
+			.filter((c) =>
+				c.stageId === stageId && c.assignee?.name === party.name &&
+				HELD_TICKET_STATUSES.has(c.status)
+			)
+			.reduce((sum, c) => sum + c.workload, 0),
+	}));
+}
+
 /** Resolve a board page for the params, or `null` when the project doesn't exist (→ 404). */
 export function findBoardPage(params: BoardListParams): BoardPage | null {
 	const detail = findProjectDetail(params.projectId);
@@ -1200,6 +1223,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 
 	const pool = assigneePool(detail);
 	const windows = stageWindows(detail);
+	const canPin = detail.viewerIsClient && detail.personal !== true;
 	const stages: BoardStageRef[] = detail.channels.stages.map((s) => {
 		const econ = stageEconomics(s);
 		const window = windows.get(s.id) ?? { startAt: null, endAt: null, dependsOnStageId: null };
@@ -1220,6 +1244,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 			unitPriceCents: econ.unitPriceCents,
 			categoryWeight: econ.categoryWeight,
 			members,
+			pinnable: canPin ? fixturePinCandidates(s.id, members, all) : [],
 			ticketCount: all.filter((c) => c.stageId === s.id).length,
 			// Over what this viewer may see before the list filters narrow the page, like the live board.
 			funding: rollupFundingState(
@@ -1248,6 +1273,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 		currency: "USD",
 		view,
 		viewerIsClient: detail.viewerIsClient,
+		canPin,
 		engagementKind: detail.kind,
 		viewerStageIds,
 		columns,

@@ -986,6 +986,8 @@ export interface StageSpec {
 	status: StageStatus;
 	skills: string[];
 	completedDaysAgo?: number;
+	/** `manual`: the client assigns each ticket (Decision #547); absent = open pull. */
+	assignmentMode?: "manual";
 }
 
 export interface TicketTask {
@@ -1011,6 +1013,8 @@ export interface TicketSpec {
 	tasks: TicketTask[];
 	/** The client-side accountable seat (`tickets.owner_user_id`). */
 	owner?: string;
+	/** The live-seat holder a manual stage's client pinned it to, not yet accepted (Decision #547). */
+	pinnedTo?: string;
 }
 
 export interface SubmissionSpec {
@@ -1128,6 +1132,7 @@ export const PROJECTS: ProjectSpec[] = [
 				priceCents: 800_000,
 				status: "in_progress",
 				skills: ["ux-research", "user-interviews"],
+				assignmentMode: "manual",
 			},
 			{
 				key: "s2",
@@ -1229,6 +1234,7 @@ export const PROJECTS: ProjectSpec[] = [
 				payment: "unpaid",
 				tasks: [{ text: "Pick the six wallets with product", done: false }],
 				owner: "hannah",
+				pinnedTo: "maris",
 			},
 			{
 				key: "t3",

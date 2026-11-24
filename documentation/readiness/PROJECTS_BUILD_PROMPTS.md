@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 22 open, 0 partly done, 4 done (§0 ledger).
-> Runnable now: ST3, ST4, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 21 open, 0 partly done, 5 done (§0 ledger).
+> Runnable now: ST4, TK1, CH2, NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -58,10 +58,11 @@ A prompt that lands gets a row here.
 | ST1 | A setup save names its version: `UpdateProject.expectedUpdatedAt` from `ProjectSetup.updatedAt`, `apply_write_batch`'s `version` op (lock, compare to the ms, advance), `409 stale_write` with `details.current`, `428` without one; the rigs' Reload notice; probe `setup_stale_write.sql` | `295f12f8` (#551) | `a9959c64` |
 | ST2 | The setup form's Remove reaches a door: `projects.delete_stage` refuses a stage with history `55000` before anything moves and deletes an untouched one; `projects.stage_removability` gives the setup DTO its `removable` flag; `DELETE /api/projects/:id/stages/:stageId`; a touched stage's Remove opens `StageLockedDialog`; the stub PATCH keeps an omitted stage as live does; probe `stage_removal.sql` | `60a0d652` (#553) | `4fed9f01` |
 | ST6 | A write by one party to a shared project shows on the other's next read, in every isolate: each cached project read is keyed by the project's KV version (`services/projects/freshness.ts`), bumped by every write path (#555 lists them); a KV-less isolate keeps its own bumps; a board reads around the cache while the claim sweep is due; #427 (a) confirmed and written into PRODUCT_SPEC | `08f27344` (#555) | `70f78452` |
+| ST3 | Manual assignment: `set_stage_assignment_mode` granted (planned modes refused `0A000`); `tickets.pinned_assignee_id`; `assign_ticket_manual` pins on a Manual stage and binds nothing; `decline_ticket_pin`; `claim_ticket` takes the pinned freelancer's acceptance; the stage inspector's Routing control, Assign to… and its picker, Accept / Decline; Helia's Discovery stage seeded Manual with a pin; probe `seat_lock_and_capacity.sql` region 4 | ST3_COMMIT (#547) | `9d55866d` |
 
 ### 0.1 Row → work order
 
-Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 04 (ST6, #555), 05, 06, 08, 12, 16, 18, 19, 20 (ST5, #554), 24, 25
+Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 04 (ST6, #555), 05, 06, 08, 12, 13 (ST3, #547), 16, 18, 19, 20 (ST5, #554), 24, 25
 (PM-WP1, `07d853f6`, #516), 28, 41, 42, 45, 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513).
 PJ-14 and PJ-74 are ⏸ (§0.4).
 
@@ -75,7 +76,6 @@ PJ-14 and PJ-74 are ⏸ (§0.4).
 | PJ-09 | 🟡 · High · UAT   | PM-WP4b steps 4, 6 (ST2 landed, #553) | ✅ after WP4b (a touched stage archives and settles) |
 | PJ-10 | ❌ · High · UAT   | PM-D7a → PM-D7b              | 🟡 after D7a (no loops, no cross-project routes); ✅ after D7b (a waiting stage opens)                          |
 | PJ-11 | 🟡 · High · UAT   | **ST4**                      | The freelancer's own gauge renders from a self-only read                                                        |
-| PJ-13 | ❌ · Normal · UAT | **ST3**                      | A client pins a ticket to a seat holder through a granted door                                                  |
 
 **Hiring & members** (83%)
 
@@ -172,7 +172,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Section                        | Today | Path                                                                                                              |
 | :----------------------------- | ----: | :---------------------------------------------------------------------------------------------------------------- |
 | Project setup                  |  100% | ✅ (ST1, ST6)                                                                                                      |
-| Stages                         |   69% | D7a 75% → ST3 81% → ST4 88% → WP4b 94% → D7b 100%                                                                 |
+| Stages                         |   69% | D7a 77% → ST4 85% → WP4b 92% → D7b 100%                                                                            |
 | Hiring & members               |   83% | WP4b 92% → NO1 + CD2 + counsel 100%                                                                               |
 | Tickets & delivery             |   59% | WP8 62% → TK1 + TK2 66% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100%                    |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
@@ -187,7 +187,7 @@ after PM-WP1. The paths follow §0.2's order:
 (+ CD2), and the chat chain (MS3, MS5, CH1, P2d, SN3, the T&S P-chain).
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a), PJ-43 (EX2 → EX3) and PJ-60 (NO2 + CD2).
-Those are the Critical · UAT rows. Below them come the High · UAT rows: ST3, ST4, WP5a, EX1,
+Those are the Critical · UAT rows. Below them come the High · UAT rows: ST4, WP5a, EX1,
 CH2, FL3, FL4, CFG2 and LP1.
 
 ### 0.2 Run order
@@ -230,7 +230,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 6. **PM-WP9** (★00001150, ⏳ PM-WP8 step 4): PJ-27, PJ-38.
 7. **COMMS MS5** (⏳ MS3), then **CH1** (⏳ MS3): PJ-52, PJ-47.
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
-9. **CH2**, then **ST3**, then **ST4**.
+9. **CH2**, then **ST4** (ST3 ✅, #547).
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
 11. **CH3**, then **CH4**'s audio column, **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
     slug.
@@ -268,7 +268,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001150` (stage funding, submissions, cancel, approve) | TK1, EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | FBP DB13, DB14                                                    |
 | `00001130` (stages, members, `apply_write_batch`)        | CH2; PM D7a, WP4a, WP4b, S3, D7b                             | —                                                                 |
 | `00001110` / `00001120` (ticket guards and doors)        | TK1; PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
-| `00001140` (claims, capacity, workload)                  | ST3, ST4; PM WP5a, D7b                                       | —                                                                 |
+| `00001140` (claims, capacity, workload)                  | ST4; PM WP5a, D7b                                            | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
 | `00000017` + `00001260` (disputes)                       | EX2, EX3; PM-WP4a step 6                                     | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1, CH2, CH3, CH4                                           | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
@@ -279,7 +279,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
 | `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | ST4, TK1, EX1, EX2; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1 | COMMS NT5; T&S R3                                                 |
 | `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1, CH3, CH4                                                | COMMS MS3, MS5; T&S R2                                            |
-| `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | ST3; PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                    | O·WP6                                                             |
+| `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                         | O·WP6                                                             |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`               | every prompt                                                 | every readiness track: edit your rows and the computed lines only |
 
 ### 0.3 Human stops on this path
@@ -295,7 +295,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 6  | #430 (c): a reservation whose stage is repriced                                                                                              | TK1           | It keeps the price it was bought at; the new price applies to unfunded stages only                                                                                                                                       |
 | 7  | #430 (d) a refund of one prepaid stage; (f) a card prepaying later stages                                                                    | TK1           | (d) a payer door while the stage is unclaimed; (f) a card funds the funding stage only, and Buy now says so                                                                                                              |
 | 13 | #427 (a): the client creates every ticket on a service engagement                                                                            | ST6 ✅ (#555)  | **Ruled #555:** confirmed: the client creates every ticket on a service engagement, and the details the seller edits exclude tickets (PRODUCT_SPEC.md §Services)                                                         |
-| 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3           | Review authority pins among live-seat holders, capacity-checked; the assignee may hand it back before submitting                                                                                                         |
+| 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3 ✅         | **Ruled #547:** B, the pin binds nothing until the freelancer accepts it by claiming (or declines); pins on Manual stages only |
 | 15 | Where the workload gauge sits                                                                                                                | ST4           | Beside Claim (the ticket view, stage Tasks) and in the freelancer's Projects header; on `/home` once PRD-A1 lands                                                                                                        |
 | 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1 (#546)    | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
 | 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2 (#548)    | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
@@ -478,70 +478,6 @@ its section (IDs are never reused), never silence. Finish with: what you built; 
 ---
 
 ## 2. Project setup, stages & members
-
-### ST3 — A client pins a ticket to a seat holder (manual assignment)
-
-Closes PJ-13 (❌ → ✅).
-
-```text
-PROMPT ST3: Manual assignment ships as the spec says: a stage can be set to manual, and the
-client side pins a ticket to a freelancer who holds a live seat on it
-
-ROLE: Full-stack engineer. Queue S: 00001140, 00002510 (by name), the Staffing tab.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - projects.assign_ticket_manual (00001140:546-567) is granted (00002510:126) but has no TS
-    caller; only probes call it (seat_lock_and_capacity.sql:124-152, payout_ready_gate.sql:
-    264-276, business_authority.sql:180, business_lifecycle.sql:181).
-  - projects.set_stage_assignment_mode (00001140:524-539) has no grant. The UI only shows the
-    mode as the "Routing" fact (StageInspector.tsx:549). Only open_pull tickets are claimable
-    (board.ts:1480-1484; ProjectBackendService.ts:3306), and the claim refusal for any other
-    mode already exists (CLAIM_REFUSAL.notOpenPull, live-claim.ts:35, :74).
-  - get_stage_details surfaces the mode (00001100:640, :663) and has no TS caller. The dev
-    snippet seeds manual, round_robin and parallel_stream stages
-    (supabase/snippets/populate_01_projects.sql:559, :577-579); the seeds are all open_pull.
-  - Rulings: #338 P3 ships open_pull and manual, and keeps Round Robin and Parallel Stream
-    Planned (PJ-14, PM §0.6). PRODUCT_SPEC.md:2683, :2688 say manual ships, and :2697-2700
-    describes a Staffing-tab control that does not exist. #139 (PRODUCT_SPEC.md:2322-2323): a
-    stage is never assigned without the freelancer's acceptance; a live seat is that
-    acceptance.
-
-🧑 DECISION (before step 3): who pins, and what the pinned freelancer may do. Put this to me:
-  A (recommended): review authority (can_review_project) pins an open ticket to a holder of a
-     live seat on the ticket's current stage (fn_holds_live_seat), capacity-checked
-     (check_ticket_capacity). The pin is a claim made on their behalf, so escrow binds exactly
-     as a claim binds it. The assignee is told, and may hand the ticket back to Ready from its
-     menu while nothing is submitted, through the same path a lapsed claim takes (find it; if
-     none exists, stop and tell me).
-  B: as A, but the assignee must accept the pin before it binds.
-
-STEPS:
-  1. Red first: extend seat_lock_and_capacity.sql. A client sets a stage to manual and pins a
-     ticket (both refused today: no grant, no product path); a pin to a non-seat-holder is
-     refused; a pin over capacity is refused.
-  2. Grant set_stage_assignment_mode by name, and make it refuse round_robin and
-     parallel_stream with a clear error until #338 P3 un-plans them.
-  3. Service, Zod and thin routes: POST /api/projects/stages/assignment-mode and POST
-     /api/projects/ticket/assign. The board DTO carries `canPin` (a server flag) and the
-     pinnable seat holders.
-  4. UI: the Staffing tab's Routing fact becomes a control (open pull | manual), and a manual
-     stage's ticket menu offers "Assign to…", a picker of live-seat holders showing each
-     person's load. A manual stage's tickets show no Claim to freelancers; they show "Assigned by
-     the client".
-  5. Notify the assignee (a catalogue row in 00005010 if ticket.assigned does not exist).
-  6. Seed one manual stage with a pinned ticket.
-
-ACCEPTANCE: the extended probe is green; as the seeded client, switch a stage to manual and pin
-a ticket; the freelancer sees it in progress and is told; a non-seat-holder never appears in the
-picker; screenshots of the control and the picker.
-
-SAME CHANGE: PRODUCT_SPEC.md (the manual rule as ruled; :2697-2700 matches the control);
-PRODUCT_MANAGEMENT.md (assignment modes); PM_BUILD_PROMPTS.md §0.6's first bullet (manual now
-ships);
-documentation/database/projects/*; Zod; ROUTING.md; the decision row.
-```
-
-§1.2 rows: **PJ-13** ❌ → ✅.
 
 ### ST4 — The freelancer's workload gauge reads their own capacity
 

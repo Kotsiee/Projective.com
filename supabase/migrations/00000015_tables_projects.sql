@@ -441,6 +441,13 @@ CREATE TABLE projects.tickets (
     current_stage_id uuid REFERENCES projects.project_stages(id) ON DELETE SET NULL,
     current_assignee_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
 
+-- The live-seat holder a manual stage's client pinned this ticket to (Decision #547, PROJECTS ST3): a
+-- reservation, never an assignment. Nothing is held and no W_i is counted until that person accepts,
+-- and accepting is their own claim (projects.claim_ticket), which consumes it; declining clears it
+-- (projects.decline_ticket_pin). Named only by projects.assign_ticket_manual; cleared when the ticket
+-- leaves its stage or the stage leaves manual routing.
+pinned_assignee_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+
 -- The ticket's own public address, on the same contract as `projects.projects.slug`: opaque, derived
 -- from nothing, minted once by `security.fn_slug_guard('tkt')` when the insert supplies none, and
 -- refused by that same guard on any later update. It is what the `?tkv=` deep link carries, so a

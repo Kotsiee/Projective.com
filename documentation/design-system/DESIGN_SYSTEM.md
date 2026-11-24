@@ -3544,6 +3544,22 @@ the column's corner for a keyboard activation), `placement?`, `onCreated?`. It w
 that draws stages splices in; a refusal stays inline (`role="alert"`) with the draft kept. Escape and
 an outside press dismiss it.
 
+**`AssignTicketDialog` (`features/projects/components/`, PROJECTS ST3, Decision #547).** The
+client's "Assign to…" picker on a Manual stage's Ready ticket, opened from the board's ticket menu
+(`ticketMenuModel`'s `canPin` · `assign`). A `Dialog` (Signal `visible`, `width="28rem"`, the overlay's
+sheet below `--bp-md`) with a lede (body register, the ticket's title in `<strong>`, "Nothing is held
+until then") and one row per live-seat holder (`BoardStageRef.pinnable`): each row is a `<button
+class="pin-pick__row">`, the dialog's only bordered element because it is the control, carrying a
+`UserAvatar`, the name (`--fw-medium`) and the load in the meta register (`tabular-nums`, "Holds W 1
+of W 3 here"). A row whose load plus the ticket's would pass the stage cap is disabled and says so;
+the global cap is the door's answer. A refusal renders as a `Message` under the rows; the footer is
+one text Cancel. Press feedback `transform: scale(var(--btn-press-scale))`, removed under both
+reduced-motion channels (`styles/pin-picker.css`). Its partners: `StageInspector`'s `routing` prop
+(the **Routing** `SelectButton`, Open pull ⇄ Manual, in Stage overview → Operating settings, with a
+meta hint; a stage on a planned mode reads its label and selects neither), and the board card's
+action slot, which reads "Accept" for a ticket pinned to the viewer, "Assigned by the client" (meta
+text, `.brd-pin`) to other freelancers, and "Waiting on {name}" to the client.
+
 **`FairExitDialog` (`features/projects/components/`, Decision #198).** The reviewer's "End stage
 (Fair Exit)" confirmation. `SubmissionActionBar` gains `onEndStage` and renders **End Stage (Fair
 Exit)** — the `--danger` text button with a new `ExitGlyph`, its word dropped below 1100px like

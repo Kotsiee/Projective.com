@@ -178,6 +178,11 @@ export const TicketRowSchema = z.object({
 	projectId: uuid,
 	currentStageId: uuid.nullable(),
 	currentAssigneeId: uuid.nullable(),
+	/**
+	 * The live-seat holder a manual stage's client pinned the ticket to (Decision #547): a reservation
+	 * the freelancer accepts by claiming, which clears it. Nothing is held while it is set.
+	 */
+	pinnedAssigneeId: uuid.nullable(),
 	slug: z.string().regex(TICKET_SLUG_RE),
 	ownerUserId: uuid.nullable(),
 	title: z.string(),

@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { AGE_RESTRICTED_REASON } from "@projective/types/auth";
 import { PAYOUT_NOT_READY_REASON, PAYOUT_SETUP_HREF } from "@projective/types/finance";
 import { ProjectBackendService } from "./ProjectBackendService.ts";
-import { CLAIM_REFUSAL, claimRefusal } from "./live-claim.ts";
+import { CLAIM_REFUSAL, claimRefusal, PIN_REFUSAL, pinRefusal } from "./live-claim.ts";
 import { resetWriteStore } from "./write-store.ts";
 import type { ReadActor } from "../read-actor.ts";
 
@@ -139,5 +139,65 @@ Deno.test("claimTicket: an anonymous caller is refused before any write", async 
 		{ userId: "", contextId: "", contextType: "personal" },
 	);
 	assertEquals([res.ok, res.status], [false, 401]);
+});
+// #endregion
+
+// #region Manual assignment (Decision #547)
+Deno.test("pinRefusal: each door's sentence keeps its own status", () => {
+	assertEquals(
+		pinRefusal({ code: "0A000", message: "Round robin routing is planned and not available yet." })
+			.errors,
+		{ mode: "planned" },
+	);
+	assertEquals(pinRefusal({ code: "23514", message: PIN_REFUSAL.noSeat.message }).status, 409);
+	assertEquals(pinRefusal({ code: "42501", message: PIN_REFUSAL.notYours.message }).status, 403);
+	const payout = pinRefusal({
+		code: "PK403",
+		message: "payout_not_ready: verify your identity",
+		hint: "self",
+	});
+	assertEquals([payout.status, payout.errors?.ticket], [409, "payout_not_ready"]);
+});
+
+Deno.test("assignTicket (stub): a pin needs a manual stage and a seat holder, and holds nothing", async () => {
+	resetWriteStore();
+	const ticketId = `${PROJECT}-t26`;
+	const openPull = await ProjectBackendService.assignTicket(
+		{ projectId: PROJECT, ticketId, assigneeId: "fx-ravi" },
+		ALICE,
+	);
+	assertEquals([openPull.status, openPull.message], [409, PIN_REFUSAL.notManual.message]);
+
+	const routed = await ProjectBackendService.setStageAssignmentMode(
+		{ projectId: PROJECT, stageId: "stage-5", mode: "manual" },
+		ALICE,
+	);
+	assertEquals(routed.ok, true);
+	const stranger = await ProjectBackendService.assignTicket(
+		{ projectId: PROJECT, ticketId, assigneeId: "fx-nobody" },
+		ALICE,
+	);
+	assertEquals([stranger.status, stranger.message], [409, PIN_REFUSAL.noSeat.message]);
+
+	const pinned = await ProjectBackendService.assignTicket(
+		{ projectId: PROJECT, ticketId, assigneeId: "fx-ravi" },
+		ALICE,
+	);
+	assertEquals(pinned.ok, true, pinned.message);
+	assertEquals([pinned.data?.card.pinnedToViewer, pinned.data?.card.claimed], [false, false]);
+	const claim = await ProjectBackendService.claimTicket({ projectId: PROJECT, ticketId }, ALICE);
+	assertEquals(claim.errors?.ticket, "not_open_pull");
+	const decline = await ProjectBackendService.declineTicketPin(
+		{ projectId: PROJECT, ticketId },
+		ALICE,
+	);
+	assertEquals([decline.status, decline.message], [403, PIN_REFUSAL.notYours.message]);
+
+	await ProjectBackendService.setStageAssignmentMode(
+		{ projectId: PROJECT, stageId: "stage-5", mode: "open_pull" },
+		ALICE,
+	);
+	const board = await ProjectBackendService.board({ projectId: PROJECT, view: "stages" }, ALICE);
+	assertEquals(board.data?.page.cards.find((c) => c.id === ticketId)?.pinnedTo ?? null, null);
 });
 // #endregion

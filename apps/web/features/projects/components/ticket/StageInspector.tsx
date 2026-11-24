@@ -14,6 +14,7 @@ import {
 	INTENSITY_PRICE_MULTIPLIER,
 	LOCKED_INTENSITY_HINT,
 	type ProjectStatus,
+	type ShippingAssignmentMode,
 	stageIntensityLocked,
 	TICKET_INTENSITY_HINT,
 	TICKET_INTENSITY_LABEL,
@@ -54,6 +55,10 @@ import { fundingRollup } from "../../core/funding-ui.ts";
  *
  * A stage the ticket does not run through yet opens here too, so it can be read and configured
  * before it is added; its settings go with it when it is, and it offers no step to run in.
+ *
+ * One stage setting is set here: **Routing** (Decision #547), the client's Open pull ⇄ Manual switch,
+ * where the stage's routing is read. It is saved at once through its own door, never with the ticket,
+ * and only where the host passes {@link StageInspectorProps.routing}.
  */
 export interface StageInspectorProps {
 	item: TicketStageView;
@@ -90,12 +95,61 @@ export interface StageInspectorProps {
 	 * the footer owns the action, so the panel never offers it a second time.
 	 */
 	funding?: JSX.Element | null;
+	/**
+	 * The stage's routing switch (Decision #547), when the viewer may route it; `null` or absent and
+	 * Routing reads as a fact.
+	 */
+	routing?: { busy: boolean; onChange: (mode: ShippingAssignmentMode) => void } | null;
 }
 
 /** Another included stage, as the "runs in parallel with" picker lists it. */
 export interface StageInspectorPeer {
 	stageId: string;
 	name: string;
+}
+
+const ROUTING_OPTIONS: { value: ShippingAssignmentMode; label: string }[] = [
+	{ value: "open_pull", label: "Open pull" },
+	{ value: "manual", label: "Manual" },
+];
+
+const ROUTING_HINT: Record<ShippingAssignmentMode, string> = {
+	open_pull: "Any freelancer hired on this stage claims its Ready tickets.",
+	manual: "You assign each ticket to someone hired here; they accept it to start.",
+};
+
+/** The client's Open pull ⇄ Manual switch; a planned mode a stage still carries reads as its label. */
+function RoutingField(
+	{ stage, routing }: {
+		stage: BoardStageRef;
+		routing: { busy: boolean; onChange: (mode: ShippingAssignmentMode) => void };
+	},
+): JSX.Element {
+	const mode = stage.assignmentMode;
+	const shipping = mode === "open_pull" || mode === "manual";
+	const bind = useMemo(() => computed(() => mode), [mode]);
+	return (
+		<div class="tkc-field">
+			<span class="tkc-label" id="tkc-stage-routing-label">Routing</span>
+			<SelectButton
+				size="sm"
+				options={ROUTING_OPTIONS}
+				value={bind}
+				disabled={routing.busy}
+				aria-labelledby="tkc-stage-routing-label"
+				onValueChange={(v) => {
+					if ((v === "open_pull" || v === "manual") && v !== mode) routing.onChange(v);
+				}}
+			/>
+			<p class="tkc-insp__none">
+				{shipping
+					? ROUTING_HINT[mode]
+					: `${
+						ASSIGNMENT_MODE_LABEL[mode]
+					} is planned and not available yet. Choose how this stage routes work.`}
+			</p>
+		</div>
+	);
 }
 
 type RunMode = "sequential" | "parallel";
@@ -529,6 +583,7 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 
 									<section class="tkc-insp__sec">
 										<h4 class="tkc-insp__sectitle">Operating settings</h4>
+										{props.routing ? <RoutingField stage={stage} routing={props.routing} /> : null}
 										<dl class="tkc-facts">
 											<Fact label="Status">
 												<span
@@ -546,7 +601,10 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 													}`}
 											</Fact>
 											<Fact label="Intensity pricing">{pricingTerms(stage, currency)}</Fact>
-											<Fact label="Routing">{ASSIGNMENT_MODE_LABEL[stage.assignmentMode]}</Fact>
+											{props.routing
+												? null
+												: <Fact label="Routing">{ASSIGNMENT_MODE_LABEL[stage.assignmentMode]}
+												</Fact>}
 											<Fact label="Capacity cap">
 												{stage.maxConcurrentIntensity === null
 													? "No stage cap"

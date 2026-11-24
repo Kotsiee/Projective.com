@@ -155,6 +155,7 @@ export function emitProjects(world: World): string {
 				"fixed_start_date::timestamptz",
 				"file_duration_mode",
 				"file_due_date::timestamptz",
+				"assignment_mode::projects.assignment_routing_mode",
 				"created_at::timestamptz",
 			],
 			projects.flatMap((p) =>
@@ -187,6 +188,7 @@ export function emitProjects(world: World): string {
 						deadline
 							? localAt(deadline.tz, deadline.at.week, deadline.at.day, minutesOf(deadline.at.time))
 							: "NULL",
+						q(s.assignmentMode ?? "open_pull"),
 						ago(p.createdDaysAgo),
 					];
 				})
@@ -380,6 +382,7 @@ export function emitProjects(world: World): string {
 			const stage = p.stagesByKey.get(t.stage)!;
 			const stageSpec = p.stages.find((s) => s.key === t.stage)!;
 			const assignee = t.assignee ? persona(world, t.assignee) : null;
+			const pinned = t.pinnedTo ? persona(world, t.pinnedTo) : null;
 			const owner = persona(world, t.owner ?? p.owner);
 			const createdDaysAgo = Math.min(p.createdDaysAgo, (t.claimedDaysAgo ?? 0) + 2 + i);
 			tickets.push([
@@ -387,6 +390,7 @@ export function emitProjects(world: World): string {
 				id(p.projectId),
 				id(stage.id),
 				id(assignee?.userId),
+				id(pinned?.userId),
 				q(r.slug),
 				id(owner.userId),
 				q(t.title),
@@ -469,6 +473,7 @@ export function emitProjects(world: World): string {
 				"project_id::uuid",
 				"current_stage_id::uuid",
 				"current_assignee_id::uuid",
+				"pinned_assignee_id::uuid",
 				"slug",
 				"owner_user_id::uuid",
 				"title",

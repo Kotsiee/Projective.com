@@ -512,14 +512,54 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects, finance, auth;
 
+-- Can this ticket be handed to this person right now? Locks the ticket row and refuses what every
+-- route to work refuses: a ticket already held, one not open (New or Ready), one with no description
+-- (the purchasing gate), and — off a personal project — a minor (Decision #190) or an unpayable payee
+-- (Decision #196). The binding claim (fn_assign_ticket_core) and the pin (assign_ticket_manual, which
+-- reserves and holds nothing) both ask it, so a client is never told a pin landed that the freelancer
+-- could not then accept. Capacity is each caller's, because each words its own refusal.
+CREATE OR REPLACE FUNCTION projects.fn_assert_ticket_assignable(p_ticket_id uuid, p_assignee_id uuid)
+RETURNS void AS $$
+DECLARE
+    v_t record;
+BEGIN
+    SELECT t.description, t.current_assignee_id, t.status, t.project_id INTO v_t
+      FROM projects.tickets t WHERE t.id = p_ticket_id FOR UPDATE;
+
+    IF NOT FOUND THEN RAISE EXCEPTION 'Ticket % not found.', p_ticket_id; END IF;
+    IF v_t.current_assignee_id IS NOT NULL THEN RAISE EXCEPTION 'Ticket has already been claimed.'; END IF;
+    -- Only open work is handed out: New (where a removal or an expired claim returns it, "so
+    -- another freelancer can claim it") or Ready. Delivered, settled, cancelled or suspended work is
+    -- not, and neither is an unclaimed ticket the client already moved into work.
+    IF v_t.status NOT IN ('backlog'::public.ticket_status, 'todo'::public.ticket_status) THEN
+        RAISE EXCEPTION 'This ticket is not open to claim.' USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_t.description IS NULL OR v_t.description = '{}'::jsonb THEN
+        RAISE EXCEPTION 'A comprehensive description is required before a ticket can be claimed/funded.';
+    END IF;
+    -- Whoever routes the work, the person given it must be 18 or over (Decision #190) — unless the
+    -- ticket is on a personal project, which only its owner ever holds (Decision #192).
+    IF NOT projects.fn_is_personal_project(v_t.project_id) THEN
+        PERFORM org.fn_assert_adult(p_assignee_id);
+        -- ...and payable, unless a team holds the stage (Decision #196).
+        IF NOT projects.fn_ticket_assignee_payout_ready(p_ticket_id, p_assignee_id) THEN
+            PERFORM finance.fn_assert_payout_ready('freelancer', p_assignee_id);
+        END IF;
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
 -- Every path that attaches a freelancer to a ticket funnels through fn_assign_ticket_core: it locks
--- the row, re-validates the claim preconditions (unclaimed, has a description), enforces the
+-- the row and re-validates the claim preconditions (fn_assert_ticket_assignable), enforces the
 -- concurrency caps, stamps the claim and holds escrow. Routing RPCs that have already chosen a
--- capacity-cleared assignee pass p_enforce_capacity = false to avoid a redundant second check.
+-- capacity-cleared assignee pass p_enforce_capacity = false to avoid a redundant second check. A
+-- claim consumes the ticket's pin (Decision #547): it is the pinned freelancer's acceptance, or the
+-- pin no longer applies.
 -- No hold, no work (#165): when trg_ticket_escrow_sync refuses the hold (PF402) the assignment is
 -- rolled back, the ticket is recorded as Needs funding (fn_mark_needs_funding) and NULL is returned —
--- the claim did not happen. A refusal cannot both be recorded and raised in one transaction, so a NULL
--- here is the refusal; on success the held escrow's id is returned.
+-- the claim did not happen, and a pin stays for the next try. A refusal cannot both be recorded and
+-- raised in one transaction, so a NULL here is the refusal; on success the held escrow's id is
+-- returned.
 CREATE OR REPLACE FUNCTION projects.fn_assign_ticket_core(
     p_ticket_id uuid,
     p_assignee_id uuid,
@@ -527,35 +567,10 @@ CREATE OR REPLACE FUNCTION projects.fn_assign_ticket_core(
 )
 RETURNS uuid AS $$
 DECLARE
-    v_desc     jsonb;
-    v_assignee uuid;
-    v_status   ticket_status;
     v_verdict  jsonb;
     v_detail   text;
 BEGIN
-    SELECT description, current_assignee_id, status INTO v_desc, v_assignee, v_status
-    FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
-
-    IF NOT FOUND THEN RAISE EXCEPTION 'Ticket % not found.', p_ticket_id; END IF;
-    IF v_assignee IS NOT NULL THEN RAISE EXCEPTION 'Ticket has already been claimed.'; END IF;
-    -- Only open work is handed out: New (where a removal or an expired claim returns it, "so
-    -- another freelancer can claim it") or Ready. Delivered, settled, cancelled or suspended work is
-    -- not, and neither is an unclaimed ticket the client already moved into work.
-    IF v_status NOT IN ('backlog'::ticket_status, 'todo'::ticket_status) THEN
-        RAISE EXCEPTION 'This ticket is not open to claim.' USING ERRCODE = 'check_violation';
-    END IF;
-    IF v_desc IS NULL OR v_desc = '{}'::jsonb THEN
-        RAISE EXCEPTION 'A comprehensive description is required before a ticket can be claimed/funded.';
-    END IF;
-    -- Whoever routes the work, the person given it must be 18 or over (Decision #190) — unless the
-    -- ticket is on a personal project, which only its owner ever holds (Decision #192).
-    IF NOT projects.fn_is_personal_project((SELECT t.project_id FROM projects.tickets t WHERE t.id = p_ticket_id)) THEN
-        PERFORM org.fn_assert_adult(p_assignee_id);
-        -- ...and payable, unless a team holds the stage (Decision #196).
-        IF NOT projects.fn_ticket_assignee_payout_ready(p_ticket_id, p_assignee_id) THEN
-            PERFORM finance.fn_assert_payout_ready('freelancer', p_assignee_id);
-        END IF;
-    END IF;
+    PERFORM projects.fn_assert_ticket_assignable(p_ticket_id, p_assignee_id);
 
     IF p_enforce_capacity THEN
         v_verdict := projects.check_ticket_capacity(p_ticket_id, p_assignee_id);
@@ -567,8 +582,9 @@ BEGIN
     BEGIN
         UPDATE projects.tickets
         SET current_assignee_id = p_assignee_id,
+            pinned_assignee_id = NULL,
             claimed_at = now(),
-            status = 'claimed'::ticket_status,
+            status = 'claimed'::public.ticket_status,
             updated_at = now()
         WHERE id = p_ticket_id;
     EXCEPTION WHEN SQLSTATE 'PF402' THEN
@@ -582,57 +598,141 @@ BEGIN
              WHERE e.ticket_id = p_ticket_id AND e.status = 'held'
              ORDER BY e.created_at DESC LIMIT 1);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, security, auth;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- #endregion
 
 -- #region 6. Assignment routing RPCs (spec §4)
 
--- Owner configures how a stage distributes work.
+-- Review authority (with `hire` on a business project) sets how a stage distributes work: Open Pull
+-- or Manual. Round Robin and Parallel Stream are Planned (Decision #338, ruling P3) and refused with
+-- feature_not_supported until they are built. Leaving Manual clears the stage's pins (Decision #547):
+-- an open pull lets every seat holder claim, so a pin would only mislead.
 CREATE OR REPLACE FUNCTION projects.set_stage_assignment_mode(p_stage_id uuid, p_mode text)
 RETURNS void AS $$
 DECLARE
     v_project uuid;
 BEGIN
-    SELECT project_id INTO v_project FROM projects.project_stages WHERE id = p_stage_id;
+    SELECT s.project_id INTO v_project FROM projects.project_stages s WHERE s.id = p_stage_id;
     IF v_project IS NULL THEN RAISE EXCEPTION 'Stage % not found.', p_stage_id; END IF;
     IF NOT projects.can_review_project(v_project) THEN
         RAISE EXCEPTION 'Only the project owner may configure assignment routing.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    PERFORM projects.fn_assert_business_actor(v_project, 'hire');
+    IF p_mode IN ('round_robin', 'parallel_stream') THEN
+        RAISE EXCEPTION '% routing is planned and not available yet; choose open pull or manual.',
+            initcap(replace(p_mode, '_', ' '))
+            USING ERRCODE = 'feature_not_supported';
     END IF;
 
     UPDATE projects.project_stages
     SET assignment_mode = p_mode::projects.assignment_routing_mode
     WHERE id = p_stage_id;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, auth;
 
--- Manual mode: the owner pins a specific individual, overriding routing. Capacity is still enforced
--- so an override cannot silently blow a freelancer past their cap, and the person pinned must hold a
--- live seat on the ticket's stage — the same roster rule the self-claim meets (audit X8 / P0 4), so a
--- pin cannot hand the client's money to someone never hired on the stage. A personal project has no
--- roster: only its owner works it, and fn_assign_ticket_core skips the hiring gates there too.
+    IF p_mode <> 'manual' THEN
+        UPDATE projects.tickets SET pinned_assignee_id = NULL
+         WHERE current_stage_id = p_stage_id AND pinned_assignee_id IS NOT NULL;
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- Manual mode (Decision #547, option B): review authority pins an open ticket on a manual stage to a
+-- holder of a live seat on that stage — the roster rule the self-claim meets (audit X8 / P0 4), so a
+-- pin never names someone never hired there. The pin reserves the ticket and binds nothing: no
+-- escrow, no claim clock, no W_i. The freelancer accepts with their own claim (projects.claim_ticket
+-- lets the pinned person through a manual stage's routing check), which asks the IP Transfer Deed,
+-- re-checks capacity and holds the escrow exactly as a self-claim does, or declines
+-- (projects.decline_ticket_pin). Capacity is checked here too, so the client hears it before the
+-- freelancer does. Pinning an already-pinned ticket moves the pin. They are told (`ticket.assigned`).
+-- A personal project has no roster: only its owner works it.
 CREATE OR REPLACE FUNCTION projects.assign_ticket_manual(p_ticket_id uuid, p_assignee_id uuid)
-RETURNS uuid AS $$
+RETURNS void AS $$
 DECLARE
-    v_project uuid;
+    v_t       record;
+    v_verdict jsonb;
 BEGIN
-    SELECT project_id INTO v_project FROM projects.tickets WHERE id = p_ticket_id;
-    IF v_project IS NULL THEN RAISE EXCEPTION 'Ticket % not found.', p_ticket_id; END IF;
-    IF NOT projects.can_review_project(v_project) THEN
+    SELECT t.project_id, t.current_stage_id, t.title, t.slug AS ticket_slug, p.slug AS project_slug, s.assignment_mode
+      INTO v_t
+      FROM projects.tickets t
+      JOIN projects.projects p ON p.id = t.project_id
+      LEFT JOIN projects.project_stages s ON s.id = t.current_stage_id
+     WHERE t.id = p_ticket_id;
+    IF v_t.project_id IS NULL THEN RAISE EXCEPTION 'Ticket % not found.', p_ticket_id; END IF;
+    IF NOT projects.can_review_project(v_t.project_id) THEN
         RAISE EXCEPTION 'Only the project owner may pin an assignee.' USING ERRCODE = 'insufficient_privilege';
     END IF;
-    PERFORM projects.fn_assert_business_actor(v_project, 'hire');
+    PERFORM projects.fn_assert_business_actor(v_t.project_id, 'hire');
 
-    IF NOT projects.fn_is_personal_project(v_project)
-        AND NOT projects.fn_holds_live_seat(
-            (SELECT t.current_stage_id FROM projects.tickets t WHERE t.id = p_ticket_id), p_assignee_id) THEN
+    IF v_t.assignment_mode IS DISTINCT FROM 'manual'::projects.assignment_routing_mode THEN
+        RAISE EXCEPTION 'Only a ticket on a stage set to manual assignment can be assigned to someone.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    IF NOT projects.fn_is_personal_project(v_t.project_id)
+        AND NOT projects.fn_holds_live_seat(v_t.current_stage_id, p_assignee_id) THEN
         RAISE EXCEPTION 'That person is not hired on this ticket''s stage, so it cannot be assigned to them.'
             USING ERRCODE = 'check_violation';
     END IF;
 
-    RETURN projects.fn_assign_ticket_core(p_ticket_id, p_assignee_id, true);
+    PERFORM projects.fn_assert_ticket_assignable(p_ticket_id, p_assignee_id);
+    v_verdict := projects.check_ticket_capacity(p_ticket_id, p_assignee_id);
+    IF NOT (v_verdict->>'allowed')::boolean THEN
+        RAISE EXCEPTION 'This ticket (intensity %) would put them at % against their % cap of %, so it cannot be assigned to them.',
+            trim_scale((v_verdict->>'ticket_intensity')::numeric),
+            trim_scale((CASE v_verdict->>'scope' WHEN 'stage' THEN v_verdict->>'stage_projected'
+                                                 ELSE v_verdict->>'global_projected' END)::numeric),
+            CASE v_verdict->>'scope' WHEN 'stage' THEN 'stage' ELSE 'global' END,
+            trim_scale((CASE v_verdict->>'scope' WHEN 'stage' THEN v_verdict->>'stage_cap'
+                                                 ELSE v_verdict->>'global_cap' END)::numeric)
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    UPDATE projects.tickets SET pinned_assignee_id = p_assignee_id WHERE id = p_ticket_id;
+
+    PERFORM comms.fn_notify(
+        p_assignee_id, 'ticket.assigned', 'A ticket was assigned to you',
+        format('The client assigned "%s" to you. Accept or decline it on the board, where it appears once its money is held.', v_t.title),
+        'projects.tickets', p_ticket_id, '{}'::jsonb,
+        auth.uid(), 'project', v_t.project_id, NULL,
+        '/projects/' || v_t.project_slug || '/board?tkv=' || v_t.ticket_slug
+    );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, security, auth;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- The pinned freelancer declines a pin (Decision #547). Nothing was held, so nothing moves: the pin
+-- clears, the ticket stays where it is for the client to pin again, and the client is told
+-- (`ticket.pin_declined`). Only the person pinned may decline.
+CREATE OR REPLACE FUNCTION projects.decline_ticket_pin(p_ticket_id uuid)
+RETURNS void AS $$
+DECLARE
+    v_actor uuid := auth.uid();
+    v_t     record;
+BEGIN
+    SELECT t.pinned_assignee_id, t.project_id, t.title, t.slug AS ticket_slug, p.slug AS project_slug,
+           COALESCE(p.client_user_id, p.owner_user_id) AS client_person
+      INTO v_t
+      FROM projects.tickets t
+      JOIN projects.projects p ON p.id = t.project_id
+     WHERE t.id = p_ticket_id
+       FOR UPDATE OF t;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Ticket % not found.', p_ticket_id USING ERRCODE = 'no_data_found'; END IF;
+    IF v_actor IS NULL OR v_t.pinned_assignee_id IS DISTINCT FROM v_actor THEN
+        RAISE EXCEPTION 'Only the freelancer this ticket is assigned to can decline it.'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    UPDATE projects.tickets SET pinned_assignee_id = NULL WHERE id = p_ticket_id;
+
+    IF v_t.client_person IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            v_t.client_person, 'ticket.pin_declined', 'An assignment was declined',
+            format('"%s" was declined by the freelancer you assigned it to. Assign it to someone else.', v_t.title),
+            'projects.tickets', p_ticket_id, '{}'::jsonb,
+            v_actor, 'project', v_t.project_id, NULL,
+            '/projects/' || v_t.project_slug || '/board?tkv=' || v_t.ticket_slug
+        );
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Round-robin: assign the next ready ticket in the stage to the eligible rostered freelancer with
 -- the lowest current global W_i who still has capacity (spec §4). One ticket per call keeps the

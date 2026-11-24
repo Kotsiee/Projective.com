@@ -188,6 +188,9 @@ const WRITES = new Set([
 	"commitTicket",
 	"moveTicket",
 	"claimTicket",
+	"setStageAssignmentMode",
+	"assignTicket",
+	"declineTicketPin",
 	"deleteTicket",
 	"sendMessage",
 	"createSubmission",
@@ -365,6 +368,19 @@ const WRITE_CASES: Record<string, (c: Corpus, a: ReadActor) => Promise<ServiceRe
 		),
 	claimTicket: (c, a) =>
 		ProjectBackendService.claimTicket({ projectId: c.slug, ticketId: "t-1" }, a),
+	setStageAssignmentMode: (c, a) =>
+		ProjectBackendService.setStageAssignmentMode({
+			projectId: c.slug,
+			stageId: "s-1",
+			mode: "manual",
+		}, a),
+	assignTicket: (c, a) =>
+		ProjectBackendService.assignTicket(
+			{ projectId: c.slug, ticketId: "t-1", assigneeId: "u-1" },
+			a,
+		),
+	declineTicketPin: (c, a) =>
+		ProjectBackendService.declineTicketPin({ projectId: c.slug, ticketId: "t-1" }, a),
 	deleteTicket: (c, a) =>
 		ProjectBackendService.deleteTicket({ projectId: c.slug, ticketId: "t-1" }, a),
 	sendMessage: (c, a) =>

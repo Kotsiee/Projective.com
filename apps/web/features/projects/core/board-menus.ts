@@ -29,6 +29,11 @@ export interface TicketMenuFacts {
 	boardHref: string;
 	/** The island's `viewerCanClaim` answer. */
 	canClaim: boolean;
+	/**
+	 * Whether the viewer may pin this ticket (Decision #547): the board's `canPin` server flag and
+	 * {@link isPinnable}. Absent reads as `false`.
+	 */
+	canPin?: boolean;
 	/** The island's `canDrag` answer — the same gate a drag reads. */
 	canMove: boolean;
 	/** The island's column lock for this card (`workColumnLocked`), or `null`. */
@@ -45,6 +50,10 @@ export interface TicketMenuActions {
 	moveTo: (columnId: string) => void;
 	copied: (ok: boolean) => void;
 	remove: () => void;
+	/** Open the "Assign to…" picker. */
+	assign?: () => void;
+	/** The pinned freelancer declines the pin. */
+	declinePin?: () => void;
 }
 
 const DELETE_REFUSED =
@@ -91,7 +100,21 @@ export function ticketMenuModel(facts: TicketMenuFacts, run: TicketMenuActions):
 
 	const work: MenuItem[] = [];
 	if (facts.canClaim) {
-		work.push({ key: "ticket-claim", label: "Claim ticket", icon: "check", command: run.claim });
+		// A pinned ticket's claim is the freelancer's acceptance of the client's pin (Decision #547).
+		const label = card.pinnedToViewer ? "Accept ticket" : "Claim ticket";
+		work.push({ key: "ticket-claim", label, icon: "check", command: run.claim });
+	}
+	if (card.pinnedToViewer && !card.claimed && run.declinePin) {
+		work.push({
+			key: "ticket-decline-pin",
+			label: "Decline assignment",
+			icon: "user-minus",
+			command: run.declinePin,
+		});
+	}
+	if (facts.canPin && run.assign) {
+		const label = card.pinnedTo ? "Assign to someone else…" : "Assign to…";
+		work.push({ key: "ticket-assign", label, icon: "user-plus", command: run.assign });
 	}
 	const funding = card.funding;
 	if (

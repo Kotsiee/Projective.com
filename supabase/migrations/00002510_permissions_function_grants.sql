@@ -122,10 +122,14 @@ GRANT EXECUTE ON FUNCTION projects.fund_stage (uuid, uuid, jsonb) TO authenticat
 -- The team apply gate is a step of apply_to_seat / apply_to_project, never a door of its own.
 REVOKE ALL ON FUNCTION projects.fn_assert_team_can_apply (uuid) FROM PUBLIC, anon, authenticated, service_role;
 
--- The two assignment doors: a self-claim (00001120) and the reviewer's pin (00001140). The claim core
--- they share, projects.fn_assign_ticket_core, takes any assignee and checks nothing, so it is not granted.
+-- The assignment doors: a self-claim, which is also a pinned freelancer's acceptance (00001120); the
+-- reviewer's routing switch, its pin and the pinned freelancer's decline (00001140, Decision #547). The
+-- claim core they share, projects.fn_assign_ticket_core, takes any assignee and checks nothing, and
+-- fn_assert_ticket_assignable is one of its steps, so neither is granted.
 GRANT EXECUTE ON FUNCTION projects.claim_ticket (uuid, uuid, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.set_stage_assignment_mode (uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION projects.assign_ticket_manual (uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.decline_ticket_pin (uuid) TO authenticated;
 -- #endregion
 
 -- #region public

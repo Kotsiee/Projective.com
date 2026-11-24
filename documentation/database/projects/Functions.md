@@ -146,7 +146,7 @@ the acts that commit the business. Those ask three predicates, each answering on
 | :-- | :-- | :-- |
 | `assign_from_application`, `reject_application`, `invite_to_project`, `invite_by_email`, `act_on_invitation`, `get_stage_invite_link`, `revoke_stage_invite_link` | `hire`, or a delegate (`admin`/`manager` participant) | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
 | Offering `admin`/`manager` (`invite_to_project`, `invite_by_email`), `set_member_role` | `hire` (no delegate) | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
-| `assign_ticket_manual`, `auto_assign_round_robin`, `assign_parallel_stream` | `hire` | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
+| `set_stage_assignment_mode`, `assign_ticket_manual`, `auto_assign_round_robin`, `assign_parallel_stream` | `hire` | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
 | `review_submission` with `accept`, `approve_stage`, `force_complete_stage`, `cancel_stage_fair_exit` | `hire` | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
 | Any ticket entering `completed`, or a delete that settles a claimed/funded ticket (`fn_ticket_settlement_guard` — covers `complete_ticket`, `move_ticket`, `delete_ticket` and the table path) | `hire` | `PK403 missing_permission: hire`; `55000 business_not_active` (draft / archived business, BB5) |
 | `create_project` with `client_business_id`; re-pointing `client_business_id` (`fn_guard_project_ownership`) | `manage_projects` on that business | `PK403 missing_permission: manage_projects`; `create_project` also `55000 business_not_active` (draft / archived business, BB5) |
@@ -909,7 +909,9 @@ probe: `supabase/probes/ticket_move_authority.sql`.
 ("Sign in to claim a ticket."); `p_assignee_id` ≠ `auth.uid()` → `42501` (pinning someone else is
 `assign_ticket_manual`); unknown ticket → `no_data_found` (`P0002`); not
 `has_project_access(ticket's project)` → `42501`; the ticket's stage not in `open_pull` assignment
-mode (a ticket with no stage counts as `open_pull`) → `check_violation`; the caller holds no live
+mode (a ticket with no stage counts as `open_pull`) → `check_violation`, except on a `manual` stage
+for the freelancer the ticket is pinned to (`tickets.pinned_assignee_id`), whose claim is the
+acceptance of the pin (Decision #547); the caller holds no live
 seat on the ticket's stage ([`fn_holds_live_seat`](#projectsfn_holds_live_seatp_stage_id-uuid-p_user_id-uuid--boolean))
 or the ticket has no stage → `42501` "You are not hired on this ticket's stage, so you cannot claim it." (Decision #338
 (i): project access alone let a freelancer seated on one stage hold the client's money for work on
@@ -988,6 +990,7 @@ what the freelancer agreed to deliver is not the client's.
 | Once `OLD.current_assignee_id` is set, `title`, `description`, `text_description`, `unit_price_cents`, `required_stages` and `workload_intensity` do not change | Every signed-in caller, **the assignee included** | Client side `P0001` "…its content is locked to the client."; the assignee `42501` "You claimed this ticket on its client's terms…" |
 | Once claimed, `current_stage_id` moves only with `projects.can_review_project` | The assignee, and another freelancer on the project, on every path — `move_ticket` included | `42501` "Only the client moves a claimed ticket to another stage." |
 | A claimed ticket's `status` / `current_stage_id` move by `projects.fn_assert_ticket_move` (under [Tickets](#tickets), Decision #293). A change of assignee is not a move. | A statement run as `anon` / `authenticated`. `move_ticket` applies the same rule itself. | `42501`, the predicate's sentences |
+| A statement never names or moves a `pinned_assignee_id` (Decision #547); it may clear one, and a ticket that leaves its stage, by any path, is unpinned before the other rules run | A statement run as `anon` / `authenticated` (the clearing: every path) | `42501` "A ticket is assigned to a freelancer through the board, not written to somebody directly." |
 | A statement never names or swaps a `current_assignee_id` — an `INSERT` with one, or an `UPDATE` that sets or changes it; clearing it (the owner's removal) stays a direct statement. Work is handed out only through `fn_assign_ticket_core`'s doors, which ask for the seat, the caps, the age and payout gates and the routing mode; a swap would also leave the held escrow bound to the previous payee (Decision #338 (i)) | A statement run as `anon` / `authenticated` | `42501` "A ticket is claimed or assigned through the board, not written to somebody directly." |
 | An `INSERT` that names a `current_assignee_id` needs `projects.can_review_project` (the definer doors' backstop; a direct statement already met the row above) | Every signed-in caller | `42501` "A ticket is written by its client; a freelancer claims it." |
 | `payment_status` and `total_amount_paid` do not change; an `INSERT` starts them `unpaid` / `0` | A statement run as `anon` / `authenticated` | `42501` |
@@ -1324,18 +1327,20 @@ roster member rather than fail the run. The predicate has no client grant.
 **Age gate:** an assignee under 18 is refused `PM403` (`org.fn_assert_adult`, Decision #190), so no self-claim, manual
 pin or routed assignment seats a minor on paid work.
 
-`00001140` §5. The one path that attaches an assignee: locks the ticket `FOR UPDATE`; refuses
+`00001140` §5. The one path that attaches an assignee. Its preconditions are
+[`fn_assert_ticket_assignable`](#projectsfn_assert_ticket_assignablep_ticket_id-uuid-p_assignee_id-uuid--void),
+which the pin asks too (Decision #547): it locks the ticket `FOR UPDATE`; refuses
 (`P0001`) an unknown, already-claimed or description-less (`description` `NULL` / `{}`) ticket, and
 (`check_violation`, "This ticket is not open to claim.") one whose `status` is not `backlog` or `todo` —
 only open work is handed out, New included because a removal or an expired claim returns a ticket there
 "so another freelancer can claim it" (PRODUCT_SPEC §Freelancer Removal Mid-Ticket); when
 `p_enforce_capacity`, refuses a failed `check_ticket_capacity` verdict with `check_violation`; sets
-`current_assignee_id`, `claimed_at`, `status = 'claimed'` (the trigger holds the escrow) and returns the
+`current_assignee_id`, `claimed_at`, `status = 'claimed'` and clears `pinned_assignee_id` (a claim
+consumes a pin, Decision #547; the trigger holds the escrow) and returns the
 held escrow's id. **No hold, no work (Decision #165):** the assignment runs in a subtransaction; when the
 hold refuses (`PF402`) it is rolled back, `fn_mark_needs_funding` records the ticket as Needs funding
 and notifies the client, and the core returns `NULL` — a refusal cannot be both recorded and raised in
-one transaction, so `NULL` is the refusal. `search_path = public, projects, finance, org, security,
-auth`. `EXECUTE`: `service_role` only — no client role may call it, because it trusts its assignee
+one transaction, so `NULL` is the refusal, and a pin stays for the next try. `search_path = ''`. `EXECUTE`: `service_role` only — no client role may call it, because it trusts its assignee
 argument.
 
 🚨 **No caller check** — moot for clients, because no client role holds `EXECUTE`. It is an internal
@@ -1357,22 +1362,44 @@ ticket and notify its owner at will.
 
 ### `projects.set_stage_assignment_mode(p_stage_id uuid, p_mode text) → void`
 
-`00001140` §6. Sets `project_stages.assignment_mode` (`p_mode` cast to
-`projects.assignment_routing_mode`; a bad value raises `22P02`). Unknown stage → `P0001`; guard
-`projects.can_review_project(stage's project)` → `insufficient_privilege` (`42501`).
-`search_path = public, projects, auth`; `EXECUTE`: `service_role` only — no client grant.
+`00001140` §6 (Decision #547). Review authority routes a stage. Unknown stage → `P0001`; guard
+`projects.can_review_project(stage's project)` → `insufficient_privilege` (`42501`); on a business
+project `fn_assert_business_actor(…, 'hire')` → `PK403`. `round_robin` and `parallel_stream` are
+Planned (Decision #338, ruling P3) and refused `feature_not_supported` (`0A000`); any other bad value
+raises `22P02` from the enum cast. Sets `project_stages.assignment_mode`; leaving `manual` clears
+`pinned_assignee_id` on the stage's tickets. `search_path = ''`; `EXECUTE`: `authenticated`.
 
-### `projects.assign_ticket_manual(p_ticket_id uuid, p_assignee_id uuid) → uuid`
+### `projects.assign_ticket_manual(p_ticket_id uuid, p_assignee_id uuid) → void`
 
-`00001140` §6, manual mode: the paying side pins an assignee. Unknown ticket → `P0001`; guard
-`can_review_project(ticket's project)` → `42501`; the assignee holds no live seat on the ticket's
-stage ([`fn_holds_live_seat`](#projectsfn_holds_live_seatp_stage_id-uuid-p_user_id-uuid--boolean)) →
-`check_violation` "That person is not hired on this ticket's stage, so it cannot be assigned to them."
-(audit X8 / P0 4 — the same roster rule the self-claim meets, so a pin cannot hand the client's money
-to someone never hired on the stage; skipped on a personal project, which has no roster); then
-`fn_assign_ticket_core(…, true)` — capacity still enforced, and the same work-start gate: `NULL` when
-the hold was refused (the ticket is then `needs_funding`). `search_path = public, projects,
-finance, org, security, auth`; `EXECUTE`: `authenticated`, `service_role`.
+`00001140` §6, manual mode (Decision #547, option B): review authority PINS an open ticket to a
+freelancer, who then accepts it by claiming it or declines. The pin binds nothing: no escrow, no claim
+window, no $W_i$. Unknown ticket → `P0001`; guard `can_review_project(ticket's project)` → `42501`;
+`fn_assert_business_actor(…, 'hire')`; the ticket's stage not `manual` → `check_violation` "Only a
+ticket on a stage set to manual assignment can be assigned to someone."; the assignee holds no live
+seat on the stage ([`fn_holds_live_seat`](#projectsfn_holds_live_seatp_stage_id-uuid-p_user_id-uuid--boolean))
+→ `check_violation` "That person is not hired on this ticket's stage, so it cannot be assigned to
+them." (skipped on a personal project); then
+[`fn_assert_ticket_assignable`](#projectsfn_assert_ticket_assignablep_ticket_id-uuid-p_assignee_id-uuid--void)
+(open, unclaimed, described, adult, payable) and `check_ticket_capacity`, refused `check_violation`
+in the client's words ("This ticket (intensity …) would put them at … against their stage|global cap
+of …"). Sets `tickets.pinned_assignee_id` (a later pin moves it) and tells the assignee
+(`ticket.assigned`, a `?tkv=` link). `search_path = ''`; `EXECUTE`: `authenticated`.
+
+### `projects.decline_ticket_pin(p_ticket_id uuid) → void`
+
+`00001140` §6 (Decision #547). The pinned freelancer turns a pin down. Locks the ticket; unknown →
+`P0002`; a caller who is not `pinned_assignee_id` → `42501` "Only the freelancer this ticket is
+assigned to can decline it." Clears the pin (nothing was held, so nothing else moves) and tells the
+client person (`ticket.pin_declined`). `search_path = ''`; `EXECUTE`: `authenticated`.
+
+### `projects.fn_assert_ticket_assignable(p_ticket_id uuid, p_assignee_id uuid) → void`
+
+`00001140` §5 (Decision #547). The preconditions every route to work shares, asked by
+`fn_assign_ticket_core` and by the pin: locks the ticket `FOR UPDATE`; unknown → `P0001`; already
+held → "Ticket has already been claimed."; not `backlog` / `todo` → `check_violation` "This ticket
+is not open to claim."; no description → `P0001`; off a personal project, `org.fn_assert_adult` and
+the payout gate (`fn_ticket_assignee_payout_ready`, else `finance.fn_assert_payout_ready`).
+Capacity is each caller's. `search_path = ''`; no client grant.
 
 ### `projects.auto_assign_round_robin(p_stage_id uuid) → jsonb`
 

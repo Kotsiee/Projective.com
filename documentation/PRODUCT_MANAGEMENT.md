@@ -622,7 +622,11 @@ its stage** (Decision #338): the ticket is in New or Ready (`backlog` / `todo`) 
 removal or an expired claim returns it there for another freelancer — and the claimant holds a live
 seat (`assigned` / `accepted`, their own or an active team's) on the ticket's stage. Every routing
 door asks for open work through `fn_assign_ticket_core`; nobody writes an assignee onto a ticket
-directly, though the owner's removal still clears one. (10) **An unclaimed ticket is moved only by
+directly, though the owner's removal still clears one. On a **Manual** stage (Decision #547) a
+claim is also the acceptance of the client's pin: only the freelancer the ticket is pinned to may
+make it, and until they do the pin binds nothing (no escrow, no claim window, no $W_i$). A pin is
+a reservation, not a status: the ticket stays Ready, and the pin clears on a decline, when the
+ticket leaves its stage or when the stage leaves Manual. (10) **An unclaimed ticket is moved only by
 review authority and granted ticket managers** (#294), the set that may write it; a claimed one only
 by its payee or, on the client's side, by the project's owner or an admin holding explicit
 permission (a narrowing of rule (8)'s "the client"), and the board drags nothing else (Decision
