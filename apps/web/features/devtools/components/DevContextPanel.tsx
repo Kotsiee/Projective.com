@@ -25,6 +25,7 @@ import {
 	DEV_DISCOVERY_VIEWERS,
 	DEV_DISPUTE_STATES,
 	DEV_TICKET_DISPUTES,
+	DEV_CHAT_EDITS,
 	DEV_EMAIL_CONFIRMATIONS,
 	DEV_EMBEDDINGS,
 	DEV_FILE_ACCESSES,
@@ -952,6 +953,20 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.ticketDispute}
 						disabled={!o.enabled}
 						onChange={(ticketDispute) => patchDevContext({ ticketDispute })}
+					/>
+				</Field>
+
+				{
+					/* A chat's edit rules (PROJECTS CH1): offer Edit and Delete as in a live room, or freeze
+				    the chat as an archive or a live dispute would. The doors still decide. */
+				}
+				<Field label="Message edits" hint="a chat's Edit and Delete for everyone">
+					<Segment
+						name="Message edits"
+						options={DEV_CHAT_EDITS}
+						value={o.chatEdits}
+						disabled={!o.enabled}
+						onChange={(chatEdits) => patchDevContext({ chatEdits })}
 					/>
 				</Field>
 

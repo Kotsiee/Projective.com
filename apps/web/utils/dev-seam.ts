@@ -250,6 +250,14 @@ export type DevCalendarConnection = "auto" | "busy_only" | "publishing" | "expir
  */
 export type DevTicketDispute = "auto" | "none" | "raisable";
 
+/**
+ * What a chat lets its authors do to their messages (PROJECTS CH1): `open` offers Edit and Delete as
+ * in a live room; `archived` and `dispute` freeze the room as an archive or a live dispute on its stage
+ * does. `auto` takes the server's rules (`comms.message_edit_rules`). Client-side only: the doors
+ * still refuse what the database refuses.
+ */
+export type DevChatEdits = "auto" | "open" | "archived" | "dispute";
+
 export type DevDisputeState =
 	| "auto"
 	| "none"
@@ -750,6 +758,8 @@ export interface DevSeamState {
 	disputeState?: DevDisputeState;
 	/** The simulated ticket dispute entry (PROJECTS EX2). Optional; absent reads as `auto`. */
 	ticketDispute?: DevTicketDispute;
+	/** The simulated chat edit rules (PROJECTS CH1). Optional; absent reads as `auto`. */
+	chatEdits?: DevChatEdits;
 	/** The simulated notification inbox. Optional like `walletAurora`; absent reads as `auto`. */
 	notifications?: DevNotifications;
 	/** The simulated channel delivery. Optional like `walletAurora`; absent reads as `auto`. */
@@ -976,6 +986,7 @@ const SESSION_STATES: readonly DevSessionState[] = [
 ];
 const WAITLIST_PLACES: readonly DevWaitlistPlace[] = ["auto", "waiting", "invited", "expired"];
 const TICKET_DISPUTES: readonly DevTicketDispute[] = ["auto", "none", "raisable"];
+const CHAT_EDITS: readonly DevChatEdits[] = ["auto", "open", "archived", "dispute"];
 const DISPUTE_STATES: readonly DevDisputeState[] = [
 	"auto",
 	"none",
@@ -1154,6 +1165,7 @@ export function readDevSeam(): DevSeamState | null {
 		calendarConnection: coerce(ds.devCalendarConnection, CALENDAR_CONNECTIONS, "auto"),
 		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		ticketDispute: coerce(ds.devTicketDispute, TICKET_DISPUTES, "auto"),
+		chatEdits: coerce(ds.devChatEdits, CHAT_EDITS, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		notificationDelivery: coerce(ds.devNotificationDelivery, NOTIFICATION_DELIVERIES, "auto"),
 		emailDeliverability: coerce(ds.devEmailDeliverability, EMAIL_DELIVERABILITIES, "auto"),

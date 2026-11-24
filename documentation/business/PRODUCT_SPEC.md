@@ -1712,6 +1712,20 @@ context without "ping fatigue."
 - **Long messages.** A message may be up to 8,000 characters. Over 750 characters (or 10 lines)
   it shows its first four lines with _Show more_; over 4,000 it shows as a card that opens the
   whole message in a reading view.
+- **Editing and deleting a message (every channel and conversation; Decision #562).** Only its
+  author can change a message. They may **edit** it for 15 minutes after sending it (a platform
+  setting, `message_edit_window_minutes`), as often as they like: the new words are checked by the
+  same contact-detail filter as a send, and the message then reads "Edited" for everyone. They may
+  **delete it for everyone** at any time: it stays in the conversation, in its place and with its
+  time, as "Message deleted", and its words, files, reactions and pin are gone for every reader. This
+  is not "delete for me" (hiding a conversation from one's own inbox), which is separate. Nothing in
+  an **archived** room or channel can be edited or deleted, and neither can anything in a stage's rooms,
+  or in the project's General room, while a dispute on that stage is live: the Evidence Vault
+  (§Dispute Resolution 1) is capturing them. Every earlier version of a message, its original
+  included, and the words of a deleted one are **kept** as evidence. The chat never shows them; a
+  dispute's Evidence Vault records that a message changed, when and by whom, with a fingerprint of the
+  words, and only Projective's operators can read the words themselves. ⚖️ How long a deleted
+  message's words are kept is with counsel; nothing removes them until that is ruled.
 - **Selecting messages.** Readers can select several messages (Ctrl/Shift-click, the arrow keys, or
   a long press on a phone) to copy them together — the copy reads as a transcript with who said
   what and when. Selecting is a reading aid only: it changes nothing anybody else sees.
@@ -3828,8 +3842,10 @@ mutual agreement.
 > platform fee on it. The Evidence Vault of §1 is built for a ticket dispute (PROJECTS EX3; #548
 > (6)): the raise itself freezes, in the same transaction, a manifest of the ticket's and stage's terms
 > as they stood, the contested escrows, the ticket's history, every submission on the stage with its
-> files (each by its stored hash), and the messages of the stage's rooms (each one's current text; the
-> edit history joins once CH1 keeps it). The manifest's SHA-256 is fixed with it, and the files' bytes
+> files (each by its stored hash), and the messages of the stage's rooms (each one's current text, a
+> deleted one's empty, and since Decision #562 its edit and delete trail: each replaced text by
+> when, by whom and the SHA-256 of its words, which only operators read). The manifest's SHA-256 is
+> fixed with it, and the files' bytes
 > are copied into a private store no client can reach. The parties read the manifest and its hash, a
 > Projective auditor the raw snapshot; nothing purges it (⚖️ retention is counsel's, FOUNDER_QUESTIONNAIRE
 > E2.5). The Dispute Summary PDF of §5 (the case, its timeline, statements, offers, ruling and the

@@ -136,3 +136,17 @@ CREATE TRIGGER trg_dm_threads_derived
     FOR EACH ROW
     EXECUTE FUNCTION security.fn_guard_derived_columns('last_message_at', 'last_message_id');
 -- #endregion
+
+-- #region Message revisions are append-only (PROJECTS CH1, 00001300)
+-- A revision is evidence: no row of comms.message_revisions is ever changed or removed, by anyone,
+-- the table owner included. TRUNCATE fires no row trigger, so it has its own statement trigger.
+CREATE TRIGGER trg_message_revisions_append_only
+    BEFORE UPDATE OR DELETE ON comms.message_revisions
+    FOR EACH ROW
+    EXECUTE FUNCTION comms.tg_message_revisions_append_only();
+
+CREATE TRIGGER trg_message_revisions_no_truncate
+    BEFORE TRUNCATE ON comms.message_revisions
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION comms.tg_message_revisions_append_only();
+-- #endregion

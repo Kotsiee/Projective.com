@@ -48,6 +48,11 @@ export interface UseComposerEditorOptions {
 	onEscape: () => boolean;
 	/** Paste, in the capture phase, before Quill sees it — call `preventDefault()` to take it over. */
 	onPaste: (event: ClipboardEvent) => void;
+	/**
+	 * What the field holds when it mounts, as Delta ops — an edit opens on the message's own words and
+	 * formatting (PROJECTS CH1). Read once, at mount; the composer leaves it unset.
+	 */
+	initialOps?: unknown[];
 }
 
 export interface ComposerEditor {
@@ -202,6 +207,14 @@ export function useComposerEditor(options: UseComposerEditorOptions): ComposerEd
 				},
 			});
 			quillRef.current = quill;
+			const initial = live.current.initialOps;
+			if (initial && initial.length > 0) {
+				quill.setContents(
+					{ ops: initial } as unknown as Parameters<QuillInstance["setContents"]>[0],
+					"silent",
+				);
+				text.value = quill.getText().replace(/\n$/, "");
+			}
 			// The editable surface is Quill's own root, so that is what carries the field's name — a role on
 			// the host would nest one textbox inside another.
 			quill.root.setAttribute("role", "textbox");

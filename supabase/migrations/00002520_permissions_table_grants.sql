@@ -398,9 +398,18 @@ REVOKE UPDATE ON TABLE comms.notifications FROM authenticated;
 
 GRANT UPDATE (read_at, seen_at, archived_at) ON TABLE comms.notifications TO authenticated;
 
+-- No client UPDATE on either message table (PROJECTS CH1). The edit this section once column-scoped
+-- (body, body_delta, edited_at, deleted_at) moved to comms.edit_message and comms.delete_message
+-- (00001300), definers that keep the replaced words first; with no UPDATE privilege left, a direct
+-- write is refused 42501 instead of passing the policy (project_messages) or silently matching no
+-- row (dm_messages, which never had an UPDATE policy).
 REVOKE UPDATE ON TABLE comms.project_messages FROM authenticated;
 
-GRANT UPDATE (body, body_delta, edited_at, deleted_at) ON TABLE comms.project_messages TO authenticated;
+REVOKE UPDATE ON TABLE comms.dm_messages FROM authenticated;
+
+-- Message revisions are evidence (00000016): no client reads or writes one. The doors write them
+-- and the vault and operators read them through definers.
+REVOKE ALL ON TABLE comms.message_revisions FROM anon, authenticated;
 
 -- INSERT is column-scoped on both message tables for the same reason (SEC L5). An INSERT policy
 -- answers whether the sender may post into this room, never which columns a post may set, so the

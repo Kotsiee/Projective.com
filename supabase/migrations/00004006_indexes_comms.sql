@@ -174,3 +174,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_dm_threads_channel_default
 CREATE INDEX IF NOT EXISTS idx_dm_threads_entity_channels
     ON comms.dm_threads (owner_type, owner_entity_id)
     WHERE kind = 'entity_channel';
+
+-- A message's history (PROJECTS CH1): the vault and comms.get_message_revisions read one message's
+-- revisions in order.
+CREATE INDEX IF NOT EXISTS idx_message_revisions_message
+    ON comms.message_revisions (message_id, revised_at);

@@ -1471,6 +1471,40 @@ GRANT EXECUTE ON FUNCTION comms.send_request_message(uuid, text, uuid) TO authen
 GRANT EXECUTE ON FUNCTION comms.send_message(text, uuid, text, jsonb, uuid, uuid, uuid[], uuid[], jsonb)
     TO authenticated;
 
+-- --- editing and deleting a message (00001300; PROJECTS CH1, CAS M11) ---
+
+-- The two writers of a message's body after it is sent, and the read that tells a room's reader the
+-- edit window and whether the room is frozen. Definers: each re-checks auth.uid(), room access,
+-- authorship and the freeze itself, so EXECUTE is the whole access decision and a signed-out caller
+-- has nothing to call.
+REVOKE ALL ON FUNCTION comms.edit_message(uuid, text, jsonb) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.edit_message(uuid, text, jsonb) TO authenticated;
+
+REVOKE ALL ON FUNCTION comms.delete_message(uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.delete_message(uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION comms.message_edit_rules(uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.message_edit_rules(uuid) TO authenticated;
+
+-- Operators only, checked inside (security.is_admin(), as finance.list_disputes_for_review).
+REVOKE ALL ON FUNCTION comms.get_message_revisions(uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.get_message_revisions(uuid) TO authenticated;
+
+-- The doors' shared rules and the append-only trigger: reached only from definers and the trigger.
+REVOKE ALL ON FUNCTION comms.fn_message_room_freeze(text, uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION comms.fn_message_edit_window_minutes() FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION comms.fn_message_for_change(uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION comms.fn_message_change_result(text, uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION comms.tg_message_revisions_append_only() FROM public, anon, authenticated;
+
 -- The DM PII filter's two lookups answer "which projects is this OTHER person party to" — a question
 -- no client should be able to ask about anyone. Reached only from the definer trigger.
 REVOKE ALL ON FUNCTION comms.fn_dm_protected_project(uuid, uuid, uuid) FROM public, anon, authenticated;

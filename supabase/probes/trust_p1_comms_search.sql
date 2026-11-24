@@ -34,6 +34,8 @@ BEGIN
     SELECT m.channel_id, m.sender_user_id INTO v_chan, v_sender
     FROM comms.project_messages m JOIN comms.project_channels c ON c.id = m.channel_id
     WHERE m.deleted_at IS NULL AND c.archived_at IS NULL AND projects.is_protected_phase(c.project_id)
+      -- A room whose messages may still be edited (PROJECTS CH1): no live dispute freezes it.
+      AND comms.fn_message_room_freeze('comms.project_messages', c.id) IS NULL
     ORDER BY m.id LIMIT 1;
     IF v_chan IS NULL THEN RAISE EXCEPTION 'FAIL no fixture: no protected stage message (deno task db:reset)'; END IF;
 
@@ -138,7 +140,7 @@ BEGIN
     RETURNING body_delta INTO v_delta;
     IF v_delta IS NULL THEN RAISE EXCEPTION 'FAIL an agreeing Delta was dropped'; END IF;
 
-    UPDATE comms.project_messages SET body_delta = '{"ops":[{"insert":"me@example.com"}]}' WHERE id = v_id;
+    PERFORM comms.edit_message(v_id, 'hi again', '{"ops":[{"insert":"me@example.com"}]}');
     SELECT body_delta INTO v_delta FROM comms.project_messages WHERE id = v_id;
     IF v_delta IS NOT NULL THEN RAISE EXCEPTION 'FAIL a smuggled Delta was stored by an edit'; END IF;
     RAISE NOTICE 'PASS L2 stage room: smuggled Deltas dropped on insert and edit, agreeing Delta kept';

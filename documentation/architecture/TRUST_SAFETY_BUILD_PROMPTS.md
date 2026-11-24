@@ -87,7 +87,7 @@ Track and step names are Part B's; COMMS IDs (MS1–MS5, NT1–NT5, SR1–SR4) a
 | P2a      | ⏳ PM-WP4b                                              | `projects.projects` copy and its trigger file belong to the projects track while WP4b runs (WP4 split into WP4a → WP4b).                                                                                                                                  |
 | P2b      | ⏳ PM-WP4b                                              | A cancelled project's cooling-off reads WP4b's lifecycle.                                                                                                                                                                                                 |
 | P2c      | ⏳ PM-WP4b, SCH-WP10                                    | Ticket and submission text (`00000015`, `00001850`) and scheduling event text (`00001860`). SCH-WP10 is built as `8851d4dc` on `claude/sch-wp10-calendar`, which is not on main (SCHEDULING §0). Reactions are out: COMMS MS5 pins them to one emoji set. |
-| P2d      | coordinate with PROJECTS CH1                            | Both edit the room policies in `00002012`; whichever runs second keeps the archive gate. COMMS SR1 pins `fn_nearest` / `fn_nearest_to_entity` (G18's function half), so P2d does only the sync triggers.                                                  |
+| P2d      | PROJECTS CH1 landed (#562)                          | CH1 removed the room UPDATE policy and every client UPDATE on the message tables; its doors refuse an archived room (PM423), so G5 is the INSERT gate only. COMMS SR1 pins `fn_nearest` / `fn_nearest_to_entity` (G18's function half), so P2d does only the sync triggers. |
 | P1d      | I's erasure chain (coordinate)                          | `ops.refusal_counts` is personal data, as are R1's `ops.reports` and `evidence` copies (landed, so ERA1 adds their arm). The arm lives in `00001060` (identity's hot file) and is classified in identity ERA1's `account_erasure_scope.sql`: whichever lands second adds it. |
 | R2       | ⏳ M·MS3                                                | The message menus live in the islands MS3 reworks.                                                                                                                                                                                                        |
 | R4       | not beside identity HK1                                 | Both edit `00000012_tables_security.sql` (HK1 is identity's Q0.2 (b) drops).                                                                                                                                                                              |
@@ -104,19 +104,19 @@ workload-verdict appeal on R1's sink (landed), R3 and R4.
 | :------------------------------------------------------ | :------------------------------------- | :---------------------------------------------------------------- |
 | `00005060` (jobs)                                       | SN1, SN2, R5, SN6                      | F, M, P, C, OPS, PROJECTS FL1 (one writer at a time)              |
 | `00001060` (erasure)                                    | none (R1's and P1d's arms go to I)     | I (ERA1), SEC G16                                                 |
-| `00001300` (comms)                                      | P1d, P2b, P2c, P2d, SN6                | COMMS MS4, MS5; PROJECTS CH1, CH2; every CAS messaging step       |
+| `00001300` (comms)                                      | P1d, P2b, P2c, P2d, SN6                | COMMS MS4, MS5; every CAS messaging step                     |
 | `00002510` (grants)                                     | P1d, P2d, R3, R4, SN6                  | many                                                              |
-| `00002012` (comms policies)                             | P2d                                    | PROJECTS CH1                                                      |
+| `00002012` (comms policies)                             | P2d                                    | —                                                                |
 | `features/devtools` + `dev-seam.ts`                     | SN1, SN3, R3                           | identity SSO1, MFA1, MIN1; PROJECTS and PM (PROJECTS §0.2's list) |
 | `00001400` (search functions)                           | P2d                                    | COMMS SR3, SR4 (SR1 and SR2 have landed)                          |
 | `00002520` (table grants)                               | P2d, R5                                | many                                                              |
 | `00000012` (security tables)                            | R4                                     | identity HK1 (Q0.2 (b) drops)                                     |
 | `00000013` (ops tables), `00001665` (R1's)              | P1d, R3, SN6                           | —                                                                 |
-| `00000016` (comms tables)                               | P2b, P2d                               | PROJECTS CH1, CH2                                                 |
-| `00001840` (comms triggers)                             | P2c, P2d, SN6                          | COMMS; PROJECTS CH1, CH2                                          |
+| `00000016` (comms tables)                               | P2b, P2d                               | —                                                                 |
+| `00001840` (comms triggers)                             | P2c, P2d, SN6                          | COMMS                                                             |
 | `00005001` (platform params)                            | P2b, P2d, R4, SN1, SN2, SN3, SN4, SN6  | F (FX margin and dials)                                           |
 | `00005010` (notification catalog)                       | R3, SN3                                | COMMS NT1–NT5                                                     |
-| `MessagingBackendService.ts`, `projects/live-writes.ts` | P1d, R2                                | COMMS MS3, MS5; PROJECTS CH1; O D-06 / SC-9                  |
+| `MessagingBackendService.ts`, `projects/live-writes.ts` | P1d, R2                                | COMMS MS3, MS5; O D-06 / SC-9                  |
 | `services/files/*`, `services/links/*`                  | LK1, SN1, SN2, SN3, H1                 | PROJECTS FL1–FL4                                                  |
 
 ### 0.3 These cannot run in parallel inside T
@@ -676,7 +676,7 @@ PROMPT P2d: Archived rooms, message size and rate, and the search sync triggers'
 
 ROLE: Postgres security engineer. SEC G5, G6, G18 (the sync-trigger half). COMMS SR1 pins
 search_path on fn_nearest / fn_nearest_to_entity; skip those two. Re-check COMMS_BUILD_PROMPTS.md
-and PROJECTS_BUILD_PROMPTS.md (CH1) on main and skip anything they have since claimed.
+and PROJECTS_BUILD_PROMPTS.md on main and skip anything they have since claimed (CH1 landed, #562).
 
 FILES:
   - supabase/migrations/00002012_policies_comms.sql (send_messages_if_member :60-64,
@@ -693,8 +693,8 @@ STEPS:
   1. G5: the room INSERT policy also requires the channel's archived_at IS NULL. Today it asks
      comms.has_channel_access (00001300:154-177), which ignores archived_at, so only a direct
      PostgREST insert passes: the app's send door already refuses (projects/live-writes.ts
-     :2631-2637). Gate the room UPDATE policy (edit_own_messages) the same way. PROJECTS CH1
-     replaces that policy's client path with doors; whichever runs second keeps the archive gate.
+     :2631-2637). The UPDATE half is done: PROJECTS CH1 (#562) removed that policy, and its doors
+     refuse an archived room (PM423).
   2. G6: CHECK (char_length(body) <= 8000) on both message tables (confirm the app's own limit and
      that no seed exceeds it), and a per-sender BEFORE INSERT rate trigger (a token bucket in an
      unlogged table, refusing PR429 past the dial) so a direct PostgREST flood is bounded too. It

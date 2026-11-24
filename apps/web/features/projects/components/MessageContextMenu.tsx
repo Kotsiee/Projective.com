@@ -7,9 +7,9 @@ import { useDismiss, useOverlayStack } from "@projective/ui/hooks";
 import { Kbd } from "@projective/ui/utils";
 import type { ChatMessage } from "../types/projects-types.ts";
 import { placeMenu } from "../core/message-selection.ts";
-import { StarIcon } from "./glyphs.tsx";
+import { StarIcon, TrashIcon } from "./glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
-import { CopyIcon, ReplyIcon } from "./chat-glyphs.tsx";
+import { CopyIcon, EditIcon, ReplyIcon } from "./chat-glyphs.tsx";
 import { QUICK_EMOJI } from "./MessageActions.tsx";
 
 /**
@@ -46,6 +46,9 @@ export interface MessageContextMenuProps {
 	onCopy: () => void;
 	onTogglePin: () => void;
 	onToggleFavorite: () => void;
+	/** Edit and Delete for everyone (PROJECTS CH1): passed only while the viewer may do them. */
+	onEdit?: () => void;
+	onDelete?: () => void;
 }
 
 export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element {
@@ -210,6 +213,36 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 						<span class="msg-cmenu__label">
 							{message.favorited ? "Remove favourite" : "Favourite"}
 						</span>
+					</button>
+				)}
+
+				{single && props.onEdit && (
+					<button
+						type="button"
+						role="menuitem"
+						class="ui-menu-item msg-cmenu__item"
+						tabIndex={-1}
+						onClick={props.onEdit}
+					>
+						<span class="ui-menu-item__icon msg-cmenu__icon" aria-hidden="true">
+							{cloneElement(EditIcon)}
+						</span>
+						<span class="msg-cmenu__label">Edit message</span>
+					</button>
+				)}
+
+				{single && props.onDelete && (
+					<button
+						type="button"
+						role="menuitem"
+						class="ui-menu-item ui-menu-item--danger msg-cmenu__item"
+						tabIndex={-1}
+						onClick={props.onDelete}
+					>
+						<span class="ui-menu-item__icon msg-cmenu__icon" aria-hidden="true">
+							{cloneElement(TrashIcon)}
+						</span>
+						<span class="msg-cmenu__label">Delete for everyone</span>
 					</button>
 				)}
 			</div>

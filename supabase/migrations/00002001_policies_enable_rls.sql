@@ -39,6 +39,9 @@ ALTER TABLE comms.project_channels ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE comms.project_messages ENABLE ROW LEVEL SECURITY;
 
+-- No policy, on purpose: revisions are evidence that only definers read (00000016, PROJECTS CH1).
+ALTER TABLE comms.message_revisions ENABLE ROW LEVEL SECURITY;
+
 
 -- --- the five tables 0201 never covered ---
 --

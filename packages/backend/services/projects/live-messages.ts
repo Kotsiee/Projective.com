@@ -21,6 +21,8 @@ import {
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
 import { REPLY_ORIGINAL_COLUMNS, replyFromRow, type ReplyOriginalRow } from "./message-replies.ts";
 import { fetchMessageAttachments, type MessageMedia } from "./message-attachments.ts";
+import { liveMessageEditRules } from "../messaging/live-message-edits.ts";
+import { tombstoneOf } from "@projective/types/messaging";
 
 /**
  * live-messages — the RLS-scoped Postgres read path for ONE project channel's conversation
@@ -150,6 +152,7 @@ const MESSAGE_COLUMNS = [
 	"has_attachments",
 	"is_audio",
 	"created_at",
+	"edited_at",
 	"deleted_at",
 ].join(", ");
 
@@ -171,6 +174,8 @@ interface MessageRow extends ReplyOriginalRow {
 	body_delta: unknown;
 	reply_to_id: string | null;
 	created_at: string;
+	/** Stamped by `comms.edit_message` (PROJECTS CH1). */
+	edited_at: string | null;
 }
 
 /** One `comms.message_reactions` row — a chip count is a fold over these, never a stored number. */
@@ -619,7 +624,7 @@ async function countChannelMessages(
  */
 function toChatMessage(row: MessageRow, ctx: MessageContext): ChatMessage {
 	const text = clamp(row.body, MESSAGE_TEXT_MAX);
-	return {
+	const message: ChatMessage = {
 		id: row.id,
 		// Always `user`. There is no system-message source in this schema — see the module docblock.
 		type: "user",
@@ -637,7 +642,11 @@ function toChatMessage(row: MessageRow, ctx: MessageContext): ChatMessage {
 		reactions: ctx.reactions.get(row.id) ?? [],
 		pinned: ctx.pinnedIds.has(row.id),
 		favorited: ctx.favoritedIds.has(row.id),
+		editedAt: row.edited_at ?? null,
 	};
+	// Deleted for everyone (PROJECTS CH1): the place stays, what it said does not — a row deleted
+	// before the door existed still carries its body, so the tombstone is drawn here, not trusted.
+	return row.deleted_at ? tombstoneOf(message) : message;
 }
 
 // #endregion
@@ -695,20 +704,22 @@ export async function fetchChannelMessagePage(
 
 	const size = Math.min(Math.max(params.limit ?? DEFAULT_PAGE, 1), MAX_PAGE);
 
-	const [anchor, total, pinnedIds, canPin] = await Promise.all([
+	const [anchor, total, pinnedIds, canPin, edits] = await Promise.all([
 		resolveCursorAnchor(db, channel.id, params.before),
 		countChannelMessages(db, channel.id),
 		fetchPinnedIds(actor),
 		resolveCanPin(actor, channel.project_id),
+		// What the room lets its authors do (PROJECTS CH1); a failed read offers nothing.
+		liveMessageEditRules(actor, channel.id).catch(() => null),
 	]);
 
 	let query = db
 		.from("project_messages")
 		.select(MESSAGE_COLUMNS)
-		.eq("channel_id", channel.id)
-		// Explicit. Nothing in the schema hides a soft-deleted message for you — there is no view and
-		// no partial index — so a missing predicate silently resurrects deleted messages into a feed.
-		.is("deleted_at", null);
+		.eq("channel_id", channel.id);
+	// Deleted messages are read too, on purpose (PROJECTS CH1): each keeps its place in the feed as a
+	// "Message deleted" tombstone, which `toChatMessage` draws without a word of the body. The pinned
+	// set, the count and the reply originals still leave them out.
 
 	if (anchor) {
 		// `anchor.createdAt` is the value Postgres itself returned for that row, at full microsecond
@@ -793,7 +804,7 @@ export async function fetchChannelMessagePage(
 		// The cursor names the OLDEST row on the page, because this feed pages backwards.
 		nextCursor: hasMore && rows.length > 0 ? rows[0].id : null,
 		pinned,
-		permissions: { canPin },
+		permissions: { canPin, ...(edits ? { edits } : {}) },
 		// The measured count when there is one; otherwise the floor above. See
 		// {@link countChannelMessages} for why a failed count must not resolve to `0`.
 		total: total ?? totalFloor,

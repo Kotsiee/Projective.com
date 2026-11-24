@@ -66,28 +66,14 @@ WITH CHECK (
 CREATE POLICY "view_messages_if_member" ON comms.project_messages FOR SELECT TO authenticated
 USING (comms.has_channel_access (channel_id));
 
--- Editing and soft-deleting are the sender's own acts, so `edited_at` and
--- `deleted_at` had no writer at all: the table carried both columns and no UPDATE
--- policy, which made them unwritable by any client and the edit path silently
--- impossible rather than refused.
---
--- The WITH CHECK arm re-asserts authorship on the POST-image. Postgres would
--- substitute `USING` for it anyway, so it is explicit rather than corrective —
--- but what it constrains is real and worth reading without knowing that rule: a
--- sender must not be able to edit their own message and set `sender_user_id` to
--- somebody else in the same statement, turning their own words into that person's,
--- which is the impersonation the INSERT policy above closes, reached from the
--- other side. Channel access is re-checked too so an edit cannot outlive the
--- sender's membership of the room.
-CREATE POLICY "edit_own_messages" ON comms.project_messages FOR UPDATE TO authenticated
-USING (
-    sender_user_id = auth.uid ()
-    AND comms.has_channel_access (channel_id)
-)
-WITH CHECK (
-    sender_user_id = auth.uid ()
-    AND comms.has_channel_access (channel_id)
-);
+-- No UPDATE policy, on purpose, on either message table. Editing and deleting are the sender's own
+-- acts and go through comms.edit_message and comms.delete_message (00001300, PROJECTS CH1), definers
+-- that keep the replaced words in comms.message_revisions first, hold the edit window, and refuse an
+-- archived room or one frozen by a live dispute. The `edit_own_messages` policy they replace let a
+-- sender rewrite a message by a raw PostgREST UPDATE at any age, in an archived room or mid-dispute,
+-- and the words it replaced were lost: exactly the evidence the dispute vault needs. 00002520 revokes
+-- the column grant that went with it, so a direct UPDATE is refused outright (42501) rather than
+-- matching no row. The archive gate T&S P2d planned for this policy lives in the doors instead.
 
 CREATE POLICY "view_attachments_if_member" ON comms.message_attachments FOR SELECT TO authenticated
 USING (

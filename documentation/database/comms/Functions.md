@@ -577,6 +577,69 @@ request routing with and without a mutual follow, an existing thread never re-fi
 restored and re-filed, the reply promotion for the sender only, the folder door's two refusals, the
 cold-message refusal, masking in a protected pair's DM and none in an unrelated one.
 
+## Editing and deleting a message (`00001300` / `00001840`, PROJECTS CH1)
+
+Decision #562 (the owner's rule, 2026-11-24; PRODUCT_SPEC §Messaging, "Editing and deleting a
+message"). The author edits within `message_edit_window_minutes` (`00005001`, 15) of sending, any
+number of times, and deletes for everyone at any time. Nothing in an archived room or thread changes,
+nor in a stage's rooms (every visibility) or the project's General room while a dispute on that stage
+is live. These two doors are the only writers of a sent message's words: neither message table has a
+client `UPDATE` policy or privilege (`00002012`, `00002520`). Both keep the text they replace in
+`comms.message_revisions` first, in the same transaction.
+
+Every door is `SECURITY DEFINER` on `search_path = ''`. SQLSTATEs: `P0002` no such message, or one
+the caller cannot read (room access through `comms.has_channel_access`, a thread through
+`comms.is_dm_participant`) · `42501` not its author, or signed out · `22023` an empty or
+over-8,000-character body · `PM409` already deleted, or a quote card (Decision #522) · `PM410` past the
+edit window · `PM423` the room is frozen. The service (`MessagingBackendService.editMessage` /
+`deleteMessage`, `live-message-edits.ts`) answers them as 404 · 403 · 422 · 409, in the doors' words.
+
+### `comms.edit_message(p_message_id uuid, p_body text, p_body_delta jsonb DEFAULT NULL) → jsonb`
+
+Granted to `authenticated`. Finds the message by id in either table (`comms.fn_message_for_change`,
+locked), checks the window against its `created_at`, drops a Delta that does not spell `p_body` (as
+the mask trigger would), and writes nothing for an edit that changes nothing. Otherwise inserts an
+`edit` revision of the current words, then sets `body`, `body_delta` and `edited_at`; the
+`BEFORE UPDATE OF body` mask trigger re-masks the new words. Returns `{id, body, body_delta,
+pii_masked, edited_at, deleted_at}` (`comms.fn_message_change_result`).
+
+### `comms.delete_message(p_message_id uuid) → jsonb`
+
+Granted to `authenticated`. The same checks, no window. Inserts a `delete` revision of the current
+words, sets `deleted_at` and empties `body` and `body_delta` (a tombstone no reader sees the words
+of), and removes the message's pins (`comms.message_pins`, a toggle table). Attachment links stay as
+history; every read drops a deleted message's files. Returns the same shape.
+
+### `comms.message_edit_rules(p_room_id uuid) → jsonb`
+
+Granted to `authenticated`. What a room's reader is told before Edit and Delete are offered:
+`{frozen: 'archived' | 'dispute' | null, edit_window_minutes}` for a project room or a thread the
+caller reads, else `P0002`. Read with every message page (`permissions.edits`); the doors re-check.
+
+### `comms.get_message_revisions(p_message_id uuid) → TABLE (message_table, action, body, body_delta, pii_masked, authored_at, revised_at, revised_by)`
+
+Granted to `authenticated`, operators only inside (`security.is_admin()`, else `42501`). A message's
+whole history: its revisions in order, then its current text (`action = 'current'`) unless it was
+deleted.
+
+### Internal (no client grant, `00002510`)
+
+- `comms.fn_message_room_freeze(p_message_table, p_room_id) → text`: `archived`, `dispute` or NULL. A
+  dispute's stage is its own (`finance.disputes.stage_id`, a ticket escrow's) or its escrow's
+  (`finance.escrows.project_stage_id`); an order-line dispute has neither and freezes nothing.
+- `comms.fn_message_edit_window_minutes() → integer`: the dial, 15 when unset. Mirrored in TS as
+  `MESSAGE_EDIT_WINDOW_MINUTES` (`packages/types/messaging/message-edits.ts`) under
+  `message-edits.contract.test.ts`.
+- `comms.fn_message_for_change(p_message_id)`: the doors' shared lookup, lock and checks.
+- `comms.fn_message_change_result(p_message_table, p_message_id) → jsonb`: what a door answers.
+- `comms.tg_message_revisions_append_only()`: the trigger function behind
+  `trg_message_revisions_append_only` (BEFORE UPDATE OR DELETE) and
+  `trg_message_revisions_no_truncate` (BEFORE TRUNCATE) on `comms.message_revisions` (`00001840`).
+
+The Evidence Vault (`finance.fn_dispute_vault_manifest`, version 2, `database/finance/Functions.md`)
+adds each captured room message's revision trail: act, times, author and the SHA-256 of the words,
+never the words, which the parties would read. Probe: `supabase/probes/message_edit.sql`.
+
 ## The protected-phase contact filter (`00001300` / `00001840`, Decision #147)
 
 Tier 2 — the authoritative tier — of the leakage-prevention pipeline (`SYSTEM_ARCHITECTURE.md`
@@ -645,9 +708,10 @@ and the Projective Unlock does not unmask rows written before it.
 project is protected, before it is stored on the request row or quoted in the owner's
 notification.
 
-**Gap — edits are not masked.** Both triggers fire on `INSERT` only. `comms.project_messages` is
-editable by its sender through `edit_own_messages` (`00002012`, no column restriction), so a body —
-or `pii_masked` itself — can be rewritten after the mask ran. Decision #147 flag (c).
+**Edits are masked.** Both triggers fire `BEFORE INSERT OR UPDATE OF body, body_delta`, and the only
+writers of a sent message's words are `comms.edit_message` and `comms.delete_message` (PROJECTS CH1):
+no client holds `UPDATE` on either message table, so neither a body nor `pii_masked` can be rewritten
+behind the mask. Decision #147 flag (c) is closed (Decision #562).
 
 ## Replies stay in their room (`00001300` / `00001840`)
 
@@ -659,9 +723,9 @@ the reply's own **channel** (`project_messages`) or **thread** (`dm_messages`) �
 message from another room would show that room's words to readers who may not be cleared for it.
 
 - `BEFORE INSERT OR UPDATE OF reply_to_id, channel_id` on `comms.project_messages` (`thread_id` on
-  `comms.dm_messages`). The `UPDATE` arm exists because `edit_own_messages` lets a sender update their
-  own project message ([Policies.md](Policies.md)); a guard on `INSERT` alone would be one `PATCH`
-  away from bypassed.
+  `comms.dm_messages`). The `UPDATE` arm stays although no client may update a message any more
+  (PROJECTS CH1, [Policies.md](Policies.md)): the edit doors never touch either column, and a future
+  writer that does is held by it.
 - A `NULL` `reply_to_id` passes. Otherwise the original must exist in the same room and must not be
   the row itself, or the trigger raises **`check_violation` — "That message can't be replied to
   here."** — one sentence for every cause, so it cannot be used to probe which ids exist where.

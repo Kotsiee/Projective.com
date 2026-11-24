@@ -3,9 +3,9 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import type { ChatMessage } from "../types/projects-types.ts";
-import { KebabIcon, StarIcon } from "./glyphs.tsx";
+import { KebabIcon, StarIcon, TrashIcon } from "./glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
-import { CopyIcon, ReactIcon, ReplyIcon } from "./chat-glyphs.tsx";
+import { CopyIcon, EditIcon, ReactIcon, ReplyIcon } from "./chat-glyphs.tsx";
 import { makeId } from "../core/composer-model.ts";
 import { MESSAGE_MENU_OPEN_EVENT, type MessageMenuOpenDetail } from "@web/utils/lane-events.ts";
 
@@ -41,6 +41,13 @@ export interface MessageActionsProps {
 	onCopy: () => void;
 	onTogglePin: () => void;
 	onToggleFavorite: () => void;
+	/**
+	 * Edit and Delete for everyone (PROJECTS CH1): passed only while the viewer may do them to this
+	 * message (their own, inside the window for an edit, in a room nothing freezes), so an item that
+	 * renders always works.
+	 */
+	onEdit?: () => void;
+	onDelete?: () => void;
 	/** Fired when any owned popover opens/closes so the parent can pin the toolbar visible. */
 	onOpenChange: (open: boolean) => void;
 }
@@ -195,6 +202,34 @@ export function MessageActions(props: MessageActionsProps): JSX.Element {
 							{message.favorited ? "Remove favourite" : "Favourite"}
 						</span>
 					</button>
+					{props.onEdit && (
+						<button
+							type="button"
+							role="menuitem"
+							class="ui-menu-item msg-menu__item"
+							onClick={() => {
+								menuOpen.value = false;
+								props.onEdit?.();
+							}}
+						>
+							<span class="ui-menu-item__icon msg-menu__icon" aria-hidden="true">{EditIcon}</span>
+							<span class="msg-menu__label">Edit message</span>
+						</button>
+					)}
+					{props.onDelete && (
+						<button
+							type="button"
+							role="menuitem"
+							class="ui-menu-item ui-menu-item--danger msg-menu__item"
+							onClick={() => {
+								menuOpen.value = false;
+								props.onDelete?.();
+							}}
+						>
+							<span class="ui-menu-item__icon msg-menu__icon" aria-hidden="true">{TrashIcon}</span>
+							<span class="msg-menu__label">Delete for everyone</span>
+						</button>
+					)}
 				</div>
 			</Popover>
 		</div>

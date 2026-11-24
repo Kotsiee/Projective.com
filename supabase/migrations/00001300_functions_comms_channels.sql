@@ -589,6 +589,376 @@ BEGIN
 END;
 $$;
 
+-- #region Editing and deleting a message (PROJECTS CH1; CAS M11)
+-- The owner's rule (2026-11-24): the author edits a message within `message_edit_window_minutes` (15)
+-- of sending it, any number of times, and deletes it for everyone at any time. An edit is masked
+-- again exactly as a send is (the BEFORE UPDATE OF body triggers, 00001840) and reads "edited"; a
+-- delete leaves a "Message deleted" tombstone: the row keeps its place, its author and its time, and
+-- loses its words. Nothing in an archived room or thread changes, nor in a room of a stage with a
+-- live dispute, nor in the project's General room while any of its stages has one (the Evidence
+-- Vault captures those rooms, PRODUCT_SPEC §Dispute Resolution 1). A pair DM stays editable: its
+-- revisions are kept like any other.
+--
+-- Every replaced text is kept first, in comms.message_revisions (00000016), in the same transaction:
+-- an edit keeps the words it replaces, a delete the words it removes. The client UPDATE path is
+-- gone (no policy, no column grant, 00002012 / 00002520), so these two doors are the only writers of
+-- a message's body after it is sent. Both are definers on search_path '' that answer as the room's
+-- own access functions do: a message the caller cannot read is P0002, whoever sent it.
+--
+-- SQLSTATEs: P0002 no such message (or not readable) · 42501 not its author, or signed out ·
+-- 22023 an empty or over-long body · PM409 already deleted, or a quote card (Decision #522, which
+-- records a quote move and is never rewritten) · PM410 past the edit window · PM423 the room is frozen.
+
+-- Why a room's messages may not change now, or NULL: `archived` (the room or thread is) or `dispute`.
+-- p_message_table names the room's kind: a project room for comms.project_messages, a thread for
+-- comms.dm_messages. A stage room freezes while a dispute on its stage is live; the project's General
+-- room (no stage) while a dispute on any of its stages is. A dispute's stage is its own (a ticket
+-- escrow's, EX2) or its escrow's; an order-line dispute has neither and freezes nothing. Internal: no
+-- client grant (00002510); comms.message_edit_rules answers it for a reader.
+CREATE OR REPLACE FUNCTION comms.fn_message_room_freeze(p_message_table text, p_room_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE p_message_table
+        WHEN 'comms.project_messages' THEN (
+            SELECT CASE
+                WHEN c.archived_at IS NOT NULL THEN 'archived'
+                WHEN EXISTS (
+                    SELECT 1
+                      FROM finance.disputes d
+                      LEFT JOIN finance.escrows e ON e.id = d.escrow_id
+                      JOIN projects.project_stages s ON s.id = COALESCE(d.stage_id, e.project_stage_id)
+                     WHERE d.status IN ('open', 'awaiting_response', 'under_review')
+                       AND s.project_id = c.project_id
+                       AND (c.stage_id IS NULL OR s.id = c.stage_id)
+                ) THEN 'dispute'
+            END
+              FROM comms.project_channels c
+             WHERE c.id = p_room_id)
+        WHEN 'comms.dm_messages' THEN (
+            SELECT CASE WHEN t.archived_at IS NOT NULL THEN 'archived' END
+              FROM comms.dm_threads t
+             WHERE t.id = p_room_id)
+    END;
+$$;
+
+-- The edit window in minutes: security.platform_params `message_edit_window_minutes` (00005001), 15
+-- when unset. Mirrored in TS as MESSAGE_EDIT_WINDOW_MINUTES under a parity test.
+CREATE OR REPLACE FUNCTION comms.fn_message_edit_window_minutes()
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT (p.value #>> '{}')::integer FROM security.platform_params p
+          WHERE p.key = 'message_edit_window_minutes'),
+        15);
+$$;
+
+-- The message a door is about to change, locked, after every check the two doors share: it exists
+-- and the caller reads it (else P0002), the caller sent it (42501), it is not deleted or a quote card
+-- (PM409) and its room is not frozen (PM423). Returns what the revision keeps. Internal.
+CREATE OR REPLACE FUNCTION comms.fn_message_for_change(
+    p_message_id uuid,
+    OUT message_table text,
+    OUT room_id uuid,
+    OUT body text,
+    OUT body_delta jsonb,
+    OUT pii_masked boolean,
+    OUT created_at timestamptz,
+    OUT authored_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_sender uuid;
+    v_edited timestamptz;
+    v_deleted timestamptz;
+    v_quote uuid;
+    v_readable boolean := false;
+    v_frozen text;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to change a message.' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT 'comms.project_messages', m.channel_id, m.sender_user_id, m.body, m.body_delta, m.pii_masked,
+           m.created_at, m.edited_at, m.deleted_at
+      INTO message_table, room_id, v_sender, body, body_delta, pii_masked, created_at, v_edited, v_deleted
+      FROM comms.project_messages m
+     WHERE m.id = p_message_id
+       FOR UPDATE;
+    IF message_table IS NOT NULL THEN
+        v_readable := comms.has_channel_access(room_id);
+    ELSE
+        SELECT 'comms.dm_messages', m.thread_id, m.sender_user_id, m.body, m.body_delta, m.pii_masked,
+               m.created_at, m.edited_at, m.deleted_at, m.quote_event_id
+          INTO message_table, room_id, v_sender, body, body_delta, pii_masked, created_at, v_edited,
+               v_deleted, v_quote
+          FROM comms.dm_messages m
+         WHERE m.id = p_message_id
+           FOR UPDATE;
+        IF message_table IS NOT NULL THEN
+            v_readable := comms.is_dm_participant(room_id);
+        END IF;
+    END IF;
+
+    IF message_table IS NULL OR v_readable IS NOT TRUE THEN
+        RAISE EXCEPTION 'No such message.' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_sender IS DISTINCT FROM auth.uid() THEN
+        RAISE EXCEPTION 'Only the person who sent a message can change it.' USING ERRCODE = '42501';
+    END IF;
+    IF v_deleted IS NOT NULL THEN
+        RAISE EXCEPTION 'This message was deleted.' USING ERRCODE = 'PM409';
+    END IF;
+    IF v_quote IS NOT NULL THEN
+        RAISE EXCEPTION 'A quote card records the quote as it was sent, so it cannot be changed.'
+            USING ERRCODE = 'PM409';
+    END IF;
+
+    v_frozen := comms.fn_message_room_freeze(message_table, room_id);
+    IF v_frozen = 'archived' THEN
+        RAISE EXCEPTION 'This conversation is archived, so its messages can no longer change.'
+            USING ERRCODE = 'PM423';
+    ELSIF v_frozen = 'dispute' THEN
+        RAISE EXCEPTION 'A dispute is open on this work, so these messages stay as they are until it closes.'
+            USING ERRCODE = 'PM423';
+    END IF;
+
+    authored_at := COALESCE(v_edited, created_at);
+END;
+$$;
+
+-- What a door answers: the message's changeable state after the write, as the feed maps it.
+CREATE OR REPLACE FUNCTION comms.fn_message_change_result(p_message_table text, p_message_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.jsonb_build_object(
+        'id', m.id, 'body', m.body, 'body_delta', m.body_delta, 'pii_masked', m.pii_masked,
+        'edited_at', m.edited_at, 'deleted_at', m.deleted_at)
+      FROM comms.project_messages m
+     WHERE p_message_table = 'comms.project_messages' AND m.id = p_message_id
+    UNION ALL
+    SELECT pg_catalog.jsonb_build_object(
+        'id', m.id, 'body', m.body, 'body_delta', m.body_delta, 'pii_masked', m.pii_masked,
+        'edited_at', m.edited_at, 'deleted_at', m.deleted_at)
+      FROM comms.dm_messages m
+     WHERE p_message_table = 'comms.dm_messages' AND m.id = p_message_id;
+$$;
+
+-- The author rewrites their message's words (and their formatting) inside the window. A Delta that
+-- does not spell the new body is dropped here, as the mask trigger would drop it, so that an edit
+-- which changes nothing is recognised as one: it writes no revision and no `edited_at`. The words it
+-- replaces are kept as an `edit` revision; the mask runs again on the new ones (00001840).
+CREATE OR REPLACE FUNCTION comms.edit_message(
+    p_message_id uuid,
+    p_body text,
+    p_body_delta jsonb DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    m record;
+    v_window integer := comms.fn_message_edit_window_minutes();
+    v_delta jsonb := p_body_delta;
+BEGIN
+    IF p_body IS NULL OR pg_catalog.btrim(p_body) = '' THEN
+        RAISE EXCEPTION 'A message needs words. To take it back, delete it instead.' USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.char_length(p_body) > 8000 THEN
+        RAISE EXCEPTION 'A message can be up to 8,000 characters.' USING ERRCODE = '22023';
+    END IF;
+    IF v_delta IS NOT NULL
+       AND (pg_catalog.jsonb_typeof(v_delta) IS DISTINCT FROM 'object'
+            OR comms.fn_delta_text(v_delta) IS DISTINCT FROM p_body) THEN
+        v_delta := NULL;
+    END IF;
+
+    SELECT * INTO m FROM comms.fn_message_for_change(p_message_id);
+
+    IF pg_catalog.now() > m.created_at + pg_catalog.make_interval(mins => v_window) THEN
+        RAISE EXCEPTION 'A message can be edited for % minutes after it is sent.', v_window
+            USING ERRCODE = 'PM410';
+    END IF;
+
+    IF m.body = p_body AND m.body_delta IS NOT DISTINCT FROM v_delta THEN
+        RETURN comms.fn_message_change_result(m.message_table, p_message_id);
+    END IF;
+
+    INSERT INTO comms.message_revisions
+        (message_table, message_id, action, body, body_delta, pii_masked, authored_at, revised_by)
+    VALUES
+        (m.message_table, p_message_id, 'edit', m.body, m.body_delta, m.pii_masked, m.authored_at, auth.uid());
+
+    IF m.message_table = 'comms.project_messages' THEN
+        UPDATE comms.project_messages
+           SET body = p_body, body_delta = v_delta, edited_at = pg_catalog.now()
+         WHERE id = p_message_id;
+    ELSE
+        UPDATE comms.dm_messages
+           SET body = p_body, body_delta = v_delta, edited_at = pg_catalog.now()
+         WHERE id = p_message_id;
+    END IF;
+
+    RETURN comms.fn_message_change_result(m.message_table, p_message_id);
+END;
+$$;
+
+COMMENT ON FUNCTION comms.edit_message(uuid, text, jsonb) IS
+'PROJECTS CH1: the author edits their room message or DM within message_edit_window_minutes of sending it. Keeps the replaced words in comms.message_revisions, re-masks the new ones, stamps edited_at. P0002 · 42501 · 22023 · PM409 · PM410 · PM423. Returns {id, body, body_delta, pii_masked, edited_at, deleted_at}.';
+
+-- The author deletes their message for everyone, at any time while its room is live. The words it
+-- removes are kept as a `delete` revision; the row becomes a tombstone (deleted_at, an empty body, no
+-- Delta) so no reader, a direct PostgREST read included, sees them again. Its pins go with it: a
+-- pinned tombstone points at nothing. Its attachment links stay as history; every read drops a
+-- deleted message's files with its words.
+CREATE OR REPLACE FUNCTION comms.delete_message(p_message_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    m record;
+BEGIN
+    SELECT * INTO m FROM comms.fn_message_for_change(p_message_id);
+
+    INSERT INTO comms.message_revisions
+        (message_table, message_id, action, body, body_delta, pii_masked, authored_at, revised_by)
+    VALUES
+        (m.message_table, p_message_id, 'delete', m.body, m.body_delta, m.pii_masked, m.authored_at, auth.uid());
+
+    IF m.message_table = 'comms.project_messages' THEN
+        UPDATE comms.project_messages
+           SET body = '', body_delta = NULL, deleted_at = pg_catalog.now()
+         WHERE id = p_message_id;
+    ELSE
+        UPDATE comms.dm_messages
+           SET body = '', body_delta = NULL, deleted_at = pg_catalog.now()
+         WHERE id = p_message_id;
+    END IF;
+
+    DELETE FROM comms.message_pins p
+     WHERE p.message_table = m.message_table AND p.message_id = p_message_id;
+
+    RETURN comms.fn_message_change_result(m.message_table, p_message_id);
+END;
+$$;
+
+COMMENT ON FUNCTION comms.delete_message(uuid) IS
+'PROJECTS CH1: the author deletes their room message or DM for everyone. Keeps the removed words in comms.message_revisions and leaves a tombstone (deleted_at, empty body, no Delta); unpins it. P0002 · 42501 · PM409 · PM423. Returns {id, body, body_delta, pii_masked, edited_at, deleted_at}.';
+
+-- What a room's reader is told before offering Edit and Delete: the window, and whether the room is
+-- frozen (`archived`, `dispute`, or null). p_room_id is a project room or a thread; a caller who
+-- cannot read it is P0002. The doors re-check everything under their lock.
+CREATE OR REPLACE FUNCTION comms.message_edit_rules(p_room_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_table text;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to read a conversation.' USING ERRCODE = '42501';
+    END IF;
+    IF EXISTS (SELECT 1 FROM comms.project_channels c WHERE c.id = p_room_id) THEN
+        IF NOT comms.has_channel_access(p_room_id) THEN
+            RAISE EXCEPTION 'No such conversation.' USING ERRCODE = 'P0002';
+        END IF;
+        v_table := 'comms.project_messages';
+    ELSIF EXISTS (SELECT 1 FROM comms.dm_threads t WHERE t.id = p_room_id) THEN
+        IF NOT comms.is_dm_participant(p_room_id) THEN
+            RAISE EXCEPTION 'No such conversation.' USING ERRCODE = 'P0002';
+        END IF;
+        v_table := 'comms.dm_messages';
+    ELSE
+        RAISE EXCEPTION 'No such conversation.' USING ERRCODE = 'P0002';
+    END IF;
+    RETURN pg_catalog.jsonb_build_object(
+        'frozen', comms.fn_message_room_freeze(v_table, p_room_id),
+        'edit_window_minutes', comms.fn_message_edit_window_minutes());
+END;
+$$;
+
+-- An operator reads a message's whole history: every revision in order, then its current text
+-- (`current`) unless it was deleted, whose last revision holds the words. Operators only
+-- (security.is_admin(), as the dispute queue, 00001260); the vault reads the table itself.
+CREATE OR REPLACE FUNCTION comms.get_message_revisions(p_message_id uuid)
+RETURNS TABLE (
+    message_table text,
+    action text,
+    body text,
+    body_delta jsonb,
+    pii_masked boolean,
+    authored_at timestamptz,
+    revised_at timestamptz,
+    revised_by uuid
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid() IS NULL OR NOT security.is_admin() THEN
+        RAISE EXCEPTION 'Only a platform operator can read a message''s revisions.' USING ERRCODE = '42501';
+    END IF;
+    RETURN QUERY
+    SELECT h.message_table, h.action, h.body, h.body_delta, h.pii_masked, h.authored_at, h.revised_at,
+           h.revised_by
+      FROM (
+          SELECT r.message_table, r.action, r.body, r.body_delta, r.pii_masked, r.authored_at,
+                 r.revised_at, r.revised_by, 0 AS part, r.id
+            FROM comms.message_revisions r
+           WHERE r.message_id = p_message_id
+          UNION ALL
+          SELECT 'comms.project_messages', 'current', m.body, m.body_delta, m.pii_masked,
+                 COALESCE(m.edited_at, m.created_at), NULL::timestamptz, NULL::uuid, 1, m.id
+            FROM comms.project_messages m
+           WHERE m.id = p_message_id AND m.deleted_at IS NULL
+          UNION ALL
+          SELECT 'comms.dm_messages', 'current', m.body, m.body_delta, m.pii_masked,
+                 COALESCE(m.edited_at, m.created_at), NULL::timestamptz, NULL::uuid, 1, m.id
+            FROM comms.dm_messages m
+           WHERE m.id = p_message_id AND m.deleted_at IS NULL
+      ) h
+     ORDER BY h.part, h.revised_at, h.id;
+END;
+$$;
+
+-- BEFORE UPDATE OR DELETE (each row) and BEFORE TRUNCATE (the statement) on comms.message_revisions:
+-- a revision is evidence, written once by the doors above and never changed or removed, by anyone.
+-- A retention purge, once counsel rules on one, is a deliberate change to this function.
+CREATE OR REPLACE FUNCTION comms.tg_message_revisions_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    RAISE EXCEPTION 'A message revision is evidence: it is never changed or removed.'
+        USING ERRCODE = '42501';
+END;
+$$;
+-- #endregion
+
 -- =============================================================================
 -- Replies stay inside their own conversation.
 --

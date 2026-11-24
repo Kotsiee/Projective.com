@@ -1758,8 +1758,12 @@ $$;
 -- the contested escrows, the ticket's history, every submission on the stage with its files (each by
 -- the hash `files.items` stored and its object's place), and the stage's rooms' messages. The manifest
 -- is jsonb, so its text is canonical (sorted keys, one spacing): `sha256` is that text's SHA-256 and
--- re-reading it hashes the same. The messages are each one's current body: the revision history is
--- CH1's, and the vault reads it once CH1 keeps it. The files' bytes are copied by the dispute service
+-- re-reading it hashes the same. The messages are each one's current body (a deleted one's is empty)
+-- and, since PROJECTS CH1 (version 2), its revision trail from comms.message_revisions: each text it
+-- stopped showing, as what replaced it (`edit` or `delete`), when it was written and replaced, by whom,
+-- and the SHA-256 of its words. The words themselves are not in the manifest, which the parties read:
+-- CH1's ruling lets only operators read a revision (comms.get_message_revisions), and the hash binds
+-- what they read to what was frozen here. The files' bytes are copied by the dispute service
 -- into the policy-less `evidence` bucket under `vault/{dispute_id}/` (bytes cannot be copied in SQL),
 -- and finance.mark_dispute_vault_ready stamps the vault ready. Nothing purges it (⚖️ counsel's).
 
@@ -1772,7 +1776,7 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
     SELECT pg_catalog.jsonb_build_object(
-        'version', 1,
+        'version', 2,
         'dispute', pg_catalog.jsonb_build_object(
             'id', d.id, 'subject_kind', d.subject_kind, 'reason', d.reason, 'claimant_side', d.claimant_side,
             'opened_by', d.opened_by_profile, 'opened_at', d.created_at),
@@ -1820,7 +1824,17 @@ AS $$
             SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
                        'id', m.id, 'channel_id', c.id, 'channel', c.name, 'sender_user_id', m.sender_user_id,
                        'body', m.body, 'created_at', m.created_at, 'edited_at', m.edited_at,
-                       'deleted_at', m.deleted_at)
+                       'deleted_at', m.deleted_at,
+                       'revisions', COALESCE((
+                           SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                                      'action', r.action, 'authored_at', r.authored_at,
+                                      'revised_at', r.revised_at, 'revised_by', r.revised_by,
+                                      'body_sha256', pg_catalog.encode(pg_catalog.sha256(
+                                          pg_catalog.convert_to(r.body, 'UTF8')), 'hex'))
+                                  ORDER BY r.revised_at, r.id)
+                             FROM comms.message_revisions r
+                            WHERE r.message_table = 'comms.project_messages' AND r.message_id = m.id
+                       ), '[]'::jsonb))
                    ORDER BY m.created_at, m.id)
               FROM comms.project_channels c
               JOIN comms.project_messages m ON m.channel_id = c.id

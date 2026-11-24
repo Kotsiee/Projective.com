@@ -296,6 +296,11 @@ CREATE TABLE comms.dm_messages (
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
+        -- Both stamps are written only by comms.edit_message and comms.delete_message (PROJECTS CH1),
+        -- as on comms.project_messages: no client UPDATE grant exists on this table.
+        edited_at timestamp
+    with
+        time zone,
         deleted_at timestamp
     with
         time zone,
@@ -564,6 +569,52 @@ CREATE TABLE comms.message_favorites (
     -- The favourite mark is private to one reader, which is why it is a separate table from the
     -- channel-wide pin above and not a second column on it.
     CONSTRAINT message_favorites_unique UNIQUE (user_id, message_table, message_id)
+);
+-- #endregion
+
+-- #region Message revisions — what an edit or a delete replaced (PROJECTS CH1)
+-- One row per text a message stopped showing: the words an edit replaced, or the words a delete for
+-- everyone removed. Written only by comms.edit_message and comms.delete_message (00001300), in the
+-- same statement's transaction as the change, so a message's history is its revisions in order and
+-- then its current row; the first revision is the original as it was stored (after the protected
+-- phase's mask, which never kept the unmasked words). Append-only: comms.tg_message_revisions_append_only
+-- (00001840) refuses every UPDATE, DELETE and TRUNCATE, the table owner's included.
+--
+-- Evidence, not a feature of the chat: no client reads it (RLS on, no policy, no grant, 00002520).
+-- The dispute vault reads it through its definers, and an operator through
+-- comms.get_message_revisions. How long a deleted message's words are kept is with counsel
+-- (PROJECTS_BUILD_PROMPTS §0.3): nothing purges this table until that is ruled.
+--
+-- The (message_table, message_id) pair is the convention of the interaction tables above, with no
+-- FK for the reason given there. `body` is NOT NULL because a message's body is.
+CREATE TABLE comms.message_revisions (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    message_table text NOT NULL CHECK (
+        message_table IN (
+            'comms.project_messages',
+            'comms.dm_messages'
+        )
+    ),
+    message_id uuid NOT NULL,
+    -- What replaced this text: an `edit` (the message's next revision or its current body follows)
+    -- or the `delete` that left the message a tombstone (always its last revision).
+    action text NOT NULL CHECK (action IN ('edit', 'delete')),
+    body text NOT NULL,
+    body_delta jsonb NULL,
+    -- The mask state the text carried (comms.tg_mask_message_pii), so the vault shows a masked
+    -- original as masked.
+    pii_masked boolean NOT NULL DEFAULT false,
+    -- When this text was written: the message's created_at for its original, else the edit that put
+    -- it there (the message's edited_at at the time).
+    authored_at timestamptz NOT NULL,
+    -- clock_timestamp(), not now(): two edits in one transaction (a probe, a batch) still order.
+    revised_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    revised_by uuid NOT NULL,
+    CONSTRAINT message_revisions_pkey PRIMARY KEY (id),
+    CONSTRAINT message_revisions_revised_by_fkey
+        FOREIGN KEY (revised_by) REFERENCES org.users_public (user_id),
+    CONSTRAINT message_revisions_body_delta_object
+        CHECK (body_delta IS NULL OR jsonb_typeof(body_delta) = 'object')
 );
 -- #endregion
 

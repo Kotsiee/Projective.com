@@ -2,7 +2,10 @@ import type { JSX } from "preact";
 import { cloneElement } from "preact";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
+import "../styles/message-edit.css";
 import { Tooltip } from "@projective/ui/feedback";
+import { MetaLine } from "@projective/ui/display";
+import type { MessageDelta } from "@projective/types/projects";
 import type { MessageRow } from "../core/message-model.ts";
 import type { RowBinding } from "../hooks/useMessageSelection.ts";
 import { profileHref } from "../core/routing.ts";
@@ -13,6 +16,7 @@ import { MessageActions } from "./MessageActions.tsx";
 import { MessageContextMenu } from "./MessageContextMenu.tsx";
 import { MessageReplyQuote } from "./MessageReplyQuote.tsx";
 import { MessageBody } from "./MessageBody.tsx";
+import { MessageEditor } from "./MessageEditor.tsx";
 import { ReplyIcon, WonkyStarIcon } from "./chat-glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
@@ -43,6 +47,10 @@ import { QuoteThreadCard } from "@web/features/quotes/components/QuoteThreadCard
  *     glow and blur), its click / context-menu / touch-gesture handlers, and — while it holds the
  *     keyboard cursor in highlight mode — the {@link MessageContextMenu}. A swipe reveals the reply cue
  *     at the row's edge.
+ *   - **Edits and deletes** (PROJECTS CH1) — Edit and Delete for everyone in both menus while the
+ *     surface passes them (the author's own message, allowed now); the body becomes the inline
+ *     {@link MessageEditor} while it is being edited; an edited message carries an "Edited" MetaLine
+ *     beneath it, and a deleted one is a "Message deleted" tombstone with nothing to act on.
  */
 
 export interface MessageBubbleProps {
@@ -64,6 +72,16 @@ export interface MessageBubbleProps {
 	selection?: RowBinding;
 	/** How many messages are selected — the context menu's multi-message form reads it. */
 	selectionCount?: number;
+	/** Open this message in the inline editor; passed only while its author may edit it. */
+	onEdit?: (id: string) => void;
+	/** Ask to delete this message for everyone; passed only while its author may delete it. */
+	onDelete?: (id: string) => void;
+	/** This message is open in the inline editor. */
+	editing?: boolean;
+	/** Its edit is being saved. */
+	saving?: boolean;
+	onSaveEdit?: (id: string, text: string, delta: MessageDelta | null) => void;
+	onCancelEdit?: () => void;
 }
 
 export function MessageBubble(props: MessageBubbleProps): JSX.Element {
@@ -78,10 +96,14 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 	const rowRef = useRef<HTMLDivElement>(null);
 	const bubbleRef = useRef<HTMLDivElement>(null);
 
-	const hasText = m.text.trim().length > 0;
+	const deleted = m.deleted === true;
+	const editing = !deleted && props.editing === true;
+	const hasText = !deleted && m.text.trim().length > 0;
 	const quoteEvent = m.quoteEventId ?? null;
 	const standalone = !m.replyTo && m.attachments.length === 0 && !m.audio && !quoteEvent;
-	const emoji = hasText && standalone ? emojiOnly(m.text) : null;
+	const emoji = hasText && standalone && !editing ? emojiOnly(m.text) : null;
+	const onEdit = props.onEdit && !deleted ? () => props.onEdit?.(m.id) : undefined;
+	const onDelete = props.onDelete && !deleted ? () => props.onDelete?.(m.id) : undefined;
 	const who = own ? "You" : sender?.name ?? "Unknown";
 
 	return (
@@ -130,13 +152,30 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 						data-pos={row.groupPos}
 						data-emoji-only={emoji ? String(emoji.tier) : undefined}
 						data-quote={quoteEvent ? "true" : undefined}
+						data-deleted={deleted ? "true" : undefined}
+						data-editing={editing ? "true" : undefined}
 					>
+						{deleted && <p class="msg-bubble__tombstone">Message deleted</p>}
 						{m.replyTo && <MessageReplyQuote reply={m.replyTo} onJump={props.onJump} />}
 						{quoteEvent && <QuoteThreadCard eventId={quoteEvent} text={m.text} />}
-						{hasText && !quoteEvent && (
-							<MessageBody text={m.text} delta={m.delta} author={who} own={own} timeLabel={m.timeLabel} />
+						{editing && (
+							<MessageEditor
+								message={m}
+								saving={props.saving === true}
+								onSave={(text, delta) => props.onSaveEdit?.(m.id, text, delta)}
+								onCancel={() => props.onCancelEdit?.()}
+							/>
 						)}
-						{hasText && !quoteEvent && <MessageLinkPreviews text={m.text} />}
+						{hasText && !quoteEvent && !editing && (
+							<MessageBody
+								text={m.text}
+								delta={m.delta}
+								author={who}
+								own={own}
+								timeLabel={m.timeLabel}
+							/>
+						)}
+						{hasText && !quoteEvent && !editing && <MessageLinkPreviews text={m.text} />}
 						{m.attachments.length > 0 && (
 							<MessageMedia
 								attachments={m.attachments}
@@ -161,22 +200,30 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 
 					{/* The side rail — ghost actions beside the bubble, the own sent time beneath them. */}
 					<div class="msg-row__side">
-						<MessageActions
-							message={m}
-							canPin={canPin}
-							own={own}
-							onReply={() => props.onReply(m.id)}
-							onReact={(e) => props.onReact(m.id, e)}
-							onCopy={() => props.onCopy(m.id)}
-							onTogglePin={() => props.onTogglePin(m.id)}
-							onToggleFavorite={() => props.onToggleFavorite(m.id)}
-							onOpenChange={(open) => (menuActive.value = open)}
-						/>
+						{!deleted && !editing && (
+							<MessageActions
+								message={m}
+								canPin={canPin}
+								own={own}
+								onReply={() => props.onReply(m.id)}
+								onReact={(e) => props.onReact(m.id, e)}
+								onCopy={() => props.onCopy(m.id)}
+								onTogglePin={() => props.onTogglePin(m.id)}
+								onToggleFavorite={() => props.onToggleFavorite(m.id)}
+								onEdit={onEdit}
+								onDelete={onDelete}
+								onOpenChange={(open) => (menuActive.value = open)}
+							/>
+						)}
 						{own && <span class="msg-row__own-time" aria-hidden="true">{m.timeLabel}</span>}
 					</div>
 				</div>
 
-				{m.reactions.length > 0 && (
+				{m.editedAt && !deleted && (
+					<MetaLine class="msg-row__edited" as="span" size="xs" items={["Edited"]} />
+				)}
+
+				{m.reactions.length > 0 && !deleted && (
 					<div class="msg-reactions" role="group" aria-label="Reactions">
 						{m.reactions.map((r) => (
 							<button
@@ -197,7 +244,7 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 			{/* The swipe-to-reply cue, revealed at the edge the row is dragged away from. */}
 			<span class="msg-row__swipe-cue" aria-hidden="true">{cloneElement(ReplyIcon)}</span>
 
-			{selection?.menu && (
+			{selection?.menu && !deleted && !editing && (
 				<MessageContextMenu
 					message={m}
 					count={props.selectionCount ?? 1}
@@ -209,6 +256,8 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 					onCopy={() => props.onCopy(m.id)}
 					onTogglePin={() => props.onTogglePin(m.id)}
 					onToggleFavorite={() => props.onToggleFavorite(m.id)}
+					onEdit={onEdit}
+					onDelete={onDelete}
 				/>
 			)}
 		</div>

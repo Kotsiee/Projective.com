@@ -6,7 +6,7 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 13 open, 0 partly done, 13 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 12 open, 0 partly done, 14 done (§0 ledger).
 > Runnable now: NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -65,6 +65,7 @@ A prompt that lands gets a row here.
 | EX3 | Raising a ticket dispute freezes its Evidence Vault in the same transaction: `finance.dispute_vaults` (manifest jsonb, `sha256` of its canonical text, `pending` → `ready`, `object_prefix`; immutable by trigger, RLS with no client policy), `fn_dispute_vault_manifest` (terms, escrows, history, submissions with their file hashes, the stage's rooms), `fn_freeze_dispute_vault` from `open_ticket_dispute`, `mark_dispute_vault_ready` (service role), `get_dispute_vault`, `get_dispute.vault`; the service copies the files to `evidence/vault/{dispute}/`; `GET /api/finance/disputes/[disputeId]/summary.pdf` and `…/vault`; the case dialog's and the desk's Evidence Vault line and links; probe `dispute_vault.sql` | `a91a5080` (#558) | `0e06fa9d` |
 | CH4 | A message and its files are one write, and a voice memo survives a reload: `comms.send_message` (invoker) writes the message, its `message_attachments` links and `channel_files` rows in one transaction and refuses the whole send on a refused file (PA422 → 422 `not_attached`); `message_attachments.audio_duration_ms` + `audio_peaks` (four CHECKs, `uq_message_attachments_one_memo`); `SendAudioSchema` names the memo's upload; `fetchMessageAttachments` returns the memo as the player on every read; `MessageAttachmentRowSchema`; probe `message_send.sql` | `1732ac6d` (#559) | `0e06fa9d` |
 | CH3 | Inside a project every DM and group opens in place, and reading marks it read: `comms.project_channel_reads` + `comms.mark_room_read` + `comms.unread_rooms` behind `POST /api/projects/messages/read` (the send's own pair; a `cht-` channel marks the thread, so `/messages` clears too) and the `ProjectChat` island's after-paint read; `comms.project_dm_threads` (groups, no 500 cap); the `cht-` Files and Members tabs; `comms.dm_thread_projects` + `comms.bring_dm_into_project` (the other told, `message.brought_into_project`) + `comms.take_dm_out_of_project` (stamps kept) behind `POST | DELETE /api/projects/messages/dm`, the Members "Message" action and the header's Take out; probe `room_read_marks.sql` | `619a3885` (#560) | `b14e115f` |
+| CH1 | Authors edit and delete their messages through doors: `comms.edit_message` (within `message_edit_window_minutes`, 15) and `comms.delete_message` (a tombstone at any time), definers that keep every replaced text in the append-only `comms.message_revisions` and refuse an archived room or one a live dispute freezes (the stage's rooms and the project's General room, PM423); the `edit_own_messages` policy and every client `UPDATE` on the message tables gone; `dm_messages.edited_at`; `comms.message_edit_rules`, `comms.get_message_revisions` (operators); the vault manifest v2 carries each message's revision trail by hash; `PATCH`/`DELETE /api/messages/[id]`; the bubble's Edit and Delete for everyone, `MessageEditor`, `DeleteMessageDialog`, the Edited mark and the tombstone; dev axis `chatEdits`; probe `message_edit.sql` | (this commit) (#562) | `a48975b5` |
 | CH2 | A team's own room and a business's room on every stage they work on, opened in the transaction that makes them due: `comms.project_channels.team_id` + `ck_project_channels_team_room` + `uq_project_channels_private_room`; `comms.open_private_rooms` from three triggers (a team seat going live, a stage inserted, a project re-pointed at a business) and the lazy `get_stage_channels`; `can_access_scope`'s team arm is one team's (4-arg, `p_team_id`), the solo arm gone; the tree's Business group (`ProjectChannels.business`, `ChannelKind` `business`), team rooms joined by `team_id`; probe `private_rooms.sql` | `1958096c` (#561) | `47db5bca` |
 
 ### 0.1 Row → work order
@@ -131,7 +132,7 @@ The operator's ruling is MW-59; it is not this file's row.
 
 | Row   | Now · Crit · Gate | Work order                                        | The row flips when                                                                            |
 | :---- | :---------------- | :------------------------------------------------ | :-------------------------------------------------------------------------------------------- |
-| PJ-47 | 🟡 · Crit · MVP   | COMMS MS3 → MS5 step 3; **CH1**; T&S P2d (G5, G6) | Live delivery; edit and delete; persisted reactions; an archived room refuses at the database |
+| PJ-47 | 🟡 · Crit · MVP   | COMMS MS3 → MS5 step 3; T&S P2d (G5, G6); CH1 ✅ (#562) | Live delivery; persisted reactions; an archived room refuses at the database |
 | PJ-49 | 🟡 · Crit · MVP   | COMMS MS3; T&S SN3                                | Live delivery; the group photo is screened                                                    |
 | PJ-52 | 🟡 · Normal · UAT | COMMS MS5                                         | Mute and delete persist on the server                                                         |
 | PJ-54 | 🟡 · High · UAT   | T&S LK1                                           | A link nobody could check goes through `/exit`                                                |
@@ -181,14 +182,14 @@ after PM-WP1. The paths follow §0.2's order:
 | Tickets & delivery             |   59% | WP8 62% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100% (TK2 ✅, #557)               |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
-| Messaging                      |   61% | MS5 61% → CH1 + P2d 67% → CH2 ✅ (#561) (CH3 ✅, #560) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
+| Messaging                      |   61% | MS5 61% → P2d 67% (CH1 ✅, #562; CH3 ✅, #560) → CH2 ✅ (#561) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → NO2 + CD2 94% → NT5 + NO3 100%                                                                          |
 | Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
 
 **What MVP needs from this cluster:** the eight Critical · MVP rows not yet ✅, which are PJ-17,
 26, 27, 29, 30, 47, 49 and 57 (PJ-23 ✅, TK2). Their work orders, in order: D7a + P6, S3, WP9, WP6, NO1
-(+ CD2), and the chat chain (MS3, MS5, CH1, P2d, SN3, the T&S P-chain).
+(+ CD2), and the chat chain (MS3, MS5, P2d, SN3, the T&S P-chain; CH1 ✅, #562).
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a) and PJ-60 (NO2 + CD2) (PJ-43 ✅, EX2 + EX3).
 Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a, EX1,
@@ -230,7 +231,8 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 4. **COMMS MS4**: PJ-62. Run MS5 right after it.
 5. **PM-P6** (no longer a money-lane prompt). Then **PM-S3** (⏳ D7a).
 6. **PM-WP9** (★00001150, ⏳ PM-WP8 step 4): PJ-27, PJ-38.
-7. **COMMS MS5** (⏳ MS3), then **CH1** (⏳ MS3): PJ-52, PJ-47.
+7. **COMMS MS5** (⏳ MS3): PJ-52. CH1 ✅ (#562) ran ahead of MS3 by your ruling; MS3's live
+   delivery must carry its edits and deletes.
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
@@ -272,14 +274,14 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00001140` (claims, capacity, workload)                  | PM WP5a, D7b                                                 | —                                                                 |
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
 | `00000017` + `00001260` (disputes)                       | PM-WP4a step 6                                               | FBP DB21; MR3                                                     |
-| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | CH1                                                     | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
+| `00000016`, `00002012`, `00001300`, `00001840` (comms)   | —                                                            | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
 | `00005010` (notification catalogue)                      | EX1, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1                  | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
 | `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1      | COMMS NT5; T&S R3                                                 |
-| `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | CH1                                                          | COMMS MS3, MS5; T&S R2                                            |
+| `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | —                                                            | COMMS MS3, MS5; T&S R2                                            |
 | `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                         | O·WP6                                                             |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`               | every prompt                                                 | every readiness track: edit your rows and the computed lines only |
 
@@ -303,7 +305,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2 ✅ (#549) | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
 | 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3 ✅ (#558) | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
 | 20 | Which workload verdict can be appealed                                                                                                       | EX4 (#552)    | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
-| 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1           | Edit for 15 minutes; delete for everyone at any time while the room is live; originals kept for evidence; nothing in an archived or disputed room changes                                                                |
+| 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1 ✅ (#562) | **Ruled #562:** as recommended (A): edit for 15 minutes; delete for everyone at any time; originals kept; nothing in an archived room changes, nor in the disputed stage's rooms or the project's General room while the dispute is live |
 | 22 | Who gets team and business rooms, and when                                                                                                   | CH2 ✅ (#561) | **Ruled #561:** eagerly, as recommended: a team's room when its seat on a stage goes live, a business's on every stage of a business-client project. And a new contradiction, ruled: one room per team, so a second team or a solo freelancer on the stage never reads it; a released seat keeps nothing |
 | 23 | Who may bring a pair DM into a project                                                                                                       | CH3 ✅ (#560) | **Ruled #560:** as recommended: either participant, while both are on the project; the other is told; either may take it out, which hides it for both and keeps every stamp |
 | 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1           | Yes, as a transactional invite behind a switch until counsel answers; `application.received` joins the hourly digest                                                                                                     |
@@ -319,8 +321,8 @@ block, so a question you defer still stops the build at the right step. The PM p
 **For counsel** (build behind a switch that stays off; never switch it on):
 
 - NO1's lawful basis for mailing someone who has no account.
-- CH1: keeping a message's original after its author deletes it for everyone. This is evidence
-  retention against erasure.
+- CH1 (built with no purge, #562): keeping a message's original after its author deletes it for
+  everyone. This is evidence retention against erasure.
 - EX3 (built with no purge, #558): the Evidence Vault's retention period, and the weight of the dispute summary PDF.
 
 ### 0.4 Not in this file
@@ -630,63 +632,9 @@ the decision row (W8 closed).
 
 ## 5. Messaging
 
-### CH1 — Edit and delete a message; the original survives for evidence
+---
 
-Narrows PJ-47.
-
-```text
-PROMPT CH1: Authors can edit and delete their messages through doors; every revision is kept
-for evidence; an archived or disputed room's messages cannot change
-
-ROLE: Full-stack engineer. Queue S, after COMMS MS3 and MS5: 00000016, 00002012, 00002520,
-00001840.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - Nothing edits or deletes a message: no editMessage, no route. Message edit and delete is CAS
-    M11, "Open (no prompt)" (CAS:94; COMMS §0.4 leaves it out and names this prompt as its owner).
-  - Rooms have half the database for it: an UPDATE policy (00002012:82-90), a column grant on
-    body, body_delta, edited_at and deleted_at (00002520:393), and the re-mask on UPDATE
-    (00001840:6-7). comms.dm_messages has no edited_at and no UPDATE policy (00000016:259-295).
-  - The Evidence Vault snapshots chat logs (PRODUCT_SPEC.md:3580-3586; EX3), so originals must
-    survive.
-  - MS3 (live updates) and MS5 (delete for me; reactions) own ChatFeed.island.tsx and
-    MessagingBackendService.ts while they run. T&S P2d gates archived rooms (G5).
-
-🧑 DECISION (before step 2). There is no PRODUCT_SPEC rule; put this to me:
-  A (recommended): the author edits within 15 minutes, any number of times; an edit re-runs
-     masking and shows "edited". The author deletes for everyone at any time, leaving a
-     "Message deleted" tombstone. Every revision, and the original, is kept in an append-only
-     table that only the dispute vault and operators read. Nothing in an archived room, or in a
-     room whose stage has a live dispute, can be edited or deleted. MS5's "delete for me"
-     stays separate.
-  ⚖️ Keeping an original after "delete for everyone" is evidence retention against erasure; it
-  goes to counsel, so build it, but leave the retention period open.
-
-STEPS:
-  1. Red first: supabase/probes/message_edit.sql. Today no door exists; a direct UPDATE on a
-     room message passes the policy.
-  2. Schema, in place: comms.message_revisions (message kind, message id, body, body_delta,
-     revised_at, revised_by), append-only by trigger; dm_messages gains edited_at and
-     deleted_at.
-  3. Doors: comms.edit_message and comms.delete_message (definer; the author, the window and the
-     freeze), replacing the client UPDATE path. The room UPDATE policy goes, or keeps no write
-     columns: decide with T&S P2d's file state and keep its archive gate.
-  4. The service and routes; MS3's live updates carry edits and deletes.
-  5. UI: Edit and Delete in the bubble menu, one dialog for the delete confirm, an "edited"
-     MetaLine mark, and the tombstone.
-
-ACCEPTANCE: the probe is green (the window, the author only, revisions kept, the freeze, the
-re-mask); live, edit and delete in a stage room and a DM; screenshots.
-
-SAME CHANGE: PRODUCT_SPEC.md (the rule as ruled); documentation/database/comms/*; Zod; the
-decision row (CAS M11 closed).
-```
-
-§1.2 rows: **PJ-47** stays 🟡 until MS3, MS5 step 3 and T&S P2d land. The note narrows, and its
-"archived rooms accept posts" is corrected: the send door refuses (404,
-`projects/live-writes.ts:2631-2637`), and only a direct PostgREST insert passes (`00002012:60-64` →
-`00001300:154-177`). The note also gains room read marks (PRD-E13) and the missing body and rate
-caps (G6).
+## 6. Notices
 
 ### NO1 — An emailed invitation reaches someone who has no account yet
 

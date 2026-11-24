@@ -4876,6 +4876,26 @@ day) and gains `duplicateRule` (a copy after its source, opened in the editor) �
 themselves are the app's: `/calendar?view=availability` binds `ActionMenu` surfaces to the grid, the panel and the
 lane (`features/calendar/components/AvailabilityMenus.tsx`).
 
+**Editing and deleting a message (PROJECTS CH1, Decision #562): `MessageEditor`,
+`DeleteMessageDialog`, and the bubble's edit states (`features/projects/components/`).** The bubble's
+`…` menu (`MessageActions`) and its highlight-mode menu (`MessageContextMenu`) gain **Edit message**
+(a pencil, `EditIcon`) and **Delete for everyone** (`TrashIcon`, `ui-menu-item--danger`), rendered
+only while the surface passes `onEdit` / `onDelete`: the author's own message, inside the room's edit
+window for Edit, in a room nothing freezes (`messageEditOffer`, the doors' rule, against the page's
+`permissions.edits`). `MessageEditor` is the bubble's body in place: the composer's four-mark Quill
+field (`useComposerEditor`, now with `initialOps`) opened on the message's own words and formatting,
+the `FormatBubble` over a selection, a Meta hint ("Enter to save · Esc to cancel", or "To take it
+back, delete the message instead." when blank) and two `Button`s at `sm`: Cancel (`secondary`
+`text`) and Save (the one filled control, `loading` while it saves, disabled while blank). A bubble
+being edited (`data-editing`) leaves `--primary` for `--surface-1` with the `--hairline-strong`
+border an interactive field takes, up to 36rem. `DeleteMessageDialog` is the one confirmation
+(`ConfirmDialog`, `acceptSeverity="danger"`): "Delete this message for everyone?" · Delete for
+everyone · Keep it. An edited message carries an **Edited** `MetaLine` (`xs`, `span`) under the
+bubble, visible to everyone; a deleted one (`data-deleted`) is a tombstone, "Message deleted" in the
+Meta register, italic, on `--surface-1` whoever sent it, with no menus, reactions, files or link
+previews. Styles: `features/projects/styles/message-edit.css`. Dev Context Switcher: **Message
+edits** (`chatEdits`: Auto · Open · Archived · Dispute).
+
 ### C.2 Engineering guidelines (merge-gated)
 
 - **Zero framework libraries.** Raw, native, high-performance **CSS via strict BEM** only. No

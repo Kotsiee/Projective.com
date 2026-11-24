@@ -1,0 +1,118 @@
+/*
+ * Editing and deleting a sent message (PROJECTS CH1): the inline editor a bubble becomes, the
+ * "Message deleted" tombstone, and the "Edited" mark beneath an edited message. Token-only.
+ */
+
+/* #region The bubble while it is being edited */
+/*
+ * An own bubble is filled `--primary`, which a field and its Save cannot sit on, so a bubble being
+ * edited turns into a field: the page's own surface, its full border (it is an interactive element
+ * now), and room to write.
+ */
+.msg-bubble[data-editing="true"] {
+	inline-size: min(100%, 36rem);
+	max-inline-size: 100%;
+	color: var(--on-surface);
+	background: var(--surface-1);
+	border: var(--hairline-strong);
+}
+
+.msg-editor {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/* The Quill host — the composer's field (chat-composer.css), sized for a bubble. */
+.msg-editor__input {
+	position: relative;
+	inline-size: 100%;
+	font: inherit;
+	font-size: 0.9rem;
+	line-height: 1.45;
+	color: var(--on-surface);
+}
+
+.msg-editor__input .ql-editor {
+	box-sizing: border-box;
+	max-block-size: 240px;
+	overflow-y: auto;
+	padding-block: var(--space-1);
+	padding-inline: 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	outline: none;
+	cursor: text;
+}
+
+.msg-editor__input .ql-editor p {
+	margin: 0;
+}
+
+.msg-editor__input .ql-editor strong {
+	font-weight: var(--fw-bold);
+}
+
+.msg-editor__input .ql-editor u {
+	text-underline-offset: 0.15em;
+}
+
+.msg-editor__input .ql-editor.ql-blank::before,
+.msg-editor__input[data-ready="false"]::before {
+	content: attr(data-placeholder);
+	position: absolute;
+	inset-block-start: var(--space-1);
+	inset-inline-start: 0;
+	color: var(--text-secondary);
+	pointer-events: none;
+}
+
+.msg-editor__input[data-ready="false"] {
+	min-block-size: calc(0.9rem * 1.45 + 2 * var(--space-1));
+}
+
+.msg-editor__bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+
+.msg-editor__hint {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.msg-editor__actions {
+	display: inline-flex;
+	gap: var(--space-1);
+	margin-inline-start: auto;
+}
+/* #endregion */
+
+/* #region The tombstone */
+/*
+ * A deleted message keeps its place, never its colour: own or not, it reads as an absence — the
+ * meta register on the quietest bubble tone, nothing to act on.
+ */
+.msg-bubble[data-deleted="true"],
+.msg-bubble[data-deleted="true"][data-own="true"] {
+	color: var(--text-secondary);
+	background: var(--surface-1);
+}
+
+.msg-bubble__tombstone {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-style: italic;
+}
+/* #endregion */
+
+/* #region The "Edited" mark */
+.msg-row__edited {
+	padding-inline: 0.3rem;
+	margin-block-start: 1px;
+}
+/* #endregion */

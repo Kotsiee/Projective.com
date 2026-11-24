@@ -36,6 +36,19 @@ import { chatFeedScope } from "../core/chat-attachments.ts";
 import { messageAnchorOf, withoutMessageAnchor } from "../core/chat-context.ts";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
 import { toggleMessagePin } from "@features/messaging/core/message-pins.ts";
+import {
+	deleteMessage,
+	editMessage,
+	type MessageChat,
+} from "@features/messaging/core/message-edits.ts";
+import {
+	applyMessageChange,
+	messageEditOffer,
+	messageEditRefusalText,
+} from "@projective/types/messaging";
+import type { MessageDelta, MessageEditRules } from "@projective/types/projects";
+import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
+import { DeleteMessageDialog } from "../components/DeleteMessageDialog.tsx";
 
 /**
  * ChatFeed — the bottom-up, virtualized message stream for a channel's Chat tab
@@ -74,6 +87,11 @@ import { toggleMessagePin } from "@features/messaging/core/message-pins.ts";
 export interface ChatFeedProps {
 	projectId: string;
 	channelId: string;
+	/**
+	 * The feed is an inbox conversation (`/messages`), whose id is `channelId`: an edit or a delete then
+	 * names the conversation, as its send does, rather than a project and a channel (PROJECTS CH1).
+	 */
+	conversation?: boolean;
 	/** SSR-resolved latest page, or null when the channel resolved to nothing. */
 	initial: MessagePage | null;
 	/**
@@ -112,7 +130,7 @@ function stripMessageAnchor(): void {
 }
 
 export default function ChatFeed(
-	{ projectId, channelId, initial, loadOlder: customLoadOlder }: ChatFeedProps,
+	{ projectId, channelId, conversation, initial, loadOlder: customLoadOlder }: ChatFeedProps,
 ): JSX.Element {
 	// #region State
 	const messages = useSignal<ChatMessage[]>(initial?.messages ?? []);
@@ -421,6 +439,76 @@ export default function ChatFeed(
 	}
 	// #endregion
 
+	// #region Edit and delete for everyone (PROJECTS CH1)
+	/*
+	 * The room's rules come with the page (`permissions.edits`, from `comms.message_edit_rules`); a page
+	 * without them offers neither act. The Dev Context Switcher's `chatEdits` axis may open or freeze
+	 * the chat for a preview; the doors still decide. What a bubble offers is `messageEditOffer` — the
+	 * doors' own rule — read against the clock at render and again when the act is chosen, because the
+	 * window can close while the page is open. Neither act is optimistic: the feed draws the door's
+	 * answer, which for an edit is the re-masked words.
+	 */
+	const chat: MessageChat = conversation ? { conversationId: channelId } : { projectId, channelId };
+	const serverRules = initial?.permissions.edits ?? null;
+	const devEdits = useSignal(readDevSeam()?.chatEdits);
+	useEffect(() => subscribeDevSeam((seam) => (devEdits.value = seam?.chatEdits)), []);
+	const editingId = useSignal<string | null>(null);
+	const savingEdit = useSignal(false);
+	const deleteId = useSignal<string | null>(null);
+	const deleteVisible = useSignal(false);
+
+	function editRules(): MessageEditRules | null {
+		const forced = devEdits.value;
+		if (!serverRules || !forced || forced === "auto") return serverRules;
+		return { ...serverRules, frozen: forced === "open" ? null : forced };
+	}
+	function offerFor(m: ChatMessage): { edit: boolean; delete: boolean } {
+		const rules = editRules();
+		if (!rules || !m.isOwn) return { edit: false, delete: false };
+		const offer = messageEditOffer(m, rules, Date.now());
+		return { edit: offer.edit === null, delete: offer.delete === null };
+	}
+	function startEdit(id: string): void {
+		const m = messages.value.find((x) => x.id === id);
+		const rules = editRules();
+		done();
+		if (!m || !rules) return;
+		const refusal = messageEditOffer(m, rules, Date.now()).edit;
+		if (refusal) {
+			sel.status.value = messageEditRefusalText(refusal, rules);
+			return;
+		}
+		editingId.value = id;
+	}
+	async function saveEdit(id: string, text: string, delta: MessageDelta | null): Promise<void> {
+		if (savingEdit.value) return;
+		savingEdit.value = true;
+		const out = await editMessage(id, chat, text, delta);
+		savingEdit.value = false;
+		if (out.ok) {
+			updateMessage(id, (m) => applyMessageChange(m, out.change));
+			editingId.value = null;
+		}
+		sel.status.value = out.message;
+	}
+	function askDelete(id: string): void {
+		done();
+		deleteId.value = id;
+		deleteVisible.value = true;
+	}
+	async function confirmDelete(): Promise<void> {
+		const id = deleteId.value;
+		deleteId.value = null;
+		if (!id) return;
+		const out = await deleteMessage(id, chat);
+		if (out.ok) {
+			updateMessage(id, (m) => applyMessageChange(m, out.change));
+			if (editingId.value === id) editingId.value = null;
+		}
+		sel.status.value = out.message;
+	}
+	// #endregion
+
 	// #region Jump to a (pinned or quoted) message
 	const settleTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 	useEffect(() => {
@@ -524,9 +612,16 @@ export default function ChatFeed(
 			);
 		}
 		if (row.message.type === "system") return <SystemMessage message={row.message} />;
+		const offer = offerFor(row.message);
 		return (
 			<MessageBubble
 				row={row}
+				onEdit={offer.edit ? startEdit : undefined}
+				onDelete={offer.delete ? askDelete : undefined}
+				editing={editingId.value === row.message.id}
+				saving={savingEdit.value}
+				onSaveEdit={(id, text, delta) => void saveEdit(id, text, delta)}
+				onCancelEdit={() => (editingId.value = null)}
 				canPin={canPin}
 				onReply={reply}
 				onReact={react}
@@ -653,6 +748,8 @@ export default function ChatFeed(
 				scope={scope}
 				onGoToMessage={(id) => void jumpTo(id)}
 			/>
+
+			<DeleteMessageDialog visible={deleteVisible} onAccept={() => void confirmDelete()} />
 		</div>
 	);
 }

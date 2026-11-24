@@ -38,6 +38,7 @@ import { isSlug } from "@projective/types/slugs";
 import { maskPii } from "@projective/types/comms";
 import type {
 	AttachmentSource,
+	ChatMessage,
 	FileListPage,
 	FileListParams,
 	MemberRosterPage,
@@ -139,6 +140,19 @@ import { inPartition } from "./partition.ts";
 import { resolveLiveThread, resolveThreadRef, virtualSummary } from "./live-threads.ts";
 import { markLiveRead, setLiveFolder, setLiveMuted, setLiveStarred } from "./live-folders.ts";
 import { messageProjectIdOf, setMessagePin } from "./live-message-marks.ts";
+import { deleteLiveMessage, editLiveMessage, liveMessageEditRules } from "./live-message-edits.ts";
+import {
+	overlayStubMessageChanges,
+	recordStubMessageChange,
+	withStubMessageChange,
+} from "./edit-store.ts";
+import {
+	DEFAULT_MESSAGE_EDIT_RULES,
+	type EditMessage,
+	type MessageChange,
+	messageEditOffer,
+	messageEditRefusalText,
+} from "@projective/types/messaging";
 import { touchProjects, touchProjectsOf } from "../projects/freshness.ts";
 import { postRequestMessage, type RequestPosted } from "./live-requests.ts";
 import { fetchConversationContext } from "./live-context.ts";
@@ -589,6 +603,106 @@ async function applyStubGroupPhoto(
 	}
 }
 
+// #region Editing and deleting a message (PROJECTS CH1)
+/** The two acts an author has on a sent message. */
+type MessageAct = "edit" | "delete";
+
+/**
+ * The one path both acts take. Live, through the door the message's own store is gated by (a thread
+ * by `MESSAGING_BACKEND_LIVE`, a room by `PROJECTS_BACKEND_LIVE`, exactly as the send is): the door
+ * finds the message by id and decides everything, and the ref only says whose caches to drop. The
+ * fixture path finds the message in the chat the ref names and refuses with {@link messageEditOffer},
+ * the doors' rule, against the seeded window.
+ */
+async function changeMessage(
+	actor: ReadActor,
+	messageId: string,
+	ref: ChatRef,
+	act: MessageAct,
+	input: Pick<EditMessage, "text" | "delta"> | null,
+): Promise<ServiceResult<{ change: MessageChange }>> {
+	if (actor.userId.length === 0) return fail(401, { message: "Sign in to change a message." });
+	const done = act === "edit" ? "Message edited." : "Message deleted.";
+	const live = ref.kind === "thread" ? isMessagingBackendLive() : isProjectsBackendLive();
+	if (live) {
+		if (!canReadLive(actor)) return sessionRequired();
+		try {
+			const outcome = act === "edit" && input
+				? await editLiveMessage(actor, messageId, input)
+				: await deleteLiveMessage(actor, messageId);
+			if (outcome === null) return fail(404, { message: "No such message." });
+			if ("refusal" in outcome) return refusedWith(outcome.refusal);
+			await bumpAfterChange(actor, ref);
+			return ok({ change: outcome.data }, { message: done });
+		} catch (error) {
+			liveFailed(act === "edit" ? "editMessage" : "deleteMessage", error);
+			return fail(502, {
+				message: act === "edit"
+					? "That edit could not be saved — please try again."
+					: "That message could not be deleted — please try again.",
+			});
+		}
+	}
+
+	const found = ref.kind === "thread"
+		? findConversationMessage(ref.ref, messageId) ??
+			findSentConversationMessage(writeOwnerOf(actor), ref.ref, messageId)
+		: findChannelMessage(ref.ref, ref.channel, messageId) ??
+			findSentMessage(projectWriteOwnerOf(actor), ref.ref, ref.channel, messageId);
+	if (!found) return fail(404, { message: "No such message." });
+	const message = withStubMessageChange(actor, found);
+	const offer = messageEditOffer(message, DEFAULT_MESSAGE_EDIT_RULES, Date.now());
+	const refusal = act === "edit" ? offer.edit : offer.delete;
+	if (refusal) {
+		return fail(refusal === "not_own" ? 403 : 409, {
+			message: messageEditRefusalText(refusal, DEFAULT_MESSAGE_EDIT_RULES),
+		});
+	}
+	const change: MessageChange = act === "edit" && input
+		? stubEdit(ref, message, input)
+		: { id: message.id, text: "", delta: null, editedAt: message.editedAt ?? null, deleted: true };
+	recordStubMessageChange(actor, change);
+	bumpTenant(ref.kind === "thread" ? messagingReadCache : projectsReadCache, actor);
+	return ok({ change }, { message: done });
+}
+
+/**
+ * The fixture edit: the stub send's own contact filter for a protected thread (which drops the
+ * formatting of a body it rewrites, as `comms.tg_mask_dm_message_pii` does), and no write at all for
+ * an edit that changes nothing, as the door writes none.
+ */
+function stubEdit(
+	ref: ChatRef,
+	message: ChatMessage,
+	input: Pick<EditMessage, "text" | "delta">,
+): MessageChange {
+	const summary = ref.kind === "thread" ? findConversationSummary(ref.ref) : null;
+	const text = summary && stubIsProtected(summary) ? maskPii(input.text).masked : input.text;
+	const delta = text === input.text ? input.delta : null;
+	const same = text === message.text && JSON.stringify(delta) === JSON.stringify(message.delta);
+	return {
+		id: message.id,
+		text,
+		delta,
+		editedAt: same ? message.editedAt ?? null : new Date().toISOString(),
+		deleted: false,
+	};
+}
+
+/** Drop the author's cached reads of the chat, and bump the project's version when it has one. */
+async function bumpAfterChange(actor: ReadActor, ref: ChatRef): Promise<void> {
+	if (ref.kind === "thread") {
+		bumpTenant(messagingReadCache, actor);
+		if (!ref.project) return;
+		bumpTenant(projectsReadCache, actor);
+		await touchProjects([ref.project]);
+		return;
+	}
+	bumpTenant(projectsReadCache, actor);
+	await touchProjects([ref.ref]);
+}
+// #endregion
+
 export class MessagingBackendService {
 	/**
 	 * A filtered, paged page of the viewer's conversations (the inbox sidebar list).
@@ -709,9 +823,11 @@ export class MessagingBackendService {
 					// after the rows because both need their ids, and side by side because neither needs
 					// the other.
 					const ids = rows.map((r) => r.id);
-					const [interactions, attachments] = await Promise.all([
+					const [interactions, attachments, edits] = await Promise.all([
 						fetchMessageInteractions(actor, ids),
 						fetchMessageAttachments(actor, "comms.dm_messages", ids),
+						// What the thread lets its authors do (PROJECTS CH1); a failed read offers nothing.
+						liveMessageEditRules(actor, ref.threadId).catch(() => null),
 					]);
 					return toMessagePage(
 						params.conversationId,
@@ -723,6 +839,7 @@ export class MessagingBackendService {
 						interactions,
 						originals,
 						attachments,
+						edits,
 					);
 				});
 				if (!page) return fail(404, { message: "No such conversation." });
@@ -736,7 +853,9 @@ export class MessagingBackendService {
 		if (!page) return fail(404, { message: "No such conversation." });
 		// The stub store folds this viewer's sent messages onto the latest page — the fixture pool is
 		// never mutated, so without this a message sent a moment ago would vanish on reload.
-		return ok({ page: overlayConversationPage(page, !params.before, actor) });
+		return ok({
+			page: overlayStubMessageChanges(overlayConversationPage(page, !params.before, actor), actor),
+		});
 	}
 
 	/**
@@ -1043,6 +1162,31 @@ export class MessagingBackendService {
 			liveFailed("setPinned", error);
 			return fail(502, { message: "That pin could not be saved — please try again." });
 		}
+	}
+
+	/**
+	 * The author edits a message's words and formatting (`PATCH /api/messages/[id]`, PROJECTS CH1),
+	 * within the room's edit window, in a room or a DM alike. Answers what the message now reads.
+	 */
+	static async editMessage(
+		messageId: string,
+		ref: ChatRef,
+		input: Pick<EditMessage, "text" | "delta">,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ change: MessageChange }>> {
+		return await changeMessage(actor, messageId, ref, "edit", input);
+	}
+
+	/**
+	 * The author deletes a message for everyone (`DELETE /api/messages/[id]`, PROJECTS CH1): its place
+	 * stays as a tombstone, its words are kept as evidence nobody but the vault and operators reads.
+	 */
+	static async deleteMessage(
+		messageId: string,
+		ref: ChatRef,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ change: MessageChange }>> {
+		return await changeMessage(actor, messageId, ref, "delete", null);
 	}
 
 	/**

@@ -138,8 +138,8 @@ These cannot run in parallel because they edit the same files:
   (`bumpCacheVersion`, `cacheVersion`, `cacheVersionTag` in `packages/backend/core/kv.ts`) and SR3
   `cachedGlobal(key, ttlMs, fetch)` from the same file. No prompt here edits `core/cache.ts`.
 - **`MessagingBackendService.ts`, `conversations-ssr.ts`, `live-queries.ts`,
-  `ChatFeed.island.tsx`.** MS3 and MS5 here; PROJECTS CH1 and T&S R2 elsewhere (one at a time;
-  PROJECTS CH4 landed, #559).
+  `ChatFeed.island.tsx`.** MS3 and MS5 here; T&S R2 elsewhere (one at a time;
+  PROJECTS CH4 landed, #559; CH3 landed, #560; CH1 landed, #562).
 - **`00001400`, `00002510` and the `search` schema.** The identity track's erasure (SEC G16, CAS
   S17) and the trust track's search grants and policies (SEC G13–G15, T&S P2d step 5) never run
   beside SR3.
@@ -212,7 +212,7 @@ No agent types, pastes or echoes a secret, and no agent changes a hosted setting
   track writes `search.fn_prune_query_logs`; SEC G13 is the trust track's P2d), CAS §3 (F1–F33:
   files, streaming and the inspector) and D4 (the asset picker's `--fw-bold` title,
   `features/files/styles/asset-picker.css:115`, still open). Z1 lists each one as Open with no
-  owner, unless another track's file claims it (PROJECTS CH1 now claims M11).
+  owner, unless another track's file claims it (PROJECTS CH1 closed M11, #562).
 
 ---
 
@@ -360,7 +360,10 @@ commit as the work:
 > and 3–6 below are open (`00002600:10-18` still publishes the five comms tables; there is no
 > `since` route). Its waits are met (MS2 `4958c708`, SAC3 `f52a8502`). Unverified: a 2026-11-19 run
 > on `claude/ms3-live-chat` (PROJECTS §0.2) left no branch in this repo; check `git branch -a`
-> first.
+> first. Since PROJECTS CH1 (#562) a message also changes in place: `edited_at`, or a `deleted_at`
+> tombstone whose body is empty (`comms.edit_message`, `comms.delete_message`). The long-poll must
+> carry those changed rows to the other readers, not only new ones; today they see an edit or a
+> delete on their next load.
 
 ```text
 PROMPT MS3: Live updates — an ETag long-poll, KV version keys, and comms out of Realtime

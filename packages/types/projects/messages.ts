@@ -284,8 +284,35 @@ export const ChatMessageSchema = z.object({
 	 * thread renders it as a quote card over the plain `text`. Absent on every other message.
 	 */
 	quoteEventId: z.string().uuid().nullable().optional(),
+	/**
+	 * When the author last edited the words (`edited_at`, PROJECTS CH1): the bubble reads "edited".
+	 * Null, or absent, on a message never edited.
+	 */
+	editedAt: z.string().nullable().optional(),
+	/**
+	 * The author deleted it for everyone (`deleted_at`, PROJECTS CH1): a "Message deleted" tombstone
+	 * that keeps its place, its author and its time, and carries no words, files, memo or reactions.
+	 */
+	deleted: z.boolean().optional(),
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+// #endregion
+
+// #region Message edits
+/** Why a room's messages may not change now (`comms.fn_message_room_freeze`, PROJECTS CH1). */
+export const MessageEditFreeze = z.enum(["archived", "dispute"]);
+export type MessageEditFreeze = z.infer<typeof MessageEditFreeze>;
+
+/**
+ * The edit rules a room's reader is told (`comms.message_edit_rules`): the window after sending in
+ * which the author may edit (the `message_edit_window_minutes` dial), and why the room is frozen, if
+ * it is. The doors re-check both; this only decides what the bubble offers.
+ */
+export const MessageEditRulesSchema = z.object({
+	windowMinutes: z.number().int().min(0),
+	frozen: MessageEditFreeze.nullable(),
+});
+export type MessageEditRules = z.infer<typeof MessageEditRulesSchema>;
 // #endregion
 
 // #region Viewer capabilities
@@ -296,6 +323,11 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
  */
 export const ChannelPermissionsSchema = z.object({
 	canPin: z.boolean(),
+	/**
+	 * What the room allows its messages' authors (PROJECTS CH1), from `comms.message_edit_rules`:
+	 * absent where a surface has not read it, which offers no edit or delete.
+	 */
+	edits: MessageEditRulesSchema.optional(),
 });
 export type ChannelPermissions = z.infer<typeof ChannelPermissionsSchema>;
 // #endregion

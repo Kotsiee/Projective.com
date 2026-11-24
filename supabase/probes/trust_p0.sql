@@ -29,6 +29,8 @@ BEGIN
     FROM comms.project_messages m JOIN comms.project_channels c ON c.id = m.channel_id
     WHERE m.deleted_at IS NULL AND m.sender_user_id IS NOT NULL
       AND projects.is_protected_phase(c.project_id)
+      -- A room whose messages may still be edited (PROJECTS CH1): no live dispute freezes it.
+      AND comms.fn_message_room_freeze('comms.project_messages', c.id) IS NULL
     ORDER BY m.id LIMIT 1;
     IF v_msg IS NULL THEN RAISE EXCEPTION 'FAIL no fixture: no protected stage message (deno task db:reset)'; END IF;
 
@@ -44,12 +46,23 @@ END $$;
 -- #endregion
 
 -- #region E1. The sender edits a protected message
+-- Through comms.edit_message, the only edit path (PROJECTS CH1), which edits only within the window:
+-- a message the same sender sends in the same room now, then edited.
+DO $$
+DECLARE v_new uuid;
+BEGIN
+    INSERT INTO comms.project_messages (channel_id, sender_user_id, body)
+    SELECT m.channel_id, m.sender_user_id, 'Probe E1: before the edit'
+      FROM comms.project_messages m WHERE m.id = current_setting('probe.msg')::uuid
+    RETURNING id INTO v_new;
+    PERFORM set_config('probe.msg', v_new::text, true);
+END $$;
+
 SELECT set_config('request.jwt.claims',
     json_build_object('sub', current_setting('probe.sender'), 'role', 'authenticated')::text, true);
 SET LOCAL ROLE authenticated;
 
-UPDATE comms.project_messages SET body = 'call me on +44 7700 900123 or me@example.com', edited_at = now()
-WHERE id = current_setting('probe.msg')::uuid;
+SELECT comms.edit_message(current_setting('probe.msg')::uuid, 'call me on +44 7700 900123 or me@example.com');
 
 RESET ROLE;
 

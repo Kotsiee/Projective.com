@@ -22,6 +22,7 @@ export default function ConversationChat(
 		<ChatFeed
 			projectId={conversationId}
 			channelId={conversationId}
+			conversation
 			initial={initial}
 			loadOlder={(cursor) =>
 				MessagingService.messages(conversationId, cursor).then((r) =>

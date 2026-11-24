@@ -302,10 +302,39 @@ Deno.test("fetchChannelMessagePage clamps the page size and asks for one extra r
 			calls.filter((c) => c.name === "project_messages" && c.method === "GET" && !c.query.get("id"))
 				.at(-1)!;
 		assertEquals(pageRead().query.get("limit"), "29", "default page of 28, plus one");
-		assertEquals(pageRead().query.get("deleted_at"), "is.null");
+		// Deleted rows are read too, and drawn as tombstones (PROJECTS CH1).
+		assertEquals(pageRead().query.get("deleted_at"), null);
 		await fetchChannelMessagePage(OWNER, { projectId: SLUG, channelId: CHANNEL_ID, limit: 0 }, NOW);
 		assertEquals(pageRead().query.get("limit"), "2");
 	});
+});
+
+Deno.test("fetchChannelMessagePage draws a deleted message as a tombstone and carries the room's edit rules", async () => {
+	const gone = {
+		...ROW_M2,
+		body: "Words the author took back",
+		deleted_at: "2026-10-04T16:00:00.000Z",
+	};
+	const edited = { ...ROW_M1, edited_at: "2026-10-03T08:05:00.000Z" };
+	await withPostgrest(
+		messageRoutes({
+			"comms.project_messages": messagesRoute({ page: [gone, edited] }),
+			"comms.rpc.message_edit_rules": { frozen: "dispute", edit_window_minutes: 15 },
+		}),
+		async () => {
+			const page = await fetchChannelMessagePage(OWNER, PARAMS, NOW);
+			assert(page);
+			const tomb = page.messages.find((m) => m.id === M2);
+			assertEquals([tomb?.deleted, tomb?.text, tomb?.attachments, tomb?.reactions], [
+				true,
+				"",
+				[],
+				[],
+			]);
+			assertEquals(page.messages.find((m) => m.id === M1)?.editedAt, "2026-10-03T08:05:00.000Z");
+			assertEquals(page.permissions.edits, { windowMinutes: 15, frozen: "dispute" });
+		},
+	);
 });
 
 Deno.test("fetchChannelMessagePage pages backwards from a cursor with a (created_at, id) tie-break", async () => {

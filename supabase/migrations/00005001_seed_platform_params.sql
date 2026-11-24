@@ -392,3 +392,10 @@ VALUES ('finance.delivered_refund_refusal', false, jsonb_build_object(
 ))
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
+
+-- #region [messages] How long a message's author may edit it (PROJECTS CH1)
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('message_edit_window_minutes', '15'::jsonb,
+        'Minutes after sending in which the author may edit a room message or a DM, any number of times (comms.edit_message, PROJECTS CH1). Deleting for everyone has no window. Mirrored in TS as MESSAGE_EDIT_WINDOW_MINUTES under a parity test; missing or not a number, 15 applies.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion

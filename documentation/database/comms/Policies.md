@@ -107,7 +107,8 @@ CLAUDE.md §6 — RLS is always on).
 | _view_channels_if_member_             | `comms.project_channels`             | `SELECT` | `archived_at IS NULL` **AND** `comms.has_channel_access(id)` — Decision #163 |
 | _view_messages_if_member_             | `comms.project_messages`             | `SELECT` | `comms.has_channel_access(channel_id)`                          |
 | _send_messages_if_member_             | `comms.project_messages`             | `INSERT` | `sender_user_id = auth.uid()` **AND** channel access            |
-| _edit_own_messages_                   | `comms.project_messages`             | `UPDATE` | Both arms: `sender_user_id = auth.uid()` **AND** channel access |
+| _(none)_                              | `comms.project_messages`, `comms.dm_messages` | `UPDATE` | No policy and no privilege: `comms.edit_message` / `comms.delete_message` are the only writers (PROJECTS CH1) |
+| _(none)_                              | `comms.message_revisions`            | all      | RLS on, no policy, no grant: evidence the doors write and only definers read (PROJECTS CH1) |
 | _view_attachments_if_member_          | `comms.message_attachments`          | `SELECT` | Channel access (project messages) or DM participation           |
 | _Users link own message attachments_  | `comms.message_attachments`          | `INSERT` | Only for a message the caller sent, and only for a file the caller can already read (`files.fn_can_read`) — Decision #132 |
 | _view_channel_files_if_member_        | `comms.channel_files`                | `SELECT` | Channel access (`'project'`) or DM participation (`'dm'`)       |
@@ -133,16 +134,19 @@ named author made, so that is impersonation inside the one surface where a clien
 negotiate scope and agree changes. The feed renders the claimed sender verbatim; nothing downstream
 can tell the difference.
 
-### `edit_own_messages` — and why the `WITH CHECK` arm is the half that matters
+### No `UPDATE` policy on either message table (PROJECTS CH1, Decision #562)
 
-`comms.project_messages` carried `edited_at` and `deleted_at` with **no `UPDATE` policy**, so both
-were unwritable by any client and the edit path was silently impossible rather than refused.
-
-The `WITH CHECK` arm re-asserts authorship on the **post-image**. A `USING` clause alone validates
-the row you started from, so a sender could edit their own message and set `sender_user_id` to
-somebody else in the same statement — turning their own words into that person's, which is the
-impersonation the `INSERT` policy closes, reached from the other side. Channel access is re-checked
-so an edit cannot outlive the sender's membership of the room.
+Editing and deleting are the author's own acts and go through two definers in `00001300`,
+`comms.edit_message` and `comms.delete_message` ([Functions.md](Functions.md#editing-and-deleting-a-message-00001300--00001840-projects-ch1)).
+They hold what no policy could: the edit window, the freeze (an archived room or thread, a stage's
+rooms and the project's General room while a dispute on the stage is live) and the evidence (the
+replaced words go to `comms.message_revisions` first). The `edit_own_messages` policy they replaced let
+a sender rewrite their own room message by a raw PostgREST `UPDATE` at any age, in an archived room or
+mid-dispute, and the words were lost; its `WITH CHECK` arm (authorship re-asserted on the post-image)
+and its column grant went with it. `00002520` revokes `UPDATE` on both message tables from
+`authenticated`, so a direct write is refused `42501` rather than passing a policy (`project_messages`)
+or silently matching no row (`dm_messages`). The archive gate T&S P2d planned for this policy (G5)
+is the doors' `PM423`.
 
 INSERT is column-scoped the same way (SEC L5, `00002520` §2): `authenticated` holds `INSERT
 (channel_id, sender_user_id, body, body_delta, reply_to_id, has_attachments, is_audio)` on
@@ -152,20 +156,12 @@ grant let a client backdate `created_at` (dispute evidence), set `edited_at` / `
 write `pii_masked` / `pii_categories`, which the mask triggers own. The definer doors run as their
 owner and are unaffected.
 
-Soft delete goes through this same policy (`deleted_at`); nothing here is hard-deleted (root
-`CLAUDE.md` §5).
+Soft delete is `comms.delete_message`'s (`deleted_at`, a tombstone row); nothing here is
+hard-deleted (root `CLAUDE.md` §5).
 
-The writable columns are fixed by GRANT, not by the policy: `authenticated` holds
-`UPDATE (body, body_delta, edited_at, deleted_at)` only (`00002520` §2). Without it the blanket comms
-grant let a sender clear `pii_masked` / `pii_categories`, backdate `created_at`, or flip
-`has_attachments` / `is_audio` on their own message.
-
-What the policy cannot hold is a REPLY staying in its room: it admits any column the sender owns,
-`reply_to_id` and `channel_id` included, so an edit could point a reply's quote at a message from a
-channel the room's readers may not be in. That rule is a trigger rather than a policy —
-`comms.tg_guard_message_reply` fires `BEFORE INSERT OR UPDATE OF reply_to_id, channel_id` (see
-[Functions.md](Functions.md)) — so it holds for this policy's writes as much as for the `INSERT`
-one's. `comms.dm_messages` carries the same guard, although it has no client `UPDATE` policy today.
+A REPLY stays in its room by trigger, not policy: `comms.tg_guard_message_reply` fires `BEFORE INSERT
+OR UPDATE OF reply_to_id, channel_id` (see [Functions.md](Functions.md)), and `comms.dm_messages`
+carries the same guard. No door rewrites either column, so today it guards inserts.
 
 ### `comms.channel_files` — the register a channel file is listed in
 

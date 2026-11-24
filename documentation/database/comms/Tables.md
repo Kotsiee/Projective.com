@@ -412,7 +412,9 @@ The individual message entries for DMs.
 | `pii_masked`      | boolean | Set by `comms.tg_mask_dm_message_pii` when the body was masked. Semantics as on [`comms.project_messages`](#commsproject_messages). |
 | `pii_categories`  | text[]  | Which contact categories were masked (`email` · `phone` · `payment_link` · `handle`). |
 | `auto_response_id` | uuid  | **Decision #156.** Set only on a message `comms.tg_dm_auto_reply` sent for its author: the rule that fired it. Stops an auto-reply answering an auto-reply, dedupes a rule per thread per day and keeps an automatic message from accepting a request. No FK (a deleted rule leaves its past messages marked). A client write may not set it (`trg_dm_messages_derived` → `security.fn_guard_derived_columns`). |
-| `quote_event_id` | uuid  | **Decision #522.** Set only by the quote doors (`marketplace.fn_quote_event`): the `marketplace.quote_events` move this message records, which the thread renders as a quote card over its plain `body`. FK `ON DELETE SET NULL`; partial index `idx_dm_messages_quote_event`. A client write may not set it (`trg_dm_messages_derived`), and an auto-reply never answers it. |
+| `quote_event_id` | uuid  | **Decision #522.** Set only by the quote doors (`marketplace.fn_quote_event`): the `marketplace.quote_events` move this message records, which the thread renders as a quote card over its plain `body`. FK `ON DELETE SET NULL`; partial index `idx_dm_messages_quote_event`. A client write may not set it (`trg_dm_messages_derived`), and an auto-reply never answers it. A quote card is never edited or deleted (`comms.edit_message` / `comms.delete_message` refuse it `PM409`). |
+| `edited_at`      | timestamptz | When the author last edited the words (PROJECTS CH1, Decision #562). Written only by `comms.edit_message`; the bubble then reads "Edited". |
+| `deleted_at`     | timestamptz | The author deleted it for everyone (Decision #562). Written only by `comms.delete_message`, which empties `body` and `body_delta` in the same statement: the row stays as a "Message deleted" tombstone and its words are kept in [`comms.message_revisions`](#commsmessage_revisions). No client `UPDATE` privilege exists on this table (`00002520`). |
 
 Indexes (`00004006`): `idx_dm_messages_thread_recent (thread_id, created_at DESC)` — the latest page
 of a thread, its preview row and `comms.inbox_tails`' k > 1 walk; `idx_dm_messages_reply_to
@@ -523,9 +525,11 @@ mask triggers (`comms.tg_mask_message_pii` / `comms.tg_mask_dm_message_pii`, see
 - `pii_masked = false` with `pii_categories = '{}'` ⇔ nothing was masked: no match, an unlocked
   engagement, or no protected engagement at all. It is **not** a claim the body is free of contact
   details — a message sent after the Projective Unlock may legitimately carry them.
-- The flags record the insert. They are not recomputed when the project unlocks (masked rows stay
-  masked) and, on `comms.project_messages`, not protected against the sender's own `UPDATE`
-  (`edit_own_messages`) — Decision #147 flag (c).
+- The flags record the insert, and every edit since: an edit goes through `comms.edit_message` (the
+  only writer of a sent message's words, PROJECTS CH1), whose `UPDATE OF body` re-runs the same mask
+  and adds any new categories to `pii_categories`. They are not recomputed when the project unlocks
+  (masked rows stay masked). No client may write them (no `UPDATE` privilege on either message table,
+  `00002520`), which closes Decision #147 flag (c).
 - No read projects either column yet (the placeholders in `body` are what renders). They are the
   evidence record review and enforcement tooling is to read for the Consequences ladder
   (`PRODUCT_SPEC.md` §Messaging 1).
@@ -566,6 +570,47 @@ plugin; a nullable `actor_plugin_id → integrations.plugins(id)` is the expecte
 Every reader of a message (the feed, inbox previews, notifications) is to render a non-`human` row
 with a Meta-register indicator ("Sent by an assistant") rather than a pill (DESIGN_SYSTEM §B.11), and
 the PII mask, reply guard and edit window apply unchanged. `comms.dm_messages` takes the same pair.
+
+**Editing and deleting (PROJECTS CH1, Decision #562).** `edited_at` and `deleted_at` are written
+only by `comms.edit_message` and `comms.delete_message` (definers, [Functions.md](Functions.md#editing-and-deleting-a-message-00001300--00001840-projects-ch1)),
+on this table and `comms.dm_messages` alike. A delete empties `body` and `body_delta` in the same
+statement, so a deleted message is a tombstone row that every reader, a direct PostgREST read
+included, sees without its words; the words are kept in [`comms.message_revisions`](#commsmessage_revisions).
+The feeds read deleted rows on purpose and draw them as tombstones; the pinned set, the count and the
+reply quotes leave them out.
+
+### `comms.message_revisions`
+
+Every text a message stopped showing (PROJECTS CH1, Decision #562): the words an edit replaced, or
+the words a delete for everyone removed. Written only by `comms.edit_message` and
+`comms.delete_message`, in the same transaction as the change, so a message's history is its
+revisions in `(revised_at, id)` order and then its current row (a deleted message's last revision is
+its `delete`, holding the words). The first revision is the original as it was stored, after the
+protected phase's mask, which never kept unmasked words.
+
+| Column          | Type        | Notes |
+| :-------------- | :---------- | :---- |
+| `id`            | uuid        | PK. |
+| `message_table` | text        | `'comms.project_messages'` or `'comms.dm_messages'`, the interaction tables' convention (no FK on `message_id`). |
+| `message_id`    | uuid        | The message. |
+| `action`        | text        | What replaced this text: `edit` or `delete`. |
+| `body`          | text        | The words, as stored. |
+| `body_delta`    | jsonb       | Their formatting, or NULL. CHECK: NULL or a JSON object. |
+| `pii_masked`    | boolean     | The mask state the text carried, so evidence shows a masked original as masked. |
+| `authored_at`   | timestamptz | When the text was written: the message's `created_at` for the original, else the edit that put it there. |
+| `revised_at`    | timestamptz | `clock_timestamp()` of the edit or delete that replaced it. |
+| `revised_by`    | uuid        | FK → `org.users_public.user_id`: the author. |
+
+**Evidence, not chat.** RLS on with no policy, and `REVOKE ALL` from `anon` and `authenticated`
+(`00002520`): no client reads or writes a revision, its own included. The Evidence Vault's manifest
+(`finance.fn_dispute_vault_manifest`, version 2) records each revision of a disputed stage's room
+messages by its act, times, author and the SHA-256 of its words, never the words; an operator reads
+the words through `comms.get_message_revisions`. **Append-only**: `trg_message_revisions_append_only`
+(BEFORE UPDATE OR DELETE, each row) and `trg_message_revisions_no_truncate` (BEFORE TRUNCATE) refuse
+every change, the table owner's included (`00001840`). ⚖️ How long a deleted message's words are kept
+is with counsel (FOUNDER_QUESTIONNAIRE E2.6); nothing purges the table until that is ruled.
+
+Index (`00004006`): `idx_message_revisions_message (message_id, revised_at)`, one message's history in order.
 
 ### `comms.project_channel_reads`
 

@@ -140,6 +140,7 @@ import {
 } from "./query.ts";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { findMessagePage, viewerSenderFor } from "./messages-fixtures.ts";
+import { overlayStubMessageChanges } from "../messaging/edit-store.ts";
 import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
 import { BOARD_FIXTURE_NOW, findBoardPage, findTicketProjectSlug } from "./board-fixtures.ts";
@@ -1368,7 +1369,9 @@ export class ProjectBackendService {
 		// Only the LATEST page takes the fold. A sent message postdates the whole channel, so folding
 		// it into an older page fetched by the scroll-up cursor would insert it into history it comes
 		// after — and the feed would then render the same message twice on the way back down.
-		return ok({ page: overlayMessagePage(page, params.projectId, !params.before, actor) });
+		// The viewer's own edits and deletes fold over it too, on every page (PROJECTS CH1).
+		const folded = overlayMessagePage(page, params.projectId, !params.before, actor);
+		return ok({ page: overlayStubMessageChanges(folded, actor ?? ANONYMOUS_READER) });
 	}
 
 	/**

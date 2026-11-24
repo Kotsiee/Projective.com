@@ -11,7 +11,13 @@ import {
 	InboxFolder,
 	InboxTailRowSchema,
 } from "@projective/types/messaging";
-import { type ChatMessage, messageDeltaFor, type MessagePage } from "@projective/types/projects";
+import {
+	type ChatMessage,
+	messageDeltaFor,
+	type MessageEditRules,
+	type MessagePage,
+} from "@projective/types/projects";
+import { tombstoneOf } from "@projective/types/messaging";
 import { replyFromRow } from "../projects/message-replies.ts";
 import type { MessageMedia } from "../projects/message-attachments.ts";
 
@@ -180,10 +186,13 @@ export interface DmMessageRow extends DmTailRow {
 	reply_to_id: string | null;
 	/** The quote move a quote door posted this message for (Decision #522); absent on older reads. */
 	quote_event_id?: string | null;
+	/** Stamped by `comms.edit_message` (PROJECTS CH1); absent on older reads. */
+	edited_at?: string | null;
 }
 
 /** The columns of {@link DmMessageRow} — every read and write-back that builds a bubble selects these. */
-export const DM_MESSAGE_COLUMNS = `${DM_TAIL_COLUMNS}, body_delta, reply_to_id, quote_event_id`;
+export const DM_MESSAGE_COLUMNS =
+	`${DM_TAIL_COLUMNS}, body_delta, reply_to_id, quote_event_id, edited_at`;
 
 /**
  * The originals a set of replies quotes, by id. A miss — withheld, gone, or never read — renders the
@@ -789,7 +798,7 @@ export function toChatMessage(
 	const party = parties.get(row.sender_user_id);
 	const text = clamp(row.body, MESSAGE_TEXT_MAX);
 	const original = row.reply_to_id ? originals.get(row.reply_to_id) : undefined;
-	return {
+	const message: ChatMessage = {
 		id: row.id,
 		type: "user",
 		createdAt: row.created_at,
@@ -820,7 +829,10 @@ export function toChatMessage(
 		pinned: interactions.pinned.has(row.id),
 		favorited: interactions.favorited.has(row.id),
 		quoteEventId: row.quote_event_id ?? null,
+		editedAt: row.edited_at ?? null,
 	};
+	// Deleted for everyone (PROJECTS CH1): a tombstone, drawn here whatever the row still carries.
+	return row.deleted_at ? tombstoneOf(message) : message;
 }
 
 /** A `h:mm AM` clock in UTC — `ChatMessage.timeLabel` is `max(20)`. */
@@ -865,6 +877,7 @@ export function toMessagePage(
 	interactions: MessageInteractions = NO_INTERACTIONS,
 	originals: ReplyOriginals = NO_ORIGINALS,
 	attachments: ReadonlyMap<string, MessageMedia> = NO_ATTACHMENTS,
+	edits: MessageEditRules | null = null,
 ): MessagePage {
 	const messages = rows.map((row) =>
 		toChatMessage(row, parties, viewerId, now, interactions, originals, attachments)
@@ -883,7 +896,7 @@ export function toMessagePage(
 		// A DM participant may pin — the policy on `comms.message_pins` allows anyone who can read the
 		// message. In a project channel the product narrows this to an owner-granted capability, which
 		// no column records; that narrower gate lives in the app layer.
-		permissions: { canPin: true },
+		permissions: { canPin: true, ...(edits ? { edits } : {}) },
 		total: messages.length + (hasMore ? 1 : 0),
 	};
 }
@@ -972,8 +985,9 @@ export async function fetchThreadMessages(
 	let query = db
 		.from("dm_messages")
 		.select(DM_MESSAGE_COLUMNS)
-		.eq("thread_id", threadId)
-		.is("deleted_at", null);
+		.eq("thread_id", threadId);
+	// Deleted messages are read too (PROJECTS CH1): each keeps its place as a tombstone, which
+	// `toChatMessage` draws without a word of the body.
 
 	if (cursor) {
 		// `cursor.createdAt` is the value Postgres itself returned for that row, at full microsecond

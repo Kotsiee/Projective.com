@@ -1,7 +1,8 @@
 -- =============================================================================================
 -- Probe: column-scoped UPDATE on comms (00002520 §2). A recipient can mark their own notification
--- read / seen / archived but cannot rewrite its title, body or action_url; a sender can edit their
--- own stage message's body but cannot clear its PII mask.
+-- read / seen / archived but cannot rewrite its title, body or action_url; a sender can neither clear
+-- their own stage message's PII mask nor rewrite its body directly (the edit is comms.edit_message's,
+-- PROJECTS CH1).
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -106,9 +107,13 @@ BEGIN
     EXCEPTION WHEN insufficient_privilege THEN
         RAISE NOTICE 'PASS created_at rewrite refused [%]', SQLERRM;
     END;
-    UPDATE comms.project_messages SET body = body, edited_at = now()
-    WHERE id = current_setting('probe.msg')::uuid;
-    RAISE NOTICE 'PASS body edit still permitted';
+    BEGIN
+        UPDATE comms.project_messages SET body = body, edited_at = now()
+        WHERE id = current_setting('probe.msg')::uuid;
+        RAISE EXCEPTION 'FAIL sender rewrote their own message behind the edit door';
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE NOTICE 'PASS a direct body edit is refused: comms.edit_message is the only edit path (PROJECTS CH1) [%]', SQLERRM;
+    END;
 END $$;
 
 RESET ROLE;
