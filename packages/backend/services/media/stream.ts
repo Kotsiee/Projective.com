@@ -68,14 +68,16 @@ function baseMime(mime: string): string {
 
 /**
  * The `content-type` the proxy serves for a stored type. Inline-safe media keep their own type, SVG keeps
- * its type for `<img>` (script never runs there, and the sandbox CSP covers a navigation), text-like types
- * become `text/plain`, and everything else is `application/octet-stream`. Never `text/html`.
+ * its type for `<img>` (script never runs there, and the sandbox CSP covers a navigation), a PDF keeps
+ * its type for pdf.js's `fetch()` (it is still an attachment under the sandbox, so a navigation never
+ * renders it at the app origin), text-like types become `text/plain`, and everything else is
+ * `application/octet-stream`. Never `text/html`.
  */
 export function proxyContentType(mime: string): string {
 	const m = baseMime(mime);
 	if (!MIME_TOKEN.test(m)) return OCTET_STREAM;
 	if (inlineSafe(m)) return m === "text/plain" ? TEXT_PLAIN : m;
-	if (m === "image/svg+xml") return m;
+	if (m === "image/svg+xml" || m === "application/pdf") return m;
 	if (TEXT_LIKE.test(m)) return TEXT_PLAIN;
 	return OCTET_STREAM;
 }

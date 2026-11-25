@@ -454,15 +454,18 @@ passed as `?share=`), with `?tier=sm|md|lg` (an image tier) and `?download=1` (a
 - **Headers are an allowlist.** From storage only `content-length`, `content-range`,
   `accept-ranges`, `etag` and `last-modified` are copied; everything else is the proxy's own, and
   nothing names a host, bucket or object path. `content-type` keeps an inline-safe image / video /
-  audio / PDF type (`inlineSafe`, `live-objects.ts`) and `image/svg+xml`, turns any text-like type
-  (plain text, Markdown, JSON, XML, YAML, CSV, source code) into `text/plain; charset=utf-8`, and
+  audio type (`inlineSafe`, `live-objects.ts`), `image/svg+xml` and `application/pdf`, turns any
+  text-like type (plain text, Markdown, JSON, XML, YAML, CSV, source code) into
+  `text/plain; charset=utf-8`, and
   makes everything else `application/octet-stream` — **never `text/html`**, because these bytes are
   served from the app's own origin, beside the session cookie.
 - **Disposition and sandbox.** `inline` only for an inline-safe type that was not asked for as a
   download, otherwise `attachment`; the filename is the display name (ASCII fallback + RFC 5987
-  `filename*`), never the storage path. Every response that is not inline-safe (SVG, every text-like
-  type but `text/plain`, every other binary) also carries
-  `content-security-policy: default-src 'none'; sandbox`. Always
+  `filename*`), never the storage path. Every response that is not inline-safe (SVG, PDF, every
+  text-like type but `text/plain`, every other binary) also carries
+  `content-security-policy: default-src 'none'; sandbox`. A PDF is not inline-safe because the
+  browser's own viewer would render it at the app origin: the inspector draws it with pdf.js from a
+  `fetch()`, which ignores both headers, so a `?raw=1` navigation downloads it (Decision #563). Always
   `x-content-type-options: nosniff`, `cross-origin-resource-policy: same-origin`,
   `x-robots-tag: noindex, nofollow`, `referrer-policy: no-referrer`.
 - **Cache.** `private, no-transform, max-age=3600` with `vary: cookie`; a read authorised by a share

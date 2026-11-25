@@ -147,12 +147,21 @@ Deno.test("proxyHeaders serves inline-safe media inline with no sandbox and a pr
 });
 
 Deno.test("proxyHeaders turns a download of a safe type into an attachment", () => {
-	const h = proxyHeaders({ mime: "application/pdf", name: "brief.pdf" }, {
+	const h = proxyHeaders({ mime: "image/png", name: "brief.png" }, {
 		download: true,
 		share: false,
 	});
 	assert(h.get("content-disposition")?.startsWith("attachment;"));
 	assertFalse(h.has("content-security-policy"));
+});
+
+Deno.test("a raw PDF never renders at the app origin: an attachment under the sandbox, its type kept for pdf.js", () => {
+	for (const download of [false, true]) {
+		const h = proxyHeaders({ mime: "application/pdf", name: "brief.pdf" }, { download, share: false });
+		assertEquals(h.get("content-type"), "application/pdf");
+		assert(h.get("content-disposition")?.startsWith("attachment;"), String(download));
+		assertEquals(h.get("content-security-policy"), "default-src 'none'; sandbox");
+	}
 });
 
 Deno.test("proxyHeaders sandboxes and attaches every non-inline-safe type", () => {

@@ -96,14 +96,14 @@ export async function objectFor(
 
 /**
  * Types a browser may render inline from our storage origin. Everything else is served as a download:
- * HTML, SVG and XML execute or render markup where they are opened, and a library holds whatever
- * people put in it.
+ * HTML, SVG and XML execute or render markup where they are opened, a PDF opens in the browser's own
+ * viewer at the app origin (the inspector draws it with pdf.js instead, Decision #563), and a library
+ * holds whatever people put in it.
  */
 const INLINE_SAFE: readonly RegExp[] = [
 	/^image\/(jpeg|png|gif|webp|avif|heic|bmp)$/,
 	/^video\/(mp4|webm|quicktime|ogg)$/,
 	/^audio\//,
-	/^application\/pdf$/,
 	/^text\/plain$/,
 ];
 

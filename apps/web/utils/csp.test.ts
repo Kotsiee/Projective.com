@@ -52,6 +52,16 @@ Deno.test("csp: frames load from exactly the allowlisted embed providers, in eve
 	);
 });
 
+Deno.test({
+	name: "csp: the inspector profile carries no Stripe and no Turnstile (F26)",
+	// FL3 step 4 waits on the owner's ruling (Decision #563 (b)); it switches this on.
+	ignore: true,
+	fn() {
+		const policy = cspHeaderFor("inspector");
+		for (const host of ["stripe.com", "challenges.cloudflare.com"]) assert(!policy.includes(host), host);
+	},
+});
+
 Deno.test("csp: nothing can frame the app, and plugins are off", () => {
 	const policy = contentSecurityPolicy({ dev: false, supabaseOrigin: null });
 	assertEquals(directive(policy, "frame-ancestors"), ["'none'"]);

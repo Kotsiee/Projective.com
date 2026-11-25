@@ -6,7 +6,7 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 10 open, 1 partly done (FL1, #564), 15 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 9 open, 2 partly done (FL1, #564; FL3, #563), 15 done (§0 ledger).
 > Runnable now: NO1, NO3, NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -157,7 +157,7 @@ The operator's ruling is MW-59; it is not this file's row.
 | PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2; **FL1** steps 3–4 (27 ruled) | Uploads are scanned; stale and deleted objects leave the bucket (every byte metered, #564)  |
 | PJ-64 | 🟡 · Normal · UAT | T&S LK1                        | Offline or with no key, a link reads "unchecked" and goes through `/exit`                                  |
 | PJ-65 | 🟡 · Normal · UAT | **FL2** (+ you: provider apps) | A Drive file imports; the tree pages; the S3 form exists; every other connector is proved or ruled Planned |
-| PJ-66 | 🟡 · High · UAT   | **FL3** (🧑)                   | A `fil-` slug routes; a raw PDF is sandboxed; the inspector has its own CSP                                |
+| PJ-66 | 🟡 · High · UAT   | **FL3** (🧑; steps 1, 3 #563)  | A `fil-` slug routes; the inspector has its own CSP (a raw PDF is sandboxed, #563)                         |
 | PJ-68 | 🟡 · High · UAT   | **FL4** (🧑)                   | A grant tells its grantee, and a share link cannot outlive its tier                                        |
 
 **Calendar, integrations & rooms** (68%)
@@ -246,7 +246,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 - **PM-WP8** now.
 - **NO3** now.
 - **FL2**.
-- **FL3**'s CSP half.
+- **FL3** step 4, the inspector's CSP (its stream half landed, #563), once stop 29 is ruled.
 - **PJZ** last.
 
 **Human lane:**
@@ -314,7 +314,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                                     | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
 | 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ ruled  | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
 | 28 | #394 (a) one Google connection or two; which connectors ship for UAT                                                                         | FL2           | (a) as #394 recommends; Drive and S3 ship, and Dropbox, OneDrive and Frame.io stay Planned                                                                                                                               |
-| 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3           | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
+| 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3 (#563)    | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
 | 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4           | Person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm; a blocked pair refuses                                                                                                 |
 | 31 | An owner-present run on your Zoom, Microsoft and Google accounts                                                                             | LP1           | Yes, in one sitting, once a public HTTPS origin exists                                                                                                                                                                   |
 | —  | T&S P2a (#147 (a)), P2b's cooling-off and T&S §0.4 (SN1's production default); SCH-WP7 (#344 (f)); CD2's hosted prerequisites | their prompts | Their own                                                                                                                                                                                                                |
@@ -869,29 +869,29 @@ EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md; ROUTING.md; the decision
 
 Closes PJ-66 (🟡 → ✅).
 
-```text
-PROMPT FL3: The File Inspector is addressed by a fil- slug, a raw PDF never renders at the app's
-origin, and the inspector's Content-Security-Policy allows only what it uses
+> **Status 2026-11-25:** steps 1 and 3 landed (#563): a stored PDF is always an attachment under
+> the sandbox CSP and keeps `application/pdf` for pdf.js (`live-objects.ts:97-115`,
+> `stream.ts:69-83`), so F20 is closed; `csp.test.ts` holds step 4's red test as `ignore: true`.
+> The new contradiction is logged in #563 (b). Steps 2 and 4 below are open and wait on the three
+> stops, which were put to the owner on 2026-11-25.
 
-ROLE: Full-stack engineer. Queue S for the slug (files schema); app lane for the CSP and stream.
+```text
+PROMPT FL3: The File Inspector is addressed by a fil- slug, and the inspector's
+Content-Security-Policy allows only what it uses
+
+ROLE: Full-stack engineer. Queue S for the slug (files schema); app lane for the CSP.
 
 CONTEXT (verified at e1ff027b; re-check every line):
   - #161 (a): /inspect/[fileId].tsx re-exports InspectScreen; inspector-ssr.ts:27-35 passes the
     raw id on; AssetIdSchema is a uuid (packages/types/files/assets.ts:162).
-  - F20: live-objects.ts:104-115 lists application/pdf as inline-safe (:108), and stream.ts:
-    118-135 adds the sandbox CSP only for a type that is not inline-safe (:134). So a ?raw=1
-    navigation renders a PDF inline at the app origin.
   - F26: the inspector profile is the app profile plus relaxations (csp.ts:122-126). Its base
     keeps Stripe and Turnstile in script-src (:86), and in frame-src Stripe, Turnstile,
     youtube-nocookie and EMBED_FRAME_ORIGINS (:102-110), with 'unsafe-inline'. It also serves
     /files/* ((dashboard)/files/[...path].tsx:102, #396).
-  - A NEW contradiction: F26's fix ("no frames") conflicts with #401's preview ladder, which
-    needs EMBED_FRAME_ORIGINS (csp.test.ts:30).
-  - The long-term home for F20 is #393's sandbox origin (ASSET_DELIVERY_ARCHITECTURE.md §8.5,
-    :450; MARKETPLACE SC9's phase 4). This prompt is the interim fix.
-  - The audit's cites (COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md:250, :261) are stale.
+  - A NEW contradiction (#563 (b)): F26's fix ("no frames") conflicts with #401's preview ladder,
+    which needs EMBED_FRAME_ORIGINS (csp.test.ts:30).
 
-🧑 DECISION (before step 2). Log the contradiction and put all three to me:
+🧑 DECISION (before step 2). Put all three to me:
   1. #161 (a). Recommended: a fil- slug (Decision #88: security.fn_slug_guard('fil'),
      SLUG_PREFIXES, the Tables.md entry, the contract tests).
   2. Old uuid links. Recommended: they 404, per #88. Or, your call, one release of 301s from
@@ -900,19 +900,16 @@ CONTEXT (verified at e1ff027b; re-check every line):
      frame-src holds only the preview ladder's origins.
 
 STEPS:
-  1. Red first: tests. A raw PDF navigation answers without a sandbox CSP; the inspector's CSP
-     carries Stripe.
   2. The fil- slug, in place: column, guard, index and Zod; the route and inspector-ssr resolve
      it; every link builder uses it.
-  3. F20: a document navigation to a raw PDF is served as attachment, or under the sandbox CSP;
-     the in-app viewer keeps working.
-  4. F26: the inspector base as ruled; csp.test.ts asserts it.
+  4. F26: the inspector base as ruled; csp.test.ts's F26 test (now `ignore: true`) switched on,
+     with the ruled frame-src asserted.
 
-ACCEPTANCE: the tests are green; live, a PDF opens in the inspector, ?raw=1 downloads or renders
-sandboxed, and the slug URL works; screenshots.
+ACCEPTANCE: the tests are green; live, a PDF opens in the inspector from its slug URL;
+screenshots.
 
 SAME CHANGE: ROUTING.md; documentation/database/files/*; Zod; SYSTEM_ARCHITECTURE.md (the CSP
-profiles); COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md (F20 and F26); the decision rows.
+profiles); COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md (F26); the decision rows.
 ```
 
 §1.2 rows: **PJ-66** 🟡 → ✅.
