@@ -304,7 +304,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2 ✅ (#548) | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
 | 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2 ✅ (#549) | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
 | 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3 ✅ (#558) | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
-| 20 | Which workload verdict can be appealed                                                                                                       | EX4 (#552)    | The moderator's bad-faith flag only: once, to a different operator, within 7 days                                                                                                                                        |
+| 20 | Which workload verdict can be appealed                                                                                                       | EX4 (#552)    | The moderator's bad-faith flag only: once, to a different operator, within 7 days. **(a) ruled #552:** a client's keep penalises nobody and refers the report to a moderator                                             |
 | 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1 ✅ (#562) | **Ruled #562:** as recommended (A): edit for 15 minutes; delete for everyone at any time; originals kept; nothing in an archived room changes, nor in the disputed stage's rooms or the project's General room while the dispute is live |
 | 22 | Who gets team and business rooms, and when                                                                                                   | CH2 ✅ (#561) | **Ruled #561:** eagerly, as recommended: a team's room when its seat on a stage goes live, a business's on every stage of a business-client project. And a new contradiction, ruled: one room per team, so a second team or a solo freelancer on the stage never reads it; a released seat keeps nothing |
 | 23 | Who may bring a pair DM into a project                                                                                                       | CH3 ✅ (#560) | **Ruled #560:** as recommended: either participant, while both are on the project; the other is told; either may take it out, which hides it for both and keeps every stamp |
@@ -586,8 +586,9 @@ Closes PJ-46 (🟡 → ✅) after PM-WP4a step 6.
 **Status (2026-11-24, #552):** stop 20 is ruled: the moderator's bad-faith flag only, once, within 7
 days, to a different operator. Nothing is built: PM-WP5a, T&S R3 and R4 have not landed. Premises
 corrected below: the flag writes a `discovery_rank` penalty, so a successful appeal restores the
-Explore rank through R4's `fn_reverse_penalty` and leaves Standing alone, and the cites moved. One
-question is open (#552 (a)): the client's "keep" answer, which PM-WP5a hands to EX4.
+Explore rank through R4's `fn_reverse_penalty` and leaves Standing alone, and the cites moved. #552
+(a) is ruled (2026-11-25): a client's keep penalises nobody and refers the report to a moderator.
+Re-checked at `2a143020`: the three waits still have not landed.
 
 ```text
 PROMPT EX4: A freelancer can appeal a moderator's bad-faith verdict on a workload report once,
@@ -595,11 +596,11 @@ to a different operator, and a successful appeal reverses its penalty
 
 ROLE: Full-stack engineer. Queue S, after PM-WP5a and T&S R3 and R4 (R1 has landed).
 
-CONTEXT (verified at e1ff027b, cites re-checked at 5902b239; re-check every line):
+CONTEXT (verified at e1ff027b, cites re-checked at 2a143020; re-check every line):
   - This is W8 (PM §0.6's last bullet; PROJECT_MANAGEMENT_COMPLETENESS_AUDIT.md:538, :667), with no
     prompt. projects.fn_flag_bad_faith_report (00001140:7) is ungranted, so no moderator can
     call it. /admin/disputes reads finance.disputes only.
-  - A workload report moves no money (#290, PRODUCT_SPEC.md:3069-3071), so its contest is an
+  - A workload report moves no money (#290, PRODUCT_SPEC.md:3133-3155), so its contest is an
     appeal against a penalty, not a finance.disputes row. Its home is ops.reports (T&S R1, landed; subject type workload_report), R3's
     /admin/reports desk and R4's penalty writer (TRUST_SAFETY_BUILD_PROMPTS.md:723-931).
 
@@ -608,19 +609,24 @@ mechanical); once, within 7 days of the flag, to a different operator. The flag 
 discovery_rank penalty (source_type workload_report, 00001140:29-35), so a successful appeal
 reverses it through R4's security.fn_reverse_penalty and restores the Explore rank. Standing is
 untouched: R5 computes it from trust_score penalties only.
-🧑 OPEN (#552 (a)): the client's "keep" answer (PM-WP5a hands it here; §Dispute Mechanism 4).
+RULED (#552 (a)): the client's "keep" answer (PM-WP5a hands it here; §Dispute Mechanism 4)
+penalises nobody. It closes the report 'acknowledged' with no W_i change, resumes the work, and
+refers the report to a moderator; only the moderator's bad-faith flag cuts the rank.
 
 STEPS:
   1. Red first: a probe in which a moderator flags a report and nothing can appeal it.
   2. The moderator door: fn_flag_bad_faith_report reached only through an ops definer that
-     checks ops.admin_users.
+     checks ops.admin_users. Beside it, the client's keep (#552 (a)): a review-authority door
+     that closes the open report 'acknowledged', resumes the work at the original W_i and
+     files the ops.reports referral; the moderator's flag then moves it to dismissed_bad_faith.
   3. The appeal: an ops.reports subject for a workload report, with a CHECK that the deciding
      operator is not the one who flagged it. A freelancer control on the verdict notice, and a
      desk view.
   4. The reversal through R4; notifications both ways.
 
-ACCEPTANCE: the probe is green (appeal once; a second refused; the same operator refused; the
-penalty reversed); live as the seeded freelancer and two operators; screenshots.
+ACCEPTANCE: the probe is green (a keep penalises nobody and queues a referral; appeal once; a
+second refused; the same operator refused; the penalty reversed); live as the seeded freelancer
+and two operators; screenshots.
 
 SAME CHANGE: PRODUCT_SPEC.md §Dispute Mechanism 4; documentation/database/{ops,projects}/*; Zod;
 the decision row (W8 closed).
