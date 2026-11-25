@@ -4650,7 +4650,9 @@ tells a stranger that something is there.
 Only you or Specific people revokes every share link to it in the same save. The owner is asked first,
 in words that name how many links will stop working ("Its share link stops working, for everyone you
 sent it to"). A revoked link stays dead if the file is shared again; the owner makes a new one. A link
-to a file below Anyone with the link opens nothing. A folder's link is not tied to the folder's scope.
+to a file below Anyone with the link opens nothing. A folder's link is not tied to the folder's
+scope, nor to its files': it opens every file in the folder, whatever each one's own scope
+(Decision #570 (a), ruled).
 
 **What is admitted.** Every file is checked from its own bytes before it is admitted, and scanned
 for malware on the platform's own safety service. A document carrying macros (an Office file with
