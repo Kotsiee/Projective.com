@@ -19,7 +19,13 @@ export type PushDeviceState =
 	/** Not on for this browser yet: one press asks (if needed) and subscribes. */
 	| { kind: "off"; publicKey: string }
 	/** This browser is subscribed AND is the caller's own live device. `endpoint` is null under a simulated state. */
-	| { kind: "on"; publicKey: string; endpoint: string | null };
+	| { kind: "on"; publicKey: string; endpoint: string | null }
+	/**
+	 * This browser was the caller's device until Projective turned it off: the push service answered
+	 * 404 or 410, its failures reached the reaper's threshold, or it went unseen for 180 days (PROJECTS
+	 * NO3). Turning on again replaces the dead subscription with a fresh one.
+	 */
+	| { kind: "stopped"; publicKey: string };
 
 /** What the browser can do here. */
 export type PushPlatform = "supported" | "unsupported" | "ios-not-installed";
@@ -37,6 +43,8 @@ export interface PushInputs {
 	 * browser another account turned on, or one released since, is subscribed but not the caller's.
 	 */
 	registered: boolean;
+	/** Whether `endpoint`'s newest row for the caller was revoked by the system, not by a person. */
+	stopped: boolean;
 }
 
 /** The control's state for these inputs. A simulated state wins over the real browser. */
@@ -54,13 +62,18 @@ export function pushStateFor(input: PushInputs): PushDeviceState {
 			return { kind: "off", publicKey };
 		case "granted":
 			return { kind: "on", publicKey, endpoint: input.endpoint };
+		case "stopped":
+			return { kind: "stopped", publicKey };
 	}
 	if (input.platform === "unsupported") return { kind: "hidden" };
 	if (input.platform === "ios-not-installed") return { kind: "ios-not-installed" };
 	if (input.permission === "denied") return { kind: "denied" };
 	// A subscription alone is not "on": on a shared browser it may be someone else's (COMMS NT4).
-	return input.endpoint && input.registered
-		? { kind: "on", publicKey, endpoint: input.endpoint }
+	if (input.endpoint && input.registered) {
+		return { kind: "on", publicKey, endpoint: input.endpoint };
+	}
+	return input.endpoint && input.stopped
+		? { kind: "stopped", publicKey }
 		: { kind: "off", publicKey };
 }
 

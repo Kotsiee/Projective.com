@@ -123,6 +123,10 @@ aligned on time and location.
   (COMMS NT4). A person turns alerts on for each browser in Settings → Notifications → This device,
   and is asked for permission only then, never on page load. A browser gets one person's alerts:
   signing out stops them there, and turning alerts on in a browser someone else used stops theirs.
+  Projective turns alerts off on a browser when the push service says it is gone, when sends to it
+  have failed five times in a row over at least a day, or when nothing has reached it for 180 days;
+  a short outage never does. Settings then says "This browser stopped receiving notifications" with
+  Turn on again (PROJECTS NO3, Decision #567).
   On an iPhone or iPad, alerts need
   Projective added to the Home Screen first, and Settings says so. A notification click opens only
   a page inside Projective. The SMS setting shows only once the SMS provider (Twilio) is configured.

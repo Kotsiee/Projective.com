@@ -8,6 +8,7 @@ const BASE: PushInputs = {
 	permission: "default",
 	endpoint: null,
 	registered: false,
+	stopped: false,
 };
 
 Deno.test("pushStateFor — push not configured, or no Push API: nothing renders", () => {
@@ -54,6 +55,23 @@ Deno.test("pushStateFor — a shared browser: a subscription that is not the cal
 		}),
 		{ kind: "off", publicKey: "BPub" },
 	);
+});
+
+Deno.test("pushStateFor — a browser whose device the system turned off reads stopped, so Settings offers Turn on again", () => {
+	const held = {
+		...BASE,
+		permission: "granted" as const,
+		endpoint: "https://fcm.googleapis.com/x",
+	};
+	assertEquals(pushStateFor({ ...held, stopped: true }), { kind: "stopped", publicKey: "BPub" });
+	// Blocked in the browser wins: Turn on again cannot work until the person unblocks it.
+	assertEquals(pushStateFor({ ...held, permission: "denied", stopped: true }), { kind: "denied" });
+	// No subscription in hand, so nothing is known about this browser: the plain switch.
+	assertEquals(pushStateFor({ ...BASE, stopped: true }), { kind: "off", publicKey: "BPub" });
+	assertEquals(pushStateFor({ ...BASE, simulated: "stopped" }), {
+		kind: "stopped",
+		publicKey: "BPub",
+	});
 });
 
 Deno.test("pushStateFor — every simulated pushPermission state wins over the real browser", () => {

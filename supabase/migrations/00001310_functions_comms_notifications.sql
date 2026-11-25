@@ -939,7 +939,8 @@ BEGIN
         label = COALESCE(EXCLUDED.label, d.label),
         user_agent = EXCLUDED.user_agent,
         last_seen_at = pg_catalog.now(),
-        failure_count = 0
+        failure_count = 0,
+        failing_since = NULL
     RETURNING d.id INTO v_id;
 
     RETURN v_id;
@@ -1346,24 +1347,31 @@ BEGIN
 END;
 $$;
 
--- (d) Dead-device reaper: a token that has failed repeatedly, or that has not been seen for six
--- months, costs a gateway request per notification forever. Soft-revoke it.
+-- (d) Dead-device reaper: a token that keeps failing, or that nothing has reached for six months,
+-- costs a gateway request per notification forever. Soft-revoke it. Ruled #567: p_failure_threshold
+-- consecutive failures whose first is at least 24 hours old (one outage's retries never qualify);
+-- a 404 or 410 needs no reaper, since fn_record_delivery_result revokes on that answer.
 CREATE OR REPLACE FUNCTION comms.fn_reap_dead_devices(p_failure_threshold smallint DEFAULT 5)
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = comms, public
+SET search_path = ''
 AS $$
 DECLARE
     v_count integer;
 BEGIN
-    UPDATE comms.device_tokens
-    SET revoked_at = now(),
-        revoked_reason = CASE WHEN failure_count >= p_failure_threshold THEN 'gateway_failures' ELSE 'stale' END,
+    UPDATE comms.device_tokens t
+    SET revoked_at = pg_catalog.now(),
+        revoked_reason = CASE
+            WHEN t.failure_count >= p_failure_threshold
+             AND t.failing_since <= pg_catalog.now() - interval '24 hours' THEN 'gateway_failures'
+            ELSE 'stale'
+        END,
         auth_key = NULL,
         p256dh = NULL
-    WHERE revoked_at IS NULL
-      AND (failure_count >= p_failure_threshold OR last_seen_at < now() - interval '180 days');
+    WHERE t.revoked_at IS NULL
+      AND ((t.failure_count >= p_failure_threshold AND t.failing_since <= pg_catalog.now() - interval '24 hours')
+           OR t.last_seen_at < pg_catalog.now() - interval '180 days');
     GET DIAGNOSTICS v_count = ROW_COUNT;
     RETURN v_count;
 END;
@@ -1685,11 +1693,16 @@ BEGIN
                SET revoked_at = pg_catalog.now(), revoked_reason = 'gone', auth_key = NULL, p256dh = NULL
              WHERE t.id = v_row.device_token_id AND t.revoked_at IS NULL;
         ELSIF p_status = 'failed' THEN
-            UPDATE comms.device_tokens t SET failure_count = t.failure_count + 1
+            -- Counted, and the streak's start kept, so fn_reap_dead_devices can wait out an outage.
+            UPDATE comms.device_tokens t
+               SET failure_count = LEAST(t.failure_count + 1, 32767),
+                   failing_since = COALESCE(t.failing_since, pg_catalog.now())
              WHERE t.id = v_row.device_token_id AND t.revoked_at IS NULL;
         ELSE
-            UPDATE comms.device_tokens t SET failure_count = 0
-             WHERE t.id = v_row.device_token_id AND t.revoked_at IS NULL AND t.failure_count > 0;
+            -- It reached the browser: the streak ends, and the stale reap counts from now (#567 (b)).
+            UPDATE comms.device_tokens t
+               SET failure_count = 0, failing_since = NULL, last_seen_at = pg_catalog.now()
+             WHERE t.id = v_row.device_token_id AND t.revoked_at IS NULL;
         END IF;
     END IF;
 
@@ -1698,7 +1711,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION comms.fn_record_delivery_result(uuid, comms.delivery_status, text, text, text) IS
-    'Records one send''s outcome on a claimed delivery: sent (sent_at), delivered (delivered_at) or failed (failed_at, the error cut to 500 characters), with the provider and its message id. Moves a row only forward (sent needs queued; delivered and failed need queued or sent) and returns whether it moved. For push, p_error = ''gone'' revokes the device and clears its keys, another failure counts against it, and a success resets its failure count. Service role only.';
+    'Records one send''s outcome on a claimed delivery: sent (sent_at), delivered (delivered_at) or failed (failed_at, the error cut to 500 characters), with the provider and its message id. Moves a row only forward (sent needs queued; delivered and failed need queued or sent) and returns whether it moved. For push, p_error = ''gone'' revokes the device and clears its keys, another failure counts against it (starting its failing_since streak), and a success resets the count and the streak and refreshes last_seen_at. Service role only.';
 -- #endregion
 
 -- #region 11. Provider callbacks and the account unsubscribe (COMMS NT3; Decision #339, ruling N3 (b))

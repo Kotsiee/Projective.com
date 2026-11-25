@@ -74,7 +74,7 @@ E11, E14) is 🟡 when it is built and proved locally, and ✅ only when CD2 pro
 project. PRD-E6, PRD-C15 and PRD-M3 set that precedent.
 
 **What each tier needs from §E.** MVP needs MS3 (PRD-E3). UAT also needs MS4, MS5 and CD2's E4–E6
-cases. Rows with no work order here: E15 (PROJECTS NO2 ✅, #565), E18 (PROJECTS NO3) and E16 (none yet);
+cases. Rows with no work order here: E15 (PROJECTS NO2 ✅, #565), E18 (PROJECTS NO3 ✅, #567) and E16 (none yet);
 PRD-E13 and E17 closed with PROJECTS CH3 (#560).
 
 ### 0.2 Run order

@@ -87,6 +87,9 @@ CREATE TABLE comms.device_tokens (
         revoked_at timestamptz,
         revoked_reason text,
         failure_count smallint NOT NULL DEFAULT 0,
+        -- When the current run of failures began (NULL while healthy): the reaper drops a device
+        -- only once its streak spans 24 hours, so one push-service outage never does (#567).
+        failing_since timestamptz,
         updated_at timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT device_tokens_pkey PRIMARY KEY (id),
         CONSTRAINT device_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id)

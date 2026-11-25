@@ -339,8 +339,9 @@ export type DevEmailDeliverability = "auto" | "deliverable" | "bounced";
  * Settings → Notifications' "Alerts on this device" (COMMS NT4): `auto` reads the real browser;
  * the rest draw one state of the control without changing browser settings: `prompt` (never asked),
  * `granted` (drawn as subscribed), `denied` (blocked in the browser), `unsupported` (no Push API, so
- * nothing renders) and `ios-not-installed` (iOS Safari outside a Home-Screen app). Client-side only;
- * pressing a control still uses the real browser.
+ * nothing renders), `ios-not-installed` (iOS Safari outside a Home-Screen app) and `stopped`
+ * (Projective turned this browser off after the push service gave up on it, PROJECTS NO3).
+ * Client-side only; pressing a control still uses the real browser.
  */
 export type DevPushPermission =
 	| "auto"
@@ -348,7 +349,8 @@ export type DevPushPermission =
 	| "granted"
 	| "denied"
 	| "unsupported"
-	| "ios-not-installed";
+	| "ios-not-installed"
+	| "stopped";
 
 /**
  * The simulated basket (the header drawer and its switcher): `empty` answers a basket with no lines;
@@ -1027,6 +1029,7 @@ const PUSH_PERMISSIONS: readonly DevPushPermission[] = [
 	"denied",
 	"unsupported",
 	"ios-not-installed",
+	"stopped",
 ];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = [
 	"auto",

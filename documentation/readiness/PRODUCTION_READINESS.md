@@ -45,7 +45,7 @@ a gap here updates the row (status + evidence), recomputes the scoreboard below,
 | :--------------- | ------: | -----------: | -: | -: | -: | ----------: |
 | **Investor MVP** | **76%** |           13 | 10 |  0 |  3 |           2 |
 | **UAT**          | **71%** |           71 | 44 |  9 | 18 |           4 |
-| **Production**   | **51%** |          158 | 60 | 31 | 67 |          14 |
+| **Production**   | **51%** |          158 | 61 | 31 | 66 |          14 |
 
 Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 
@@ -55,7 +55,7 @@ Three ⏸ rows (PRD-F18, PRD-F19, PRD-C30) are excluded.
 | B. Live data paths & feature flags |    8 |  4 |  1 |  3 |   73% |
 | C. Security & access control       |   36 | 18 |  4 | 14 |   59% |
 | D. Trust, safety & moderation      |   14 |  3 |  1 | 10 |   25% |
-| E. Communications & delivery       |   18 |  6 |  7 |  5 |   52% |
+| E. Communications & delivery       |   18 |  7 |  7 |  4 |   55% |
 | F. Money, ledger & reconciliation  |   24 |  9 |  6 |  9 |   54% |
 | G. Scheduled jobs & operations     |   10 |  5 |  2 |  3 |   63% |
 | H. Secrets & configuration         |    5 |  2 |  1 |  2 |   61% |
@@ -199,7 +199,7 @@ Work orders for every open row, with the run order:
 | PRD-E15 | Daily and weekly digest emails are sent                     | ✅     | Normal   | PROD | NO2 (#565): `comms.fn_claim_digests` leases each built digest to one sender (`SKIP LOCKED`, 15 minutes) while `comms.dispatch_webhook` is on, deciding it again against preferences, snooze and suppression; `DigestMailService` mails counts, titles and links through the dispatcher's Resend transport and `comms.fn_record_digest_result` records sent or backs off (failed at the fifth); the `comms-digest-send` job every 10 minutes. Probes `digest_claim.sql`, `digest_claim_race.sql`; locally, a persona's weekly digest was mailed once to Mailpit. The hosted send is CD2's, on PRD-E4 and E5 | PROJECTS NO2 ✅ |
 | PRD-E16 | Turning Marketing email back on lifts a one-click unsubscribe | ❌     | Normal   | PROD | Found by NT3: `/api/comms/unsubscribe` writes a Marketing-only suppression (`comms.fn_unsubscribe_marketing`), but re-enabling Marketing email in Settings → Notifications only flips the preference, so the suppression keeps blocking. The settings save should lift a `reason = 'unsubscribe'` row for the person's primary address | — |
 | PRD-E17 | A project DM is complete inside the project                 | ✅     | Normal   | PROD | CH3 (#560, `619a3885`): #508 (c)–(g) closed: the `cht-` Files and Members tabs read the thread; reading it in place marks it read in `/messages` too; `comms.project_dm_threads` lists stamped and brought-in threads, groups included, with no cap; `comms.bring_dm_into_project` (the Members "Message", the other told) and `comms.take_dm_out_of_project` (stamps kept). Probe `room_read_marks.sql`; live as Noor and Juno on the dev server: the room's and the DM's dots set and cleared, `/messages` cleared, the Files and Members tabs, take out and bring back | PROJECTS CH3 ✅ (#560) |
-| PRD-E18 | A push device that keeps failing is reaped                  | ❌     | Normal   | PROD | Found by NT4: a push that fails with 429 or 5xx is retried by the sweep, but nothing increments `comms.device_tokens.failure_count`, so the scheduled `fn_reap_dead_devices` reaps nothing; `Retry-After` is not read either. A 404 or 410 still revokes the device at once. How many failures reap a device is the owner's call: counting every attempt would let one push-service outage reap a working device | PROJECTS NO3 |
+| PRD-E18 | A push device that keeps failing is reaped                  | ✅     | Normal   | PROD | NO3 (#567; owner rulings (a), (b)): a 404 or 410 revokes the device at once; any other failed send counts against it and `failing_since` marks when the run began; a success resets both and refreshes `last_seen_at`; the daily `fn_reap_dead_devices` drops a device only after 5 consecutive failures whose first is at least 24 hours old (`gateway_failures`), or 180 days with nothing delivered (`stale`), so one push-service outage's retries never drop a working browser (they did: the premise that nothing counted failures was wrong). Settings → This device says "This browser stopped receiving notifications" with Turn on again. Probe `push_device_health.sql`. `Retry-After` is still not read (the sweep's back-off governs) | PROJECTS NO3 |
 
 ## F. Money, ledger & reconciliation
 
@@ -497,3 +497,4 @@ Work orders for every open row, with the run order:
 | 2026-11-24 | TK2 (#557): PRD-K3 ❌ → 🟡 (`test:e2e` names only specs that exist; a green run of its three servers is left); new `test:e2e:funding` drives ticket funding on the live path | 76% | 71% | 49% |
 | 2026-11-24 | CH3 (#560): PRD-E13 ❌ → ✅ (project rooms carry a per-person read mark, moved by the chat island's after-paint POST), PRD-E17 ❌ → ✅ (a project DM is complete inside the project: Files, Members, read marks, groups, bring in and take out) | 76% | 71% | 50% |
 | 2026-11-25 | NO2 (#565): PRD-E15 ❌ → ✅ (the daily and weekly digests are claimed once and mailed as counts, titles and links through the dispatcher's Resend transport; the hosted send stays CD2's) | 76% | 71% | 51% |
+| 2026-11-25 | NO3 (#567): PRD-E18 ❌ → ✅ (a push device is dropped at once on 404 / 410, otherwise only after 5 consecutive failures spanning at least 24 hours, or 180 days with nothing delivered; Settings says when a browser was turned off) | 76% | 71% | 51% |

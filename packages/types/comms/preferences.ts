@@ -174,8 +174,13 @@ export const DeviceTokenSchema = z.object({
 	/** Soft retirement — a revoked token is skipped by the router but kept for the audit trail. */
 	revokedAt: timestamp.nullable(),
 	revokedReason: z.string().nullable(),
-	/** Consecutive gateway failures; the reaper auto-revokes at the threshold. */
+	/** Consecutive gateway failures; a success resets it. */
 	failureCount: z.number().int().min(0),
+	/**
+	 * When the current run of failures began (null while healthy). The reaper revokes at 5 failures
+	 * only once this is 24 hours old, so one outage never drops a working device (Decision #567).
+	 */
+	failingSince: timestamp.nullable(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
 });
@@ -223,8 +228,10 @@ export type RevokeWebPush = z.infer<typeof RevokeWebPushSchema>;
  * `POST /api/notifications/devices/status` (body, never a query string: an endpoint is a capability
  * URL): is this browser's subscription the caller's own live device? A browser someone else turned
  * on, or one whose row was released, reads `live: false`, so Settings never shows "on" for it.
+ * `stopped`: the caller's newest row for it was revoked by Projective, not by a person (the push
+ * service answered 404 or 410, the reaper's failure threshold, or 180 days unseen; PROJECTS NO3).
  */
-export const PushDeviceStatusSchema = z.object({ live: z.boolean() });
+export const PushDeviceStatusSchema = z.object({ live: z.boolean(), stopped: z.boolean() });
 export type PushDeviceStatus = z.infer<typeof PushDeviceStatusSchema>;
 
 /** `GET /api/notifications/push/config`: the VAPID public key a browser subscribes with. */

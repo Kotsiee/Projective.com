@@ -1159,6 +1159,7 @@ export const DEV_PUSH_PERMISSIONS: ReadonlyArray<DevOption<DevPushPermission>> =
 	{ value: "denied", label: "Blocked" },
 	{ value: "unsupported", label: "Unsupported" },
 	{ value: "ios-not-installed", label: "iOS, not installed" },
+	{ value: "stopped", label: "Stopped" },
 ];
 
 /** Basket drawer scenarios. */

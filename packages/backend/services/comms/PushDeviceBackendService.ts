@@ -30,6 +30,22 @@ const NOT_CONFIGURED = "Alerts on this device aren't available here.";
 const commsDb = (token: string) =>
 	getUserClient(token).schema("comms") as unknown as SupabaseClient;
 
+/** `revoked_reason`s Projective writes on its own (fn_record_delivery_result, fn_reap_dead_devices). */
+const SYSTEM_REVOKES = new Set(["gone", "gateway_failures", "stale"]);
+
+/**
+ * The status of the caller's newest row for an endpoint (the live one, if any, is always the newest:
+ * a revoked row stays revoked and registering again inserts). `user_revoked` and `reassigned` are a
+ * person's doing, so they read neither live nor stopped.
+ */
+export function deviceStatusOf(
+	row: { revoked_at: string | null; revoked_reason: string | null } | undefined,
+): PushDeviceStatus {
+	if (!row) return { live: false, stopped: false };
+	if (row.revoked_at === null) return { live: true, stopped: false };
+	return { live: false, stopped: SYSTEM_REVOKES.has(row.revoked_reason ?? "") };
+}
+
 /** The caller's token, or the refusal that stops them. */
 function sessionToken(actor: ReadActor): string | ServiceResult<never> {
 	if (!actor.userId) return fail(401, { message: "Sign in to get alerts on this device." });
@@ -91,7 +107,9 @@ export class PushDeviceBackendService {
 
 	/**
 	 * Is the browser holding `endpoint` the caller's own live device? False for a browser another
-	 * account turned on, or one released since, so the control offers "Turn on alerts" there.
+	 * account turned on, or one released since, so the control offers "Turn on alerts" there; and
+	 * `stopped` when Projective itself turned it off ({@link deviceStatusOf}), so it offers "Turn on
+	 * again".
 	 */
 	static async status(
 		actor: ReadActor,
@@ -102,12 +120,12 @@ export class PushDeviceBackendService {
 		try {
 			const { data, error } = await commsDb(token)
 				.from("device_tokens")
-				.select("id")
+				.select("revoked_at, revoked_reason")
 				.eq("token", input.endpoint)
-				.is("revoked_at", null)
+				.order("created_at", { ascending: false })
 				.limit(1);
 			if (error) throw new Error(`device_tokens read failed (${error.code ?? "no code"})`);
-			return ok({ live: (data ?? []).length > 0 });
+			return ok(deviceStatusOf(data?.[0]));
 		} catch (error) {
 			console.error("[comms:devices]", error instanceof Error ? error.message : error);
 			return fail(503, { message: "This device's alerts couldn't be checked just now." });

@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 9 open, 2 partly done (FL1, #564; FL3, #563), 15 done (§0 ledger).
-> Runnable now: NO1, NO3, NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 8 open, 2 partly done (FL1, #564; FL3, #563), 16 done (§0 ledger).
+> Runnable now: NO1, NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -68,6 +68,7 @@ A prompt that lands gets a row here.
 | CH1 | Authors edit and delete their messages through doors: `comms.edit_message` (within `message_edit_window_minutes`, 15) and `comms.delete_message` (a tombstone at any time), definers that keep every replaced text in the append-only `comms.message_revisions` and refuse an archived room or one a live dispute freezes (the stage's rooms and the project's General room, PM423); the `edit_own_messages` policy and every client `UPDATE` on the message tables gone; `dm_messages.edited_at`; `comms.message_edit_rules`, `comms.get_message_revisions` (operators); the vault manifest v2 carries each message's revision trail by hash; `PATCH`/`DELETE /api/messages/[id]`; the bubble's Edit and Delete for everyone, `MessageEditor`, `DeleteMessageDialog`, the Edited mark and the tombstone; dev axis `chatEdits`; probe `message_edit.sql` | `2e8df2a4` (#562) | `a48975b5` |
 | CH2 | A team's own room and a business's room on every stage they work on, opened in the transaction that makes them due: `comms.project_channels.team_id` + `ck_project_channels_team_room` + `uq_project_channels_private_room`; `comms.open_private_rooms` from three triggers (a team seat going live, a stage inserted, a project re-pointed at a business) and the lazy `get_stage_channels`; `can_access_scope`'s team arm is one team's (4-arg, `p_team_id`), the solo arm gone; the tree's Business group (`ProjectChannels.business`, `ChannelKind` `business`), team rooms joined by `team_id`; probe `private_rooms.sql` | `1958096c` (#561) | `47db5bca` |
 | NO2 | The daily and weekly digests are mailed once each, as counts, titles and links and never a body: `comms.notification_digests` gains `attempts`, `claimed_until`, `provider_ref`, `last_error`, `skipped_reason`; `comms.fn_claim_digests` (`SKIP LOCKED`, a 15-minute lease, each digest decided again against preferences, snooze and suppression) and `comms.fn_record_digest_result` (2^attempts backoff, failed at the fifth); `DigestMailService` through the dispatcher's Resend transport, `POST /api/comms/cron/digests`, job `comms-digest-send`; probes `digest_claim.sql`, `digest_claim_race.sql` | `04ebee7a` (#565) | `0c7aa8dc` |
+| NO3 | A push device is dropped only when the push service says it is gone, after 5 consecutive failures whose first is at least 24 hours old, or after 180 days with nothing delivered: `comms.device_tokens.failing_since`; `fn_record_delivery_result` keeps the streak's start and a success resets it and refreshes `last_seen_at`; `fn_reap_dead_devices` waits out an outage (`search_path = ''`); Settings → This device says "This browser stopped receiving notifications" with Turn on again (`/devices/status` `stopped`, `restartPush`), dev axis Push permission → Stopped; probe `push_device_health.sql` | (#567) | `0e9cb82a` |
 
 ### 0.1 Row → work order
 
@@ -147,7 +148,7 @@ The operator's ruling is MW-59; it is not this file's row.
 | :---- | :----------------- | :------------------------ | :-------------------------------------------------------------------------------------- |
 | PJ-59 | ✅ · High · MVP    | PJZ                       | The note says what is true: email and push dispatch locally; the drawer polls until MS3 |
 | PJ-60 | 🟡 · Crit · UAT    | CD2 (NO2 ✅, #565)         | A hosted send is recorded                                                               |
-| PJ-61 | 🟡 · Normal · PROD | COMMS NT5 + **NO3** + CD2 | SMS runs behind its configuration; dead devices are dropped; hosted VAPID keys          |
+| PJ-61 | 🟡 · Normal · PROD | COMMS NT5 + CD2 (NO3 ✅, #567) | SMS runs behind its configuration; dead devices are dropped; hosted VAPID keys          |
 | PJ-62 | ❌ · High · UAT    | COMMS MS4                 | `message.new` and `message.mention` notify, and a muted thread stays quiet              |
 
 **Files & assets** (60%)
@@ -184,7 +185,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
 | Messaging                      |   61% | MS5 61% → P2d 67% (CH1 ✅, #562; CH3 ✅, #560) → CH2 ✅ (#561) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
-| Notifications                  |   50% | MS4 75% → CD2 94% → NT5 + NO3 100% (NO2 ✅, #565)                                                                    |
+| Notifications                  |   50% | MS4 75% → CD2 94% → NT5 100% (NO2 ✅, #565; NO3 ✅, #567)                                                                    |
 | Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
 
@@ -244,7 +245,6 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 **App lane** (up to three at once, file-disjoint):
 
 - **PM-WP8** now.
-- **NO3** now.
 - **FL2**.
 - **FL3** step 4, the inspector's CSP (its stream half landed, #563), once stop 29 is ruled.
 - **PJZ** last.
@@ -310,7 +310,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 22 | Who gets team and business rooms, and when                                                                                                   | CH2 ✅ (#561) | **Ruled #561:** eagerly, as recommended: a team's room when its seat on a stage goes live, a business's on every stage of a business-client project. And a new contradiction, ruled: one room per team, so a second team or a solo freelancer on the stage never reads it; a released seat keeps nothing |
 | 23 | Who may bring a pair DM into a project                                                                                                       | CH3 ✅ (#560) | **Ruled #560:** as recommended: either participant, while both are on the project; the other is told; either may take it out, which hides it for both and keeps every stamp |
 | 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1           | Yes, as a transactional invite behind a switch until counsel answers; `application.received` joins the hourly digest                                                                                                     |
-| 25 | When a push device is dropped                                                                                                                | NO3           | At once on 404 / 410; otherwise after 5 failures over at least 24 h; Settings says so                                                                                                                                    |
+| 25 | When a push device is dropped                                                                                                                | NO3 ✅ (#567) | **Ruled #567:** as recommended: at once on 404 / 410; otherwise after 5 consecutive failures whose first is at least 24 h old; a successful push refreshes `last_seen_at`; Settings says so |
 | 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                                     | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
 | 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ ruled  | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
 | 28 | #394 (a) one Google connection or two; which connectors ship for UAT                                                                         | FL2           | (a) as #394 recommends; Drive and S3 ship, and Dropbox, OneDrive and Frame.io stay Planned                                                                                                                               |
@@ -690,41 +690,6 @@ SYSTEM_ARCHITECTURE.md if a param is added; the decision row.
 
 §1.2 rows: **PJ-17** stays 🟡 ("the hosted send, CD2, and counsel's switch"). Its stale "never
 delivered" text corrected.
-
-### NO3 — A push device that keeps failing is dropped
-
-Narrows PJ-61 (PRD-E18).
-
-```text
-PROMPT NO3: A browser that has stopped accepting push is turned off for that person, and
-Settings says so
-
-ROLE: Backend engineer. App lane (a column, if needed, goes to Queue S).
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - Web push is NT4 (322c4dc9, finished in a7ceeb92): services/comms/transport-webpush.ts caps the
-    body at 4096 octets, and a browser gets one account's alerts.
-  - PRD-E18 (new with NT4): failing push devices are never dropped.
-  - Settings → Notifications → This device turns push on (NT4).
-
-🧑 DECISION (before step 2): the threshold. Recommended: drop a device at once on 404 or 410;
-otherwise after 5 consecutive failures spanning at least 24 hours.
-
-STEPS:
-  1. Red first: a transport test. A 410 from the push service leaves the device enabled.
-  2. Record failures per device; disable as ruled.
-  3. Settings → This device shows "This browser stopped receiving notifications", with Turn on
-     again.
-
-ACCEPTANCE: the test is green; a forced 410 in Chromium turns the device off and Settings says
-so; screenshots.
-
-SAME CHANGE: documentation/database/comms/* if a column is added; PRODUCTION_READINESS.md
-(PRD-E18); the decision row.
-```
-
-§1.2 rows: **PJ-61** stays 🟡 ("SMS, NT5; hosted VAPID, CD2"), and its note names PRD-E18, which it
-omits today; PRD-E18 → ✅.
 
 ### NO4 — Guest invitations honour bounces and suppression
 

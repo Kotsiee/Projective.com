@@ -192,7 +192,7 @@ the finder returns `0`. Probe: `supabase/probes/basket_nudge.sql`.
 | `comms.mark_notifications_seen()`              | `integer` | Clears the **badge** without marking anything read — what opening the drawer does. |
 | `comms.archive_notifications(uuid[])`          | `integer` | Dismiss = archive. Nothing is hard-deleted.                                        |
 | `comms.get_notification_summary()`             | `jsonb`   | `{ unread, unseen, total, by_category }` — the shell badge in one round trip.      |
-| `comms.register_device(…)`                     | `uuid`    | Upserts the caller's live row for a browser; resets `failure_count`. A browser belongs to whoever turned alerts on in it last (COMMS NT4): another account's live row for the same token is first revoked (`revoked_reason = 'reassigned'`, keys dropped), so a shared browser never shows the previous person's notifications. That release is why it is `SECURITY DEFINER` (`search_path = ''`, every write pinned to `auth.uid()`; no caller, no write). Called by `POST /api/notifications/devices` (`PushDeviceBackendService`) under the caller's JWT, with `token = endpoint`, `provider 'web_push'`, `platform 'web'`, after the service checks the endpoint is a known push service. |
+| `comms.register_device(…)`                     | `uuid`    | Upserts the caller's live row for a browser; resets `failure_count` and `failing_since`. A browser belongs to whoever turned alerts on in it last (COMMS NT4): another account's live row for the same token is first revoked (`revoked_reason = 'reassigned'`, keys dropped), so a shared browser never shows the previous person's notifications. That release is why it is `SECURITY DEFINER` (`search_path = ''`, every write pinned to `auth.uid()`; no caller, no write). Called by `POST /api/notifications/devices` (`PushDeviceBackendService`) under the caller's JWT, with `token = endpoint`, `provider 'web_push'`, `platform 'web'`, after the service checks the endpoint is a known push service. |
 | `comms.revoke_device(id, reason)`              | `boolean` | Soft-revokes and clears the Web Push keys. Called by `DELETE /api/notifications/devices`: "Stop on this device", and signing out on that browser (`AuthService.logout`). |
 
 These run as the caller (`register_device` excepted, above), so the policies in
@@ -223,7 +223,7 @@ pending reminder.
 | `comms-digest-daily`    | hourly (:02) | `fn_build_digests('daily')`    | Builds the digest for users whose **local** clock just hit `digest_hour`.                          |
 | `comms-digest-weekly`   | hourly (:08) | `fn_build_digests('weekly')`   | Same, gated additionally on the local ISO weekday.                                                 |
 | `comms-sweep-expired`   | hourly (:35) | `fn_sweep_expired()`           | Archives (never deletes) notifications past `expires_at`.                                          |
-| `comms-reap-devices`    | daily 03:32  | `fn_reap_dead_devices()`       | Soft-revokes tokens with ≥5 gateway failures or unseen for 180 days.                               |
+| `comms-reap-devices`    | daily 03:32  | `fn_reap_dead_devices()`       | Soft-revokes tokens with ≥5 consecutive failures whose first is ≥24 h old (#567), or unseen for 180 days. |
 | `comms-compact-events`  | daily 03:47  | `fn_compact_delivery_events()` | Empties the `raw` body of callbacks older than 30 days; keeps the row (it is the idempotency key). |
 | `comms-dispatch-sweep`  | every minute | http: `POST /api/comms/cron/dispatch?limit=200` (`COMMS_DISPATCH_SECRET`) | The dispatcher's retry sweep: sends what the trigger's post missed and retries failures past their backoff, through `fn_claim_deliveries`. Claims nothing while `comms.dispatch_webhook` is off. |
 | `comms-basket-nudges`   | daily 10:17  | `fn_enqueue_basket_nudges(500)` | Queues one `basket.abandoned` per idle personal basket, within consent (CK5). Queues nothing while `comms.basket_nudge` is off. |
@@ -383,8 +383,9 @@ raises `22023`. It only moves a row forward: `sent` needs `queued`, and `deliver
 `queued` or `sent`. A late or replayed answer returns `false` and changes nothing. For push,
 `p_error = 'gone'` revokes the device (`comms.revoke_device`'s semantics: `revoked_at`,
 `revoked_reason = 'gone'`, keys cleared), and the row's next claim closes it `skipped`. Any other push
-failure counts against the device (`failure_count + 1`, which `fn_reap_dead_devices` reads), and a
-success resets it. `SECURITY DEFINER`, `search_path = ''`; service role only.
+failure counts against the device (`failure_count + 1`, and `failing_since` set on the first one of
+a run), and a success resets both and refreshes `last_seen_at`. `fn_reap_dead_devices` reads them
+(PROJECTS NO3, #567). `SECURITY DEFINER`, `search_path = ''`; service role only.
 
 Probes: `supabase/probes/comms_dispatch.sql` (rolled back) and `comms_dispatch_race.sql` (two
 sessions claim at once; commits, so it runs only under `--disposable`).

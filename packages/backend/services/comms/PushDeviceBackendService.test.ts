@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { PushDeviceBackendService } from "./PushDeviceBackendService.ts";
+import { deviceStatusOf, PushDeviceBackendService } from "./PushDeviceBackendService.ts";
 import { configuredChannels } from "./dispatch-transports.ts";
 import { toB64Url } from "./transport-webpush.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -59,4 +59,24 @@ Deno.test("register — not configured is a 404; an endpoint that is no push ser
 		const res = await PushDeviceBackendService.register(ACTOR, SUBSCRIPTION, null);
 		assertEquals([res.status, res.errors?.endpoint], [422, "Not a supported push service."]);
 	});
+});
+
+Deno.test("status — the newest row for the endpoint decides: live, stopped by the system, or neither", () => {
+	const revoked = (revoked_reason: string) => ({
+		revoked_at: "2026-11-25T09:00:00Z",
+		revoked_reason,
+	});
+	assertEquals(deviceStatusOf(undefined), { live: false, stopped: false });
+	assertEquals(deviceStatusOf({ revoked_at: null, revoked_reason: null }), {
+		live: true,
+		stopped: false,
+	});
+	// The push service answered gone, the reaper counted failures, or it went unseen for 180 days.
+	for (const reason of ["gone", "gateway_failures", "stale"]) {
+		assertEquals(deviceStatusOf(revoked(reason)), { live: false, stopped: true }, reason);
+	}
+	// The person stopped it, or another account took the browser: this browser did not fail.
+	for (const reason of ["user_revoked", "reassigned"]) {
+		assertEquals(deviceStatusOf(revoked(reason)), { live: false, stopped: false }, reason);
+	}
 });

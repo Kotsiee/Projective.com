@@ -138,7 +138,7 @@ change and belong in the finance model, not here.
 | Web Risk                  | Lookups per month, beyond a free tier                  | A per-URL verdict cache (safe 1 h, flagged 24 h); lookups happen only for posted links, never on page loads           |
 | Email                     | Messages per month                                     | The digest cadence and the collapse rules in `comms.notification_types`                                               |
 | Turnstile                 | Free tier                                              | n/a                                                                                                                   |
-| Push (VAPID / APNs / FCM) | Free at the gateway                                    | Revoke dead devices on 404/410 (`fn_reap_dead_devices`)                                                               |
+| Push (VAPID / APNs / FCM) | Free at the gateway                                    | Revoke dead devices: at once on 404/410, and after a day of failures (`fn_reap_dead_devices`, #567)                                                               |
 
 ---
 
@@ -1616,6 +1616,13 @@ notification titles never reach the next person's screen:
   unsubscribes it. A session that simply expires leaves the row until someone turns alerts on in
   that browser, or the push service drops the subscription (404/410 → `gone`).
 
+**A browser Projective turned off** (PROJECTS NO3, Decision #567): when the caller's newest row for
+this endpoint was revoked by the system (`gone`, `gateway_failures` or `stale`, never
+`user_revoked` or `reassigned`), the status read answers `stopped: true`. Settings says "This
+browser stopped receiving notifications" and offers **Turn on again**, which unsubscribes the old
+subscription first (`subscribe()` would hand the dead one back unchanged), then registers a fresh
+one. The Dev Context Switcher's Push permission axis draws it as **Stopped**.
+
 5. `apps/web/static/manifest.webmanifest` (linked from `_app.tsx`): `start_url` and `scope` `/`,
    `display: standalone`, the 192 and 512 icons. A manifest is JSON and cannot read a CSS variable,
    so its colours are copies of the default theme's light-mode tokens: `theme_color` = `--primary`
@@ -1636,7 +1643,7 @@ notification titles never reach the next person's screen:
 | 201       | Delivered                                                   |
 | 404 / 410 | Set `revoked_at` and `revoked_reason = 'gone'`; never retry |
 | 413       | A payload-construction bug; log it                          |
-| 429 / 5xx | `failed` (`push_<status>`), retried by the sweep's `2^attempts` back-off (NT2) |
+| 429 / 5xx | `failed` (`push_<status>`), retried by the sweep's `2^attempts` back-off (NT2); counted against the device (Device health, below) |
 
 **iOS.** Safari supports Web Push only for a web app that has been added to the Home Screen (iOS
 16.4 and later), and only with a valid web app manifest. Tell the person so in Settings rather than
@@ -1644,9 +1651,15 @@ showing a dead switch (root `CLAUDE.md` §3.11). Built: on an iPhone or iPad out
 app, Settings → This device says how to add Projective to the Home Screen instead of offering the
 control.
 
-**Not built.** `Retry-After` is not read (the sweep's back-off governs), and no send increments
-`comms.device_tokens.failure_count`, so `fn_reap_dead_devices` reaps nothing yet; a 404 or 410
-revokes the device at once, which covers the common case. Tracked as PRD-E18.
+**Device health** (PROJECTS NO3, Decision #567; PRD-E18). A 404 or 410 revokes the device at once.
+Every other failed send counts against it in `fn_record_delivery_result`: `failure_count + 1`,
+and `failing_since` set on the first failure of a run. A success resets both and refreshes
+`last_seen_at`. The daily `fn_reap_dead_devices` (03:32) revokes a device only after 5 consecutive
+failures whose first is at least 24 hours old (`gateway_failures`), so the five retries of one
+notification in a ~30-minute outage never drop a working browser; and it revokes one that nothing
+has reached for 180 days (`stale`). Probe: `supabase/probes/push_device_health.sql`.
+
+**Not built.** `Retry-After` is not read (the sweep's back-off governs).
 
 ### 8.3 Apple Push Notification service (Growth: native iOS app)
 

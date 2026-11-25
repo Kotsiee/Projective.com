@@ -10,6 +10,7 @@ import {
 	enablePush,
 	type PushDeviceState,
 	readPushState,
+	restartPush,
 } from "../../../core/push-device.ts";
 
 /**
@@ -18,8 +19,10 @@ import {
  * It renders only when push is configured and the browser has the Push API (a control that renders
  * must do something, §3.11). On iOS outside a Home-Screen app it gives the reason and the way to
  * install instead of a switch, and when notifications are blocked it says where to unblock them. The
- * permission prompt opens only from the button, never on load. The account-wide Push switch above
- * still decides which alerts may come at all.
+ * permission prompt opens only from the button, never on load. When Projective turned this browser
+ * off because the push service gave up on it (PROJECTS NO3), it says so and offers Turn on again,
+ * which starts a fresh subscription. The account-wide Push switch above still decides which alerts
+ * may come at all.
  */
 export function PushDeviceBlock(): JSX.Element | null {
 	const state = useSignal<PushDeviceState | null>(null);
@@ -45,10 +48,10 @@ export function PushDeviceBlock(): JSX.Element | null {
 	const s = state.value;
 	if (!s || s.kind === "hidden") return null;
 
-	async function turnOn(publicKey: string): Promise<void> {
+	async function turnOn(publicKey: string, fresh: boolean): Promise<void> {
 		busy.value = true;
 		notice.value = null;
-		const res = await enablePush(publicKey);
+		const res = await (fresh ? restartPush : enablePush)(publicKey);
 		busy.value = false;
 		if (res.ok) state.value = { kind: "on", publicKey, endpoint: res.endpoint };
 		else notice.value = res.message;
@@ -89,6 +92,8 @@ export function PushDeviceBlock(): JSX.Element | null {
 						descId="stg-this-device-desc"
 						description={s.kind === "on"
 							? "On. Alerts arrive here even when Projective isn't open."
+							: s.kind === "stopped"
+							? "This browser stopped receiving notifications, so alerts are off here."
 							: "Off. Your browser will ask once for permission."}
 						control={s.kind === "on"
 							? (
@@ -104,10 +109,10 @@ export function PushDeviceBlock(): JSX.Element | null {
 							: (
 								<Button
 									size="sm"
-									label="Turn on alerts"
+									label={s.kind === "stopped" ? "Turn on again" : "Turn on alerts"}
 									loading={busy.value}
 									aria-describedby="stg-this-device-desc"
-									onClick={() => void turnOn(s.publicKey)}
+									onClick={() => void turnOn(s.publicKey, s.kind === "stopped")}
 								/>
 							)}
 					/>

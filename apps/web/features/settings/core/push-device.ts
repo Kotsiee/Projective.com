@@ -70,17 +70,21 @@ function deviceLabel(): string {
 	return `${browser} on ${os}`;
 }
 
-/** Whether `endpoint` is the caller's own live device. Any failure reads as "not theirs". */
-async function isMine(endpoint: string): Promise<boolean> {
+/**
+ * Whether `endpoint` is the caller's own live device, or one Projective turned off. Any failure
+ * reads as neither.
+ */
+async function deviceStatus(endpoint: string): Promise<{ live: boolean; stopped: boolean }> {
 	try {
 		const res = await fetch("/api/notifications/devices/status", {
 			method: "POST",
 			headers: { "content-type": "application/json", accept: "application/json" },
 			body: JSON.stringify({ endpoint }),
 		});
-		return res.ok && (await res.json()).live === true;
+		const body = res.ok ? await res.json() : null;
+		return { live: body?.live === true, stopped: body?.stopped === true };
 	} catch {
-		return false;
+		return { live: false, stopped: false };
 	}
 }
 
@@ -101,13 +105,15 @@ export async function readPushState(): Promise<PushDeviceState> {
 	const seam = readDevSeam()?.pushPermission;
 	const platform = detectPlatform();
 	const endpoint = publicKey && platform === "supported" ? await currentEndpoint() : null;
+	const status = endpoint ? await deviceStatus(endpoint) : { live: false, stopped: false };
 	return pushStateFor({
 		publicKey,
 		simulated: seam && seam !== "auto" ? seam : null,
 		platform,
 		permission: platform === "supported" ? Notification.permission : null,
 		endpoint,
-		registered: endpoint ? await isMine(endpoint) : false,
+		registered: status.live,
+		stopped: status.stopped,
 	});
 }
 
@@ -155,6 +161,20 @@ export async function enablePush(publicKey: string): Promise<PushPress> {
 			message: "This browser couldn't turn on alerts just now. Try again in a moment.",
 		};
 	}
+}
+
+/**
+ * Turn alerts on again after Projective turned this browser off. The old subscription may be dead at
+ * the push service, and `subscribe` hands back an existing one unchanged, so drop it here first.
+ */
+export async function restartPush(publicKey: string): Promise<PushPress> {
+	try {
+		const reg = await navigator.serviceWorker.getRegistration("/");
+		await (await reg?.pushManager.getSubscription())?.unsubscribe();
+	} catch {
+		// Nothing to drop: enablePush subscribes from scratch.
+	}
+	return await enablePush(publicKey);
 }
 
 /** Stop alerts on this browser: revoke the device on the server, then unsubscribe here. */

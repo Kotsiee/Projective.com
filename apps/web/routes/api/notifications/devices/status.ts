@@ -5,7 +5,7 @@ import { RevokeWebPushSchema } from "@projective/types/comms";
 import { PushDeviceBackendService } from "@server/services/comms/PushDeviceBackendService.ts";
 
 /**
- * `POST /api/notifications/devices/status` `{ endpoint }` → `{ live }` (COMMS NT4): whether this
+ * `POST /api/notifications/devices/status` `{ endpoint }` → `{ live, stopped }` (COMMS NT4, PROJECTS NO3): whether this
  * browser's push subscription is the caller's own live device, so Settings → This device shows "on"
  * only for it, never for a browser another account turned on. A POST because the endpoint is a
  * capability URL and must not sit in a query string or an access log. Writes nothing.

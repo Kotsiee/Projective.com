@@ -219,9 +219,10 @@ actually send.
 | `endpoint`               | text                    | Web Push subscription endpoint.                          |
 | `p256dh` / `auth_key`    | text                    | Web Push subscription keys — see the note below.         |
 | `label` / `user_agent`   | text                    | For the device list in settings.                         |
-| `last_seen_at`           | timestamptz             | Drives the stale-device reaper.                          |
-| `revoked_at` / `_reason` | timestamptz / text      | Soft retirement; the router skips revoked tokens. Reasons: `user_revoked` (Stop on this device, or sign-out), `gone` (the push service answered 404/410), `reassigned` (another account turned alerts on in this browser, COMMS NT4). |
-| `failure_count`          | smallint                | Consecutive gateway failures; auto-revoked at threshold. |
+| `last_seen_at`           | timestamptz             | Refreshed by registration and by every successful push (#567 (b)); drives the 180-day `stale` reap. |
+| `revoked_at` / `_reason` | timestamptz / text      | Soft retirement; the router skips revoked tokens. Reasons: `user_revoked` (Stop on this device, or sign-out), `gone` (the push service answered 404/410), `reassigned` (another account turned alerts on in this browser, COMMS NT4), `gateway_failures` and `stale` (the reaper). Settings reads the last three as "This browser stopped receiving notifications" (PROJECTS NO3). |
+| `failure_count`          | smallint                | Consecutive gateway failures; a success or a re-registration resets it. |
+| `failing_since`          | timestamptz             | When the current run of failures began; NULL while healthy. The reaper revokes at 5 failures only once this is 24 hours old, so one outage's retries never drop a working device (#567 (a)). |
 
 A partial unique index on `(user_id, token) WHERE revoked_at IS NULL` means re-registering a browser
 **updates** rather than accumulating duplicates that each cost a push request.
