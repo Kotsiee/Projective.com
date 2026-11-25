@@ -1699,7 +1699,9 @@ BEGIN
                 'files.items',
                 p_item_id,
                 pg_catalog.jsonb_build_object ('file_name', v_item.display_name, 'role', v_role),
-                v_uid
+                v_uid,
+                -- The inspector is addressed by the file's slug, never its uuid (Decision #563).
+                p_action_url => '/inspect/' || v_item.slug
             );
         END IF;
     END LOOP;
@@ -1853,6 +1855,7 @@ $$;
 CREATE OR REPLACE FUNCTION files.list_shared_with_me (p_limit integer DEFAULT 100)
 RETURNS TABLE (
     item_id uuid,
+    slug text,
     name text,
     mime_type text,
     size_bytes bigint,
@@ -1887,6 +1890,7 @@ AS $$
     )
     SELECT
         i.id,
+        i.slug,
         i.display_name,
         i.mime_type,
         i.size_bytes::bigint,

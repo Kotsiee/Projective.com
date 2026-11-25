@@ -28,10 +28,13 @@ export interface ObjectRef {
 	mime: string;
 	/** The name a download is saved as. */
 	name: string;
+	/** The asset's inspector address (`fil-…`), where a page navigation to its bytes is sent. */
+	slug: string;
 }
 
 interface ObjectRow {
 	id: string;
+	slug: string;
 	bucket_id: string;
 	storage_path: string;
 	mime_type: string | null;
@@ -42,7 +45,8 @@ interface ObjectRow {
 	deleted_at: string | null;
 }
 
-const COLUMNS = "id, bucket_id, storage_path, mime_type, display_name, folder_id, source, status, deleted_at";
+const COLUMNS =
+	"id, slug, bucket_id, storage_path, mime_type, display_name, folder_id, source, status, deleted_at";
 
 /** Resolve what the caller may read for `id`, or `null` when they may not (or it has no bytes). */
 export async function objectFor(
@@ -83,7 +87,15 @@ export async function objectFor(
 			.select("bucket_id, storage_path, mime_type").eq("item_id", row.id).eq("tier", opts.tier).maybeSingle();
 		const v = variant.data as { bucket_id: string; storage_path: string; mime_type: string } | null;
 		// No tier written (a document, a seeded original): the original is the honest answer.
-		if (v) return { bucket: v.bucket_id, path: v.storage_path, mime: v.mime_type, name: row.display_name ?? "file" };
+		if (v) {
+			return {
+				bucket: v.bucket_id,
+				path: v.storage_path,
+				mime: v.mime_type,
+				name: row.display_name ?? "file",
+				slug: row.slug,
+			};
+		}
 	}
 
 	return {
@@ -91,6 +103,7 @@ export async function objectFor(
 		path: row.storage_path,
 		mime: row.mime_type ?? "application/octet-stream",
 		name: row.display_name ?? "file",
+		slug: row.slug,
 	};
 }
 

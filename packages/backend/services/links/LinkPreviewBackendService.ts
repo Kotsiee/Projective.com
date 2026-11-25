@@ -200,10 +200,10 @@ async function listingCard(url: string, id: string): Promise<LinkPreview | null>
 /** A file's inspector link, read under the reader's own access: a file they cannot open has no card. */
 async function inspectCard(
 	url: string,
-	target: { id: string; share: string | null },
+	target: { slug: string; share: string | null },
 	actor: ReadActor,
 ): Promise<LinkPreview | null> {
-	const read = await FilesBackendService.inspect(target.id, { share: target.share }, actor);
+	const read = await FilesBackendService.inspect(target.slug, { share: target.share }, actor);
 	return read.ok && read.data ? fileCardFromInspect(url, read.data) : null;
 }
 

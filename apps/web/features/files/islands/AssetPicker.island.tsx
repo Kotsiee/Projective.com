@@ -1014,8 +1014,8 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 
 	/** Open in a new tab — the inspector for stored files, the asset's own address otherwise. */
 	function openRaw(asset: AssetItem): void {
-		const target = inspectable(asset)
-			? fileInspectHref(asset.id)
+		const target = inspectable(asset) && asset.slug
+			? fileInspectHref(asset.slug)
 			: linkHref(asset) ?? asset.external?.externalWebUrl ?? asset.url;
 		if (!target || target === "#") return;
 		globalThis.open(target, "_blank", "noopener,noreferrer");

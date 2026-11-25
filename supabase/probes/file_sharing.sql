@@ -155,8 +155,9 @@ BEGIN
     SELECT * INTO v_n FROM comms.notifications n
     WHERE n.user_id = pg_temp.u('person') AND n.type = 'file.shared' AND n.entity_id = pg_temp.u('granted');
     PERFORM pg_temp.ok(v_n.actor_user_id = pg_temp.u('owner') AND v_n.body = 'probe-share-grant.pdf'
-        AND v_n.entity_table = 'files.items' AND v_n.action_url = '/inspect/' || pg_temp.u('granted'),
-        '(d) the notice names the sharer, the file and opens it in the inspector');
+        AND v_n.entity_table = 'files.items'
+        AND v_n.action_url = '/inspect/' || (SELECT i.slug FROM files.items i WHERE i.id = pg_temp.u('granted')),
+        '(d) the notice names the sharer, the file and opens it in the inspector by its slug (#563)');
     PERFORM pg_temp.ok(pg_temp.told(pg_temp.u('mate'), pg_temp.u('teamed')) = 0,
         '(d) a team grant tells none of its members');
 END $$;

@@ -93,3 +93,10 @@ DROP TRIGGER IF EXISTS trg_dm_threads_ref ON comms.dm_threads;
 CREATE TRIGGER trg_dm_threads_ref
     BEFORE INSERT OR UPDATE ON comms.dm_threads
     FOR EACH ROW EXECUTE FUNCTION security.fn_ref_guard('cht');
+
+-- A stored file's inspector address (`/inspect/fil-…`, PROJECTS FL3, Decision #563). No insert path
+-- supplies one: uploads, copies, links, mounts, renditions and the seed all leave it to this guard.
+DROP TRIGGER IF EXISTS trg_items_slug ON files.items;
+CREATE TRIGGER trg_items_slug
+    BEFORE INSERT OR UPDATE ON files.items
+    FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('fil');

@@ -1120,7 +1120,7 @@ a link), at most 20 together and none in both (`sendFilesAgree`). Before the mes
 library, never a team's, a project room's, a mount or a saved web link; else `422` on `linkedFileIds`)
 and raises a private one to `restricted`; the rows then land in `comms.message_attachments` with
 `mode = 'link'`, and the loader hands `MessageAttachment.mode` and `sizeBytes` to the bubble, which
-draws a link share as a `FileLinkCard`. `/inspect/{uuid}` and `/share/{slug}` links in a body unfurl
+draws a link share as a `FileLinkCard`. `/inspect/fil-…` and `/share/{slug}` links in a body unfurl
 into the same card through `POST /api/links/preview` (`LinkPreview` kind `file`, read under the
 reader's own access).
 
@@ -1563,7 +1563,7 @@ writes a row indistinguishable from a real one that would survive the gate flip 
 
 #### The file inspector and the streaming proxy (Decision #161)
 
-A stored file opens in a new tab at **`/inspect/[fileId]`** — a shell-free page (route group
+A stored file opens in a new tab at **`/inspect/[fileSlug]`** (its `fil-` slug, Decision #563) — a shell-free page (route group
 `(standalone)`, no `_layout`) whose controller is `features/inspector/routes/InspectScreen.tsx`. Two
 server doors feed it, and they keep the two halves of the rule above apart:
 
@@ -1591,7 +1591,7 @@ server doors feed it, and they keep the two halves of the rule above apart:
   path or signed URL. Range / conditional requests pass through (206 · 304 · 416), headers are built
   from an allowlist with a never-`text/html` type policy and a sandbox CSP on anything not
   inline-safe, a share read is `no-store`, and a read never counts a download. A top-level
-  navigation to the proxy ("Open image in new tab") is a `303` to `/inspect/[fileId]` unless
+  navigation to the proxy ("Open image in new tab") is a `303` to the file's `/inspect/fil-…` unless
   `?raw=1` / `?download=1` (`features/inspector/core/proxy-navigation.ts`). Full contract:
   `documentation/database/files/Storage.md` §The upload pipeline. It sits under `/api/media/*` because
   the media services own byte delivery (`ROUTING.md` §Profile and media API). Since Decision #162 it
@@ -3104,13 +3104,16 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   (`utils/zod-jitless.ts`) puts Zod 4 in `jitless` mode, because its `new Function` eval probe — run
   as the first `z.object` is built — otherwise reported a `securitypolicyviolation` on every hydrated
   page. The header is cached per **profile** (`cspHeaderFor(profile)`): `app` is the
-  policy above, set by the middleware; **`inspector`** is the same policy plus `'wasm-unsafe-eval'` in
-  `script-src` (WebAssembly compilation only — pdf.js image decoders, Draco / Basis / meshopt — never
-  JS `eval`) and `blob:` in `connect-src` (a GLB's embedded textures), and nothing else. Only the
-  `/inspect/[fileId]` page and the `/files/*` hub (Decision #396: its previews and thumbnails draw
-  3D models) send it, on their own responses, which the middleware then leaves alone.
-  It is the one sanctioned LOOSENING of the platform policy — every other route may only tighten —
-  and is flagged against #126 in Decision #161(D). `x-frame-options: DENY`, `object-src 'none'` and
+  policy above, set by the middleware; **`inspector`** has its own **`viewer`** base (Decision #563,
+  F26): no Stripe and no Turnstile in `script-src`, `connect-src` or `frame-src`, and `frame-src`
+  holding only the preview ladder's provider origins (`EMBED_FRAME_ORIGINS`, Decision #401: Drive,
+  Docs, YouTube no-cookie, Vimeo, Loom, Figma), plus `'wasm-unsafe-eval'` in `script-src`
+  (WebAssembly compilation only — pdf.js image decoders, Draco / Basis / meshopt — never JS `eval`)
+  and `blob:` in `connect-src` (a GLB's embedded textures). Only the `/inspect/[fileSlug]` page and
+  the `/files/*` hub (Decision #396: its previews and thumbnails draw 3D models) send it, on their
+  own responses, which the middleware then leaves alone. Neither page mounts a payment or bot-check
+  island. Its wasm and `blob:` are the one sanctioned LOOSENING of the platform policy — every other
+  route may only tighten — flagged against #126 in Decision #161(D). `x-frame-options: DENY`, `object-src 'none'` and
   `frame-ancestors 'none'` still hold there, which is why a PDF is drawn on a canvas, never framed.
   The second sanctioned loosening is **`framed`** (Decision #217 (j)): the platform policy with
   `frame-ancestors 'self'` and nothing else changed. It is sent only by the catalogue's buyer
@@ -3662,7 +3665,7 @@ stored, and that route must stay under `/api/`. The `/vendor/<lib>/<version>/…
 the ordinary static-asset rule (`isStaticAsset`: a `.js` or `.ttf` is cached, a `.wasm` or `.bcmap`
 passes to the network); their paths are versioned, so a hit is never stale. `handleNavigation`
 never stores a document whose `cache-control` says `no-store` (Decision #161(j)), so a
-`private, no-store` page — `/inspect/[fileId]`, `/share/[slug]`, `/exit`, `/invite/[token]` — is
+`private, no-store` page — `/inspect/[fileSlug]`, `/share/[slug]`, `/exit`, `/invite/[token]` — is
 never replayed offline from the shell cache; offline, such a page gets the inline fallback.
 
 | Layer | Mechanism | Rule |
@@ -3763,7 +3766,7 @@ shown.
    service worker served from an earlier request. It never removes the attribute.
 
 **Standalone route inheritance.** Every route group renders through `routes/_app.tsx` under
-`routes/_middleware.ts`. That includes `(standalone)` (`/inspect/[fileId]`), `(public)`,
+`routes/_middleware.ts`. That includes `(standalone)` (`/inspect/[fileSlug]`), `(public)`,
 `[handle]` and `_error`. The guarantee is structural, not per-route:
 - No route may opt out of the app wrapper (`skipAppWrapper` or any equivalent). None does today.
   A future standalone page that needs a bare document still renders `<html>` through `_app.tsx`.

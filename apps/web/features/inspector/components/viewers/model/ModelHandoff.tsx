@@ -31,7 +31,7 @@ export function ModelHandoff({ shell }: ModelHandoffProps): JSX.Element {
 			<div class="ins-fallback__actions">
 				<a
 					class="ins-handoff__link"
-					href={fileInspectHref(asset.id, { share })}
+					href={fileInspectHref(asset.slug, { share })}
 					target="_blank"
 					rel="noopener noreferrer"
 				>

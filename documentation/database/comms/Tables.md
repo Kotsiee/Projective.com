@@ -101,7 +101,8 @@ links to the invitation's own `/invite/<token>`, where the holder answers it; an
 verified account is mailed that link once instead, outside this catalog, through
 `projects.invitation_mail` (PROJECTS NO1, Decision #566). `application.received` carries the email
 channel since #566: in a daily or weekly digest for whoever has one, else sent with the notice.
-`file.shared` (`work`, digestible, `/inspect/{entity_id}`) is written by `files.set_item_access` to the
+`file.shared` (`work`, digestible, no template: the emitter passes `/inspect/{slug}`, Decision #563) is
+written by `files.set_item_access` to the
 person a file is newly shared with by name, never for a team, business or project grant (PROJECTS FL4,
 Decision #570).
 

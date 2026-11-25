@@ -32,6 +32,7 @@ export type PreviewFile = Pick<
 	AssetItem,
 	| "id"
 	| "assetId"
+	| "slug"
 	| "source"
 	| "status"
 	| "kind"
@@ -104,10 +105,11 @@ export function previewShareOf(file: Pick<AssetItem, "url" | "thumbnailUrl">): s
 
 /** The inspector page for a row with stored bytes; null otherwise. */
 export function previewInspectHref(
-	file: Pick<AssetItem, "id" | "assetId" | "source" | "status" | "url" | "thumbnailUrl">,
+	file: Pick<AssetItem, "id" | "assetId" | "slug" | "source" | "status" | "url" | "thumbnailUrl">,
 ): string | null {
-	const id = previewAssetId(file);
-	return id ? fileInspectHref(id, { share: previewShareOf(file) }) : null;
+	return previewAssetId(file) && file.slug
+		? fileInspectHref(file.slug, { share: previewShareOf(file) })
+		: null;
 }
 
 /** The download address: the proxy as an attachment for stored bytes, else the row's own file. */

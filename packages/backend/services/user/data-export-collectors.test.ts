@@ -189,6 +189,7 @@ Deno.test("messages: sent messages and thread metadata; other participants only 
 Deno.test("files: a manifest with sign-in links, never a storage path, share slug or signed URL", () => {
 	const [entry] = collectFiles([{
 		id: "f1",
+		slug: "fil-abcdefghjk",
 		name: "Brief.pdf",
 		original_name: "brief.pdf",
 		folder: null,
@@ -209,7 +210,7 @@ Deno.test("files: a manifest with sign-in links, never a storage path, share slu
 		storage_path: "u1/f1/brief.pdf",
 		share_slug: "shr-secret",
 	}], CTX);
-	assertEquals(entry.open_url, "https://projective.test/inspect/f1");
+	assertEquals(entry.open_url, "https://projective.test/inspect/fil-abcdefghjk");
 	assertEquals(entry.download_url, "https://projective.test/api/media/proxy/f1?download=1");
 	assertFalse(keys(entry).includes("storage_path"));
 	assertFalse(keys(entry).includes("share_slug"));

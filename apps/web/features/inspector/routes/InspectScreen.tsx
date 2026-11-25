@@ -7,8 +7,9 @@ import InspectorWorkspace from "../islands/InspectorWorkspace.island.tsx";
 import InspectorUnavailable from "../islands/InspectorUnavailable.island.tsx";
 
 /**
- * `/inspect/[fileId]` — the shell-free file inspector (Decision #161). Thin controller: resolve the
- * file as the viewer, then hand the island plain props.
+ * `/inspect/[fileSlug]` — the shell-free file inspector (Decision #161), addressed by the file's
+ * `fil-` slug (Decision #563; a uuid is a 404). Thin controller: resolve the file as the viewer, then
+ * hand the island plain props.
  *
  * Every outcome carries the same headers: the inspector CSP profile (WASM decoders, blob fetches),
  * `noindex`, `no-referrer` (a `?share=` slug is a credential in the URL) and `no-store`.
@@ -17,7 +18,7 @@ export const handler = define.handlers({
 	async GET(ctx) {
 		const actor = readActor(ctx);
 		const share = shareParam(ctx.url.searchParams.get("share"));
-		const { asset, status } = await resolveInspect(ctx.params.fileId ?? "", share, actor);
+		const { asset, status } = await resolveInspect(ctx.params.fileSlug ?? "", share, actor);
 
 		ctx.state.title = asset ? `${asset.name} · Projective` : "File not available · Projective";
 		return page({ asset, signedIn: actor.userId.length > 0 }, {

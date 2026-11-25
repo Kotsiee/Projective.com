@@ -572,7 +572,7 @@ LANGUAGE sql
 STABLE
 SET search_path = ''
 AS $$
-    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', i.id, 'name', i.display_name,
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', i.id, 'slug', i.slug, 'name', i.display_name,
                'original_name', i.original_name, 'folder', f.name, 'mime_type', i.mime_type,
                'size_bytes', i.size_bytes, 'category', i.category, 'content_hash', i.content_hash,
                'hash_algo', i.hash_algo, 'hash_sampled', i.hash_sampled, 'status', i.status,

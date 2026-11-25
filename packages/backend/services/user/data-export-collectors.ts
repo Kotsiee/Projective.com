@@ -101,7 +101,7 @@ export function collectFiles(raw: unknown, ctx: CollectorContext): DataExportFil
 	return DataExportFilesSchema.parse(
 		records(raw).map((row) => ({
 			...row,
-			open_url: absolute(ctx.origin, fileInspectHref(text(row.id))),
+			open_url: absolute(ctx.origin, fileInspectHref(text(row.slug))),
 			download_url: absolute(ctx.origin, mediaProxyHref(text(row.id), { download: true })),
 		})),
 	);

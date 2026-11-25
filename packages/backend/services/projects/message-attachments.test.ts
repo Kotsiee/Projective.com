@@ -8,6 +8,7 @@ const LINK = { id: "a528d5a3-393c-4adb-8bba-33f8b3e59c88" };
 function file(over: Partial<FileRow> = {}): FileRow {
 	return {
 		id: FILE_ID,
+		slug: "fil-abcdefghjk",
 		display_name: "orbit-poster.png",
 		original_name: "orbit-poster.png",
 		mime_type: "image/png",

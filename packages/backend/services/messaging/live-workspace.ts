@@ -149,6 +149,7 @@ const MAX_PAGE = 200;
 /** The `files.items` columns one asset row needs. `deleted_at` is filtered, never selected. */
 const ITEM_COLUMNS = [
 	"id",
+	"slug",
 	"owner_user_id",
 	"owner_type",
 	"owner_entity_id",
@@ -241,6 +242,8 @@ interface AttachmentRow {
 /** One `files.items` row as selected by {@link ITEM_COLUMNS}. */
 interface ItemRow {
 	id: string;
+	/** The inspector address (`fil-…`). */
+	slug: string;
 	owner_user_id: string;
 	owner_type: string;
 	owner_entity_id: string | null;
@@ -597,6 +600,7 @@ function toFileItem(row: ItemRow, attachmentId: string, ctx: FileContext): FileI
 		// them, which would break the grid key, the cursor and the preview-modal selector at once.
 		id: attachmentId,
 		assetId: assetIdOf(row.id),
+		slug: assetIdOf(row.id) ? row.slug : null,
 		kind,
 		category,
 		name,

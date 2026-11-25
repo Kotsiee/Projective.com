@@ -14,6 +14,7 @@ const ID = "f3f21bc4-161f-4c1a-94d9-d1d0376bc346";
 function row(over: Partial<ItemRow> = {}): ItemRow {
 	return {
 		id: ID,
+		slug: "fil-abcdefghjk",
 		owner_user_id: "950d68d1-8777-4bbe-ae59-3343e3e7f858",
 		owner_type: "user",
 		owner_entity_id: null,

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { FileKind } from "./kinds.ts";
 import { FileCategory } from "./categories.ts";
 import { AssetMetadataSchema } from "./metadata.ts";
+import { slugPattern } from "../slugs/slug.ts";
 
 /**
  * files.assets — the Zod SSOT for an asset anywhere on the platform.
@@ -169,6 +170,12 @@ export function assetIdOf(raw: string | null | undefined): string | null {
 	return raw && AssetIdSchema.safeParse(raw).success ? raw : null;
 }
 
+/**
+ * A `files.items` slug (`fil-…`): the inspector page's address (Decision #563). A uuid never routes
+ * the page (Decision #88).
+ */
+export const FileSlugSchema = z.string().regex(slugPattern("file"));
+
 // #endregion
 
 // #region Connector + link facets
@@ -249,6 +256,8 @@ export const AssetItemSchema = z.object({
 	 * message-attachment link. `null`/absent when no registry asset backs the row (fixtures).
 	 */
 	assetId: AssetIdSchema.nullable().optional(),
+	/** That asset's inspector address (`fil-…`); absent exactly when `assetId` is. */
+	slug: FileSlugSchema.nullable().optional(),
 	kind: FileKind,
 	/**
 	 * The rich {@link FileCategory} (search/filter/facets/analytics), classified from name + MIME. It

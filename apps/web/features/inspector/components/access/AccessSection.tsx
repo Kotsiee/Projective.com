@@ -56,7 +56,7 @@ export function AccessSection({ shell, titleId }: AccessSectionProps): JSX.Eleme
 	const sim = useFileAccessSim().value;
 	const store = useItemAccess(asset.id, actions.signedIn);
 	const phase = store.phase.value;
-	const returnTo = fileInspectHref(asset.id, { share: asset.share });
+	const returnTo = fileInspectHref(asset.slug, { share: asset.share });
 
 	function body(): JSX.Element {
 		if (sim === "signed-out" || phase === "signed-out") {

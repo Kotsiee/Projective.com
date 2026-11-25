@@ -36,12 +36,17 @@ function functionBlock(name: string): string {
 }
 
 // #region SQL contract
-Deno.test("the file.shared notice is catalogued in SQL and in TS, digestible, opening the inspector", () => {
+Deno.test("the file.shared notice is catalogued in SQL and in TS, digestible, opening the inspector by slug", () => {
 	assert((KNOWN_NOTIFICATION_TYPES as readonly string[]).includes("file.shared"));
 	const row = CATALOG.split("\n").find((l) => l.startsWith("('file.shared'"));
 	assert(row, "00005010 catalogues file.shared");
 	assertStringIncludes(row, "'work'");
-	assertStringIncludes(row, "'/inspect/{entity_id}'");
+	// No uuid template: the emitter passes the file's own `/inspect/{slug}` (Decision #563).
+	assert(!row.includes("/inspect/"), "file.shared carries no uuid link template");
+	assertStringIncludes(
+		functionBlock("files.set_item_access"),
+		"p_action_url => '/inspect/' || v_item.slug",
+	);
 	assertStringIncludes(row, "false, false, true,  false");
 });
 
@@ -123,6 +128,7 @@ Deno.test("both tier writes carry the owner's confirm", () => {
 Deno.test("a Shared with me row maps to the DTO and says where it came from", () => {
 	const row = SharedFileRowSchema.parse({
 		item_id: crypto.randomUUID(),
+		slug: "fil-abcdefghjk",
 		name: "brief.pdf",
 		mime_type: "application/pdf",
 		size_bytes: "2048",
@@ -134,6 +140,7 @@ Deno.test("a Shared with me row maps to the DTO and says where it came from", ()
 		shared_at: "2026-11-25T10:00:00+00:00",
 	});
 	const file = toSharedFile(row);
+	assertEquals(file.slug, "fil-abcdefghjk");
 	assertEquals(file.sizeBytes, 2048);
 	assertEquals(file.via, "team");
 	assertEquals(sharedViaLabel(file), "Shared with Northwind Studio");

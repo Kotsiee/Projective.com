@@ -111,6 +111,7 @@ Deno.test("what no browser can draw stays with the fallback", () => {
 Deno.test("InspectAssetSchema accepts a fully resolved asset", () => {
 	const parsed = InspectAssetSchema.safeParse({
 		id: "6d43f88f-84c7-4454-a2e1-c3bd6a2839e2",
+		slug: "fil-abcdefghjk",
 		name: "halcyon-motion.png",
 		ext: "png",
 		mimeType: "image/png",

@@ -165,6 +165,14 @@ const SLUGGED_TABLES: readonly SluggedTable[] = [
 		unique: "entitlements_slug_key",
 		file: "supabase/migrations/00000023_tables_catalogue.sql",
 	},
+	{
+		entity: "file",
+		table: "files.items",
+		column: "slug",
+		constraint: "ck_items_slug_shape",
+		unique: "items_slug_key",
+		file: "supabase/migrations/00000010_tables_files.sql",
+	},
 ];
 
 // #region The minter

@@ -23,6 +23,7 @@ import {
 
 // #region Fixtures
 const ASSET = "8b0c5a3e-1f2d-4c6b-9a7e-2d3f4a5b6c7d";
+const SLUG = "fil-abcdefghjk";
 const LINK_ROW = "11111111-2222-4333-8444-555555555555";
 const ROOM = "22222222-3333-4444-8555-666666666666";
 
@@ -30,6 +31,7 @@ function file(overrides: Partial<PreviewFile> = {}): PreviewFile {
 	return {
 		id: ASSET,
 		assetId: ASSET,
+		slug: SLUG,
 		source: "supabase",
 		status: "uploaded",
 		kind: "image",
@@ -93,10 +95,11 @@ Deno.test("previewShareOf reads the slug off a same-origin address only", () => 
 });
 
 Deno.test("previewInspectHref and previewDownloadHref go through the inspector and the proxy", () => {
-	assertEquals(previewInspectHref(file()), `/inspect/${ASSET}`);
+	assertEquals(previewInspectHref(file()), `/inspect/${SLUG}`);
+	assertEquals(previewInspectHref(file({ slug: null })), null);
 	assertEquals(previewDownloadHref(file()), `/api/media/proxy/${ASSET}?download=1`);
 	const shared = file({ url: `/api/media/proxy/${ASSET}?share=s1` });
-	assertEquals(previewInspectHref(shared), `/inspect/${ASSET}?share=s1`);
+	assertEquals(previewInspectHref(shared), `/inspect/${SLUG}?share=s1`);
 	assertEquals(previewDownloadHref(shared), `/api/media/proxy/${ASSET}?download=1&share=s1`);
 });
 

@@ -27,6 +27,7 @@ const PERSON: InspectOwner = { handle: "chloewinters", name: "Chloe Winters", av
 function row(overrides: Partial<ItemRow> = {}): ItemRow {
 	return {
 		id: ID,
+		slug: "fil-abcdefghjk",
 		owner_user_id: OWNER,
 		owner_type: "user",
 		owner_entity_id: null,

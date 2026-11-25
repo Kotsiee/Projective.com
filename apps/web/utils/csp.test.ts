@@ -52,14 +52,16 @@ Deno.test("csp: frames load from exactly the allowlisted embed providers, in eve
 	);
 });
 
-Deno.test({
-	name: "csp: the inspector profile carries no Stripe and no Turnstile (F26)",
-	// FL3 step 4 waits on the owner's ruling (Decision #563 (b)); it switches this on.
-	ignore: true,
-	fn() {
-		const policy = cspHeaderFor("inspector");
-		for (const host of ["stripe.com", "challenges.cloudflare.com"]) assert(!policy.includes(host), host);
-	},
+Deno.test("csp: the inspector profile carries no Stripe and no Turnstile, and frames only the preview ladder (F26)", () => {
+	const policy = cspHeaderFor("inspector");
+	for (const host of ["stripe.com", "challenges.cloudflare.com"]) {
+		assert(!policy.includes(host), host);
+	}
+	assertEquals(directive(policy, "frame-src"), [...EMBED_FRAME_ORIGINS]);
+	assert(directive(policy, "script-src").includes("'wasm-unsafe-eval'"));
+	assert(directive(policy, "connect-src").includes("blob:"));
+	// The platform policy keeps every origin the inspector dropped.
+	assertStringIncludes(cspHeaderFor("app"), "https://js.stripe.com");
 });
 
 Deno.test("csp: nothing can frame the app, and plugins are off", () => {
@@ -109,25 +111,24 @@ Deno.test("csp: each relaxation adds exactly its own source and never JS eval", 
 	assert(!directive(blob, "script-src").includes("'wasm-unsafe-eval'"));
 });
 
-Deno.test("csp: the inspector profile is the app profile plus wasm and blob: connect only", () => {
+Deno.test("csp: the inspector profile is its own viewer base, and differs from the app only in scripts, connects and frames", () => {
 	const app = cspHeaderFor("app");
 	const inspector = cspHeaderFor("inspector");
 	assertEquals(cspHeaderFor("inspector"), inspector);
 	assert(!directive(app, "script-src").includes("'wasm-unsafe-eval'"));
 	assert(!directive(app, "connect-src").includes("blob:"));
-	const appScript = directive(app, "script-src");
 	assertEquals(directive(inspector, "script-src"), [
-		...appScript.slice(0, 2),
+		"'self'",
+		"'unsafe-inline'",
 		"'wasm-unsafe-eval'",
-		...appScript.slice(2),
 	]);
 	assertEquals(directive(inspector, "connect-src"), [
 		"'self'",
 		"blob:",
-		...directive(app, "connect-src").slice(1),
+		...directive(app, "connect-src").slice(1).filter((s) => !s.includes("stripe.com")),
 	]);
 	const rest = (policy: string) =>
-		policy.split("; ").filter((d) => !d.startsWith("script-src ") && !d.startsWith("connect-src "));
+		policy.split("; ").filter((d) => !/^(script|connect|frame)-src /.test(d));
 	assertEquals(rest(inspector), rest(app));
 	assertEquals(directive(inspector, "frame-ancestors"), ["'none'"]);
 	assertEquals(directive(inspector, "object-src"), ["'none'"]);

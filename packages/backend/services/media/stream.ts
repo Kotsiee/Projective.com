@@ -1,4 +1,4 @@
-import type { FileObjectTier } from "@projective/types/files";
+import { fileInspectHref, type FileObjectTier } from "@projective/types/files";
 import { SlidingWindowLimiter } from "../../core/rate-limit.ts";
 import { fetchStoredObject } from "../../core/storage-stream.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
@@ -282,6 +282,25 @@ export async function streamAssetFor(
 		if (!request.signal.aborted) {
 			console.error("[media:stream]", error instanceof Error ? error.message : error);
 		}
+		return fail(503, { message: UNREACHABLE });
+	}
+}
+
+/**
+ * Where a page navigation to the proxy goes: the asset's inspector address by its `fil-` slug, under
+ * the same read decision as its bytes (Decision #563). 404 for every refusal, 503 when it cannot read.
+ */
+export async function inspectHrefFor(
+	actor: ReadActor,
+	fileId: string,
+	share: string | null,
+): Promise<ServiceResult<string>> {
+	if (!isAssetId(fileId)) return fail(404, { message: NOT_FOUND });
+	try {
+		const ref = await objectFor(actor, fileId, { share });
+		return ref ? ok(fileInspectHref(ref.slug, { share })) : fail(404, { message: NOT_FOUND });
+	} catch (error) {
+		console.error("[media:inspect-href]", error instanceof Error ? error.message : error);
 		return fail(503, { message: UNREACHABLE });
 	}
 }

@@ -37,7 +37,9 @@ import {
 
 /** Open an asset in a new tab: a stored file in the inspector, a link or drive file at its own address. */
 export function openInNewTab(asset: AssetItem): void {
-	const target = inspectable(asset) ? fileInspectHref(asset.id) : linkHref(asset) ?? asset.url;
+	const target = inspectable(asset) && asset.slug
+		? fileInspectHref(asset.slug)
+		: linkHref(asset) ?? asset.url;
 	if (!target || target === "#") return;
 	globalThis.open(target, "_blank", "noopener,noreferrer");
 }
@@ -48,7 +50,9 @@ export function openInNewTab(asset: AssetItem): void {
  */
 export function shareHrefOf(asset: AssetItem): string {
 	if (asset.shareSlug) return shareHref(asset.shareSlug);
-	return inspectable(asset) ? fileInspectHref(asset.id) : linkHref(asset) ?? asset.url;
+	return inspectable(asset) && asset.slug
+		? fileInspectHref(asset.slug)
+		: linkHref(asset) ?? asset.url;
 }
 
 /** Download: record the copy, then hand the bytes over. A drive file has no row for the ledger to hold. */

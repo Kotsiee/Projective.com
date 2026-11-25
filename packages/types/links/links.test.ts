@@ -85,14 +85,14 @@ Deno.test("an internal page with no card, and a malformed project slug, are plai
 });
 
 Deno.test("a file's inspector and a share link are file targets", () => {
-	const id = "6D43F88F-84C7-4454-A2E1-C3BD6A2839E2";
-	assertEquals(classifyLink(`http://localhost:4000/inspect/${id}?share=s1`, HOSTS), {
+	const slug = "fil-abcdefghjk";
+	assertEquals(classifyLink(`http://localhost:4000/inspect/${slug}?share=s1`, HOSTS), {
 		kind: "file",
-		url: `http://localhost:4000/inspect/${id}?share=s1`,
-		id: id.toLowerCase(),
+		url: `http://localhost:4000/inspect/${slug}?share=s1`,
+		slug,
 		share: "s1",
 	});
-	assertEquals(classifyLink(`https://projective.io/inspect/${id}`, []).kind, "file");
+	assertEquals(classifyLink(`https://projective.io/inspect/${slug}`, []).kind, "file");
 	assertEquals(classifyLink("http://localhost:4000/share/AbC_123", HOSTS), {
 		kind: "share",
 		url: "http://localhost:4000/share/AbC_123",
@@ -101,10 +101,15 @@ Deno.test("a file's inspector and a share link are file targets", () => {
 });
 
 Deno.test("an inspector address that names no file, or a deeper share path, stays a plain link", () => {
-	assertEquals(classifyLink("http://localhost:4000/inspect/not-a-uuid", HOSTS).kind, "internal");
+	assertEquals(classifyLink("http://localhost:4000/inspect/not-a-slug", HOSTS).kind, "internal");
+	// A uuid is the old address and no longer routes the inspector (Decision #563).
+	assertEquals(
+		classifyLink("http://localhost:4000/inspect/6d43f88f-84c7-4454-a2e1-c3bd6a2839e2", HOSTS).kind,
+		"internal",
+	);
 	assertEquals(classifyLink("http://localhost:4000/inspect", HOSTS).kind, "internal");
 	assertEquals(classifyLink("http://localhost:4000/share/slug/extra", HOSTS).kind, "internal");
-	assertEquals(classifyLink("https://evil.example/inspect/6d43f88f-84c7-4454-a2e1-c3bd6a2839e2", HOSTS).kind, "external");
+	assertEquals(classifyLink("https://evil.example/inspect/fil-abcdefghjk", HOSTS).kind, "external");
 });
 
 Deno.test("another host is external, even on the same port or a lookalike name", () => {

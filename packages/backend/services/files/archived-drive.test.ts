@@ -9,6 +9,7 @@ const TEAM = "3d1c1a52-6e0f-4a43-9e57-7a2b1f6c0b11";
 function item(id: string): ItemRow {
 	return {
 		id,
+		slug: "fil-abcdefghjk",
 		owner_user_id: MEMBER,
 		owner_type: "team",
 		owner_entity_id: TEAM,

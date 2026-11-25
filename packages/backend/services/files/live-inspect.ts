@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "supabaseClient";
 import { type InspectAsset, InspectAssetSchema } from "@projective/types/files";
+import { isSlug } from "@projective/types/slugs";
 import { getAnonClient, getServiceClient, getUserClient } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { ITEM_COLUMNS, type ItemRow, toAssetItem } from "./asset-row.ts";
@@ -30,9 +31,10 @@ import { shareTarget } from "./live-library.ts";
 
 const INVALID_TEXT_REPRESENTATION = "22P02";
 
-async function readRow(client: SupabaseClient, id: string): Promise<ItemRow | null> {
+/** One live row by its `fil-` slug (the page) or its uuid (the API and the proxy). */
+async function readRow(client: SupabaseClient, key: string): Promise<ItemRow | null> {
 	const { data, error } = await client.schema("files").from("items").select(ITEM_COLUMNS)
-		.eq("id", id).is("deleted_at", null).maybeSingle();
+		.eq(isSlug(key, "file") ? "slug" : "id", key).is("deleted_at", null).maybeSingle();
 	if (error) {
 		if (error.code === INVALID_TEXT_REPRESENTATION) return null;
 		throw new Error(`files.items read failed: ${error.message}`);
@@ -79,13 +81,13 @@ export async function managedShareSlug(
 	return liveShareSlug((data ?? []) as ShareLinkRow[], Date.now());
 }
 
-/** The inspector DTO for `id` as this viewer may see it, or `null` for every refusal. */
+/** The inspector DTO for `id` (a uuid or a `fil-` slug) as this viewer may see it, or `null` for every refusal. */
 export async function inspectAssetFor(
 	actor: ReadActor,
 	id: string,
 	opts: { share: string | null },
 ): Promise<InspectAsset | null> {
-	if (!isAssetId(id)) return null;
+	if (!isAssetId(id) && !isSlug(id, "file")) return null;
 	const share = opts.share || null;
 	const userClient = !share && canReadLive(actor) ? getUserClient(actor.accessToken) : null;
 

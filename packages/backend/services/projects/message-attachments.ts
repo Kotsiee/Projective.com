@@ -101,6 +101,7 @@ export const NO_MEDIA: MessageMedia = Object.freeze({
 /** The `files.items` columns a tile needs. */
 const FILE_COLUMNS = [
 	"id",
+	"slug",
 	"display_name",
 	"original_name",
 	"mime_type",
@@ -115,6 +116,8 @@ const FILE_COLUMNS = [
 /** One `files.items` row as selected by {@link FILE_COLUMNS}. */
 export interface FileRow {
 	id: string;
+	/** The inspector address (`fil-…`). */
+	slug: string;
 	display_name: string | null;
 	original_name: string | null;
 	mime_type: string | null;
@@ -191,6 +194,7 @@ export function toAttachment(
 		width: media.width,
 		height: media.height,
 		assetId: assetIdOf(file.id),
+		slug: assetIdOf(file.id) ? file.slug : null,
 		mimeType: mime ? clamp(mime, MIME_MAX) : null,
 		blurhash: media.blurhash,
 		mode: link.mode === "link" ? "link" : "copy",

@@ -2,7 +2,7 @@ import { define, type State } from "@web/utils/state.ts";
 import { FILE_OBJECT_TIERS, type FileObjectTier } from "@projective/types/files";
 import { MediaBackendService } from "@server/services/media/MediaBackendService.ts";
 import { readActor } from "@web/utils/api-session.ts";
-import { inspectRedirect } from "@features/inspector/core/proxy-navigation.ts";
+import { opensAsPage } from "@features/inspector/core/proxy-navigation.ts";
 
 /**
  * `GET|HEAD /api/media/proxy/[fileId]?tier=&download=1&share=` — an asset's bytes, streamed through the
@@ -13,8 +13,8 @@ import { inspectRedirect } from "@features/inspector/core/proxy-navigation.ts";
  * signal cancels the upstream read when the browser goes away. Downloads are never counted here — the
  * Download action records through `POST /api/files/download-record`.
  *
- * A top-level navigation (`Sec-Fetch-Dest: document`, "Open image in new tab") is a `303` to
- * `/inspect/[fileId]`; `?raw=1` or `?download=1` opts out. Bytes vary on `Sec-Fetch-Dest` so a cached
+ * A top-level navigation (`Sec-Fetch-Dest: document`, "Open image in new tab") is a `303` to the
+ * file's inspector address, `/inspect/fil-…` (Decision #563); `?raw=1` or `?download=1` opts out. Bytes vary on `Sec-Fetch-Dest` so a cached
  * `<img>` response never answers a navigation.
  *
  * Every refusal is the same bodiless 404 (429 past the rate ceiling, 503 when storage is unreachable).
@@ -29,12 +29,16 @@ interface ProxyContext {
 
 async function proxy(ctx: ProxyContext, method: "GET" | "HEAD"): Promise<Response> {
 	const sp = ctx.url.searchParams;
-	const inspect = inspectRedirect(ctx.req, ctx.url, ctx.params.fileId ?? "");
-	if (inspect) {
-		return new Response(null, {
-			status: 303,
-			headers: { location: inspect, "cache-control": "no-store", vary: "sec-fetch-dest, accept" },
-		});
+	if (opensAsPage(ctx.req, ctx.url)) {
+		const inspect = await MediaBackendService.inspectHref(
+			readActor(ctx),
+			ctx.params.fileId ?? "",
+			sp.get("share") || null,
+		);
+		const headers = { "cache-control": "no-store", vary: "sec-fetch-dest, accept" };
+		return inspect.ok && inspect.data
+			? new Response(null, { status: 303, headers: { ...headers, location: inspect.data } })
+			: new Response(null, { status: inspect.status === 503 ? 503 : 404, headers });
 	}
 	const tierRaw = sp.get("tier");
 	const tier = tierRaw && (FILE_OBJECT_TIERS as readonly string[]).includes(tierRaw)

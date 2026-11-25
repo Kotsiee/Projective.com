@@ -4,9 +4,11 @@ import { FileLinkPreviewSchema } from "@projective/types/links";
 import { fileCardFromInspect, fileCardFromShare } from "./file-cards.ts";
 
 const ID = "6d43f88f-84c7-4454-a2e1-c3bd6a2839e2";
+const SLUG = "fil-abcdefghjk";
 
 const INSPECT: InspectAsset = {
 	id: ID,
+	slug: SLUG,
 	name: "brief.pdf",
 	ext: "pdf",
 	mimeType: "application/pdf",
@@ -43,8 +45,8 @@ const INSPECT: InspectAsset = {
 };
 
 Deno.test("an inspector link's card opens the inspector and draws a document's type tile", () => {
-	const card = fileCardFromInspect(`https://projective.io/inspect/${ID}`, INSPECT);
-	assertEquals(card.href, `/inspect/${ID}`);
+	const card = fileCardFromInspect(`https://projective.io/inspect/${SLUG}`, INSPECT);
+	assertEquals(card.href, `/inspect/${SLUG}`);
 	assertEquals(card.assetId, ID);
 	assertEquals(card.typeLabel, "PDF");
 	assertEquals(card.sizeLabel, "2.4 MB");
@@ -60,7 +62,7 @@ Deno.test("a picture's card asks the proxy for the small rendition, carrying the
 		share: "s1",
 	});
 	assertEquals(card.thumbnail, `/api/media/proxy/${ID}?tier=sm&share=s1`);
-	assertEquals(card.href, `/inspect/${ID}?share=s1`);
+	assertEquals(card.href, `/inspect/${SLUG}?share=s1`);
 });
 
 Deno.test("a share link's card opens the share page and keeps only a same-origin picture", () => {

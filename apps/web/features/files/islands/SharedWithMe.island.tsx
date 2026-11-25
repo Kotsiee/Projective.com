@@ -109,7 +109,7 @@ export default function SharedWithMe(props: SharedWithMeProps): JSX.Element {
 								</span>
 								<a
 									class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm"
-									href={fileInspectHref(f.itemId)}
+									href={fileInspectHref(f.slug)}
 									aria-label={`Open ${f.name}`}
 								>
 									<Icon name="eye" />

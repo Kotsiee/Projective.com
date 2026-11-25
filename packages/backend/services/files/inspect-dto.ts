@@ -143,6 +143,7 @@ export function toInspectAsset(source: InspectSource): InspectAsset {
 
 	return {
 		id: item.id,
+		slug: item.slug ?? "",
 		name: item.name,
 		ext: extensionOf(source.fileName),
 		mimeType,

@@ -18,10 +18,12 @@ import {
 import { createInspectorShell, resolveShellOptions } from "./inspector-shell.ts";
 
 const ID = "f3f21bc4-161f-4c1a-94d9-d1d0376bc346";
+const SLUG = "fil-abcdefghjk";
 
 function asset(overrides: Partial<InspectAsset> = {}): InspectAsset {
 	return InspectAssetSchema.parse({
 		id: ID,
+		slug: SLUG,
 		name: "quadrants.png",
 		ext: "png",
 		mimeType: "image/png",
@@ -110,13 +112,13 @@ Deno.test("accessDetails follows a tier saved after the page painted", () => {
 
 Deno.test("inspectorLink carries the share slug only for share access", () => {
 	const origin = "https://projective.example";
-	assertEquals(inspectorLink(origin, asset({ share: "abc" })), `${origin}/inspect/${ID}`);
+	assertEquals(inspectorLink(origin, asset({ share: "abc" })), `${origin}/inspect/${SLUG}`);
 	assertEquals(
 		inspectorLink(
 			origin,
 			asset({ access: "share", share: "abc", canManage: false, downloadCount: null }),
 		),
-		`${origin}/inspect/${ID}?share=abc`,
+		`${origin}/inspect/${SLUG}?share=abc`,
 	);
 });
 
@@ -183,20 +185,25 @@ Deno.test("shell: fail moves to error, announce re-fires identical messages, pan
 
 Deno.test("fileOpenHref sends stored files to the inspector and everything else to its URL", () => {
 	assertEquals(
-		fileOpenHref({ id: ID, source: "supabase", status: "uploaded", url: "/x" }),
-		`/inspect/${ID}`,
+		fileOpenHref({ slug: SLUG, source: "supabase", status: "uploaded", url: "/x" }),
+		`/inspect/${SLUG}`,
 	);
 	assertEquals(
-		fileOpenHref({ id: ID, source: "link", status: "uploaded", url: "https://a.example" }),
+		fileOpenHref({ slug: SLUG, source: "link", status: "uploaded", url: "https://a.example" }),
 		"https://a.example",
 	);
-	assertEquals(fileOpenHref({ id: ID, source: "supabase", status: "pending", url: "/x" }), "/x");
+	assertEquals(
+		fileOpenHref({ slug: SLUG, source: "supabase", status: "pending", url: "/x" }),
+		"/x",
+	);
+	// A stored file with no address (a fixture) opens its own URL rather than a dead inspector link.
+	assertEquals(fileOpenHref({ source: "supabase", status: "uploaded", url: "/x" }), "/x");
 });
 
 Deno.test("Share hands out the inspector page, which opens only for people with access, while the file is private or restricted", () => {
 	for (const visibility of ["private", "restricted"] as const) {
 		assertEquals(shareTargetOf(asset(), { visibility, shareUrl: null }), {
-			href: `/inspect/${ID}`,
+			href: `/inspect/${SLUG}`,
 			reach: "with-access",
 		});
 	}
@@ -209,7 +216,7 @@ Deno.test("Share hands out the live share link, or a public file's page, for any
 		reach: "anyone",
 	});
 	assertEquals(shareTargetOf(asset(), { visibility: "public", shareUrl: null }), {
-		href: `/inspect/${ID}`,
+		href: `/inspect/${SLUG}`,
 		reach: "anyone",
 	});
 	assertEquals(
@@ -224,7 +231,7 @@ Deno.test("Share passes on the share slug a visitor arrived with, which opens fo
 			visibility: "private",
 			shareUrl: null,
 		}),
-		{ href: `/inspect/${ID}?share=slug1`, reach: "anyone" },
+		{ href: `/inspect/${SLUG}?share=slug1`, reach: "anyone" },
 	);
 });
 

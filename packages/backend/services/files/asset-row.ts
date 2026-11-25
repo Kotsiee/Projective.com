@@ -36,6 +36,7 @@ import { applyMediaFacts } from "./media-facts.ts";
 /** The `files.items` columns every projection selects. */
 export const ITEM_COLUMNS = [
 	"id",
+	"slug",
 	"owner_user_id",
 	"owner_type",
 	"owner_entity_id",
@@ -71,6 +72,8 @@ export const ITEM_COLUMNS = [
 /** One `files.items` row as selected by {@link ITEM_COLUMNS}. */
 export interface ItemRow {
 	id: string;
+	/** The inspector address (`fil-…`); minted by the slug guard on every insert. */
+	slug: string;
 	owner_user_id: string;
 	owner_type: string | null;
 	owner_entity_id: string | null;
@@ -444,6 +447,7 @@ export function toAssetItem(row: ItemRow, ctx: AssetContext): AssetItem {
 	const item: AssetItem = {
 		id: row.id,
 		assetId: assetIdOf(row.id),
+		slug: assetIdOf(row.id) ? row.slug : null,
 		kind,
 		category,
 		name: clampOr(rawName, 200, "Untitled"),

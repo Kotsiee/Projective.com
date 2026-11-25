@@ -102,6 +102,11 @@ export const SLUG_PREFIXES = {
 	 * `/api/downloads/ent-…/{fileId}`.
 	 */
 	entitlement: "ent",
+	/**
+	 * A stored file's inspector address (`files.items`, PROJECTS FL3, Decision #563): `/inspect/fil-…`.
+	 * The uuid stays the row's key and the media proxy's address.
+	 */
+	file: "fil",
 } as const;
 
 /** An entity addressed by a prefixed slug. */

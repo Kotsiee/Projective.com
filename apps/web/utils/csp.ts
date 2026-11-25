@@ -24,8 +24,10 @@
  * Images accept any `https:` origin because profile photos and listing covers come from arbitrary hosts.
  *
  * Three profiles exist: `app`, the platform policy every response gets by default; `inspector`
- * (Decision #161(D)), the same policy plus `'wasm-unsafe-eval'` (pdf.js decoders, Draco/Basis/meshopt)
- * and `blob:` in `connect-src` (GLB embedded textures) — sent only by the `/inspect/*` page; and
+ * (Decision #161(D)), sent by the `/inspect/*` and `/files/*` pages, which has its own `viewer` base
+ * (Decision #563): no Stripe and no Turnstile anywhere, and `frame-src` holding only the preview
+ * ladder's provider origins, plus `'wasm-unsafe-eval'` (pdf.js decoders, Draco/Basis/meshopt) and
+ * `blob:` in `connect-src` (GLB embedded textures); and
  * `framed` (Decision #217 (j)), the same policy with `frame-ancestors 'self'` — sent only by the
  * catalogue's buyer simulation (`/catalogue/[id]/simulate`), which the item workspace's Preview tab
  * frames. The middleware pairs that one profile, and no other, with `x-frame-options: SAMEORIGIN`.
@@ -52,6 +54,11 @@ export interface CspOptions {
 	supabaseOrigin: string | null;
 	/** Page-scoped loosenings; omitted for the platform policy. */
 	relax?: CspRelaxations;
+	/**
+	 * `viewer`: a file viewer's own base, with no payment or bot-check origin and frames from the
+	 * preview ladder's providers only. Omitted for the platform policy.
+	 */
+	base?: "viewer";
 }
 
 /**
@@ -72,7 +79,11 @@ export function originOf(url: string | null | undefined): string | null {
 }
 
 const STRIPE_SCRIPT = ["https://js.stripe.com", "https://*.js.stripe.com"];
-const STRIPE_FRAME = ["https://js.stripe.com", "https://*.js.stripe.com", "https://hooks.stripe.com"];
+const STRIPE_FRAME = [
+	"https://js.stripe.com",
+	"https://*.js.stripe.com",
+	"https://hooks.stripe.com",
+];
 const STRIPE_CONNECT = ["https://api.stripe.com"];
 const TURNSTILE = ["https://challenges.cloudflare.com"];
 
@@ -81,9 +92,13 @@ export function contentSecurityPolicy(options: CspOptions): string {
 	const supabase = options.supabaseOrigin ? [options.supabaseOrigin] : [];
 	const wasm = options.relax?.wasm === true ? ["'wasm-unsafe-eval'"] : [];
 	const blobConnect = options.relax?.blobConnect === true ? ["blob:"] : [];
+	const viewer = options.base === "viewer";
 	const directives: [string, string[]][] = [
 		["default-src", ["'self'"]],
-		["script-src", ["'self'", "'unsafe-inline'", ...wasm, ...STRIPE_SCRIPT, ...TURNSTILE]],
+		[
+			"script-src",
+			["'self'", "'unsafe-inline'", ...wasm, ...(viewer ? [] : [...STRIPE_SCRIPT, ...TURNSTILE])],
+		],
 		["style-src", ["'self'", "'unsafe-inline'"]],
 		["img-src", ["'self'", "data:", "blob:", "https:", ...supabase]],
 		["font-src", ["'self'", "data:"]],
@@ -93,14 +108,14 @@ export function contentSecurityPolicy(options: CspOptions): string {
 			[
 				"'self'",
 				...blobConnect,
-				...STRIPE_CONNECT,
+				...(viewer ? [] : STRIPE_CONNECT),
 				...supabase,
 				...(options.dev ? ["ws:", "wss:"] : []),
 			],
 		],
 		[
 			"frame-src",
-			[
+			viewer ? [...EMBED_FRAME_ORIGINS] : [
 				"'self'",
 				...STRIPE_FRAME,
 				...TURNSTILE,
@@ -149,6 +164,7 @@ export function cspHeaderFor(profile: CspProfile): string {
 		dev: !isProductionEnv(),
 		supabaseOrigin: originOf(Deno.env.get("SUPABASE_PUBLIC_URL") ?? Deno.env.get("SUPABASE_URL")),
 		relax: PROFILE_RELAXATIONS[profile],
+		base: profile === "inspector" ? "viewer" : undefined,
 	});
 	cachedHeaders.set(profile, header);
 	return header;

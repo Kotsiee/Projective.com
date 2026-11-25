@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 4 open, 2 partly done (FL3, #563; FL2, #568), 20 done (§0 ledger).
-> Runnable now: FL2 and FL3, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 3 open, 1 partly done (FL2, #568), 22 done (§0 ledger).
+> Runnable now: FL2, up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -74,6 +74,7 @@ A prompt that lands gets a row here.
 | FL4 | A person grant tells that person, every grant is listed in Shared with me, and a link cannot outlive its file's tier (#570, stop 30 as recommended; (e) deferred, PJ-78): `files.set_item_access` emits `file.shared` for a new person grant on a file left above Only you (catalogued in `00005010`, digestible); `files.list_shared_with_me` behind `/files?source=shared` (`SharedWithMe`, the lane's and Browse menu's row); `trg_files_items_revoke_links_on_tier_drop` revokes a file's links when it goes to Only you or Specific people, and `fn_resolve_share` opens a file link only while the file is `link` or `public`; both tier writes answer 409 `links_would_stop` with the count until `stopLinks`, confirmed in the Access tab, the hub's privacy control and in place in `ShareDialog`; probe `file_sharing.sql` | `f70469ab` (#570) | `aaa6fd99` |
 | NO4 | Guest mail honours the suppression list and its bounces, and leaves from a sender of its own: `scheduling.claim_guest_mail` mails no address `comms.fn_is_suppressed` refuses (the message stops, the host is told); `guest_request_code` answers `undeliverable`; `deliverMailWithReceipt` keeps Resend's id in `scheduling.guest_mail.provider_ref` (`uq_guest_mail_provider_ref`) through `finish_guest_mail (uuid, boolean, text)`, and `fn_record_delivery_event` matches it on a hard bounce; guest mail leaves through `inviteTransport()`, from `MAIL_FROM_INVITES` or else `MAIL_FROM` (#391 (n) ruled); probe `guest_mail_suppression.sql` | `e4a39ff9` (#571) | `3fd9fc56` |
 | FL1 | The storage quota meters every stored byte: `fn_recompute_usage` adds each asset's `files.item_variants` tiers and `trg_files_item_variants_usage` recomputes the asset's owner; the backfill is one `fn_recompute_usage` statement. Stop 27 ruled (30 days; the quota on in UAT, flipped by you). `files.items.purged_at` + `items_purged_check`; `files.claim_purge` / `release_purge` (service role; never a file a submission, a dispute, an order version or line, an invoice, a statement or a sent contact request names); `purgeDeletedFiles` behind `POST /api/files/cron/purge` and the nightly `files-soft-delete-purge` job; T&S SN2 step 5 told how the two sweeps meet; probes `storage_usage_variants.sql`, `file_purge.sql` | `4b224ccc`, `0c7aa8dc`, `35ad258e` (#564) | `cad28a4f` |
+| FL3 | The File Inspector is addressed by a `fil-` slug and a raw PDF never renders at the app origin: `files.items.slug` (`items_slug_key`, `ck_items_slug_shape`, `trg_items_slug` minting `fil-`), `SLUG_PREFIXES.file`, `FileSlugSchema` on `AssetItem`, `InspectAsset`, `MessageAttachment` and `SharedFile`; `/inspect/[fileSlug]` (a uuid 404s, #88), the proxy's page navigation `303`s to the slug, every link builder (library, picker, Shared with me, chat, preview, link cards, saved, export, the `file.shared` notice) uses it; a PDF is an attachment under the sandbox CSP; the inspector CSP is its own `viewer` base (no Stripe or Turnstile, `frame-src` the preview ladder only); probe `file_slug.sql` | `0e9cb82a` and the step-2 commit (#563) | `79abe3ea` |
 
 ### 0.1 Row → work order
 
@@ -162,7 +163,7 @@ The operator's ruling is MW-59; it is not this file's row.
 | PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2 (FL1 ✅, #564) | Uploads are scanned; stale uploads and quarantine objects leave the bucket (every byte metered and deleted files' bytes purged, #564) |
 | PJ-64 | 🟡 · Normal · UAT | T&S LK1                        | Offline or with no key, a link reads "unchecked" and goes through `/exit`                                  |
 | PJ-65 | 🟡 · Normal · UAT | **FL2** step 5 (with you) | The live Drive round trip is recorded: consent, browse, Add to Library, open (steps 1–4 landed, #568) |
-| PJ-66 | 🟡 · High · UAT   | **FL3** (🧑; steps 1, 3 #563)  | A `fil-` slug routes; the inspector has its own CSP (a raw PDF is sandboxed, #563)                         |
+| PJ-66 | 🟡 · High · UAT   | FL3 ✅ (#563); none for the note | The Access tab's Link settings dialog stops painting blurred under its scrim (#570's note)              |
 | PJ-68 | ✅ · High · UAT   | FL4 ✅ (#570)                 | A grant tells its grantee, and a share link cannot outlive its tier                                        |
 | PJ-78 | ❌ · Normal · PROD | — (no blocking exists; #402 (e) deferred, #570) | A person grant to someone in a block pair is refused, once blocking exists                  |
 
@@ -191,7 +192,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
 | Messaging                      |   61% | MS5 61% → P2d 67% (CH1 ✅, #562; CH3 ✅, #560) → CH2 ✅ (#561) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → CD2 94% → NT5 100% (NO2 ✅, #565; NO3 ✅, #567)                                                                    |
-| Files & assets                 |   64% | LK1 68% → FL3 77% → FL2 + you 82% → SN1 + SN2 91% → blocking (PJ-78, no work order) 100% (FL4 ✅, #570; FL1 ✅, #564)   |
+| Files & assets                 |   64% | LK1 68% → PJ-66's dialog note 77% (FL3 ✅, #563) → FL2 + you 82% → SN1 + SN2 91% → blocking (PJ-78, no work order) 100% (FL4 ✅, #570; FL1 ✅, #564)   |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 86% → LP1 100% (NO4 ✅, #571)                                                                    |
 
 **What MVP needs from this cluster:** the eight Critical · MVP rows not yet ✅, which are PJ-17,
@@ -200,7 +201,7 @@ after PM-WP1. The paths follow §0.2's order:
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a) and PJ-60 (CD2; NO2 ✅, #565) (PJ-43 ✅, EX2 + EX3).
 Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a,
-FL3, CFG2 and LP1 (FL4 ✅, #570).
+CFG2 and LP1 (FL4 ✅, #570; FL3 ✅, #563, PJ-66 waits on #570's dialog note).
 
 ### 0.2 Run order
 
@@ -243,15 +244,13 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** ✅ (#569, §0.0): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); FL4 ✅ (#570); NO1 ✅ (#566) and NO4 ✅ (#571); FL1 ✅ (#564); next **FL3**'s
-    slug.
+11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); FL4 ✅ (#570); NO1 ✅ (#566) and NO4 ✅ (#571); FL1 ✅ (#564); FL3 ✅ (#563).
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
 **App lane** (up to three at once, file-disjoint):
 
 - **PM-WP8** now.
 - **FL2** step 5, with you (steps 1–4 landed, #568).
-- **FL3** step 4, the inspector's CSP (its stream half landed, #563), once stop 29 is ruled.
 - **PJZ** last.
 
 **Human lane:**
@@ -282,7 +281,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00000017` + `00001260` (disputes)                       | PM-WP4a step 6                                               | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | —                                                            | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | — (NO2 ✅, #565)                                            | T&S                                                               |
-| `00001160` (files)                                       | FL3 (FL4 ✅, #570; FL1 ✅, #564)                            | T&S SN2; T&S LK1 (services only)                                  |
+| `00001160` (files)                                       | — (FL4 ✅, #570; FL1 ✅, #564; FL3 ✅, #563)               | T&S SN2; T&S LK1 (services only)                                  |
 | `00005010` (notification catalogue)                      | PM WP4a, WP5a, WP6, D7b, GH1 (FL4 ✅, #570)            | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | PM WP5a, D7b, GH1 (FL1 ✅, #564)                             | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
@@ -319,7 +318,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 26 | Guest invitations on their own mail subdomain (#391 (n)) | NO4 ✅ (#571) | **Ruled #571:** yes, as recommended: `MAIL_FROM_INVITES`, falling back to `MAIL_FROM` while unset; the DNS is yours |
 | 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ (#564) | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
 | 28 | #394 (a) one Google connection or two; which connectors ship for UAT | FL2 ✅ (#568) | **Ruled #568:** as recommended: one Google client, two connections (`google_drive` beside `google`); Google Drive and S3 ship for UAT, and Dropbox, OneDrive and Frame.io are Planned |
-| 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3 (#563)    | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
+| 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3 ✅ (#563) | **Ruled #563:** as recommended: a `fil-` slug, old uuid links 404 per #88, and the inspector's own CSP base with only the ladder's frames                                                                                      |
 | 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4 ✅        | **Ruled #570:** as recommended for (d) and (k): person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm naming how many. (e) deferred: the platform has no blocking, so PJ-78 waits for it |
 | 31 | An owner-present run on your Zoom, Microsoft and Google accounts                                                                             | LP1           | Yes, in one sitting, once a public HTTPS origin exists                                                                                                                                                                   |
 | —  | T&S P2a (#147 (a)), P2b's cooling-off and T&S §0.4 (SN1's production default); SCH-WP7 (#344 (f)); CD2's hosted prerequisites | their prompts | Their own                                                                                                                                                                                                                |
@@ -598,55 +597,6 @@ file in the library.
 
 §1.2 rows: **PJ-65** → ✅ once Drive import is walked live (the rest are ruled Planned, #568).
 Otherwise 🟡, naming what is left.
-
-### FL3 — The File Inspector routes by slug, sandboxes a raw PDF, and has its own CSP
-
-Closes PJ-66 (🟡 → ✅).
-
-> **Status 2026-11-25:** steps 1 and 3 landed (#563): a stored PDF is always an attachment under
-> the sandbox CSP and keeps `application/pdf` for pdf.js (`live-objects.ts:97-115`,
-> `stream.ts:69-83`), so F20 is closed; `csp.test.ts` holds step 4's red test as `ignore: true`.
-> The new contradiction is logged in #563 (b). Steps 2 and 4 below are open and wait on the three
-> stops, which were put to the owner on 2026-11-25.
-
-```text
-PROMPT FL3: The File Inspector is addressed by a fil- slug, and the inspector's
-Content-Security-Policy allows only what it uses
-
-ROLE: Full-stack engineer. Queue S for the slug (files schema); app lane for the CSP.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - #161 (a): /inspect/[fileId].tsx re-exports InspectScreen; inspector-ssr.ts:27-35 passes the
-    raw id on; AssetIdSchema is a uuid (packages/types/files/assets.ts:162).
-  - F26: the inspector profile is the app profile plus relaxations (csp.ts:122-126). Its base
-    keeps Stripe and Turnstile in script-src (:86), and in frame-src Stripe, Turnstile,
-    youtube-nocookie and EMBED_FRAME_ORIGINS (:102-110), with 'unsafe-inline'. It also serves
-    /files/* ((dashboard)/files/[...path].tsx:102, #396).
-  - A NEW contradiction (#563 (b)): F26's fix ("no frames") conflicts with #401's preview ladder,
-    which needs EMBED_FRAME_ORIGINS (csp.test.ts:30).
-
-🧑 DECISION (before step 2). Put all three to me:
-  1. #161 (a). Recommended: a fil- slug (Decision #88: security.fn_slug_guard('fil'),
-     SLUG_PREFIXES, the Tables.md entry, the contract tests).
-  2. Old uuid links. Recommended: they 404, per #88. Or, your call, one release of 301s from
-     define.handlers (#61).
-  3. F26 against #401. Recommended: the inspector gets its own base, with no Stripe or Turnstile;
-     frame-src holds only the preview ladder's origins.
-
-STEPS:
-  2. The fil- slug, in place: column, guard, index and Zod; the route and inspector-ssr resolve
-     it; every link builder uses it.
-  4. F26: the inspector base as ruled; csp.test.ts's F26 test (now `ignore: true`) switched on,
-     with the ruled frame-src asserted.
-
-ACCEPTANCE: the tests are green; live, a PDF opens in the inspector from its slug URL;
-screenshots.
-
-SAME CHANGE: ROUTING.md; documentation/database/files/*; Zod; SYSTEM_ARCHITECTURE.md (the CSP
-profiles); COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md (F26); the decision rows.
-```
-
-§1.2 rows: **PJ-66** 🟡 → ✅.
 
 ---
 

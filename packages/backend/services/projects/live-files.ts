@@ -175,6 +175,7 @@ const ATTACHMENT_COLUMNS = "id, message_id, attachment_id, created_at";
  */
 const ITEM_COLUMNS = [
 	"id",
+	"slug",
 	"display_name",
 	"original_name",
 	"mime_type",
@@ -237,6 +238,8 @@ interface AttachmentRow {
 /** One `files.items` row as selected by {@link ITEM_COLUMNS}. */
 interface ItemRow {
 	id: string;
+	/** The inspector address (`fil-…`). */
+	slug: string;
 	display_name: string | null;
 	original_name: string | null;
 	mime_type: string | null;
@@ -667,6 +670,7 @@ function toFileItem(
 	return withMediaFacts<FileItem>({
 		id: attachment.id,
 		assetId: assetIdOf(item.id),
+		slug: assetIdOf(item.id) ? item.slug : null,
 		kind,
 		category,
 		// `min(1)`, so a blank display name has to resolve to something. "Untitled" rather than the

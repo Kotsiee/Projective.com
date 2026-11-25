@@ -135,17 +135,17 @@ export function accessDetails(
 /** The absolute inspector link; the share slug travels only when the viewer arrived through one. */
 export function inspectorLink(
 	origin: string,
-	asset: Pick<InspectAsset, "id" | "access" | "share">,
+	asset: Pick<InspectAsset, "slug" | "access" | "share">,
 ): string {
 	const share = asset.access === "share" ? asset.share : null;
-	return `${origin}${fileInspectHref(asset.id, { share })}`;
+	return `${origin}${fileInspectHref(asset.slug, { share })}`;
 }
 
 /** Where "open in a new tab" goes for a file: the inspector for stored bytes, else its own URL. */
 export function fileOpenHref(
-	file: { id: string; source: string; status: string; url: string },
+	file: { slug?: string | null; source: string; status: string; url: string },
 ): string {
-	return inspectable(file) ? fileInspectHref(file.id) : file.url;
+	return inspectable(file) && file.slug ? fileInspectHref(file.slug) : file.url;
 }
 
 /** The address a Share control hands out for a file, and who it opens for. */
@@ -160,16 +160,16 @@ export interface InspectShareTarget {
  * who already have access.
  */
 export function shareTargetOf(
-	asset: Pick<InspectAsset, "id" | "share">,
+	asset: Pick<InspectAsset, "slug" | "share">,
 	reach: LiveReach,
 ): InspectShareTarget {
 	if (asset.share) {
-		return { href: fileInspectHref(asset.id, { share: asset.share }), reach: "anyone" };
+		return { href: fileInspectHref(asset.slug, { share: asset.share }), reach: "anyone" };
 	}
 	if (opensForAnyone(reach)) {
-		return { href: reach.shareUrl ?? fileInspectHref(asset.id), reach: "anyone" };
+		return { href: reach.shareUrl ?? fileInspectHref(asset.slug), reach: "anyone" };
 	}
-	return { href: fileInspectHref(asset.id), reach: "with-access" };
+	return { href: fileInspectHref(asset.slug), reach: "with-access" };
 }
 
 /** The absolute form of a same-origin path such as `/share/<slug>`. */

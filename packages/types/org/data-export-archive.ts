@@ -315,6 +315,8 @@ export type DataExportMessages = z.infer<typeof DataExportMessagesSchema>;
 /** The manifest of the person's own files: what each is and where to open it — never its bytes. */
 export const DataExportFilesSchema = z.array(z.object({
 	id,
+	/** The file's inspector address (`fil-…`, Decision #563). */
+	slug: text,
 	name: text,
 	original_name: text,
 	folder: text,

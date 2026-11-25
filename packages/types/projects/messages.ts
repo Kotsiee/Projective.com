@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MessageDeltaSchema, messageDeltaText, MessageReplySchema } from "./message-rich.ts";
-import { AssetIdSchema } from "../files/assets.ts";
+import { AssetIdSchema, FileSlugSchema } from "../files/assets.ts";
 import { BlurHashSchema, durationLabelOf } from "../files/metadata.ts";
 
 /**
@@ -70,6 +70,8 @@ export const MessageAttachmentSchema = z.object({
 	 * `null` on a fixture tile.
 	 */
 	assetId: AssetIdSchema.nullable().optional(),
+	/** That file's inspector address (`fil-…`); absent exactly when `assetId` is. */
+	slug: FileSlugSchema.nullable().optional(),
 	/** The stored MIME type as the uploader declared it; `null` when unknown. */
 	mimeType: z.string().max(255).nullable().optional(),
 	/** The BlurHash read at upload (an image, or a video's poster) — the tile's loading placeholder. */

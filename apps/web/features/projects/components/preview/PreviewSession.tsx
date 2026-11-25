@@ -70,6 +70,7 @@ export interface PreviewSessionProps {
 
 const IDLE_ASSET: InspectAsset = {
 	id: "",
+	slug: "",
 	name: "",
 	ext: "",
 	mimeType: "",

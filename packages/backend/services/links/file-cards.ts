@@ -29,7 +29,7 @@ export function fileCardFromInspect(url: string, asset: InspectAsset): FileLinkP
 	return {
 		kind: "file",
 		url,
-		href: fileInspectHref(asset.id, { share: asset.share }),
+		href: fileInspectHref(asset.slug, { share: asset.share }),
 		assetId: asset.id,
 		name: clamp(asset.name || "File", NAME_MAX),
 		ext: clamp(asset.ext, EXT_MAX),

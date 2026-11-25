@@ -142,9 +142,10 @@ export function attachmentPlaceholder(
  * the inspector for a stored file, else the tile's own address without the rendition size the
  * bubble asked for; null when it has none.
  */
-export function attachmentOpenHref(att: Pick<MessageAttachment, "assetId" | "url">): string | null {
-	const id = attachmentAssetId(att);
-	if (id) return fileInspectHref(id);
+export function attachmentOpenHref(
+	att: Pick<MessageAttachment, "assetId" | "slug" | "url">,
+): string | null {
+	if (attachmentAssetId(att) && att.slug) return fileInspectHref(att.slug);
 	const own = ownAddress(att.url);
 	if (!own || !own.startsWith("/")) return own;
 	const parsed = new URL(own, "https://projective.invalid");

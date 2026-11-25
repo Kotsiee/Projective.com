@@ -77,6 +77,10 @@ CREATE TABLE files.folders (
 -- #region files.items — the asset registry
 CREATE TABLE files.items (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
+  -- The inspector's address, `/inspect/fil-…` (Decision #88; PROJECTS FL3, #563). Minted once by
+  -- `security.fn_slug_guard('fil')` (00001890) when the insert supplies none, and never changed;
+  -- the uuid stays the row's key and the media proxy's address, and no longer routes a page.
+  slug text NOT NULL,
   owner_user_id uuid NOT NULL,
   folder_id uuid,
   bucket_id text NOT NULL,
@@ -211,6 +215,8 @@ CREATE TABLE files.items (
   -- columns, which is a human decision, not one to take inside a fold.
   CONSTRAINT items_storage_object_unique UNIQUE (bucket_id, storage_path),
   CONSTRAINT items_share_slug_key UNIQUE (share_slug),
+  CONSTRAINT items_slug_key UNIQUE (slug),
+  CONSTRAINT ck_items_slug_shape CHECK (slug ~ '^fil-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
   -- A link asset must actually carry a URL; otherwise it is an empty row claiming to be a link.
   CONSTRAINT items_link_url_check CHECK (source <> 'link' OR link_url IS NOT NULL),
   CONSTRAINT items_owner_entity_check CHECK (

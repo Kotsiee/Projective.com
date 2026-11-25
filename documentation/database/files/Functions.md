@@ -279,14 +279,15 @@ library is refused (`42501`) as the guard trigger would, since a definer write d
 
 **Who is told (Decision #570, #402 (d) ruled).** A NEW person grant writes one `file.shared` notice to
 that person through `comms.fn_notify` (the file as its entity, the sharer as actor, "{name} shared a
-file with you", the file's name as body; digestible, opening `/inspect/{id}`), unless the save leaves
+file with you", the file's name as body; digestible, opening `/inspect/{slug}`, passed as the notice's
+action URL since the catalogue's uuid template went, Decision #563), unless the save leaves
 the file `private`, where a grant opens nothing. A change of level, a removal and a team, business or
 project grant tell nobody: a group's members find the file in `list_shared_with_me`. **A tier drop**
 to `private` or `restricted` revokes every live share link to the file in the same transaction
 (`trg_files_items_revoke_links_on_tier_drop`, below); the service asks the owner first (409
 `links_would_stop` with the count, then `stopLinks`).
 
-`files.list_shared_with_me(p_limit integer DEFAULT 100) → TABLE(item_id, name, mime_type, size_bytes,
+`files.list_shared_with_me(p_limit integer DEFAULT 100) → TABLE(item_id, slug, name, mime_type, size_bytes,
 role, via_kind, via_name, shared_by, shared_by_name, shared_at)` · `STABLE` · `SECURITY DEFINER` ·
 `authenticated` only (Decision #570). Every file that reaches the caller through a live grant: one
 naming them, or one to a team or business they are an active member of or a project they are on. One

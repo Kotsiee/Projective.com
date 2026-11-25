@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AssetVisibility } from "./assets.ts";
+import { AssetVisibility, FileSlugSchema } from "./assets.ts";
 
 /**
  * files.access — the Zod SSOT for who may open one stored file and what they may do with it
@@ -193,6 +193,8 @@ export function linksWouldStopNote(links: number): string {
  */
 export const SharedFileSchema = z.object({
 	itemId: z.string().uuid(),
+	/** The file's inspector address (`fil-…`, Decision #563). */
+	slug: FileSlugSchema,
 	name: z.string().min(1).max(400),
 	mimeType: z.string().max(255),
 	sizeBytes: z.number().int().min(0),
@@ -216,6 +218,7 @@ export type SharedWithMe = z.infer<typeof SharedWithMeSchema>;
 /** The row `files.list_shared_with_me` answers, as PostgREST returns it. */
 export const SharedFileRowSchema = z.object({
 	item_id: z.string().uuid(),
+	slug: FileSlugSchema,
 	name: z.string(),
 	mime_type: z.string(),
 	size_bytes: z.coerce.number(),
@@ -232,6 +235,7 @@ export type SharedFileRow = z.infer<typeof SharedFileRowSchema>;
 export function toSharedFile(row: SharedFileRow): SharedFile {
 	return {
 		itemId: row.item_id,
+		slug: row.slug,
 		name: row.name,
 		mimeType: row.mime_type,
 		sizeBytes: row.size_bytes,

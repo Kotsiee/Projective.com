@@ -11,7 +11,12 @@ import type {
 	LibraryUploadTicket,
 } from "@projective/types/files";
 import { completeLibraryUpload, initLibraryUpload, listLibrary } from "./library.ts";
-import { type StreamedAsset, streamAssetFor, type StreamRequest } from "./stream.ts";
+import {
+	inspectHrefFor,
+	streamAssetFor,
+	type StreamedAsset,
+	type StreamRequest,
+} from "./stream.ts";
 
 /**
  * MediaBackendService — the FAT service behind a person's media library: the listing the media
@@ -66,5 +71,14 @@ export class MediaBackendService {
 		request: StreamRequest,
 	): Promise<ServiceResult<StreamedAsset>> {
 		return await streamAssetFor(actor, fileId, request);
+	}
+
+	/** The inspector address a page navigation to `/api/media/proxy/[fileId]` is sent to (`fil-…`). */
+	static async inspectHref(
+		actor: ReadActor,
+		fileId: string,
+		share: string | null,
+	): Promise<ServiceResult<string>> {
+		return await inspectHrefFor(actor, fileId, share);
 	}
 }

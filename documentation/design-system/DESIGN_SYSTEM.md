@@ -5019,7 +5019,7 @@ is zero layout duplication. The guest shells (1, 3) are **likewise one compositi
 `AppShell persona="guest"` (see D.5).
 
 **One route renders no shell at all — the file inspector (Decision #161(C), flagged).** At the
-product owner's direction `/inspect/[fileId]` lives in its own route group, `routes/(standalone)/`,
+product owner's direction `/inspect/[fileSlug]` lives in its own route group, `routes/(standalone)/`,
 which has **no `_layout.tsx`**: the page renders straight inside `_app.tsx` (tokens, accessibility
 overlays, `DevMount`), so neither `UserShell` nor `GuestShell` is constructed for any of the four
 profiles. That is a fifth shell mode ("none") the four-profile matrix above and the D.6 rule ("a page

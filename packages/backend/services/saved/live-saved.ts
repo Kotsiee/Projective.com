@@ -6,6 +6,7 @@ import {
 	type SavedState,
 	type SavedToggle,
 } from "@projective/types/org";
+import { fileInspectHref } from "@projective/types/files";
 import { conversationPath } from "@projective/types/messaging";
 import type { ProfileKind } from "@projective/types/profile";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
@@ -615,7 +616,7 @@ function fileDisplay(
 		title: name,
 		meta: `File · ${ext ? ext.toUpperCase() : kind}`,
 		thumbnail: assetAddress(row, kind).thumbnailUrl,
-		href: `/inspect/${row.id}`,
+		href: fileInspectHref(row.slug),
 	};
 }
 

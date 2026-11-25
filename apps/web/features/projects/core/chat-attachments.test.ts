@@ -12,6 +12,7 @@ import {
 
 // #region Fixtures
 const ASSET = "8b0c5a3e-1f2d-4c6b-9a7e-2d3f4a5b6c7d";
+const SLUG = "fil-abcdefghjk";
 const LINK_ROW = "11111111-2222-4333-8444-555555555555";
 const CONVERSATION = "22222222-3333-4444-8555-666666666666";
 const HASH = "LEHV6nWB2yk8pyo0adR*.7kCMdnj";
@@ -26,6 +27,7 @@ function attachment(overrides: Partial<MessageAttachment> = {}): MessageAttachme
 		width: 2400,
 		height: 1600,
 		assetId: ASSET,
+		slug: SLUG,
 		mimeType: "image/png",
 		blurhash: HASH,
 		...overrides,
@@ -107,7 +109,7 @@ Deno.test("attachmentPlaceholder: the upload's BlurHash, else nothing", () => {
 });
 
 Deno.test("attachmentOpenHref: the inspector for a stored file, else the own address untiered", () => {
-	assertEquals(attachmentOpenHref(attachment()), `/inspect/${ASSET}`);
+	assertEquals(attachmentOpenHref(attachment()), `/inspect/${SLUG}`);
 	assertEquals(
 		attachmentOpenHref(attachment({ assetId: null, url: "/api/files/object/x?tier=md&share=s" })),
 		"/api/files/object/x?share=s",

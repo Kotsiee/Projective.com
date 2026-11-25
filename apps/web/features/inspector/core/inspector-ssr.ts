@@ -1,12 +1,14 @@
 import type { InspectAsset } from "@projective/types/files";
+import { isSlug } from "@projective/types/slugs";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
- * inspector-ssr — the server-only read behind `/inspect/[fileId]`. Never imported by an island.
+ * inspector-ssr — the server-only read behind `/inspect/[fileSlug]`. Never imported by an island.
  *
  * Every refusal collapses to one `404`, so the page cannot say whether a file exists to someone who
- * may not read it; only a service failure answers `503`.
+ * may not read it; only a service failure answers `503`. The page is addressed by its `fil-` slug
+ * alone: a uuid, the old address, is a `404` like any other (Decision #88; FL3, #563).
  */
 
 /** The page's first paint: the asset, or nothing, and the status to answer with. */
@@ -25,11 +27,12 @@ export function shareParam(raw: string | null): string | null {
 
 /** Resolve one file for the inspector as this viewer. */
 export async function resolveInspect(
-	fileId: string,
+	slug: string,
 	share: string | null,
 	actor: ReadActor,
 ): Promise<InspectResolution> {
-	const result = await FilesBackendService.inspect(fileId, { share }, actor);
+	if (!isSlug(slug, "file")) return { asset: null, status: 404 };
+	const result = await FilesBackendService.inspect(slug, { share }, actor);
 	if (result.ok && result.data) return { asset: result.data, status: 200 };
 	return { asset: null, status: result.status === 503 ? 503 : 404 };
 }

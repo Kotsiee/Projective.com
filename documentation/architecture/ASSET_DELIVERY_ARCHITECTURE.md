@@ -39,7 +39,7 @@ file nobody can download protects nothing.
 | Capability             | Today                                                                                                                                 | Source                                                            |
 | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------- |
 | Streaming read proxy   | **Built.** Gate, allowlisted headers, never `text/html`, sandbox CSP, bodiless 404.                                                   | `Storage.md` §The upload pipeline · `services/media/stream.ts`    |
-| Navigation redirect    | **Built** on the proxy: a `303` to `/inspect/[fileId]`, with `?raw=1` or `?download=1` opting out.                                    | `features/inspector/core/proxy-navigation.ts`                     |
+| Navigation redirect    | **Built** on the proxy: a `303` to the file's `/inspect/fil-…` (Decision #563), with `?raw=1` or `?download=1` opting out.            | `features/inspector/core/proxy-navigation.ts`                     |
 | Signed read URLs       | **Closed (phase 1, Decision #SC9P1).** Every private read streams through the proxy or `/api/downloads/*`; `/api/files/object/[id]` is a `308` to the proxy, and the data-export archive streams. | `core/signed-reads.test.ts` · `services/media/library.ts`         |
 | Signed upload URLs     | **Reach browsers by design**: a write capability on one `quarantine` object.                                                          | `core/storage-signed.ts`                                          |
 | Public buckets         | **Four**: `avatars`, `showcase`, `catalogue`, `public_assets`. SSR links them directly.                                               | `00005040_seed_storage_buckets.sql` · `core/storage-url.ts`       |
@@ -351,7 +351,7 @@ flowchart TD
   P -->|yes| R[Drop query string, encode ref]
   R --> L[302 to the app's link resolver]
   L --> Q{Resolver decides}
-  Q -->|caller can read it| I["/inspect/:fileId"]
+  Q -->|caller can read it| I["/inspect/:fileSlug"]
   Q -->|caller holds an entitlement| O["/files?source=purchases"]
   Q -->|published product| V["/view/prd-…"]
   Q -->|anything else| X[The same calm unavailable page]

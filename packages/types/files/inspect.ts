@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { FileCategory, fileExtension } from "./categories.ts";
 import { FileKind } from "./kinds.ts";
-import { AssetOwnerType, AssetVisibility } from "./assets.ts";
+import { AssetOwnerType, AssetVisibility, FileSlugSchema } from "./assets.ts";
 import type { FileObjectTier } from "./storage.ts";
 
 /**
@@ -42,10 +42,10 @@ export function mediaProxyHref(assetId: string, opts: MediaProxyOptions = {}): s
 	return `${MEDIA_PROXY_ROUTE}/${encodeURIComponent(assetId)}${qs ? `?${qs}` : ""}`;
 }
 
-/** The inspector page address for one asset. */
-export function fileInspectHref(assetId: string, opts: { share?: string | null } = {}): string {
+/** The inspector page address for one asset, by its `fil-` slug (Decision #563; a uuid 404s). */
+export function fileInspectHref(slug: string, opts: { share?: string | null } = {}): string {
 	const qs = opts.share ? `?${new URLSearchParams({ share: opts.share })}` : "";
-	return `${INSPECT_ROUTE}/${encodeURIComponent(assetId)}${qs}`;
+	return `${INSPECT_ROUTE}/${encodeURIComponent(slug)}${qs}`;
 }
 
 /** Whether an asset has platform-stored bytes the inspector can open. */
@@ -350,6 +350,8 @@ export type InspectOwner = z.infer<typeof InspectOwnerSchema>;
  */
 export const InspectAssetSchema = z.object({
 	id: z.string().uuid(),
+	/** The page's own address (`/inspect/fil-…`). */
+	slug: FileSlugSchema,
 	name: z.string(),
 	ext: z.string(),
 	mimeType: z.string(),
