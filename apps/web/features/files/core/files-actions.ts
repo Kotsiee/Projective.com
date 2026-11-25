@@ -1,4 +1,4 @@
-import { driveAddressOf } from "@projective/types/files";
+import { driveAddressOf, linksWouldStop } from "@projective/types/files";
 import { linkHref } from "@web/features/projects/components/preview/preview-model.ts";
 import {
 	type AssetItem,
@@ -23,6 +23,8 @@ import {
 	goToHref,
 	inspectId,
 	type PendingRemoval,
+	pendingTierDrop,
+	tierDropOpen,
 	treeRevision,
 } from "./files-state.ts";
 
@@ -130,12 +132,31 @@ export async function paintFolder(folderId: string, color: string | null): Promi
 	if (!saved) commitFiles();
 }
 
-/** Change an asset's privacy scope. */
-export async function setVisibility(asset: AssetItem, visibility: AssetVisibility): Promise<void> {
-	const res = await write(
-		() => FilesService.setVisibility({ assetIds: [asset.id], folderIds: [], visibility }),
-		"That privacy change could not be applied.",
-	);
+/**
+ * Change an asset's privacy scope. A drop below Anyone with the link that would stop live share links
+ * is held for the owner's confirm (Decision #570), then sent again with `stopLinks`.
+ */
+export async function setVisibility(
+	asset: AssetItem,
+	visibility: AssetVisibility,
+	stopLinks = false,
+): Promise<void> {
+	let held: number | null = null;
+	const res = await write(async () => {
+		const sent = await FilesService.setVisibility({
+			assetIds: [asset.id],
+			folderIds: [],
+			visibility,
+			stopLinks,
+		});
+		held = sent.ok ? null : linksWouldStop(sent.details);
+		return held === null ? sent : { ok: true };
+	}, "That privacy change could not be applied.");
+	if (held !== null) {
+		pendingTierDrop.value = { asset, visibility, links: held };
+		tierDropOpen.value = true;
+		return;
+	}
 	if (res) commitFiles();
 }
 

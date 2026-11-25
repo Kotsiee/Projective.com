@@ -18,6 +18,7 @@ import { Button, Checkbox, NumberInput } from "@projective/ui/fields";
 import { Message, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 
+import { linksWouldStop, linksWouldStopNote, stopsShareLinks } from "@projective/types/files";
 import { FilesService } from "../core/FilesService.ts";
 import {
 	type AssetFolder,
@@ -57,9 +58,10 @@ import { VisibilityMark } from "../components/file-hub-glyphs.tsx";
  * before minting and are fixed afterwards: the contract has no update, only revoke-and-re-mint, so a
  * link minted by a side effect would be minted with defaults nobody chose.
  *
- * For the same reason revoking is presented as its own act rather than as a consequence of lowering
- * visibility. A person who sets a file back to "Only you" should revoke the link they already sent;
- * this dialog puts that control in front of them rather than assuming either way on their behalf.
+ * Revoking is its own act, and also the consequence of lowering a file below "Anyone with the link"
+ * (Decision #570, re-ruling #402 (k)): going to "Only you" or "Specific people" revokes every share
+ * link to it in the same write. A drop that would stop a working link is answered 409 with how many,
+ * and the dialog asks in place (it is already the one dialog up) before sending it again.
  *
  * ## Two gates, told apart
  *
@@ -237,6 +239,9 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 	const limitOn = useSignal(false);
 	const limitCount = useSignal<number | null>(10);
 
+	/** A tier drop held for the owner's confirm, because it would stop `links` working share links. */
+	const pendingDrop = useSignal<{ next: AssetVisibility; links: number } | null>(null);
+
 	const busy = useSignal(false);
 	const error = useSignal<string | null>(null);
 	/** Whether the URL reached the clipboard. Announced, then it stops mattering. */
@@ -289,6 +294,7 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 		expiry.value = "none";
 		limitOn.value = false;
 		limitCount.value = 10;
+		pendingDrop.value = null;
 		error.value = null;
 		copied.value = false;
 
@@ -319,7 +325,7 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 	 * said no is the worst of both: it reports a change that did not happen, and the next thing they do
 	 * is act on a file they believe is shared.
 	 */
-	async function applyVisibility(next: AssetVisibility): Promise<void> {
+	async function applyVisibility(next: AssetVisibility, stopLinks = false): Promise<void> {
 		if (!subject || busy.value || next === visibility.value) return;
 		const previous = visibility.value;
 		visibility.value = next;
@@ -329,13 +335,27 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 			assetIds: subject.kind === "asset" ? [subject.id] : [],
 			folderIds: subject.kind === "folder" ? [subject.id] : [],
 			visibility: next,
+			stopLinks,
 		});
 		busy.value = false;
 		if (res.ok) {
+			pendingDrop.value = null;
+			// Below Anyone with the link, a file's share links were revoked in the same write.
+			if (subject.kind === "asset" && stopsShareLinks(next)) {
+				slug.value = null;
+				minted.value = null;
+				linkLive.value = null;
+				copied.value = false;
+			}
 			onChanged?.({ visibility: next, shareSlug: slug.value });
 			return;
 		}
 		visibility.value = previous;
+		const links = linksWouldStop(res.details);
+		if (links !== null) {
+			pendingDrop.value = { next, links };
+			return;
+		}
 		error.value = res.message ?? "That privacy change could not be applied.";
 	}
 
@@ -486,6 +506,38 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 												</label>
 											);
 										})}
+										{pendingDrop.value && (
+											<div class="fsh-confirm" role="alert">
+												<Message
+													severity="warning"
+													text={`${visibilityLabel(pendingDrop.value.next)}: ${
+														linksWouldStopNote(pendingDrop.value.links)
+													}`}
+												/>
+												<div class="fsh-confirm__actions">
+													<Button
+														size="sm"
+														variant="text"
+														severity="secondary"
+														label="Keep it shared"
+														disabled={busy.value}
+														onClick={() => (pendingDrop.value = null)}
+													/>
+													<Button
+														size="sm"
+														severity="danger"
+														label={pendingDrop.value.links === 1
+															? "Stop the link"
+															: "Stop the links"}
+														loading={busy.value}
+														onClick={() => {
+															const drop = pendingDrop.value;
+															if (drop) void applyVisibility(drop.next, true);
+														}}
+													/>
+												</div>
+											</div>
+										)}
 									</div>
 								)
 								: (
@@ -601,18 +653,23 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 
 										{
 											/*
-											 * Revoking is a SEPARATE act from lowering the privacy scope, so a person who
-											 * has just set this back to "Only you" is told where the other control is
-											 * rather than left assuming one press did both.
+											 * A file's own links die with its tier (Decision #570); a folder's do not, and a
+											 * file link minted below Anyone with the link opens nothing until it is raised.
 											 */
 										}
 										{!shared
 											? (
 												<Message
 													severity="warning"
-													text={`This ${noun} is set to "${
-														visibilityLabel(scope)
-													}" — a link you shared earlier is revoked separately. Revoke it if it should stop working.`}
+													text={subject.kind === "folder"
+														? `This folder is set to "${
+															visibilityLabel(scope)
+														}" — its link still opens it. Revoke it if it should stop working.`
+														: `This file is set to "${
+															visibilityLabel(scope)
+														}", so this link opens nothing. Revoke it, or choose "${
+															visibilityLabel("link")
+														}" to use it.`}
 												/>
 											)
 											: null}

@@ -93,6 +93,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"application.withdrawn",
 	"invitation.accepted",
 	"invitation.declined",
+	"file.shared",
 	// messages
 	"message.new",
 	"message.mention",

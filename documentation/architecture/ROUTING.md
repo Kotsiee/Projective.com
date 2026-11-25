@@ -612,6 +612,13 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   on one purchase (the confirmation's "Open in Purchases" for a bundle); an unrecognised value is
   dropped. The library-only chrome stands down there: the band keeps only Browse, and no footer rig
   or inspector mounts. Each file's Download is `/api/downloads/[entitlement]/[fileId]`.
+- **What other people shared with the viewer is `/files?source=shared` (Decision #570).** Shared with
+  me, a page state of the `/files` route like the purchases view (`isSharedView`; the href is
+  `sharedWithMeHref()`, `@projective/types/files`). The handler reads
+  `FilesBackendService.sharedWithMe` (`files.list_shared_with_me`) server-side and renders
+  `SharedWithMe` in the library body's box; its lane row sits beside Purchases (and in the header
+  band's Browse menu below 768px). The same chrome stands down as on purchases. Each row opens the
+  file at `/inspect/{fileId}`, which answers for whoever may read it.
 - **A filtered file view is a URL (Decision #363).** The facet filters ride in the query under the
   list API's own names, each a comma list: `?categories=` (`FileCategory`), `?sources=`
   (`AssetSource`), `?visibility=` (`AssetVisibility`) — e.g. `/files/Brand?categories=Image,Video`,

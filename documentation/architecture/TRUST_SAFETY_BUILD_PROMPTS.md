@@ -117,7 +117,7 @@ workload-verdict appeal on R1's sink (landed), R3 and R4.
 | `00005001` (platform params)                            | P2b, P2d, R4, SN1, SN2, SN3, SN4, SN6  | F (FX margin and dials)                                           |
 | `00005010` (notification catalog)                       | R3, SN3                                | COMMS NT1–NT5                                                     |
 | `MessagingBackendService.ts`, `projects/live-writes.ts` | P1d, R2                                | COMMS MS3, MS5; O D-06 / SC-9                  |
-| `services/files/*`, `services/links/*`                  | LK1, SN1, SN2, SN3, H1                 | PROJECTS FL1–FL4                                                  |
+| `services/files/*`, `services/links/*`                  | LK1, SN1, SN2, SN3, H1                 | PROJECTS FL1–FL3 (FL4 landed, #570)                              |
 
 ### 0.3 These cannot run in parallel inside T
 

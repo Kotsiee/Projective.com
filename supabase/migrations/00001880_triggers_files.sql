@@ -87,3 +87,16 @@ CREATE TRIGGER trg_files_items_guard_evidence
     BEFORE UPDATE OF deleted_at ON files.items
     FOR EACH ROW EXECUTE FUNCTION finance.fn_guard_evidence_file ();
 -- #endregion
+
+-- #region share links follow the tier (00001160 region 7f, Decision #570)
+-- Going to Only you or Specific people revokes every live share link to the file, in the same
+-- transaction, whichever write lowered it.
+CREATE TRIGGER trg_files_items_revoke_links_on_tier_drop
+    AFTER UPDATE OF visibility ON files.items
+    FOR EACH ROW
+    WHEN (
+        OLD.visibility IS DISTINCT FROM NEW.visibility
+        AND NEW.visibility IN ('private'::files.file_visibility, 'restricted'::files.file_visibility)
+    )
+    EXECUTE FUNCTION files.fn_revoke_links_on_tier_drop ();
+-- #endregion

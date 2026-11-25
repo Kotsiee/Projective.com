@@ -101,6 +101,9 @@ links to the invitation's own `/invite/<token>`, where the holder answers it; an
 verified account is mailed that link once instead, outside this catalog, through
 `projects.invitation_mail` (PROJECTS NO1, Decision #566). `application.received` carries the email
 channel since #566: in a daily or weekly digest for whoever has one, else sent with the notice.
+`file.shared` (`work`, digestible, `/inspect/{entity_id}`) is written by `files.set_item_access` to the
+person a file is newly shared with by name, never for a team, business or project grant (PROJECTS FL4,
+Decision #570).
 
 ⚠️ **Deliberately NOT referenced by a foreign key** from `comms.notifications.type`. An unregistered
 key must never raise inside a money-movement RPC — `fn_notify` auto-registers it as

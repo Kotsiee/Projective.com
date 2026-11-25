@@ -29,6 +29,7 @@ import {
 } from "../core/files-state.ts";
 import type { FileSortKey } from "../types/file-types.ts";
 import { purchasesHref } from "@projective/types/catalogue";
+import { sharedWithMeHref } from "@projective/types/files";
 
 /**
  * FilesHeaderBand — the sticky strip above the `/files` workspace.
@@ -84,6 +85,8 @@ export interface FilesHeaderBandProps {
 	 * search, filters, sort and Details act on the library body, which is not mounted there.
 	 */
 	purchases?: boolean;
+	/** Shared with me (`/files?source=shared`, Decision #570): the band keeps only Browse, as above. */
+	shared?: boolean;
 }
 // #endregion
 
@@ -275,6 +278,18 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 							<button
 								type="button"
 								class="fh-headerband__menu-item"
+								aria-current={props.shared ? "location" : undefined}
+								onClick={() => {
+									browseOpen.value = false;
+									globalThis.location.assign(sharedWithMeHref());
+								}}
+							>
+								<Icon name="share" class="fh-headerband__menu-glyph" />
+								Shared with me
+							</button>
+							<button
+								type="button"
+								class="fh-headerband__menu-item"
 								aria-current={props.purchases ? "location" : undefined}
 								onClick={() => {
 									browseOpen.value = false;
@@ -289,11 +304,11 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 				</Tooltip>
 			</span>
 
-			{!props.purchases && (
+			{!props.purchases && !props.shared && (
 				<span class="fh-headerband__search" ref={inlineSearch}>{searchField()}</span>
 			)}
 
-			{!props.purchases && (
+			{!props.purchases && !props.shared && (
 				<span class="fh-headerband__controls">
 					<span class="fh-headerband__searchtoggle">
 						<Tooltip content="Search files" placement="bottom">

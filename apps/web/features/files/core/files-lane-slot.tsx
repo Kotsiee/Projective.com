@@ -55,11 +55,21 @@ export interface FilesLocation {
 	 * down rather than drive a body that is not mounted.
 	 */
 	purchases: boolean;
+	/**
+	 * `/files?source=shared` (Decision #570): Shared with me, the files other people shared with the
+	 * viewer. The hub-only chrome stands down as it does on the purchases view.
+	 */
+	shared: boolean;
 }
 
 /** Whether a `/files` URL is the purchases view. */
 export function isPurchasesView(url: URL): boolean {
 	return url.searchParams.get("source") === "purchases";
+}
+
+/** Whether a `/files` URL is Shared with me. */
+export function isSharedView(url: URL): boolean {
+	return url.searchParams.get("source") === "shared";
 }
 
 /**
@@ -111,6 +121,7 @@ export function filesLocationOf(url: URL, context: UserContext): FilesLocation |
 		ownerLabel,
 		base: filesHref("hub"),
 		purchases: isPurchasesView(url),
+		shared: isSharedView(url),
 	};
 }
 // #endregion
@@ -133,6 +144,7 @@ export function filesLaneFor(url: URL, context: UserContext): ComponentChildren 
 			segments={loc.segments}
 			ownerId={loc.ownerId}
 			purchases={loc.purchases}
+			shared={loc.shared}
 		/>
 	);
 }

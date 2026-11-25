@@ -33,14 +33,17 @@ import {
 	newFolderParent,
 	pendingDisconnect,
 	pendingRemoval,
+	pendingTierDrop,
 	quota,
 	readOnly,
 	removalOpen,
 	seeded,
+	tierDropOpen,
 	treeRevision,
 } from "../core/files-state.ts";
 import { uploadReport } from "../core/upload-drawer-state.ts";
-import { disconnectDrive, paintFolder, removeRows } from "../core/files-actions.ts";
+import { disconnectDrive, paintFolder, removeRows, setVisibility } from "../core/files-actions.ts";
+import { linksWouldStopNote, visibilityLabel } from "@projective/types/files";
 import type { PressPoint } from "../core/press-point.ts";
 import { usePressTracking } from "../hooks/use-press-tracking.ts";
 import {
@@ -591,6 +594,21 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 				onAccept={() => {
 					const rows = pendingRemoval.value;
 					if (rows) void removeRows(rows);
+				}}
+			/>
+
+			<ConfirmDialog
+				visible={tierDropOpen}
+				header={`Set ${pendingTierDrop.value?.asset.name ?? "this file"} to ${
+					visibilityLabel(pendingTierDrop.value?.visibility ?? "private")
+				}?`}
+				message={linksWouldStopNote(pendingTierDrop.value?.links ?? 1)}
+				acceptLabel={(pendingTierDrop.value?.links ?? 1) === 1 ? "Stop the link" : "Stop the links"}
+				rejectLabel="Keep it shared"
+				acceptSeverity="danger"
+				onAccept={() => {
+					const drop = pendingTierDrop.value;
+					if (drop) void setVisibility(drop.asset, drop.visibility, true);
 				}}
 			/>
 

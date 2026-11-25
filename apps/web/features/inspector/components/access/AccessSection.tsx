@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
-import { fileInspectHref } from "@projective/types/files";
+import { fileInspectHref, linksWouldStopNote, visibilityLabel } from "@projective/types/files";
+import { ConfirmDialog } from "@projective/ui/feedback";
 import type { InspectorShell } from "../../core/inspector-shell.ts";
 import { visibilityText } from "../../core/inspector-model.ts";
 import { reachOf } from "../../core/access-live.ts";
@@ -150,6 +151,17 @@ export function AccessSection({ shell, titleId }: AccessSectionProps): JSX.Eleme
 					status={store.status.value}
 					onSave={() => void saveDraft(store, standing)}
 					onRevert={() => revertDraft(store)}
+				/>
+				<ConfirmDialog
+					visible={store.stopLinksOpen}
+					header={`Set ${asset.name} to ${visibilityLabel(draft.visibility)}?`}
+					message={linksWouldStopNote(store.stopLinks.value ?? 1)}
+					acceptLabel={(store.stopLinks.value ?? 1) === 1
+						? "Stop the link and save"
+						: "Stop the links and save"}
+					rejectLabel="Keep it shared"
+					acceptSeverity="danger"
+					onAccept={() => void saveDraft(store, standing, true)}
 				/>
 			</>
 		);

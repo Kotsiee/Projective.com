@@ -26,6 +26,7 @@ import type {
 	RevokeShare,
 	SetFolderColor,
 	SetVisibility,
+	SharedWithMe,
 	ShareLink,
 	ShareResolution,
 	StorageQuota,
@@ -70,7 +71,12 @@ import {
 import { completeUpload, initUpload } from "./live-uploads.ts";
 import { childNodesOf, listElsewhere } from "./live-locations.ts";
 import { inspectAssetFor } from "./live-inspect.ts";
-import { readAccessTargets, readItemAccess, saveItemAccess } from "./live-access.ts";
+import {
+	readAccessTargets,
+	readItemAccess,
+	readSharedWithMe,
+	saveItemAccess,
+} from "./live-access.ts";
 
 /**
  * FilesBackendService — the FAT half of the `/files` asset hub (thin routes / fat services, root
@@ -105,7 +111,13 @@ type Result<T> = ServiceResult<T>;
 type Actor = ReadActor & { accessToken: string };
 type Outcome<T> =
 	| { ok: true; data: T; status?: number; message?: string }
-	| { ok: false; status: number; message: string; errors?: Record<string, string> };
+	| {
+		ok: false;
+		status: number;
+		message: string;
+		errors?: Record<string, string>;
+		details?: Record<string, string | number>;
+	};
 
 const SIGNED_OUT = "Sign in to use your files.";
 const UNREACHABLE = "We couldn't reach your files just now. Try again in a moment.";
@@ -114,7 +126,11 @@ const UNREACHABLE = "We couldn't reach your files just now. Try again in a momen
 function toResult<T>(outcome: Outcome<T>): Result<T> {
 	return outcome.ok
 		? ok(outcome.data, { status: outcome.status, message: outcome.message })
-		: fail(outcome.status, { message: outcome.message, errors: outcome.errors }) as Result<T>;
+		: fail(outcome.status, {
+			message: outcome.message,
+			errors: outcome.errors,
+			details: outcome.details,
+		}) as Result<T>;
 }
 
 /** Run a signed-in body: 401 without a session, 503 on an unexpected failure. */
@@ -362,6 +378,14 @@ export class FilesBackendService {
 	/** The teams, businesses and projects the caller may grant a file to: the ones they belong to. */
 	static accessTargets(query: string | null, actor: ReadActor): Promise<Result<AccessTargetList>> {
 		return signedIn("access-targets", actor, async (a) => toResult(await readAccessTargets(a, query)));
+	}
+
+	/**
+	 * Shared with me (Decision #570): every file other people shared with the caller, by name or with a
+	 * team, business or project the caller is in, newest share first. `/files?source=shared` reads it.
+	 */
+	static sharedWithMe(actor: ReadActor): Promise<Result<SharedWithMe>> {
+		return signedIn("shared-with-me", actor, async (a) => toResult(await readSharedWithMe(a)));
 	}
 
 	/**

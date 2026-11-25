@@ -17,8 +17,9 @@ import type {
 	SetVisibility,
 	ShareLink,
 } from "@projective/types/files";
-import { linkStorageAddress } from "@projective/types/files";
+import { linkStorageAddress, stopsShareLinks } from "@projective/types/files";
 import { copyObject, removeObjects } from "../../core/storage-signed.ts";
+import { linksAtStake, tierDropRefusal } from "./live-access.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import { clamp } from "../../core/text.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -59,6 +60,7 @@ type Result<T> = { ok: true; data: T; status?: number; message?: string } | {
 	status: number;
 	message: string;
 	errors?: Record<string, string>;
+	details?: Record<string, string | number>;
 };
 
 /** The one sentence an owner request outside the caller's libraries answers with. */
@@ -666,6 +668,11 @@ export async function removeAssets(actor: Actor, input: DeleteAssets): Promise<R
  * elsewhere, so this is the only way a scope is ever lowered.
  */
 export async function setVisibility(actor: Actor, input: SetVisibility): Promise<Result<AssetItem[]>> {
+	// Going below Anyone with the link revokes the files' share links (Decision #570): the owner says so first.
+	if (stopsShareLinks(input.visibility) && !input.stopLinks) {
+		const links = await linksAtStake(actor, input.assetIds);
+		if (links > 0) return tierDropRefusal(links);
+	}
 	const db = filesDb(actor);
 	let touchedItems: string[] = [];
 	if (input.assetIds.length > 0) {

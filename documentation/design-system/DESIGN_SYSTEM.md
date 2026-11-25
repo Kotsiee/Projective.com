@@ -4619,6 +4619,12 @@ bundle is one outlined `cko-order__act` link per file plus "Open in Purchases" (
 `/files?source=purchases` (`PurchasesView`) composes roster pieces only: `MetaLine` facts, a
 `Tag` for a refunded purchase's lifecycle status, `InlineNotice` while files are prepared, and
 outlined neutral Download links — rows separated by one hairline, never cards.
+`/files?source=shared` (`SharedWithMe`, Decision #570) is the same shape: per file one `MetaLine` (who,
+through what, level, date, size) and one outlined neutral **Open** link to the inspector, hairline rows.
+A tier drop that would stop share links (409 `links_would_stop`) is confirmed by a `ConfirmDialog`
+(danger accept "Stop the link(s)…", reject "Keep it shared") from the Access tab and the hub's privacy
+control, and in place inside `ShareDialog` (`.fsh-confirm`: a warning `Message` and the same two
+buttons), which is already the one dialog up.
 
 **`CommitAcceptanceDialog` (`features/legal/components/`, Decision #534, LG3).** The first-commit
 ask: a `Dialog` (`--overlay-w-sm`) that a claim or funding host opens when its door answers 409

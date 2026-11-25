@@ -925,3 +925,20 @@
 	}
 }
 /* #endregion */
+
+/* #region Tier-drop confirm (Decision #570) */
+/* Asked in place: lowering a shared file stops its links, and this dialog is already the one up. */
+.fsh-confirm {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block-start: var(--space-2);
+}
+
+.fsh-confirm__actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+/* #endregion */

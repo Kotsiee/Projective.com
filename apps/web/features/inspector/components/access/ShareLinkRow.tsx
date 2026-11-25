@@ -29,8 +29,9 @@ function slugOf(shareUrl: string | null): string | null {
 /**
  * The owner's share link for a link or public file: the address with Copy, or a way to make one. The
  * link's terms (expiry, download cap) and revoking stay in the hub's share dialog, opened from here, so
- * a link is never minted on defaults nobody chose. A link made earlier keeps opening the file whatever
- * its tier, so on Only you or Specific people a live one is said, with the way to revoke it.
+ * a link is never minted on defaults nobody chose. Lowering the file below Anyone with the link revokes
+ * its links (Decision #570), and a link opens nothing while the file is below it, so a live one left on
+ * Only you or Specific people is said as dormant, with the way to revoke it.
  */
 export function ShareLinkRow(props: ShareLinkRowProps): JSX.Element {
 	const actions = useInspectorActions();
@@ -62,8 +63,8 @@ export function ShareLinkRow(props: ShareLinkRowProps): JSX.Element {
 				? (
 					<>
 						<Message
-							severity="warning"
-							text="A share link made earlier still opens this file for anyone who has it. Revoke it if it should stop working."
+							severity="info"
+							text="This link opens nothing while the file is not shared. Revoke it, or set the file to Anyone with the link to use it."
 						/>
 						<div class="ins-access__link-actions">
 							<Button

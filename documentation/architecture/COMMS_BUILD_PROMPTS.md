@@ -132,7 +132,7 @@ These cannot run in parallel because they edit the same files:
 - **`features/devtools` + `dev-seam.ts`.** SR3 here (and NT5 only if it edits the axis); other
   tracks' axis-adding steps elsewhere.
 - **`00005010` (the notification catalog).** Several tracks add rows to it (C·WP3 notices, F·DB4's
-  schedule-failure notice, P·WP1's claim-TTL notices, FL4; EX2's landed, #548; PROJECTS NO1's, #566; EX1 needed none, #569). One writer at a
+  schedule-failure notice, P·WP1's claim-TTL notices; EX2's landed, #548; PROJECTS NO1's, #566; EX1 needed none, #569; PROJECTS FL4's, #570). One writer at a
   time; here MS4 → NT5.
 - **The shared cache primitives (RED WP10a, landed `7f6b43d5`).** MS3 consumes the KV version keys
   (`bumpCacheVersion`, `cacheVersion`, `cacheVersionTag` in `packages/backend/core/kv.ts`) and SR3

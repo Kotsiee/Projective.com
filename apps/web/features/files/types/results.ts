@@ -13,6 +13,8 @@ export interface FilesResult<T> {
 	message?: string;
 	/** Field-keyed validation errors, when the route (or the client pre-flight) rejected the payload. */
 	errors?: Record<string, string>;
+	/** Machine-readable facts about a refusal, e.g. `{ code: "links_would_stop", links }` on a tier drop. */
+	details?: Record<string, string | number | boolean | null>;
 	/** The success payload; present when `ok`. */
 	data?: T;
 }

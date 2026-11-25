@@ -497,12 +497,16 @@ AS $$
       AND (s.expires_at IS NULL OR s.expires_at > now())
       AND (s.download_limit IS NULL OR s.download_count < s.download_limit)
       -- A share of a soft-deleted asset resolves to nothing: the link outliving its target would
-      -- otherwise present as a broken download rather than an honest 404.
+      -- otherwise present as a broken download rather than an honest 404. Nor does a link open a file
+      -- on Only you or Specific people (Decision #570): lowering the tier revokes its links (region
+      -- 7f), and one minted on a file already below Anyone with the link never opened it.
       AND (
           s.item_id IS NULL
           OR EXISTS (
               SELECT 1 FROM files.items i
-              WHERE i.id = s.item_id AND i.deleted_at IS NULL
+              WHERE i.id = s.item_id
+                AND i.deleted_at IS NULL
+                AND i.visibility IN ('link'::files.file_visibility, 'public'::files.file_visibility)
           )
       );
 $$;
@@ -1047,6 +1051,30 @@ END;
 $$;
 -- #endregion
 
+-- #region 7f. files.fn_revoke_links_on_tier_drop — a share link does not outlive its tier
+-- AFTER UPDATE OF visibility on files.items (00001880; Decision #570, re-ruling #402 (k)).
+--
+-- When a file goes to Only you or Specific people, every live share link to it is revoked in the same
+-- transaction, whichever write lowered it (the Access tab's files.set_item_access or the hub's
+-- visibility change). A revoked link stays dead if the file is raised again: the owner makes a new one.
+-- The service asks the owner first, naming how many links will stop working (409 `links_would_stop`).
+-- SECURITY DEFINER so the revoke reaches every link to the file, whoever minted it.
+CREATE OR REPLACE FUNCTION files.fn_revoke_links_on_tier_drop ()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    UPDATE files.share_links s
+       SET revoked_at = pg_catalog.now ()
+     WHERE s.item_id = NEW.id
+       AND s.revoked_at IS NULL;
+    RETURN NULL;
+END;
+$$;
+-- #endregion
+
 -- #region 8. files.fn_owns_library — may the caller file things into this library?
 -- The WRITE-side twin of fn_can_read's ownership arms, for the items/folders INSERT and UPDATE
 -- policies. Those policies long checked only `owner_user_id = auth.uid()` — who CREATED the row — and
@@ -1412,6 +1440,11 @@ $$;
 -- An archived entity's library is read-only here as it is through the guard trigger, which a definer
 -- write does not fire for.
 --
+-- A NEW person grant tells that person (`file.shared`, Decision #570) unless the save leaves the file
+-- on Only you, where a grant opens nothing. A change of level, a removal, and a team, business or
+-- project grant tell nobody; a group's members find the file in Shared with me (region 16). Lowering
+-- the tier revokes the file's share links through the trigger in region 7f.
+--
 -- Errors: 42501 not yours to change; PF404 no such file; 22023 a grant list the rules refuse (the
 -- message says which); 22P02 a malformed kind, role or id.
 CREATE OR REPLACE FUNCTION files.set_item_access (
@@ -1436,6 +1469,7 @@ DECLARE
     v_role files.grant_role;
     v_key text;
     v_wanted jsonb := '{}'::jsonb;
+    v_sharer text;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to change who has access' USING ERRCODE = '42501';
@@ -1540,6 +1574,29 @@ BEGIN
 
         INSERT INTO files.item_grants (item_id, grantee_kind, grantee_id, role, granted_by)
         VALUES (p_item_id, v_kind, v_id, v_role, v_uid);
+
+        IF v_kind = 'user'::files.grantee_kind
+           AND COALESCE (p_visibility, v_item.visibility) <> 'private'::files.file_visibility THEN
+            IF v_sharer IS NULL THEN
+                SELECT COALESCE (
+                    NULLIF (pg_catalog.btrim (COALESCE (u.first_name, '') || ' ' || COALESCE (u.last_name, '')), ''),
+                    'Someone'
+                )
+                INTO v_sharer
+                FROM org.users_public u
+                WHERE u.user_id = v_uid;
+            END IF;
+            PERFORM comms.fn_notify (
+                v_id,
+                'file.shared',
+                pg_catalog.format ('%s shared a file with you', COALESCE (v_sharer, 'Someone')),
+                v_item.display_name,
+                'files.items',
+                p_item_id,
+                pg_catalog.jsonb_build_object ('file_name', v_item.display_name, 'role', v_role),
+                v_uid
+            );
+        END IF;
     END LOOP;
 
     UPDATE files.item_grants g
@@ -1676,5 +1733,72 @@ AS $$
           AND NOT i.member_access
           AND NOT files.fn_can_read (i.id)
     );
+$$;
+-- #endregion
+
+-- #region 16. files.list_shared_with_me — the files other people shared with the caller
+-- Decision #570 (#402 (d) ruled). Every file that reaches the caller through a live grant: one naming
+-- them, or one to a team or business they are an active member of or a project they are on. One row per
+-- file, through the grant that names the caller if there is one, else the strongest; newest grant
+-- first. A file the caller owns, a deleted or unsettled one, and one files.fn_can_read refuses (a
+-- grant counts only while the file is not `private`) are left out. Read by `/files?source=shared`.
+--
+-- SECURITY DEFINER: files.item_grants shows a grant only to the file's owner and the person it names,
+-- so a team, business or project member could not see the grant that reaches them.
+CREATE OR REPLACE FUNCTION files.list_shared_with_me (p_limit integer DEFAULT 100)
+RETURNS TABLE (
+    item_id uuid,
+    name text,
+    mime_type text,
+    size_bytes bigint,
+    role files.grant_role,
+    via_kind files.grantee_kind,
+    via_name text,
+    shared_by uuid,
+    shared_by_name text,
+    shared_at timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH reach AS (
+        SELECT DISTINCT ON (g.item_id)
+            g.item_id, g.role, g.grantee_kind, g.grantee_id, g.granted_by, g.created_at
+        FROM files.item_grants g
+        WHERE g.revoked_at IS NULL
+          AND CASE g.grantee_kind
+                  WHEN 'user'::files.grantee_kind THEN g.grantee_id = auth.uid ()
+                  WHEN 'team'::files.grantee_kind THEN org.is_active_team_member (g.grantee_id)
+                  WHEN 'business'::files.grantee_kind THEN org.is_active_business_member (g.grantee_id)
+                  WHEN 'project'::files.grantee_kind THEN projects.has_project_access (g.grantee_id)
+                  ELSE false
+              END
+        ORDER BY g.item_id,
+                 (g.grantee_kind = 'user'::files.grantee_kind) DESC,
+                 (g.role = 'editor'::files.grant_role) DESC,
+                 g.created_at DESC
+    )
+    SELECT
+        i.id,
+        i.display_name,
+        i.mime_type,
+        i.size_bytes::bigint,
+        r.role,
+        r.grantee_kind,
+        files.fn_grantee_card (r.grantee_kind, r.grantee_id) ->> 'name',
+        r.granted_by,
+        NULLIF (pg_catalog.btrim (COALESCE (u.first_name, '') || ' ' || COALESCE (u.last_name, '')), ''),
+        r.created_at
+    FROM reach r
+    JOIN files.items i ON i.id = r.item_id
+    LEFT JOIN org.users_public u ON u.user_id = r.granted_by
+    WHERE i.deleted_at IS NULL
+      AND i.status = 'uploaded'::files.file_status
+      AND i.owner_user_id <> auth.uid ()
+      AND files.fn_can_read (i.id)
+    ORDER BY r.created_at DESC, i.id
+    LIMIT LEAST (GREATEST (COALESCE (p_limit, 100), 1), 200);
 $$;
 -- #endregion

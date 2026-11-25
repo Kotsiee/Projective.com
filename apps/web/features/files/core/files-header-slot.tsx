@@ -30,6 +30,7 @@ export function filesHeaderFor(url: URL, context: UserContext): ComponentChildre
 			segments={loc.segments}
 			ownerLabel={loc.ownerLabel}
 			purchases={loc.purchases}
+			shared={loc.shared}
 		/>
 	);
 }

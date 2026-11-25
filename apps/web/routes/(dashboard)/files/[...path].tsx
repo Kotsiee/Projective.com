@@ -5,9 +5,11 @@ import { readActor } from "@web/utils/api-session.ts";
 import { cspHeaderFor } from "@web/utils/csp.ts";
 import { resolveFilesBootstrap } from "@web/features/files/core/files-ssr.ts";
 import { facetsOfSearch } from "@web/features/files/core/asset-model.ts";
-import { isPurchasesView } from "@web/features/files/core/files-lane-slot.tsx";
+import { isPurchasesView, isSharedView } from "@web/features/files/core/files-lane-slot.tsx";
 import FilesHub from "@web/features/files/islands/FilesHub.island.tsx";
 import PurchasesView from "@web/features/files/islands/PurchasesView.island.tsx";
+import SharedWithMe from "@web/features/files/islands/SharedWithMe.island.tsx";
+import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
 import { EntitlementSlug } from "@projective/types/catalogue";
 import { DeliveryBackendService } from "@server/services/catalogue/DeliveryBackendService.ts";
 import ReviewDialog from "@features/reviews/islands/ReviewDialog.island.tsx";
@@ -105,6 +107,19 @@ export const handler = define.handlers({
 			}, { status: result.ok ? 200 : result.status });
 		}
 
+		// What other people shared with the viewer (Decision #570): a page state of `/files`, not a folder.
+		if (isSharedView(ctx.url)) {
+			const result = await FilesBackendService.sharedWithMe(readActor(ctx));
+			ctx.state.title = "Shared with me · Files · Projective";
+			return page({
+				kind: "shared" as const,
+				files: result.data?.files ?? [],
+				error: result.ok
+					? null
+					: result.message ?? "We couldn't load what was shared with you just now.",
+			}, { status: result.ok ? 200 : result.status });
+		}
+
 		const path = segmentsOf(ctx.params.path);
 		const params: AssetListParams = {
 			scope: "hub",
@@ -130,6 +145,7 @@ export const handler = define.handlers({
 });
 
 export default define.page<typeof handler>(function FilesHubPage({ data }) {
+	if (data.kind === "shared") return <SharedWithMe files={data.files} error={data.error} />;
 	if (data.kind === "purchases") {
 		return (
 			<>

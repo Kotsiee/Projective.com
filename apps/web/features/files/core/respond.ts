@@ -16,6 +16,7 @@ export function toFilesResponse<T>(result: ServiceResult<T>): Response {
 		ok: result.ok,
 		message: result.message,
 		errors: result.errors,
+		details: result.details,
 		data: result.data,
 	};
 	return Response.json(body, { status: result.status });

@@ -280,6 +280,22 @@ export const pendingRemoval = signal<PendingRemoval | null>(null);
 /** Whether the delete confirmation is up. Apart from its rows, which must outlive the closing dialog. */
 export const removalOpen = signal(false);
 
+/**
+ * A tier change waiting for the owner's confirm because it would stop share links (Decision #570): the
+ * server answered 409 `links_would_stop` with how many. `null` when none is.
+ */
+export interface PendingTierDrop {
+	asset: AssetItem;
+	visibility: AssetVisibility;
+	links: number;
+}
+
+/** The tier drop awaiting confirmation; `null` when none is. */
+export const pendingTierDrop = signal<PendingTierDrop | null>(null);
+
+/** Whether the tier-drop confirmation is up. */
+export const tierDropOpen = signal(false);
+
 /** The drive awaiting a disconnect confirmation; `null` when none is. */
 export const pendingDisconnect = signal<{ connectionId: string; name: string } | null>(null);
 

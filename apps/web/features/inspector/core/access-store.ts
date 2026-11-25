@@ -1,5 +1,5 @@
 import { type Signal, signal } from "@preact/signals";
-import type { AccessStanding, ItemAccess } from "@projective/types/files";
+import { type AccessStanding, type ItemAccess, linksWouldStop } from "@projective/types/files";
 import { FilesService } from "@features/files/core/FilesService.ts";
 import { liveReach } from "./access-live.ts";
 import {
@@ -41,6 +41,10 @@ export interface ItemAccessStore {
 	readonly status: Signal<AccessSaveStatus>;
 	/** A refused save's messages, keyed by grantee. */
 	readonly rowErrors: Signal<Record<string, string>>;
+	/** How many share links a held tier drop would stop (409 `links_would_stop`, Decision #570); `null` when none is held. */
+	readonly stopLinks: Signal<number | null>;
+	/** Whether the tier-drop confirmation is up. */
+	readonly stopLinksOpen: Signal<boolean>;
 	/** A passing word about the last edit (a grantee the file has no room for). */
 	readonly notice: Signal<string | null>;
 }
@@ -62,6 +66,8 @@ export function accessStoreFor(itemId: string): ItemAccessStore {
 		status: signal<AccessSaveStatus>(IDLE_STATUS),
 		rowErrors: signal<Record<string, string>>({}),
 		notice: signal<string | null>(null),
+		stopLinks: signal<number | null>(null),
+		stopLinksOpen: signal(false),
 	};
 	stores.set(itemId, store);
 	return store;
@@ -143,9 +149,14 @@ export function revertDraft(store: ItemAccessStore): void {
 
 /**
  * Save the draft in one write. A refusal keeps the draft as it is, puts the server's sentence in the
- * status and each grantee's own message on its row.
+ * status and each grantee's own message on its row. A tier drop that would stop working share links is
+ * held (409 `links_would_stop`, Decision #570) until the owner confirms, then sent with `stopLinks`.
  */
-export async function saveDraft(store: ItemAccessStore, standing: AccessStanding): Promise<void> {
+export async function saveDraft(
+	store: ItemAccessStore,
+	standing: AccessStanding,
+	stopLinks = false,
+): Promise<void> {
 	const saved = store.saved.peek();
 	const draft = store.draft.peek();
 	if (!saved || !draft || store.status.peek().tone === "busy") return;
@@ -153,11 +164,19 @@ export async function saveDraft(store: ItemAccessStore, standing: AccessStanding
 	if (!input) return;
 	store.status.value = { tone: "busy", text: "Saving…" };
 	store.rowErrors.value = {};
-	const res = await FilesService.setAccess(input);
+	const res = await FilesService.setAccess(stopLinks ? { ...input, stopLinks } : input);
 	if (res.ok && res.data) {
 		adopt(store, res.data, false);
 		store.notice.value = null;
+		store.stopLinks.value = null;
 		store.status.value = { tone: "saved", text: "Saved." };
+		return;
+	}
+	const links = linksWouldStop(res.details);
+	if (links !== null) {
+		store.stopLinks.value = links;
+		store.stopLinksOpen.value = true;
+		store.status.value = IDLE_STATUS;
 		return;
 	}
 	store.rowErrors.value = rowErrorsOf(res.errors, input);

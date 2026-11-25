@@ -308,6 +308,8 @@ client that could write it could write itself unlimited storage.
 | `EXECUTE ON files.fn_record_download`   | `00002510` | To the **service role only** — a download is a server observation. |
 | `EXECUTE ON files.get_item_access` · `set_item_access` · `list_access_targets` | `00002510` | To `authenticated` + svc, `REVOKE`d from `PUBLIC`/`anon`; each authorises its caller inside (Decision #402). |
 | `REVOKE` on `fn_item_grant_role` · `fn_entity_admin` · `fn_grantee_card` | `00002510` | From `PUBLIC`, `anon` and `authenticated`: reached only from inside `fn_can_read` and the access definers. |
+| `EXECUTE ON files.list_shared_with_me`  | `00002510` | To `authenticated` + svc, `REVOKE`d from `PUBLIC`/`anon`: the caller's own Shared with me (Decision #570). |
+| `REVOKE` on `fn_revoke_links_on_tier_drop` | `00002510` | From `PUBLIC`, `anon` and `authenticated`: a trigger function (Decision #570). |
 | `EXECUTE ON files.fn_storage_object_withheld` | `00002510` | To `anon` + `authenticated` + svc: the `workspace` storage policy calls it as the reader's own role. |
 
 `files.fn_can_read` and `files.fn_owns_library` are deliberately left executable by `PUBLIC`: they

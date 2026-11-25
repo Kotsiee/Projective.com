@@ -193,6 +193,8 @@ export const SetVisibilitySchema = z.object({
 	assetIds: z.array(assetId).max(BULK_MAX).default([]),
 	folderIds: z.array(z.string().min(1).max(120)).max(BULK_MAX).default([]),
 	visibility: AssetVisibility,
+	/** The owner has confirmed that the share links this tier drop ends will stop working (Decision #570). */
+	stopLinks: z.boolean().optional(),
 }).refine(
 	(v) => v.assetIds.length + v.folderIds.length > 0,
 	{ message: "Select at least one asset or folder." },

@@ -130,6 +130,8 @@ export const SetItemAccessSchema = z.object({
 	visibility: AssetVisibility.optional(),
 	memberAccess: z.boolean().optional(),
 	grants: z.array(AccessGrantInputSchema).max(ACCESS_GRANTS_MAX).optional(),
+	/** The owner has confirmed that the share links this tier drop ends will stop working. */
+	stopLinks: z.boolean().optional(),
 }).refine(
 	(v) => !v.grants || new Set(v.grants.map(granteeKey)).size === v.grants.length,
 	{ message: "Each person, team or project can be added once.", path: ["grants"] },
@@ -154,4 +156,97 @@ export type AccessTarget = z.infer<typeof AccessTargetSchema>;
 /** The viewer's grantable teams, businesses and projects, filtered by an optional query. */
 export const AccessTargetListSchema = z.object({ targets: z.array(AccessTargetSchema) });
 export type AccessTargetList = z.infer<typeof AccessTargetListSchema>;
+// #endregion
+
+// #region Tier drop
+/**
+ * The code a tier drop answers (409) while live share links would stop (Decision #570): going to Only
+ * you or Specific people revokes every share link to the file, so the save waits for the owner to
+ * confirm, then is sent again with `stopLinks`.
+ */
+export const LINKS_WOULD_STOP = "links_would_stop";
+
+/** Whether a tier ends a file's share links: anything below Anyone with the link. */
+export function stopsShareLinks(visibility: AssetVisibility): boolean {
+	return visibility === "private" || visibility === "restricted";
+}
+
+/** How many share links a refused tier drop would stop, from its 409's details; `null` for any other answer. */
+export function linksWouldStop(details: Record<string, unknown> | undefined): number | null {
+	return details?.code === LINKS_WOULD_STOP && typeof details.links === "number"
+		? details.links
+		: null;
+}
+
+/** The confirm's sentence for a tier drop that stops `links` share links. */
+export function linksWouldStopNote(links: number): string {
+	return links === 1
+		? "Its share link stops working, for everyone you sent it to. A new link can be made later."
+		: `Its ${links} share links stop working, for everyone you sent them to. A new link can be made later.`;
+}
+// #endregion
+
+// #region Shared with me
+/**
+ * One file another person shared with the viewer (`files.list_shared_with_me`, Decision #570): by name,
+ * or with a team, business or project the viewer is in. `via` says which; `viaName` names the group.
+ */
+export const SharedFileSchema = z.object({
+	itemId: z.string().uuid(),
+	name: z.string().min(1).max(400),
+	mimeType: z.string().max(255),
+	sizeBytes: z.number().int().min(0),
+	role: GrantRole,
+	via: GranteeKind,
+	viaName: z.string().max(200).nullable(),
+	sharedByName: z.string().max(200).nullable(),
+	sharedAt: z.string(),
+});
+export type SharedFile = z.infer<typeof SharedFileSchema>;
+
+/** Shared with me's address: a page state of `/files`, not a folder (ROUTING.md). */
+export function sharedWithMeHref(): string {
+	return "/files?source=shared";
+}
+
+/** The viewer's Shared with me, newest share first. */
+export const SharedWithMeSchema = z.object({ files: z.array(SharedFileSchema) });
+export type SharedWithMe = z.infer<typeof SharedWithMeSchema>;
+
+/** The row `files.list_shared_with_me` answers, as PostgREST returns it. */
+export const SharedFileRowSchema = z.object({
+	item_id: z.string().uuid(),
+	name: z.string(),
+	mime_type: z.string(),
+	size_bytes: z.coerce.number(),
+	role: GrantRole,
+	via_kind: GranteeKind,
+	via_name: z.string().nullable(),
+	shared_by: z.string().uuid().nullable(),
+	shared_by_name: z.string().nullable(),
+	shared_at: z.string(),
+});
+export type SharedFileRow = z.infer<typeof SharedFileRowSchema>;
+
+/** One RPC row as the SSOT's {@link SharedFile}. */
+export function toSharedFile(row: SharedFileRow): SharedFile {
+	return {
+		itemId: row.item_id,
+		name: row.name,
+		mimeType: row.mime_type,
+		sizeBytes: row.size_bytes,
+		role: row.role,
+		via: row.via_kind,
+		viaName: row.via_name,
+		sharedByName: row.shared_by_name,
+		sharedAt: row.shared_at,
+	};
+}
+
+/** How a Shared with me row says where it came from: "You", or the team, business or project. */
+export function sharedViaLabel(file: Pick<SharedFile, "via" | "viaName">): string {
+	return file.via === "user"
+		? "Shared with you"
+		: `Shared with ${file.viaName ?? `your ${file.via}`}`;
+}
 // #endregion

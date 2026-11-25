@@ -33,7 +33,8 @@ counters (`fn_recompute_usage`, `fn_record_download`).
 | `fn_usage_trigger()`                                 | trigger    | ✅      | trigger only (`REVOKE`d)        | Adapter — recomputes **both** sides of an ownership change, and a tier's asset owner. |
 | `fn_can_read(uuid) → boolean`                        | `STABLE`   | ✅      | `authenticated` (it **is** the policy) | **The** read predicate for `files.items`.                   |
 | `fn_check_storage_quota()`                           | trigger    | ✅      | trigger only (`REVOKE`d)        | The **fail-open** quota gate.                               |
-| `fn_resolve_share(text) → TABLE`                     | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The only **visitor** door from a slug into `share_links`.   |
+| `fn_resolve_share(text) → TABLE`                     | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The only **visitor** door from a slug into `share_links`; a file link opens only while the file is `link` or `public`. |
+| `fn_revoke_links_on_tier_drop()`                     | trigger    | ✅      | trigger only (`REVOKE`d)        | A file going to `private` / `restricted` revokes its share links (Decision #570). |
 | `fn_mint_share_slug() → text`                        | `VOLATILE` | —       | `service_role`                  | Mints the opaque capability token.                          |
 | `fn_public_media_ref(uuid) → jsonb`                  | `STABLE`   | ✅      | `service_role` (+ definers)     | One PUBLIC stored image as a storage reference + its tiers. |
 | `get_public_media(uuid[]) → TABLE`                   | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The batch door onto `fn_public_media_ref` (≤ 500 ids).      |
@@ -51,6 +52,7 @@ counters (`fn_recompute_usage`, `fn_record_download`).
 | `get_item_access(uuid) → jsonb`                      | `STABLE`   | ✅      | `authenticated` · svc           | The Access tab's read.                                      |
 | `set_item_access(uuid, file_visibility, boolean, jsonb)` | `VOLATILE` | ✅  | `authenticated` · svc           | The Access tab's one save: tier, member switch, grants.     |
 | `list_access_targets(text, integer) → jsonb`         | `STABLE`   | ✅      | `authenticated` · svc           | The caller's teams, businesses and projects to grant to.    |
+| `list_shared_with_me(integer) → TABLE`               | `STABLE`   | ✅      | `authenticated` · svc           | Shared with me: the files granted to the caller or their groups (Decision #570). |
 | `fn_storage_object_withheld(text, text) → boolean`   | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | Is this object a file turned away from the caller? (the `workspace` storage policy calls it) |
 
 Grants are in [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql);
@@ -70,6 +72,7 @@ the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants
 | `trg_files_folders_guard_delete` | `BEFORE DELETE ON files.folders` — likewise                                                                                                            | `fn_guard_hard_delete`                        |
 | `trg_files_folders_guard`        | `BEFORE INSERT OR UPDATE ON files.folders` (Decision #314)                                                                                             | `fn_guard_folder_columns`                     |
 | `trg_files_items_guard_evidence` | `BEFORE UPDATE OF deleted_at ON files.items` — refuses (`PS409`) a soft delete while the file is evidence in an open dispute (Decision #212)           | `finance.fn_guard_evidence_file` (`00001260`) |
+| `trg_files_items_revoke_links_on_tier_drop` | `AFTER UPDATE OF visibility ON files.items WHEN` the tier changed to `private` or `restricted` — revokes the file's live share links (Decision #570) | `fn_revoke_links_on_tier_drop`                |
 
 > **The usage trigger's `UPDATE OF` list is deliberately wider than `size_bytes, deleted_at`.**
 > `source` decides whether a row counts **at all** (a hub-native upload that becomes a mounted
@@ -244,6 +247,28 @@ A grant kept from before is not re-checked, so an editor can keep the owner's gr
 editor is not in. Only a stored upload (`source = 'supabase'`) takes grants, and an archived entity's
 library is refused (`42501`) as the guard trigger would, since a definer write does not fire it.
 
+**Who is told (Decision #570, #402 (d) ruled).** A NEW person grant writes one `file.shared` notice to
+that person through `comms.fn_notify` (the file as its entity, the sharer as actor, "{name} shared a
+file with you", the file's name as body; digestible, opening `/inspect/{id}`), unless the save leaves
+the file `private`, where a grant opens nothing. A change of level, a removal and a team, business or
+project grant tell nobody: a group's members find the file in `list_shared_with_me`. **A tier drop**
+to `private` or `restricted` revokes every live share link to the file in the same transaction
+(`trg_files_items_revoke_links_on_tier_drop`, below); the service asks the owner first (409
+`links_would_stop` with the count, then `stopLinks`).
+
+`files.list_shared_with_me(p_limit integer DEFAULT 100) → TABLE(item_id, name, mime_type, size_bytes,
+role, via_kind, via_name, shared_by, shared_by_name, shared_at)` · `STABLE` · `SECURITY DEFINER` ·
+`authenticated` only (Decision #570). Every file that reaches the caller through a live grant: one
+naming them, or one to a team or business they are an active member of or a project they are on. One
+row per file, through the grant that names the caller if there is one, else the strongest; newest grant
+first; capped at 200. The caller's own files, deleted or unsettled ones, and any `fn_can_read` refuses
+(a grant counts only while the file is not `private`) are left out. A definer because `item_grants`
+shows a grant only to the file's owner and the person it names. `/files?source=shared` reads it.
+
+`files.fn_revoke_links_on_tier_drop()` · trigger · `SECURITY DEFINER`. Stamps `revoked_at` on every
+live `share_links` row of the file whose `visibility` just went to `private` or `restricted`; the row
+stays, and raising the file again leaves the link dead.
+
 `files.list_access_targets(p_query, p_limit) → jsonb` · `STABLE` · `SECURITY DEFINER`. The caller's
 active, non-archived teams and businesses and the non-archived projects they are on (gathered from
 ownership, participation, live stage assignments and cohort seats, each confirmed through
@@ -328,12 +353,16 @@ WHERE s.slug = p_slug
   AND (s.expires_at IS NULL OR s.expires_at > now())
   AND (s.download_limit IS NULL OR s.download_count < s.download_limit)
   AND (s.item_id IS NULL OR EXISTS (
-        SELECT 1 FROM files.items i WHERE i.id = s.item_id AND i.deleted_at IS NULL))
+        SELECT 1 FROM files.items i WHERE i.id = s.item_id AND i.deleted_at IS NULL
+          AND i.visibility IN ('link', 'public')))
 ```
 
 so a route that forgets to check **cannot resurrect a revoked link**. The last clause is easy to
 miss and matters: a share of a **soft-deleted** asset resolves to nothing, because a link outliving
-its target would otherwise present as a broken download rather than an honest 404.
+its target would otherwise present as a broken download rather than an honest 404. Nor does a link
+open a file on Only you or Specific people (Decision #570, re-ruling #402 (k)): lowering the tier
+revokes the file's links through `fn_revoke_links_on_tier_drop`, and a link minted on a file already
+below Anyone with the link never opened it. A folder link is not tied to the folder's tier.
 
 It has exactly one other copy: `fn_record_download`'s guarded `UPDATE` (service role only, below)
 re-tests revoked / expired / exhausted in the same statement that spends the download, and checks the

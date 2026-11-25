@@ -65,6 +65,7 @@ import {
 import { recentPress } from "../core/press-point.ts";
 import type { AssetNodeKind, FileScope } from "../types/file-types.ts";
 import { purchasesHref } from "@projective/types/catalogue";
+import { sharedWithMeHref } from "@projective/types/files";
 
 /**
  * FilesLane — the `/files` middle-nav lane: one tree, and the allowance.
@@ -105,6 +106,8 @@ export interface FilesLaneProps {
 	ownerId: string;
 	/** On the purchases view (`/files?source=purchases`, Decision #488): its lane row is the current page. */
 	purchases?: boolean;
+	/** On Shared with me (`/files?source=shared`, Decision #570): its lane row is the current page. */
+	shared?: boolean;
 }
 // #endregion
 
@@ -438,8 +441,14 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 						)}
 				</LaneList>
 
-				{/* What the acting account bought (Decision #488): a page of its own, not a folder. */}
-				<nav class="fh-lane__purchases" aria-label="Purchases">
+				{/* Shared with me (Decision #570) and what the account bought (#488): pages, not folders. */}
+				<nav class="fh-lane__pages" aria-label="Shared and bought">
+					<NavItem
+						href={sharedWithMeHref()}
+						label="Shared with me"
+						icon={<Icon name="share" />}
+						active={props.shared ? "page" : undefined}
+					/>
 					<NavItem
 						href={purchasesHref()}
 						label="Purchases"

@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 5 open, 3 partly done (FL1, #564; FL3, #563; FL2, #568), 18 done (§0 ledger).
-> Runnable now: NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 4 open, 3 partly done (FL1, #564; FL3, #563; FL2, #568), 19 done (§0 ledger).
+> Runnable now: NO4 and FL1–FL3, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -71,6 +71,7 @@ A prompt that lands gets a row here.
 | NO2 | The daily and weekly digests are mailed once each, as counts, titles and links and never a body: `comms.notification_digests` gains `attempts`, `claimed_until`, `provider_ref`, `last_error`, `skipped_reason`; `comms.fn_claim_digests` (`SKIP LOCKED`, a 15-minute lease, each digest decided again against preferences, snooze and suppression) and `comms.fn_record_digest_result` (2^attempts backoff, failed at the fifth); `DigestMailService` through the dispatcher's Resend transport, `POST /api/comms/cron/digests`, job `comms-digest-send`; probes `digest_claim.sql`, `digest_claim_race.sql` | `04ebee7a` (#565) | `0c7aa8dc` |
 | NO3 | A push device is dropped only when the push service says it is gone, after 5 consecutive failures whose first is at least 24 hours old, or after 180 days with nothing delivered: `comms.device_tokens.failing_since`; `fn_record_delivery_result` keeps the streak's start and a success resets it and refreshes `last_seen_at`; `fn_reap_dead_devices` waits out an outage (`search_path = ''`); Settings → This device says "This browser stopped receiving notifications" with Turn on again (`/devices/status` `stopped`, `restartPush`), dev axis Push permission → Stopped; probe `push_device_health.sql` | `ca1793c4` (#567) | `0e9cb82a` |
 | EX1 | A project completes when its last money settles or when its client completes it, and completing it opens its reviews: `projects.fn_complete_project` (the one writer of `completed`), `fn_project_complete_blocked`, `can_complete_project`, `preview_project_complete`, `complete_project`, `reopen_project`; `approve_stage` completes the engagement once no stage is unsettled and every ticket has ended, its handover notice reaching every seat holder; the ended-engagement escrow guard refuses a completed engagement (extending is the client's logged Reopen); `GET`/`POST /api/projects/:id/complete`, `POST /reopen`; `CompleteProjectDialog`, `ReopenProjectDialog`; probe `project_completion.sql` | `dc354519` (#569) | `9c56ec06` |
+| FL4 | A person grant tells that person, every grant is listed in Shared with me, and a link cannot outlive its file's tier (#570, stop 30 as recommended; (e) deferred, PJ-78): `files.set_item_access` emits `file.shared` for a new person grant on a file left above Only you (catalogued in `00005010`, digestible); `files.list_shared_with_me` behind `/files?source=shared` (`SharedWithMe`, the lane's and Browse menu's row); `trg_files_items_revoke_links_on_tier_drop` revokes a file's links when it goes to Only you or Specific people, and `fn_resolve_share` opens a file link only while the file is `link` or `public`; both tier writes answer 409 `links_would_stop` with the count until `stopLinks`, confirmed in the Access tab, the hub's privacy control and in place in `ShareDialog`; probe `file_sharing.sql` | FL4COMMIT (#570) | FL4COMMIT^ |
 
 ### 0.1 Row → work order
 
@@ -152,7 +153,7 @@ The operator's ruling is MW-59; it is not this file's row.
 | PJ-61 | 🟡 · Normal · PROD | COMMS NT5 + CD2 (NO3 ✅, #567) | SMS runs behind its configuration; dead devices are dropped; hosted VAPID keys          |
 | PJ-62 | ❌ · High · UAT    | COMMS MS4                 | `message.new` and `message.mention` notify, and a muted thread stays quiet              |
 
-**Files & assets** (60%)
+**Files & assets** (64%)
 
 | Row   | Now · Crit · Gate | Work order                     | The row flips when                                                                                         |
 | :---- | :---------------- | :----------------------------- | :--------------------------------------------------------------------------------------------------------- |
@@ -160,7 +161,8 @@ The operator's ruling is MW-59; it is not this file's row.
 | PJ-64 | 🟡 · Normal · UAT | T&S LK1                        | Offline or with no key, a link reads "unchecked" and goes through `/exit`                                  |
 | PJ-65 | 🟡 · Normal · UAT | **FL2** step 5 (with you) | The live Drive round trip is recorded: consent, browse, Add to Library, open (steps 1–4 landed, #568) |
 | PJ-66 | 🟡 · High · UAT   | **FL3** (🧑; steps 1, 3 #563)  | A `fil-` slug routes; the inspector has its own CSP (a raw PDF is sandboxed, #563)                         |
-| PJ-68 | 🟡 · High · UAT   | **FL4** (🧑)                   | A grant tells its grantee, and a share link cannot outlive its tier                                        |
+| PJ-68 | ✅ · High · UAT   | FL4 ✅ (#570)                 | A grant tells its grantee, and a share link cannot outlive its tier                                        |
+| PJ-78 | ❌ · Normal · PROD | — (no blocking exists; #402 (e) deferred, #570) | A person grant to someone in a block pair is refused, once blocking exists                  |
 
 **Calendar, integrations & rooms** (68%)
 
@@ -187,7 +189,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
 | Messaging                      |   61% | MS5 61% → P2d 67% (CH1 ✅, #562; CH3 ✅, #560) → CH2 ✅ (#561) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → CD2 94% → NT5 100% (NO2 ✅, #565; NO3 ✅, #567)                                                                    |
-| Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
+| Files & assets                 |   64% | LK1 68% → FL3 77% → FL2 + you 82% → SN1 + SN2 + FL1 91% → blocking (PJ-78, no work order) 100% (FL4 ✅, #570)   |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
 
 **What MVP needs from this cluster:** the eight Critical · MVP rows not yet ✅, which are PJ-17,
@@ -196,7 +198,7 @@ after PM-WP1. The paths follow §0.2's order:
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a) and PJ-60 (CD2; NO2 ✅, #565) (PJ-43 ✅, EX2 + EX3).
 Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a,
-FL3, FL4, CFG2 and LP1.
+FL3, CFG2 and LP1 (FL4 ✅, #570).
 
 ### 0.2 Run order
 
@@ -239,7 +241,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** ✅ (#569, §0.0): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); next **FL4**, **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), **NO4** (NO1 ✅, #566), and **FL3**'s
+11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); FL4 ✅ (#570); next **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), **NO4** (NO1 ✅, #566), and **FL3**'s
     slug.
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
@@ -278,8 +280,8 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00000017` + `00001260` (disputes)                       | PM-WP4a step 6                                               | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | —                                                            | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | — (NO2 ✅, #565)                                            | T&S                                                               |
-| `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
-| `00005010` (notification catalogue)                      | FL4; PM WP4a, WP5a, WP6, D7b, GH1                       | COMMS MS4                                                         |
+| `00001160` (files)                                       | FL1, FL3 (FL4 ✅, #570)                                     | T&S SN2; T&S LK1 (services only)                                  |
+| `00005010` (notification catalogue)                      | PM WP4a, WP5a, WP6, D7b, GH1 (FL4 ✅, #570)            | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | FL1; PM WP5a, D7b, GH1                                       | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
 | `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1           | COMMS NT5; T&S R3                                                 |
@@ -316,7 +318,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ ruled  | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
 | 28 | #394 (a) one Google connection or two; which connectors ship for UAT | FL2 ✅ (#568) | **Ruled #568:** as recommended: one Google client, two connections (`google_drive` beside `google`); Google Drive and S3 ship for UAT, and Dropbox, OneDrive and Frame.io are Planned |
 | 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3 (#563)    | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
-| 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4           | Person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm; a blocked pair refuses                                                                                                 |
+| 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4 ✅        | **Ruled #570:** as recommended for (d) and (k): person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm naming how many. (e) deferred: the platform has no blocking, so PJ-78 waits for it |
 | 31 | An owner-present run on your Zoom, Microsoft and Google accounts                                                                             | LP1           | Yes, in one sitting, once a public HTTPS origin exists                                                                                                                                                                   |
 | —  | T&S P2a (#147 (a)), P2b's cooling-off and T&S §0.4 (SN1's production default); SCH-WP7 (#344 (f)); CD2's hosted prerequisites | their prompts | Their own                                                                                                                                                                                                                |
 
@@ -728,50 +730,6 @@ profiles); COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md (F26); the decision rows.
 ```
 
 §1.2 rows: **PJ-66** 🟡 → ✅.
-
-### FL4 — A grant tells its grantee, and a share link cannot outlive its tier
-
-Closes PJ-68 (🟡 → ✅).
-
-```text
-PROMPT FL4: Sharing a file with a person tells them, everything shared with someone is listed
-in their Shared with me, and lowering a file's visibility revokes the links that exposed it
-
-ROLE: Full-stack engineer. Queue S: 00001160 (its EXECUTE grants live in the same file,
-:1688-1692), 00005010.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - #402 (d): files.set_item_access (00001160:1394-1528) inserts grants (:1518) and calls no
-    comms.fn_notify. There is no file.* key in 00005010 and no Shared with me view.
-  - #402 (k): fn_resolve_share (00001160:447-486) checks revoked, expiry, the download limit and
-    deletion, but never items.visibility; shareTarget is at live-library.ts:943-948. #402 (k)
-    chose a warning over changing the resolver.
-  - #402 (e): a person grant runs no block check. #161 (e): a download limit does not bound
-    views.
-
-🧑 DECISION (before step 2). Put all three to me:
-  1. (d) Recommended: a person grant notifies that person (digestible); a team, business or
-     project grant notifies nobody, but appears in each member's Shared with me.
-  2. (k) re-ruled. Recommended: lowering an item's visibility revokes its share links in the
-     same transaction, after a confirm naming how many links will stop working.
-  3. (e) Recommended: a person grant to someone in a block pair is refused.
-
-STEPS:
-  1. Red first: a probe. A grant notifies nobody; a link still resolves after its item drops to
-     private; a blocked pair can be granted.
-  2. The notification type and its emit in set_item_access.
-  3. Shared with me: a /files source (ROUTING.md), listing direct and group grants.
-  4. (k) and (e) as ruled; the UI confirm before a tier drop.
-
-ACCEPTANCE: the probe is green; live, the seeded freelancer shares a file with the client, who
-is told and finds it under Shared with me; a tier drop kills the link after the confirm;
-screenshots.
-
-SAME CHANGE: PRODUCT_SPEC.md (sharing); documentation/database/files/*; Zod; ROUTING.md; the
-decision row (#402 (d), (e), (k)).
-```
-
-§1.2 rows: **PJ-68** 🟡 → ✅.
 
 ---
 

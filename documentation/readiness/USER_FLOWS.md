@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **85%** |            61 | 44 |  16 |  1 |              13 |
-| **UAT**          | **75%** |           193 | 109 |  73 | 11 |              23 |
-| **Production**   | **68%** |           251 | 115 | 104 | 32 |              34 |
+| **UAT**          | **75%** |           193 | 110 |  72 | 11 |              23 |
+| **Production**   | **68%** |           252 | 116 | 103 | 33 |              34 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,7 +45,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 25 |  7 |  2 |   70% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 37 | 31 |  7 |  2 |   71% |
+| PJ — Projects, collaboration, files & calendar   |    78 | 38 | 30 |  8 |  2 |   71% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 26 | 14 |  3 |   61% |
 
 **Critical flows not yet ✅, by the tier they gate:**
@@ -364,9 +364,10 @@ Notification preferences are ID-42.
 | PJ-63 | Files hub: upload, folders, move, soft delete, dedup, history | Any                | `/files/*`, `/api/files/*`                                   | 🟡     | High   | MVP  | No malware scan (PRD-D3); quota fails open until you flip it (#58; every stored byte, WebP tiers included, is metered since #564, FL1); no quarantine sweeper and no purge of soft-deleted bytes (F15: T&S SN2; FL1 step 3, 30 days, ruled #564) |
 | PJ-64 | Link assets                                                   | Any                | `/api/files/link`                                            | 🟡     | Normal | UAT  | The link scan fails open offline (PRD-D4)                                                                                       |
 | PJ-65 | Storage connectors                                            | Any                | Settings → Integrations, `/api/integrations/{browse,import}` | 🟡     | Normal | UAT  | Steps 1–4 of FL2 landed (#568): a Drive file is added to the library as a reference, the tree pages and a drive's search is Drive's own, and S3 connects on its credential form; Dropbox, OneDrive and Frame.io are ruled Planned (#568). Left: the live Drive round trip (FL2 step 5, with you); no folder choice when adding from the hub; a mounted file cannot be removed from the library (#568 (b), (c)) |
-| PJ-66 | File Inspector                                                | Any                | `/inspect/:fileId`, `/api/media/proxy/:id`                   | 🟡     | High   | UAT  | uuid route (#161 (a), 🧑 FL3 stops 1–2); broad CSP (F26, 🧑 FL3 stop 3, a new contradiction with #401's preview ladder, #563). A raw PDF is a sandboxed attachment (F20 closed, FL3 #563)                                                               |
+| PJ-66 | File Inspector                                                | Any                | `/inspect/:fileId`, `/api/media/proxy/:id`                   | 🟡     | High   | UAT  | uuid route (#161 (a), 🧑 FL3 stops 1–2); broad CSP (F26, 🧑 FL3 stop 3, a new contradiction with #401's preview ladder, #563). A raw PDF is a sandboxed attachment (F20 closed, FL3 #563). The Access tab's Link settings dialog paints blurred under its scrim in Playwright Chromium, from open, before any edit (seen in FL4's walk, #570; cause not found, nothing changed) |
 | PJ-67 | Preview modal; project Files tab                              | Client, Freelancer | `/projects/:slug/files`                                      | ✅     | High   | MVP  | —                                                                                                                               |
-| PJ-68 | Share links and access grants                                 | Any                | `/api/files/{share-*,access}`                                | 🟡     | High   | UAT  | Grants notify nobody (#402 (d)); a link can outlive its tier (k)                                                                |
+| PJ-68 | Share links and access grants                                 | Any                | `/api/files/{share-*,access}`, `/files?source=shared`        | ✅     | High   | UAT  | — (a person grant tells that person and every grant is listed in Shared with me; a tier drop below Anyone with the link revokes the file's links after a confirm naming how many: FL4, #570; the block check is PJ-78) |
+| PJ-78 | A person grant respects a block between two people           | Any                | `/api/files/access`                                          | ❌     | Normal | PROD | The platform has no blocking, so a file can be shared with anyone on Projective; #402 (e) deferred until blocking exists (FL4, #570) |
 
 ### Calendar, integrations & rooms
 
@@ -593,3 +594,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-25 | NO1 (#566): no row flips; PJ-17 narrowed and its stale "never delivered" note corrected (an email invitation is answered by its own link by the account holding the address verified; an address with no account is mailed the link once, never when suppressed, and lands on it after sign-up); it stays 🟡 on counsel's switch and the hosted send (CD2) | 85% | 75% | 68% |
 | 2026-11-25 | FL2 (#568): no row flips; PJ-65 narrowed (a Drive file is added to the library as a reference, the drive tree pages and its search is Drive's own, S3 connects on its credential form, and Dropbox, OneDrive and Frame.io are ruled Planned); it stays 🟡 on the live Drive round trip with you (FL2 step 5) | 85% | 75% | 68% |
 | 2026-11-25 | EX1 (#569): PJ-40 ❌ → ✅ (a project completes when its client approves its last stage or completes it; its reviews open and the freelancer is told; a completed project is extended by reopening it) | 85% | 75% | 68% |
+| 2026-11-25 | FL4 (#570): PJ-68 🟡 → ✅ (sharing a file with a person tells them; every file shared with someone, by name or through a team, business or project, is listed in their Shared with me; setting a file to Only you or Specific people revokes its share links after a confirm naming how many); PJ-78 added ❌ (a person grant checks no block, because the platform has no blocking; #402 (e) deferred) | 85% | 75% | 68% |

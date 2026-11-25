@@ -116,8 +116,11 @@
 	border-block-start: var(--hairline);
 }
 
-/* The purchases destination (Decision #488) sits under the tree, outside it: a page, not a folder. */
-.fh-lane__purchases {
+/*
+ * Shared with me (Decision #570) and Purchases (Decision #488) sit under the tree, outside it: pages
+ * of their own, not folders.
+ */
+.fh-lane__pages {
 	flex: none;
 	padding: var(--space-1) var(--space-2);
 	border-block-start: var(--hairline);

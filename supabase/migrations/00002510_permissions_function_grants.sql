@@ -1896,6 +1896,14 @@ REVOKE ALL ON FUNCTION files.list_access_targets (text, integer) FROM public, an
 
 GRANT EXECUTE ON FUNCTION files.list_access_targets (text, integer) TO authenticated, service_role;
 
+-- Shared with me (Decision #570): the caller's own list, so `authenticated` only.
+REVOKE ALL ON FUNCTION files.list_shared_with_me (integer) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION files.list_shared_with_me (integer) TO authenticated, service_role;
+
+-- A trigger function (share links follow the tier); nobody calls it.
+REVOKE ALL ON FUNCTION files.fn_revoke_links_on_tier_drop () FROM public, anon, authenticated;
+
 -- Internal: called only from inside the definers above and files.fn_can_read, which run as the owner.
 REVOKE ALL ON FUNCTION files.fn_item_grant_role (uuid) FROM public, anon, authenticated;
 

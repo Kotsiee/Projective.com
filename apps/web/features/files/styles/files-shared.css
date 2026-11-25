@@ -1,0 +1,89 @@
+/*
+ * files-shared — Shared with me, a page state of `/files` (`/files?source=shared`, Decision #570).
+ *
+ * It sits in the hub's own body box (`.fh-hub`) as the purchases view does, so it reads as a location
+ * of the files surface. A shared file is a row of text, never a card: rows are separated by one
+ * hairline, and the only contained mark is each row's Open control (§B.4, §B.11).
+ */
+
+/* #region Head */
+.fh-shared__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin-block-end: var(--space-4);
+}
+
+.fh-shared__title {
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region List */
+.fh-shared__list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.fh-shared__item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: var(--space-1) var(--space-3);
+	align-items: center;
+	padding-block: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.fh-shared__item:first-child {
+	border-block-start: none;
+	padding-block-start: 0;
+}
+
+.fh-shared__text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.fh-shared__name {
+	margin: 0;
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.fh-shared__item .ui-meta-line {
+	font-variant-numeric: tabular-nums;
+}
+
+.fh-shared__note {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Empty */
+.fh-shared__empty {
+	padding-block: var(--space-6);
+}
+/* #endregion */
+
+/* #region Narrow */
+@container fh-hub (max-width: 30rem) {
+	.fh-shared__item {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */

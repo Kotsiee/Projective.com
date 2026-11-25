@@ -4626,14 +4626,29 @@ link · Public — and, for Specific people, the people, teams, businesses and p
   **Revert**; one save lands entirely or not at all.
 
 Viewers see the scope as text and are not shown who else has access; a signed-out visitor is asked to
-sign in. Granting does not notify anyone: the owner sends the file's link through **Share**, whose
-external shortcuts appear only while the link would open for whoever receives it.
+sign in. The Share button's external shortcuts appear only while the link would open for whoever
+receives it.
+
+**Who is told, and where shared files are found (Decision #570, #402 (d) ruled).** Sharing a file
+with a person by name tells that person ("{name} shared a file with you", opening the file), unless
+the file is left Only you, where the share opens nothing. Changing someone's level, removing them, and
+sharing with a team, business or project tell nobody. Every file shared with someone, by name or with a
+team, business or project they are in, is listed in their **Shared with me** (`/files?source=shared`):
+who shared it, through what, at what level and when, newest first. A file set back to Only you leaves
+the list. A block between two people is not checked, because the platform has no blocking yet
+(#402 (e), deferred).
 
 A share link is **read-only** and revocable. Its slug is opaque, server-minted and high-entropy: it
 is a credential, so it is never enumerable, never derived from the asset id or the owner, and the
 share route is excluded from indexing. Every dead state — unknown, expired, revoked, or past its
 download limit — returns an **identical** not-found response, because a distinguishable failure
 tells a stranger that something is there.
+
+**A link does not outlive its file's scope (Decision #570, #402 (k) re-ruled).** Setting a file to
+Only you or Specific people revokes every share link to it in the same save. The owner is asked first,
+in words that name how many links will stop working ("Its share link stops working, for everyone you
+sent it to"). A revoked link stays dead if the file is shared again; the owner makes a new one. A link
+to a file below Anyone with the link opens nothing. A folder's link is not tied to the folder's scope.
 
 **What is admitted.** Every file is checked from its own bytes before it is admitted, and scanned
 for malware on the platform's own safety service. A document carrying macros (an Office file with
