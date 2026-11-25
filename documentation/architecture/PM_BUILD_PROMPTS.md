@@ -994,8 +994,8 @@ STEPS:
   service-role only here.
 
 SAME CHANGE: workload.ts mirrors the table 1:1, under the contract test; Functions.md, Policies.md
-and Tables.md (the index). PRODUCT_MANAGEMENT.md §3.5 gains a Workload report lifecycle row (open →
-adjusted | expired_penalized | dismissed_bad_faith | acknowledged), and §3.6 rule (7) loses its
+and Tables.md (the index). PRODUCT_MANAGEMENT.md §3.5's Workload report row (#552 (a)) loses its
+PM-WP5a **Not built yet** items, and §3.6 rule (7) loses its
 **Not built yet** (:529-530). PRODUCT_SPEC.md:2958-2960 loses its marker, and §Dispute Mechanism 4
 (:2973, Unsubstantiated Report) gains one for the moderator half. SYSTEM_ARCHITECTURE.md
 §Scheduled jobs. DESIGN_SYSTEM.md §C.1 only if a packages/ui component changes.

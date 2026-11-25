@@ -628,8 +628,9 @@ ACCEPTANCE: the probe is green (a keep penalises nobody and queues a referral; a
 second refused; the same operator refused; the penalty reversed); live as the seeded freelancer
 and two operators; screenshots.
 
-SAME CHANGE: PRODUCT_SPEC.md §Dispute Mechanism 4; documentation/database/{ops,projects}/*; Zod;
-the decision row (W8 closed).
+SAME CHANGE: PRODUCT_SPEC.md §Dispute Mechanism 4; PRODUCT_MANAGEMENT.md §3.5's Workload report
+row (clear EX4's Not built yet); documentation/database/{ops,projects}/*; Zod; the decision row
+(W8 closed).
 ```
 
 §1.2 rows: **PJ-46** → ✅ if PM-WP4a step 6 has landed (else 🟡, naming it).
