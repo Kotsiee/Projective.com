@@ -297,8 +297,9 @@ original object.
 
 Written by the **service role only** (the pipeline runs server-side after the quarantine scan);
 read through the parent's predicate — see [Policies.md](Policies.md#filesitem_variants). Variant bytes
-are platform overhead and are deliberately **not** metered: `files.fn_recompute_usage` sums
-`files.items` only.
+are stored bytes, so they are **metered** to the asset's owner beside the original while the asset
+counts: `trg_files_item_variants_usage` recomputes that owner on every tier written, re-encoded or
+removed (PROJECTS FL1, Decision #564).
 
 ---
 
@@ -372,8 +373,10 @@ as `comms.notifications`).
 
 ## 📊 `files.storage_usage`
 
-The metered rollup, maintained by `files.fn_recompute_usage` off a trigger on `files.items`. PK
-`(owner_type, owner_id)`; columns `bytes_used bigint`, `item_count integer`, `recomputed_at`.
+The metered rollup, maintained by `files.fn_recompute_usage` off triggers on `files.items` and
+`files.item_variants`. `bytes_used` is every stored byte of the owner's counted assets, their WebP
+tiers included; `item_count` counts assets only. PK `(owner_type, owner_id)`; columns
+`bytes_used bigint`, `item_count integer`, `recomputed_at`.
 
 It exists because the quota gate runs on the **INSERT path**: summing `size_bytes` across a growing
 library on every upload is the kind of cost that only shows up once a tenant is successful.

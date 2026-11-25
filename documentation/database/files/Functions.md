@@ -29,8 +29,8 @@ counters (`fn_recompute_usage`, `fn_record_download`).
 | Function                                             | Kind       | Definer | Reachable by                    | Purpose                                                     |
 | :--------------------------------------------------- | :--------- | :------ | :------------------------------ | :---------------------------------------------------------- |
 | `fn_touch_updated_at()`                              | trigger    | —       | trigger only (`REVOKE`d)        | `updated_at` maintenance on `items` + `folders`.            |
-| `fn_recompute_usage(owner_kind, uuid)`               | `void`     | ✅      | `service_role`                  | Rebuilds one owner's `storage_usage` row from scratch.      |
-| `fn_usage_trigger()`                                 | trigger    | ✅      | trigger only (`REVOKE`d)        | Adapter — recomputes **both** sides of an ownership change. |
+| `fn_recompute_usage(owner_kind, uuid)`               | `void`     | ✅      | `service_role`                  | Rebuilds one owner's `storage_usage` row from scratch, WebP tiers included. |
+| `fn_usage_trigger()`                                 | trigger    | ✅      | trigger only (`REVOKE`d)        | Adapter — recomputes **both** sides of an ownership change, and a tier's asset owner. |
 | `fn_can_read(uuid) → boolean`                        | `STABLE`   | ✅      | `authenticated` (it **is** the policy) | **The** read predicate for `files.items`.                   |
 | `fn_check_storage_quota()`                           | trigger    | ✅      | trigger only (`REVOKE`d)        | The **fail-open** quota gate.                               |
 | `fn_resolve_share(text) → TABLE`                     | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The only **visitor** door from a slug into `share_links`.   |
@@ -63,6 +63,7 @@ the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants
 | `trg_files_items_touch`          | `BEFORE UPDATE ON files.items`                                                                                                                         | `fn_touch_updated_at`                         |
 | `trg_files_folders_touch`        | `BEFORE UPDATE ON files.folders`                                                                                                                       | `fn_touch_updated_at`                         |
 | `trg_files_items_usage`          | `AFTER INSERT OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id, status OR DELETE`                                              | `fn_usage_trigger`                            |
+| `trg_files_item_variants_usage`  | `AFTER INSERT OR UPDATE OF item_id, size_bytes OR DELETE ON files.item_variants` — a tier is metered to its asset's owner (PROJECTS FL1)               | `fn_usage_trigger`                            |
 | `trg_files_items_quota`          | `BEFORE INSERT OR UPDATE OF size_bytes ON files.items`                                                                                                 | `fn_check_storage_quota`                      |
 | `trg_files_items_guard_pipeline` | `BEFORE INSERT OR UPDATE ON files.items` — before the quota gate, so a forged row is refused for what it claims rather than metered for what it weighs | `fn_guard_pipeline_columns`                   |
 | `trg_files_items_guard_delete`   | `BEFORE DELETE ON files.items` — a client's hard delete is refused (Decision #314)                                                                     | `fn_guard_hard_delete`                        |
@@ -102,6 +103,26 @@ Recomputes one owner's stored-byte total from scratch and upserts `files.storage
 - Counts **only what we actually store**: `source = 'supabase'` and `deleted_at IS NULL`. A mounted
   Drive/Dropbox/OneDrive (SharePoint included)/S3/Frame.io file consumes the **provider's** quota;
   a `link` consumes none.
+- **Every stored byte of a counted asset:** its original's `size_bytes` plus the `size_bytes` of
+  every WebP tier in `files.item_variants`. A tier follows its asset in and out of the total (a
+  soft-deleted or refused asset releases its tiers too), and `item_count` stays a count of assets
+  (PROJECTS FL1, Decision #564; probe `storage_usage_variants.sql`).
+- **The backfill.** A database that was not rebuilt by `db reset` after this change (a hosted one,
+  in its release delta) recomputes every owner once, as `postgres` or the service role:
+
+  ```sql
+  SELECT count(*) AS owners_recomputed
+  FROM (
+      SELECT files.fn_recompute_usage (o.owner_type, o.owner_id)
+      FROM (
+          SELECT i.owner_type, COALESCE(i.owner_entity_id, i.owner_user_id) AS owner_id FROM files.items i
+          UNION
+          SELECT u.owner_type, u.owner_id FROM files.storage_usage u
+      ) o
+  ) r;
+  ```
+
+  A `db reset` needs none: every seeded row passes through the triggers.
 - **An in-flight upload reserves; a refused one releases.** A `pending_upload` / `scanning` row
   counts at its **declared** size — `fn_check_storage_quota` charges a promotion only the delta
   between declared and measured size, so parallel declarations must each see the others. A
@@ -117,7 +138,9 @@ Recomputes one owner's stored-byte total from scratch and upserts `files.storage
 trigger function must be `RETURNS trigger` with no declared parameters). It recomputes **both
 sides** of an ownership change: moving an asset from a personal library into a team vault has to
 debit one rollup and credit the other, and a single-sided recompute would leave the origin
-permanently overstated.
+permanently overstated. Bound to `files.item_variants` as well, where it recomputes the owner of the
+tier's asset; a tier removed by its asset's hard delete finds no asset, and the asset's own trigger
+recomputes that owner.
 
 ---
 
@@ -254,6 +277,8 @@ it looks for is the one the caller's RLS hides.
   26,843,545,600 — an int4 overflow — so the ladder is never denominated in bytes anywhere.
 - On `UPDATE` only the **delta** counts as new capacity (the old size is already in the rollup); on
   `INSERT` the whole file does — and so does an `UPDATE` of a row the rollup had released.
+- The used total is the rollup's, so it holds the WebP tiers of the owner's images. A tier itself is
+  never gated: the pipeline writes it after its asset was admitted, and the next upload pays for it.
 - Raises `check_violation` when exceeded.
 
 **Known limit, inherited from the same design:** once enforcement is on, the `RAISE` aborts the

@@ -6,7 +6,7 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 12 open, 0 partly done, 14 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 11 open, 1 partly done (FL1, #564), 14 done (§0 ledger).
 > Runnable now: NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -153,7 +153,7 @@ The operator's ruling is MW-59; it is not this file's row.
 
 | Row   | Now · Crit · Gate | Work order                     | The row flips when                                                                                         |
 | :---- | :---------------- | :----------------------------- | :--------------------------------------------------------------------------------------------------------- |
-| PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2; **FL1**         | Uploads are scanned; the quota meters every byte; stale and deleted objects leave the bucket               |
+| PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2; **FL1** steps 3–4 (🧑 27) | Uploads are scanned; stale and deleted objects leave the bucket (every byte metered, #564)  |
 | PJ-64 | 🟡 · Normal · UAT | T&S LK1                        | Offline or with no key, a link reads "unchecked" and goes through `/exit`                                  |
 | PJ-65 | 🟡 · Normal · UAT | **FL2** (+ you: provider apps) | A Drive file imports; the tree pages; the S3 form exists; every other connector is proved or ruled Planned |
 | PJ-66 | 🟡 · High · UAT   | **FL3** (🧑)                   | A `fil-` slug routes; a raw PDF is sandboxed; the inspector has its own CSP                                |
@@ -236,7 +236,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. CH3 ✅ (#560) and CH4 ✅ (#559); next **NO2**, **FL4**, **FL1**, **NO4**, **NO1**, and **FL3**'s
+11. CH3 ✅ (#560) and CH4 ✅ (#559); next **NO2**, **FL4**, **FL1** steps 3–4 (🧑 27; steps 1–2 ✅ #564), **NO4**, **NO1**, and **FL3**'s
     slug.
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
@@ -311,7 +311,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1           | Yes, as a transactional invite behind a switch until counsel answers; `application.received` joins the hourly digest                                                                                                     |
 | 25 | When a push device is dropped                                                                                                                | NO3           | At once on 404 / 410; otherwise after 5 failures over at least 24 h; Settings says so                                                                                                                                    |
 | 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                                     | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
-| 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1           | Purge the bytes after 30 days and keep the row; flip the quota in UAT after the metering fix                                                                                                                             |
+| 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 (#564)    | Purge the bytes after 30 days and keep the row; flip the quota in UAT now that the metering is whole (#564)                                                                                                              |
 | 28 | #394 (a) one Google connection or two; which connectors ship for UAT                                                                         | FL2           | (a) as #394 recommends; Drive and S3 ship, and Dropbox, OneDrive and Frame.io stay Planned                                                                                                                               |
 | 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3           | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
 | 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4           | Person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm; a blocked pair refuses                                                                                                 |
@@ -806,6 +806,11 @@ SAME CHANGE: SYSTEM_ARCHITECTURE.md; the decision row (#391 (o) closed).
 
 Narrows PJ-63; T&S SN1 and SN2 close it.
 
+**Status (2026-11-25, #564):** steps 1 and 2 landed: the rollup and the quota gate count every WebP
+tier (probe `storage_usage_variants.sql`), and the backfill is the one `fn_recompute_usage`
+statement in `database/files/Functions.md`. Stopped at the 🧑 DECISION (§0.3 stop 27, put to you):
+steps 3 and 4 wait for the retention ruling, and flipping `storage_quota_enforced` is yours.
+
 ```text
 PROMPT FL1: The storage quota counts every stored byte, the image variants included, and a
 soft-deleted file's bytes are purged after its retention while its row stays
@@ -813,37 +818,33 @@ soft-deleted file's bytes are purged after its retention while its row stays
 ROLE: Full-stack engineer. Queue S: 00001160, 00005060 (one writer), 00005001.
 
 CONTEXT (verified at e1ff027b; re-check every line):
-  - F14: files.fn_check_storage_quota (00001160:339-428) returns early unless
-    storage_quota_enforced is on, and it is seeded false (00005001:259-274). The upload warns
-    while over (live-uploads.ts:90-124). The rollup fn_recompute_usage (00001160:48-80) sums
-    files.items.size_bytes only; files.item_variants.size_bytes (00000010:269-282, the WebP
-    tiers) is never metered. The gate must agree with the rollup (:369-375).
-  - F15: the only file sweep is contact-attachment-sweep (00005060:145-147). T&S SN2 step 5
+  - F14: files.fn_check_storage_quota (00001160:358-453) returns early unless
+    storage_quota_enforced is on, and it is seeded false (00005001:329). Since #564 the rollup
+    fn_recompute_usage (00001160:32-90) counts each asset's WebP tiers, so a purged item's tiers
+    leave the total with it.
+  - F15: the only file sweep is contact-attachment-sweep (00005060:174). T&S SN2 step 5
     sweeps stale pending_upload and scanning rows and quarantine objects, and nothing purges
-    soft-deleted items. fn_guard_hard_delete (00001160:1003-1020) and root CLAUDE.md §5 forbid
+    soft-deleted items. fn_guard_hard_delete (00001160:1026-1048) and root CLAUDE.md §5 forbid
     hard-deleting rows.
   - #58: the fail-open quota is by design; flipping it is a human decision.
-  - The audit's F14 and F15 cites (COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md:237-238) are stale.
 
 🧑 DECISION (before step 3). Put both to me:
   1. Retention. Recommended: purge a soft-deleted item's bytes and variants 30 days after
      deletion, and keep the row with purged_at. Never purge an item that a submission, a
      dispute vault, an order version or a legal hold references.
-  2. When storage_quota_enforced flips (#58). Recommended: on in UAT, after step 2 lands. You
-     flip it.
+  2. When storage_quota_enforced flips (#58). Recommended: on in UAT, now that step 2 has
+     landed (#564). You flip it.
 
 STEPS:
-  1. Red first: a probe. A file with WebP variants is under-counted.
-  2. fn_recompute_usage and the quota gate count variants; a backfill recomputes every owner.
   3. The purge: a cron route deletes the objects through the storage API (the service role) and
      a definer marks purged_at; the references above are excluded; a job row.
   4. Coordinate with T&S SN2 step 5 (the same job file; a different sweep).
 
-ACCEPTANCE: the probe is green (variants counted; a referenced item never purged; a purged row
-kept); locally, a 31-day-old deleted file's objects are gone and its row says when.
+ACCEPTANCE: a probe is green (a referenced item never purged; a purged row kept); locally, a
+31-day-old deleted file's objects are gone and its row says when.
 
-SAME CHANGE: documentation/database/files/*; COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md (F14 and
-F15's delete half closed); PRODUCT_SPEC.md (retention); the decision row.
+SAME CHANGE: documentation/database/files/*; COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md (F15's delete
+half closed); PRODUCT_SPEC.md (retention); the decision row.
 ```
 
 §1.2 rows: **PJ-63** stays 🟡 ("unscanned, T&S SN1 and SN2").

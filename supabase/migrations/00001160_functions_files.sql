@@ -37,6 +37,10 @@ $$;
 -- momentarily expensive. It counts ONLY what we actually store — `source = 'supabase'`, not soft
 -- deleted — because a mounted Drive file consumes the provider's quota and a link consumes none.
 --
+-- Every stored byte of a counted asset is the owner's: its original AND the WebP tiers the media
+-- pipeline wrote beside it (files.item_variants), which follow the asset in and out of the total
+-- (PROJECTS FL1, Decision #564). `item_count` stays a count of assets.
+--
 -- An upload still in flight (`pending_upload`, `scanning`) COUNTS at its declared size: that is a
 -- reservation, and fn_check_storage_quota depends on it — it charges a promotion only the DELTA
 -- between declared and measured size, so parallel declarations must each see the others. A refused
@@ -62,9 +66,12 @@ BEGIN
         RETURN;
     END IF;
 
-    SELECT COALESCE(sum(i.size_bytes), 0), count(*)
+    SELECT COALESCE(sum(i.size_bytes + COALESCE(v.bytes, 0)), 0), count(*)
     INTO v_bytes, v_count
     FROM files.items i
+    LEFT JOIN LATERAL (
+        SELECT sum(iv.size_bytes) AS bytes FROM files.item_variants iv WHERE iv.item_id = i.id
+    ) v ON true
     WHERE i.owner_type = p_owner_type
       AND COALESCE(i.owner_entity_id, i.owner_user_id) = p_owner_id
       AND i.source = 'supabase'::files.file_source
@@ -87,6 +94,10 @@ $$;
 -- a convenience. It recomputes BOTH sides of an ownership change: moving an asset from a personal
 -- library into a team vault has to debit one rollup and credit the other, and a single-sided
 -- recompute would leave the origin permanently overstated.
+--
+-- Bound to files.item_variants too: a tier is metered to its asset's owner, so a variant row
+-- recomputes whoever owns its asset. A variant removed by its asset's hard delete finds no asset
+-- row, and the asset's own trigger recomputes that owner.
 CREATE OR REPLACE FUNCTION files.fn_usage_trigger ()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -94,6 +105,14 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
+    IF TG_TABLE_NAME = 'item_variants' THEN
+        PERFORM files.fn_recompute_usage (i.owner_type, COALESCE(i.owner_entity_id, i.owner_user_id))
+        FROM files.items i
+        WHERE (TG_OP <> 'INSERT' AND i.id = OLD.item_id)
+           OR (TG_OP <> 'DELETE' AND i.id = NEW.item_id);
+        RETURN NULL;
+    END IF;
+
     IF TG_OP <> 'INSERT' THEN
         PERFORM files.fn_recompute_usage (
             OLD.owner_type, COALESCE(OLD.owner_entity_id, OLD.owner_user_id)
@@ -348,6 +367,10 @@ $$;
 -- The quota is resolved through finance.fn_effective_limit, which is already generic over
 -- finance.entitlement_key — so plan × standing × grant resolution, and the "NULL = unlimited"
 -- convention, come for free and stay in one place.
+--
+-- The used total is the rollup's, so it holds every tier the pipeline wrote beside the owner's
+-- images. A tier itself is never gated: it is written after its asset was admitted, and refusing it
+-- would leave an admitted image unservable. The next upload pays for it.
 --
 -- UNITS: the entitlement is MEBIBYTES and the usage rollup is BYTES. The conversion happens HERE,
 -- once, and nowhere else. `limit_value` is `integer`; 25 GB in bytes is 26,843,545,600, which

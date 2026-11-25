@@ -29,6 +29,15 @@ CREATE TRIGGER trg_files_items_usage
         OR DELETE
     ON files.items
     FOR EACH ROW EXECUTE FUNCTION files.fn_usage_trigger ();
+
+-- A WebP tier is metered to its asset's owner (PROJECTS FL1): writing, re-encoding or removing one
+-- recomputes that owner.
+CREATE TRIGGER trg_files_item_variants_usage
+    AFTER INSERT
+        OR UPDATE OF item_id, size_bytes
+        OR DELETE
+    ON files.item_variants
+    FOR EACH ROW EXECUTE FUNCTION files.fn_usage_trigger ();
 -- #endregion
 
 -- #region quota gate

@@ -4617,7 +4617,9 @@ ruling T5). **Not built yet** for the malware scan and the macro rule.
 
 Storage is a **stock**, not a periodic allowance: it is metered against the owning principal's plan
 and does not reset. Quotas apply only to assets the platform itself stores — a file mounted from a
-connected drive counts against that provider, and a web link stores no bytes at all.
+connected drive counts against that provider, and a web link stores no bytes at all. Every byte the
+platform stores for an asset counts: the original and the smaller image sizes it derives for display
+(Decision #564). Deleting the asset frees them all.
 
 | Plan tier                                     | Included storage                                                                |
 | :-------------------------------------------- | :------------------------------------------------------------------------------ |

@@ -264,8 +264,8 @@ CREATE TABLE files.item_grants (
 --
 -- Written by the SERVICE ROLE only (the pipeline runs server-side after the quarantine scan): there
 -- is no client write policy, and the RLS read predicate is the parent item's (files.fn_can_read).
--- Variant bytes are platform-generated overhead and are deliberately NOT metered against the owner's
--- storage quota — files.fn_recompute_usage sums files.items only.
+-- Variant bytes are stored bytes, so they are metered to the asset's owner beside the original:
+-- files.fn_recompute_usage counts them while their asset counts (PROJECTS FL1).
 CREATE TABLE files.item_variants (
     item_id uuid NOT NULL REFERENCES files.items (id) ON DELETE CASCADE,
     tier files.variant_tier NOT NULL,
@@ -329,10 +329,10 @@ CREATE TABLE files.download_events (
 -- #endregion
 
 -- #region files.storage_usage — the metered rollup
--- A materialised per-owner total, maintained by files.fn_recompute_usage (00001160) off a trigger
--- on files.items. It exists because the quota gate runs on the INSERT path: summing size_bytes
--- across a growing library on every upload is the kind of cost that only shows up once a tenant is
--- successful.
+-- A materialised per-owner total, maintained by files.fn_recompute_usage (00001160) off triggers
+-- on files.items and files.item_variants. It exists because the quota gate runs on the INSERT
+-- path: summing size_bytes across a growing library on every upload is the kind of cost that only
+-- shows up once a tenant is successful.
 --
 -- `bytes_used` is bigint — the honest unit for a byte total. The QUOTA it is checked against is
 -- denominated in MEBIBYTES (finance.entitlement_key 'storage_megabytes'), because
