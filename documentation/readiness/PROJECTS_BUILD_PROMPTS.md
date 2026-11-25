@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 4 open, 3 partly done (FL1, #564; FL3, #563; FL2, #568), 19 done (§0 ledger).
-> Runnable now: FL1–FL3, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 4 open, 2 partly done (FL3, #563; FL2, #568), 20 done (§0 ledger).
+> Runnable now: FL2 and FL3, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -73,6 +73,7 @@ A prompt that lands gets a row here.
 | EX1 | A project completes when its last money settles or when its client completes it, and completing it opens its reviews: `projects.fn_complete_project` (the one writer of `completed`), `fn_project_complete_blocked`, `can_complete_project`, `preview_project_complete`, `complete_project`, `reopen_project`; `approve_stage` completes the engagement once no stage is unsettled and every ticket has ended, its handover notice reaching every seat holder; the ended-engagement escrow guard refuses a completed engagement (extending is the client's logged Reopen); `GET`/`POST /api/projects/:id/complete`, `POST /reopen`; `CompleteProjectDialog`, `ReopenProjectDialog`; probe `project_completion.sql` | `dc354519` (#569) | `9c56ec06` |
 | FL4 | A person grant tells that person, every grant is listed in Shared with me, and a link cannot outlive its file's tier (#570, stop 30 as recommended; (e) deferred, PJ-78): `files.set_item_access` emits `file.shared` for a new person grant on a file left above Only you (catalogued in `00005010`, digestible); `files.list_shared_with_me` behind `/files?source=shared` (`SharedWithMe`, the lane's and Browse menu's row); `trg_files_items_revoke_links_on_tier_drop` revokes a file's links when it goes to Only you or Specific people, and `fn_resolve_share` opens a file link only while the file is `link` or `public`; both tier writes answer 409 `links_would_stop` with the count until `stopLinks`, confirmed in the Access tab, the hub's privacy control and in place in `ShareDialog`; probe `file_sharing.sql` | `f70469ab` (#570) | `aaa6fd99` |
 | NO4 | Guest mail honours the suppression list and its bounces, and leaves from a sender of its own: `scheduling.claim_guest_mail` mails no address `comms.fn_is_suppressed` refuses (the message stops, the host is told); `guest_request_code` answers `undeliverable`; `deliverMailWithReceipt` keeps Resend's id in `scheduling.guest_mail.provider_ref` (`uq_guest_mail_provider_ref`) through `finish_guest_mail (uuid, boolean, text)`, and `fn_record_delivery_event` matches it on a hard bounce; guest mail leaves through `inviteTransport()`, from `MAIL_FROM_INVITES` or else `MAIL_FROM` (#391 (n) ruled); probe `guest_mail_suppression.sql` | `e4a39ff9` (#571) | `3fd9fc56` |
+| FL1 | The storage quota meters every stored byte: `fn_recompute_usage` adds each asset's `files.item_variants` tiers and `trg_files_item_variants_usage` recomputes the asset's owner; the backfill is one `fn_recompute_usage` statement. Stop 27 ruled (30 days; the quota on in UAT, flipped by you). `files.items.purged_at` + `items_purged_check`; `files.claim_purge` / `release_purge` (service role; never a file a submission, a dispute, an order version or line, an invoice, a statement or a sent contact request names); `purgeDeletedFiles` behind `POST /api/files/cron/purge` and the nightly `files-soft-delete-purge` job; T&S SN2 step 5 told how the two sweeps meet; probes `storage_usage_variants.sql`, `file_purge.sql` | `4b224ccc`, `0c7aa8dc` and the step-3 commit (#564) | `cad28a4f` |
 
 ### 0.1 Row → work order
 
@@ -158,7 +159,7 @@ The operator's ruling is MW-59; it is not this file's row.
 
 | Row   | Now · Crit · Gate | Work order                     | The row flips when                                                                                         |
 | :---- | :---------------- | :----------------------------- | :--------------------------------------------------------------------------------------------------------- |
-| PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2; **FL1** steps 3–4 (27 ruled) | Uploads are scanned; stale and deleted objects leave the bucket (every byte metered, #564)  |
+| PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2 (FL1 ✅, #564) | Uploads are scanned; stale uploads and quarantine objects leave the bucket (every byte metered and deleted files' bytes purged, #564) |
 | PJ-64 | 🟡 · Normal · UAT | T&S LK1                        | Offline or with no key, a link reads "unchecked" and goes through `/exit`                                  |
 | PJ-65 | 🟡 · Normal · UAT | **FL2** step 5 (with you) | The live Drive round trip is recorded: consent, browse, Add to Library, open (steps 1–4 landed, #568) |
 | PJ-66 | 🟡 · High · UAT   | **FL3** (🧑; steps 1, 3 #563)  | A `fil-` slug routes; the inspector has its own CSP (a raw PDF is sandboxed, #563)                         |
@@ -190,7 +191,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
 | Messaging                      |   61% | MS5 61% → P2d 67% (CH1 ✅, #562; CH3 ✅, #560) → CH2 ✅ (#561) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → CD2 94% → NT5 100% (NO2 ✅, #565; NO3 ✅, #567)                                                                    |
-| Files & assets                 |   64% | LK1 68% → FL3 77% → FL2 + you 82% → SN1 + SN2 + FL1 91% → blocking (PJ-78, no work order) 100% (FL4 ✅, #570)   |
+| Files & assets                 |   64% | LK1 68% → FL3 77% → FL2 + you 82% → SN1 + SN2 91% → blocking (PJ-78, no work order) 100% (FL4 ✅, #570; FL1 ✅, #564)   |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 86% → LP1 100% (NO4 ✅, #571)                                                                    |
 
 **What MVP needs from this cluster:** the eight Critical · MVP rows not yet ✅, which are PJ-17,
@@ -242,7 +243,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** ✅ (#569, §0.0): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); FL4 ✅ (#570); NO1 ✅ (#566) and NO4 ✅ (#571); next **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), and **FL3**'s
+11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); FL4 ✅ (#570); NO1 ✅ (#566) and NO4 ✅ (#571); FL1 ✅ (#564); next **FL3**'s
     slug.
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
@@ -281,9 +282,9 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00000017` + `00001260` (disputes)                       | PM-WP4a step 6                                               | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | —                                                            | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | — (NO2 ✅, #565)                                            | T&S                                                               |
-| `00001160` (files)                                       | FL1, FL3 (FL4 ✅, #570)                                     | T&S SN2; T&S LK1 (services only)                                  |
+| `00001160` (files)                                       | FL3 (FL4 ✅, #570; FL1 ✅, #564)                            | T&S SN2; T&S LK1 (services only)                                  |
 | `00005010` (notification catalogue)                      | PM WP4a, WP5a, WP6, D7b, GH1 (FL4 ✅, #570)            | COMMS MS4                                                         |
-| `00005060` (jobs)                                        | FL1; PM WP5a, D7b, GH1                                       | MR5; T&S SN2                                                      |
+| `00005060` (jobs)                                        | PM WP5a, D7b, GH1 (FL1 ✅, #564)                             | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
 | `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1           | COMMS NT5; T&S R3                                                 |
 | `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | —                                                            | COMMS MS3, MS5; T&S R2                                            |
@@ -316,7 +317,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1 ✅ (#566) | **Ruled #566:** as recommended: one transactional invite behind `project_invite_mail_enabled`, off until counsel; `application.received` emails. No hourly digest exists; ruled keep as built (#566 (a)): in a person's daily or weekly digest when they take one, else one email per application |
 | 25 | When a push device is dropped                                                                                                                | NO3 ✅ (#567) | **Ruled #567:** as recommended: at once on 404 / 410; otherwise after 5 consecutive failures whose first is at least 24 h old; a successful push refreshes `last_seen_at`; Settings says so |
 | 26 | Guest invitations on their own mail subdomain (#391 (n)) | NO4 ✅ (#571) | **Ruled #571:** yes, as recommended: `MAIL_FROM_INVITES`, falling back to `MAIL_FROM` while unset; the DNS is yours |
-| 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ ruled  | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
+| 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ (#564) | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
 | 28 | #394 (a) one Google connection or two; which connectors ship for UAT | FL2 ✅ (#568) | **Ruled #568:** as recommended: one Google client, two connections (`google_drive` beside `google`); Google Drive and S3 ship for UAT, and Dropbox, OneDrive and Frame.io are Planned |
 | 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3 (#563)    | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
 | 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4 ✅        | **Ruled #570:** as recommended for (d) and (k): person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm naming how many. (e) deferred: the platform has no blocking, so PJ-78 waits for it |
@@ -563,54 +564,6 @@ row (clear EX4's Not built yet); documentation/database/{ops,projects}/*; Zod; t
 ---
 
 ## 7. Files & assets
-
-### FL1 — Storage meters every byte, and deleted files leave the bucket
-
-Narrows PJ-63; T&S SN1 and SN2 close it.
-
-**Status (2026-11-25, #564):** steps 1 and 2 landed: the rollup and the quota gate count every WebP
-tier (probe `storage_usage_variants.sql`), and the backfill is the one `fn_recompute_usage`
-statement in `database/files/Functions.md`. Stop 27 is ruled (#564): 30 days, the quota on in UAT,
-flipped by you. Steps 3 and 4 wait only for EX1 to land `00005060`, `00005001` and `00002510`
-(NO1 ✅, #566).
-
-```text
-PROMPT FL1: The storage quota counts every stored byte, the image variants included, and a
-soft-deleted file's bytes are purged after its retention while its row stays
-
-ROLE: Full-stack engineer. Queue S: 00001160, 00005060 (one writer), 00005001.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - F14: files.fn_check_storage_quota (00001160:358-453) returns early unless
-    storage_quota_enforced is on, and it is seeded false (00005001:329). Since #564 the rollup
-    fn_recompute_usage (00001160:32-90) counts each asset's WebP tiers, so a purged item's tiers
-    leave the total with it.
-  - F15: the only file sweep is contact-attachment-sweep (00005060:174). T&S SN2 step 5
-    sweeps stale pending_upload and scanning rows and quarantine objects, and nothing purges
-    soft-deleted items. fn_guard_hard_delete (00001160:1026-1048) and root CLAUDE.md §5 forbid
-    hard-deleting rows.
-  - #58: the fail-open quota is by design; flipping it is a human decision.
-
-RULED (#564, 2026-11-25), both as recommended:
-  1. Retention: purge a soft-deleted item's bytes and variants 30 days after deletion, and keep
-     the row with purged_at. Never purge an item that a submission, a dispute vault, an order
-     version or a legal hold references.
-  2. storage_quota_enforced goes on in UAT, now that step 2 has landed (#564). The owner flips
-     it; no build does.
-
-STEPS:
-  3. The purge: a cron route deletes the objects through the storage API (the service role) and
-     a definer marks purged_at; the references above are excluded; a job row.
-  4. Coordinate with T&S SN2 step 5 (the same job file; a different sweep).
-
-ACCEPTANCE: a probe is green (a referenced item never purged; a purged row kept); locally, a
-31-day-old deleted file's objects are gone and its row says when.
-
-SAME CHANGE: documentation/database/files/*; COMMUNICATIONS_ASSETS_SEARCH_AUDIT.md (F15's delete
-half closed); PRODUCT_SPEC.md (retention); the decision row.
-```
-
-§1.2 rows: **PJ-63** stays 🟡 ("unscanned, T&S SN1 and SN2").
 
 ### FL2 — Importing from a connected drive works, and each connector is proved or ruled
 

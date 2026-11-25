@@ -49,6 +49,12 @@ CREATE INDEX IF NOT EXISTS idx_files_items_owner_entity
     ON files.items (owner_type, owner_entity_id)
     WHERE deleted_at IS NULL;
 
+-- The purge's queue (files.claim_purge, PROJECTS FL1): soft-deleted rows whose bytes are still
+-- stored, oldest deletion first.
+CREATE INDEX IF NOT EXISTS idx_files_items_purge_queue
+    ON files.items (deleted_at)
+    WHERE deleted_at IS NOT NULL AND purged_at IS NULL;
+
 -- #endregion
 
 -- #region files.folders — previously unindexed entirely

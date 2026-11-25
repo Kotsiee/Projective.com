@@ -130,6 +130,99 @@ END;
 $$;
 -- #endregion
 
+-- #region 2c. The purge of soft-deleted bytes — files.claim_purge · files.release_purge
+-- PROJECTS FL1, Decision #564 (owner ruling): a soft-deleted file's stored bytes, its object and its
+-- WebP tiers, are removed 30 days after its deletion, and its row stays with `purged_at`. Nobody can
+-- read a soft-deleted file (files.fn_can_read, the media proxy), so the purge changes nothing anyone
+-- can open; it only stops keeping what nobody may read.
+--
+-- Never claimed, whatever its age, while anything that must keep the bytes names the file:
+--   * a delivery submission (projects.submission_files), or a dispute's evidence or Evidence Vault
+--     (finance.dispute_evidence; finance.dispute_vaults' manifest, whose files are submission files);
+--   * an order version (catalogue.product_versions' manifest) or an order line (finance.order_lines);
+--   * a legal record: an invoice's or a statement's PDF (finance.invoices, finance.statements) and a
+--     sent /contact request's attachment (ops.contact_request_attachments).
+-- A legal hold on a file has no record to name it yet (Decision #564 flag (e)): when one exists, it
+-- joins this list.
+--
+-- files.claim_purge stamps up to p_limit due rows, oldest deletion first, under row locks (SKIP
+-- LOCKED: a row another session holds, such as one a reference's foreign-key check is locking, is
+-- left for the next run), and answers every stored object of each for the app to delete through
+-- the Storage API, because storage objects cannot be deleted from SQL. Stamping before the delete
+-- means the decision and the lock are one statement; files.release_purge clears the stamp on a row
+-- whose objects the app could not delete, so the next run tries it again. `p_now` moves only the
+-- 30-day cutoff (a probe's clock); the stamp is the real time. Only `supabase`-stored rows have bytes
+-- of ours: a link stores none and a mounted file is its provider's. Service role only.
+CREATE OR REPLACE FUNCTION files.claim_purge (
+    p_limit integer DEFAULT 100,
+    p_now timestamptz DEFAULT NULL
+)
+RETURNS TABLE (item_id uuid, bucket_id text, storage_path text)
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH due AS (
+        SELECT i.id
+          FROM files.items i
+         WHERE i.deleted_at IS NOT NULL
+           AND i.purged_at IS NULL
+           AND i.source = 'supabase'::files.file_source
+           AND i.deleted_at < COALESCE(p_now, pg_catalog.now()) - interval '30 days'
+           AND NOT EXISTS (SELECT 1 FROM projects.submission_files sf WHERE sf.file_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM finance.dispute_evidence de WHERE de.file_id = i.id)
+           AND NOT EXISTS (
+               SELECT 1 FROM finance.dispute_vaults dv
+                WHERE pg_catalog.jsonb_path_exists(
+                    dv.manifest, '$.submissions[*].files[*] ? (@.file_id == $id)',
+                    pg_catalog.jsonb_build_object('id', i.id))
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM catalogue.product_versions pv
+                WHERE pv.manifest @> pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object('fileId', i.id))
+           )
+           AND NOT EXISTS (SELECT 1 FROM finance.order_lines ol WHERE ol.asset_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM finance.invoices iv WHERE iv.pdf_file_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM finance.statements st WHERE st.pdf_file_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM ops.contact_request_attachments ca WHERE ca.file_id = i.id)
+         ORDER BY i.deleted_at
+         LIMIT LEAST(GREATEST(COALESCE(p_limit, 100), 1), 1000)
+           FOR UPDATE OF i SKIP LOCKED
+    ),
+    claimed AS (
+        UPDATE files.items t
+           SET purged_at = pg_catalog.now()
+          FROM due
+         WHERE t.id = due.id
+        RETURNING t.id, t.bucket_id, t.storage_path
+    )
+    SELECT c.id, c.bucket_id, c.storage_path FROM claimed c
+    UNION ALL
+    SELECT v.item_id, v.bucket_id, v.storage_path
+      FROM files.item_variants v
+      JOIN claimed c ON c.id = v.item_id;
+$$;
+
+-- Clears the purge stamp on rows whose objects could not be deleted, and answers how many it cleared.
+CREATE OR REPLACE FUNCTION files.release_purge (p_item_ids uuid[])
+RETURNS integer
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    WITH released AS (
+        UPDATE files.items t
+           SET purged_at = NULL
+         WHERE t.id = ANY (COALESCE(p_item_ids, '{}'::uuid[]))
+           AND t.purged_at IS NOT NULL
+        RETURNING 1
+    )
+    SELECT count(*)::integer FROM released;
+$$;
+-- #endregion
+
 -- #region 3a. files.fn_item_grant_role — the caller's strongest live grant on one file
 -- Decision #402. The role of the strongest LIVE grant that reaches the caller — granted to them by
 -- name, to a team or business they are an active member of, or to a project they have access to — or
@@ -774,7 +867,19 @@ BEGIN
                 ERRCODE = '42501',
                 MESSAGE = 'files: only a link carries a link facet';
         END IF;
+        IF NEW.purged_at IS NOT NULL THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: only the purge stamps purged_at';
+        END IF;
         RETURN NEW;
+    END IF;
+
+    -- The purge's stamp (PROJECTS FL1) is files.claim_purge's alone, set or cleared.
+    IF NEW.purged_at IS DISTINCT FROM OLD.purged_at THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: only the purge stamps purged_at';
     END IF;
 
     IF NEW.status IS DISTINCT FROM OLD.status

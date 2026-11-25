@@ -103,12 +103,18 @@ export async function copyObject(
 	return !error;
 }
 
-/** Remove objects. Best-effort: a quarantine object that is already gone is not an error. */
-export async function removeObjects(bucket: string, paths: readonly string[]): Promise<void> {
-	if (paths.length === 0) return;
+/**
+ * Remove objects, and answer whether Storage accepted the removal. An object that is already gone is
+ * not an error. Best-effort callers ignore the answer; the purge (PROJECTS FL1) hands back what failed.
+ */
+export async function removeObjects(bucket: string, paths: readonly string[]): Promise<boolean> {
+	if (paths.length === 0) return true;
 	try {
-		await getServiceClient().storage.from(bucket).remove([...paths]);
-	} catch { /* best-effort cleanup */ }
+		const { error } = await getServiceClient().storage.from(bucket).remove([...paths]);
+		return !error;
+	} catch {
+		return false;
+	}
 }
 
 // #endregion

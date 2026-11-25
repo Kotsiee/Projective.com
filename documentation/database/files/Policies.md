@@ -306,6 +306,7 @@ client that could write it could write itself unlimited storage.
 | `EXECUTE ON files.fn_owns_library`      | `00002510` | To `anon` + `authenticated` + svc: it is called by the write policies themselves. |
 | `EXECUTE ON files.get_storage_quota`    | `00002510` | To `authenticated` + svc, `REVOKE`d from `PUBLIC`/`anon`; it authorises its own caller. |
 | `EXECUTE ON files.fn_record_download`   | `00002510` | To the **service role only** — a download is a server observation. |
+| `EXECUTE ON files.claim_purge` · `release_purge` | `00002510` | To the **service role only**, `REVOKE`d from `PUBLIC`/`anon`/`authenticated`: the purge job's doors (PROJECTS FL1, Decision #564). |
 | `EXECUTE ON files.get_item_access` · `set_item_access` · `list_access_targets` | `00002510` | To `authenticated` + svc, `REVOKE`d from `PUBLIC`/`anon`; each authorises its caller inside (Decision #402). |
 | `REVOKE` on `fn_item_grant_role` · `fn_entity_admin` · `fn_grantee_card` | `00002510` | From `PUBLIC`, `anon` and `authenticated`: reached only from inside `fn_can_read` and the access definers. |
 | `EXECUTE ON files.list_shared_with_me`  | `00002510` | To `authenticated` + svc, `REVOKE`d from `PUBLIC`/`anon`: the caller's own Shared with me (Decision #570). |

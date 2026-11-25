@@ -31,6 +31,8 @@ counters (`fn_recompute_usage`, `fn_record_download`).
 | `fn_touch_updated_at()`                              | trigger    | —       | trigger only (`REVOKE`d)        | `updated_at` maintenance on `items` + `folders`.            |
 | `fn_recompute_usage(owner_kind, uuid)`               | `void`     | ✅      | `service_role`                  | Rebuilds one owner's `storage_usage` row from scratch, WebP tiers included. |
 | `fn_usage_trigger()`                                 | trigger    | ✅      | trigger only (`REVOKE`d)        | Adapter — recomputes **both** sides of an ownership change, and a tier's asset owner. |
+| `claim_purge(integer, timestamptz) → TABLE`          | `VOLATILE` | ✅      | `service_role`                  | Stamps `purged_at` on due soft-deleted files and answers their objects to delete. |
+| `release_purge(uuid[]) → integer`                    | `VOLATILE` | ✅      | `service_role`                  | Hands back a claimed file whose objects Storage refused.    |
 | `fn_can_read(uuid) → boolean`                        | `STABLE`   | ✅      | `authenticated` (it **is** the policy) | **The** read predicate for `files.items`.                   |
 | `fn_check_storage_quota()`                           | trigger    | ✅      | trigger only (`REVOKE`d)        | The **fail-open** quota gate.                               |
 | `fn_resolve_share(text) → TABLE`                     | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The only **visitor** door from a slug into `share_links`; a file link opens only while the file is `link` or `public`. |
@@ -144,6 +146,34 @@ debit one rollup and credit the other, and a single-sided recompute would leave 
 permanently overstated. Bound to `files.item_variants` as well, where it recomputes the owner of the
 tier's asset; a tier removed by its asset's hard delete finds no asset, and the asset's own trigger
 recomputes that owner.
+
+---
+
+## 🧹 The purge of soft-deleted bytes
+
+PROJECTS FL1 step 3, Decision #564 (owner ruling). A soft-deleted file's stored bytes, its object
+and its WebP tiers, are removed **30 days** after `deleted_at`, and its row stays with `purged_at`.
+Nobody can read a soft-deleted file (`fn_can_read`, the media proxy), so the purge changes nothing
+anyone can open. Probe `file_purge.sql`.
+
+- **`files.claim_purge(p_limit integer DEFAULT 100, p_now timestamptz DEFAULT NULL) → TABLE(item_id,
+  bucket_id, storage_path)`**
+  · `VOLATILE` · `SECURITY DEFINER` · service role only. Stamps `purged_at` on up to `p_limit`
+  (1–1000) `supabase`-stored rows deleted more than 30 days before `p_now`, oldest deletion first,
+  `FOR UPDATE … SKIP LOCKED`, and answers every object of each: the original and its
+  `files.item_variants` tiers. `p_now` moves only the cutoff; the stamp is the real time. Stamping
+  before the delete makes the decision and the lock one statement.
+- **Never claimed** while anything that must keep the bytes names the file:
+  `projects.submission_files`, `finance.dispute_evidence`, a `finance.dispute_vaults` manifest, a
+  `catalogue.product_versions` manifest, `finance.order_lines.asset_id`, an invoice's or a
+  statement's PDF (`finance.invoices`, `finance.statements`) and a sent request's attachment
+  (`ops.contact_request_attachments`). A legal hold on a file has no record yet (Decision #564 flag
+  (e)); when one exists it joins this list.
+- **`files.release_purge(p_item_ids uuid[]) → integer`** · service role only. Clears the stamp on a
+  claimed row whose objects Storage refused, so the next run tries it again.
+- The nightly `files-soft-delete-purge` job (`POST /api/files/cron/purge`, `OPS_CRON_SECRET`) runs
+  them (`packages/backend/services/files/purge.ts`): claim, delete each bucket's objects through the
+  Storage API, release what failed.
 
 ---
 

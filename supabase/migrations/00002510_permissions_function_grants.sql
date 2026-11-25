@@ -1879,6 +1879,13 @@ EXECUTE ON FUNCTION files.fn_record_download (
     text
 ) TO service_role;
 
+-- The purge of soft-deleted bytes (PROJECTS FL1, Decision #564): its claim and its hand-back are the
+-- files-soft-delete-purge job's, run with the service role; no client may stamp or clear purged_at.
+REVOKE ALL ON FUNCTION files.claim_purge (integer, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION files.claim_purge (integer, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION files.release_purge (uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION files.release_purge (uuid[]) TO service_role;
+
 -- Who else may open a file (Decision #402). The three doors authorise the caller inside: the Access
 -- tab's read, its one save, and the picker's teams, businesses and projects.
 REVOKE ALL ON FUNCTION files.get_item_access (uuid) FROM public, anon;

@@ -324,7 +324,8 @@ export interface ServerEnv {
 	commsDispatchSecret: string | undefined;
 	/**
 	 * The bearer token the scheduler presents to `POST /api/ops/cron/alerts`, the `ops-deliver-alerts`
-	 * job (MR4, Decision #461), from `OPS_CRON_SECRET`. Vault holds the same value under the same name.
+	 * job (MR4, Decision #461), and to `POST /api/files/cron/purge`, the `files-soft-delete-purge` job
+	 * (PROJECTS FL1, Decision #564), from `OPS_CRON_SECRET`. Vault holds the same value under the same name.
 	 * Like the other cron routes it answers 404 to anything else, including every request while this is
 	 * unset, the `XXXX-XXXX` placeholder or shorter than 32 characters.
 	 */

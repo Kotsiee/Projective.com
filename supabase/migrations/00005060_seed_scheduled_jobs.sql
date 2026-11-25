@@ -186,6 +186,18 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 
+-- #region [files] The purge of soft-deleted bytes (PROJECTS FL1, Decision #564)
+-- Nightly, a file soft-deleted more than 30 days ago that nothing must keep loses its stored objects
+-- (files.claim_purge stamps the row, then the Storage API deletes them; objects cannot be deleted
+-- from SQL), so an http job, on the alert sweep's bearer. T&S SN2's sweep of stale uploads is a
+-- different job: it removes quarantine objects at once, and this one later stamps their rows.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('files-soft-delete-purge', 'http', '44 3 * * *',
+        NULL, '/api/files/cron/purge?limit=100', 'OPS_CRON_SECRET',
+        'Purges the stored bytes of files soft-deleted more than 30 days ago that no submission, dispute, order, invoice, statement or sent contact request names: stamps purged_at, deletes the object and its WebP tiers, keeps the row (purgeDeletedFiles).')
+ON CONFLICT (name) DO NOTHING;
+-- #endregion
+
 -- #region [comms] The notification engine (Q0.3: #343 D9, Decision #203 flag (a))
 -- The cadences of database/comms/Functions.md §Scheduled jobs, moved onto minutes no job above uses.
 -- The worker runs every minute so a T-5 reminder lands on time; each sweep is safe to repeat.

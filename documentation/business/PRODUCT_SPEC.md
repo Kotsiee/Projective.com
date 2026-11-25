@@ -4682,8 +4682,8 @@ on first in UAT, by the owner's hand (Decision #564).
 
 A deleted file is kept for **30 days**. After that its stored bytes (the original and every size
 derived from it) are erased, and its record stays and says when (Decision #564). A file that a
-delivery submission, a dispute's evidence, an order version or a legal hold depends on is never
-erased. **Not built yet:** the erasure job (PROJECTS FL1 step 3).
+delivery submission, a dispute's evidence, an order version or a legal record depends on is never
+erased. A legal hold placed on a file will join that list once such a hold exists.
 
 ### The showcase band
 

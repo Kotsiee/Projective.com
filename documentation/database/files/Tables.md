@@ -163,6 +163,7 @@ database entry and the actual Supabase Storage object. It is **the** primary ass
 | `download_count`                                                                    | integer                                | `NOT NULL DEFAULT 0`. Moved by `files.fn_record_download` (service role), the only writer in code; a client UPDATE is refused by the pipeline guard (Decision #313).                                                                                               |
 | `starred`                                                                           | boolean                                | `NOT NULL DEFAULT false`. The OWNER's shelf mark — the database does not mask it; some projections do. Written by `FilesBackendService.star` (via `/api/saved`, Decision #180) under the owner-only `UPDATE` policy; listed on `/saved` → Files.                   |
 | `deleted_at`                                                                        | timestamptz                            | Soft delete.                                                                                                                                                                                                                                                       |
+| `purged_at`                                                                         | timestamptz                            | When the purge removed the row's stored bytes, its object and its WebP tiers, 30 days after `deleted_at` (PROJECTS FL1, Decision #564). Set only by `files.claim_purge`; `items_purged_check` holds it to a deleted row, so a purged row is never restored. The row stays. |
 
 **Constraints:** `UNIQUE (source_connection_id, external_file_id)` (a re-run sync UPSERTs instead of
 duplicating) · `UNIQUE (bucket_id, storage_path)` · `UNIQUE (share_slug)` ·
@@ -402,10 +403,10 @@ row — whose bytes were never kept — does not. See
 
 - **Bucket synchronization.** The `bucket_id` and `storage_path` columns must stay in sync with the
   physical Supabase Storage state.
-  - _Suggestion_: an Edge Function reconciling soft-deleted rows against their stored objects, so a
-    `deleted_at` eventually frees the bytes. Note this cannot be a plain `AFTER DELETE` trigger —
-    nothing here is hard-deleted (root CLAUDE.md §5), so the sweep keys off `deleted_at`, not
-    `DELETE`.
+  - Built (PROJECTS FL1, Decision #564): the nightly `files-soft-delete-purge` job removes a
+    soft-deleted row's objects 30 days after `deleted_at` and stamps `purged_at`; see
+    [Functions.md](Functions.md#-the-purge-of-soft-deleted-bytes). It keys off `deleted_at`, not
+    `DELETE`: nothing here is hard-deleted (root CLAUDE.md §5).
 - **Overlap with the engagement attachment tables.** `files.items` coexists with
   **`projects.project_attachments`**, **`comms.message_attachments`**, **`comms.channel_files`** and
   **`projects.submission_files`**, and the boundary is deliberate rather than redundant: those four

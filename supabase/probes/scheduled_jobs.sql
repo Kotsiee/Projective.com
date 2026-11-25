@@ -49,7 +49,8 @@ DECLARE
         ARRAY['finance.fn_expire_spend_approvals',    'finance-expire-spend-approvals',    '12 * * * *'],
         ARRAY['finance.fn_sweep_idempotency_keys',    'finance-sweep-idempotency-keys',    '27 4 * * *'],
         ARRAY['search.fn_prune_query_logs',           'search-query-log-retention',        '36 4 * * *'],
-        ARRAY['finance.fn_sweep_expired_prepaid_escrows', 'finance-sweep-expired-prepaid-escrows', '4,19,34,49 * * * *']
+        ARRAY['finance.fn_sweep_expired_prepaid_escrows', 'finance-sweep-expired-prepaid-escrows', '4,19,34,49 * * * *'],
+        ARRAY['files.claim_purge',                    'files-soft-delete-purge',           '44 3 * * *']
     ];
     v_missing text[] := ARRAY[]::text[];
     i integer;

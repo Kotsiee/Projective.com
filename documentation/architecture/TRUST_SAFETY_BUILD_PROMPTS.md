@@ -102,7 +102,7 @@ workload-verdict appeal on R1's sink (landed), R3 and R4.
 
 | File                                                    | T writers                              | Other writers                                                     |
 | :------------------------------------------------------ | :------------------------------------- | :---------------------------------------------------------------- |
-| `00005060` (jobs)                                       | SN1, SN2, R5, SN6                      | F, M, P, C, OPS, PROJECTS FL1 (one writer at a time)              |
+| `00005060` (jobs)                                       | SN1, SN2, R5, SN6                      | F, M, P, C, OPS (one writer at a time; PROJECTS FL1 landed, #564) |
 | `00001060` (erasure)                                    | none (R1's and P1d's arms go to I)     | I (ERA1), SEC G16                                                 |
 | `00001300` (comms)                                      | P1d, P2b, P2c, P2d, SN6                | COMMS MS4, MS5; every CAS messaging step                     |
 | `00002510` (grants)                                     | P1d, P2d, R3, R4, SN6                  | many                                                              |
@@ -117,7 +117,7 @@ workload-verdict appeal on R1's sink (landed), R3 and R4.
 | `00005001` (platform params)                            | P2b, P2d, R4, SN1, SN2, SN3, SN4, SN6  | F (FX margin and dials)                                           |
 | `00005010` (notification catalog)                       | R3, SN3                                | COMMS NT1–NT5                                                     |
 | `MessagingBackendService.ts`, `projects/live-writes.ts` | P1d, R2                                | COMMS MS3, MS5; O D-06 / SC-9                  |
-| `services/files/*`, `services/links/*`                  | LK1, SN1, SN2, SN3, H1                 | PROJECTS FL1–FL3 (FL4 landed, #570)                              |
+| `services/files/*`, `services/links/*`                  | LK1, SN1, SN2, SN3, H1                 | PROJECTS FL2, FL3 (FL4 landed, #570; FL1, #564)                  |
 
 ### 0.3 These cannot run in parallel inside T
 
@@ -1026,7 +1026,8 @@ SQL SESSION (the job and its dials): at most two SQL sessions at once, on disjoi
 files; announce each `deno task db:reset`; run `deno task test:probes`; finish with your own clean
 `deno task test:probes:fresh`. 00005060 has one writer at a time. Step 5 sweeps only stale
 pending_upload / scanning rows and their quarantine objects; PROJECTS FL1 covers soft-deleted
-items.
+items (`files-soft-delete-purge`, #564). Remove a stale upload's quarantine object at once; the
+purge later stamps its soft-deleted row, and removing an object already gone is not an error.
 ```
 
 ### SN3 — The publication gate: NudeNet and OCR (T3 (a), (b))

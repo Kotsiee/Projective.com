@@ -189,6 +189,10 @@ CREATE TABLE files.items (
   -- Soft delete: the row survives a "delete" so the quota rollup, the download audit and any
   -- share link that pointed at it all stay explicable.
   deleted_at timestamp with time zone,
+  -- When the purge removed the stored bytes of a soft-deleted row (its object and its WebP tiers),
+  -- 30 days after deletion (PROJECTS FL1, Decision #564). The row stays; only files.claim_purge sets
+  -- it, and only on a row already deleted, so a purged row can never be restored.
+  purged_at timestamp with time zone,
 
   CONSTRAINT items_pkey PRIMARY KEY (id),
   CONSTRAINT files_owner_fkey FOREIGN KEY (owner_user_id) REFERENCES auth.users(id),
@@ -212,7 +216,8 @@ CREATE TABLE files.items (
   CONSTRAINT items_owner_entity_check CHECK (
       owner_type = 'user' OR owner_entity_id IS NOT NULL
   ),
-  CONSTRAINT items_member_access_check CHECK (member_access OR owner_type <> 'user')
+  CONSTRAINT items_member_access_check CHECK (member_access OR owner_type <> 'user'),
+  CONSTRAINT items_purged_check CHECK (purged_at IS NULL OR deleted_at IS NOT NULL)
 );
 -- #endregion
 
