@@ -4631,7 +4631,13 @@ platform stores for an asset counts: the original and the smaller image sizes it
 
 Consistent with every other footprint cap, the quota **meters and warns before it refuses**:
 enforcement is gated by a platform parameter that ships off, so exceeding a quota is visible long
-before it is obstructive. Turning refusal on is a deliberate decision, never a side effect.
+before it is obstructive. Turning refusal on is a deliberate decision, never a side effect; it goes
+on first in UAT, by the owner's hand (Decision #564).
+
+A deleted file is kept for **30 days**. After that its stored bytes (the original and every size
+derived from it) are erased, and its record stays and says when (Decision #564). A file that a
+delivery submission, a dispute's evidence, an order version or a legal hold depends on is never
+erased. **Not built yet:** the erasure job (PROJECTS FL1 step 3).
 
 ### The showcase band
 

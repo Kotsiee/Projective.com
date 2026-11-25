@@ -153,7 +153,7 @@ The operator's ruling is MW-59; it is not this file's row.
 
 | Row   | Now · Crit · Gate | Work order                     | The row flips when                                                                                         |
 | :---- | :---------------- | :----------------------------- | :--------------------------------------------------------------------------------------------------------- |
-| PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2; **FL1** steps 3–4 (🧑 27) | Uploads are scanned; stale and deleted objects leave the bucket (every byte metered, #564)  |
+| PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2; **FL1** steps 3–4 (27 ruled) | Uploads are scanned; stale and deleted objects leave the bucket (every byte metered, #564)  |
 | PJ-64 | 🟡 · Normal · UAT | T&S LK1                        | Offline or with no key, a link reads "unchecked" and goes through `/exit`                                  |
 | PJ-65 | 🟡 · Normal · UAT | **FL2** (+ you: provider apps) | A Drive file imports; the tree pages; the S3 form exists; every other connector is proved or ruled Planned |
 | PJ-66 | 🟡 · High · UAT   | **FL3** (🧑)                   | A `fil-` slug routes; a raw PDF is sandboxed; the inspector has its own CSP                                |
@@ -236,7 +236,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. CH3 ✅ (#560) and CH4 ✅ (#559); next **NO2**, **FL4**, **FL1** steps 3–4 (🧑 27; steps 1–2 ✅ #564), **NO4**, **NO1**, and **FL3**'s
+11. CH3 ✅ (#560) and CH4 ✅ (#559); next **NO2**, **FL4**, **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), **NO4**, **NO1**, and **FL3**'s
     slug.
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
@@ -311,7 +311,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1           | Yes, as a transactional invite behind a switch until counsel answers; `application.received` joins the hourly digest                                                                                                     |
 | 25 | When a push device is dropped                                                                                                                | NO3           | At once on 404 / 410; otherwise after 5 failures over at least 24 h; Settings says so                                                                                                                                    |
 | 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                                     | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
-| 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 (#564)    | Purge the bytes after 30 days and keep the row; flip the quota in UAT now that the metering is whole (#564)                                                                                                              |
+| 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ ruled  | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
 | 28 | #394 (a) one Google connection or two; which connectors ship for UAT                                                                         | FL2           | (a) as #394 recommends; Drive and S3 ship, and Dropbox, OneDrive and Frame.io stay Planned                                                                                                                               |
 | 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3           | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
 | 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4           | Person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm; a blocked pair refuses                                                                                                 |
@@ -808,8 +808,9 @@ Narrows PJ-63; T&S SN1 and SN2 close it.
 
 **Status (2026-11-25, #564):** steps 1 and 2 landed: the rollup and the quota gate count every WebP
 tier (probe `storage_usage_variants.sql`), and the backfill is the one `fn_recompute_usage`
-statement in `database/files/Functions.md`. Stopped at the 🧑 DECISION (§0.3 stop 27, put to you):
-steps 3 and 4 wait for the retention ruling, and flipping `storage_quota_enforced` is yours.
+statement in `database/files/Functions.md`. Stop 27 is ruled (#564): 30 days, the quota on in UAT,
+flipped by you. Steps 3 and 4 wait only for NO1, NO2 and EX1 to land `00005060`, `00005001` and
+`00002510`.
 
 ```text
 PROMPT FL1: The storage quota counts every stored byte, the image variants included, and a
@@ -828,12 +829,12 @@ CONTEXT (verified at e1ff027b; re-check every line):
     hard-deleting rows.
   - #58: the fail-open quota is by design; flipping it is a human decision.
 
-🧑 DECISION (before step 3). Put both to me:
-  1. Retention. Recommended: purge a soft-deleted item's bytes and variants 30 days after
-     deletion, and keep the row with purged_at. Never purge an item that a submission, a
-     dispute vault, an order version or a legal hold references.
-  2. When storage_quota_enforced flips (#58). Recommended: on in UAT, now that step 2 has
-     landed (#564). You flip it.
+RULED (#564, 2026-11-25), both as recommended:
+  1. Retention: purge a soft-deleted item's bytes and variants 30 days after deletion, and keep
+     the row with purged_at. Never purge an item that a submission, a dispute vault, an order
+     version or a legal hold references.
+  2. storage_quota_enforced goes on in UAT, now that step 2 has landed (#564). The owner flips
+     it; no build does.
 
 STEPS:
   3. The purge: a cron route deletes the objects through the storage API (the service role) and
