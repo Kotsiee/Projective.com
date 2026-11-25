@@ -213,6 +213,14 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Sends every outbound delivery (email, push, SMS) the trigger''s post missed and retries each failed one after 2^attempts minutes, up to 5 attempts and within 24 hours (NotificationDispatchService.dispatch). Claims nothing while comms.dispatch_webhook is off.')
 ON CONFLICT (name) DO NOTHING;
 
+-- The digest send (PROJECTS NO2; PRD-E15): every ten minutes from :03, so the daily build at :02 and
+-- the weekly at :08 are mailed within minutes, on the dispatcher's own bearer and its flag.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('comms-digest-send', 'http', '3-59/10 * * * *',
+        NULL, '/api/comms/cron/digests?limit=50', 'COMMS_DISPATCH_SECRET',
+        'Mails each built daily or weekly digest once, as counts, titles and links and never a body, and retries a failed send after 2^attempts minutes, up to 5 attempts within 24 hours (DigestMailService.send through comms.fn_claim_digests). Claims nothing while comms.dispatch_webhook is off.')
+ON CONFLICT (name) DO NOTHING;
+
 -- The abandoned-basket nudge (CK5, Decision #492): once a day, mid-morning in the UK, the finder queues
 -- one basket.abandoned per idle personal basket and comms-process-queue sends it within the minute. It
 -- queues nothing while the comms.basket_nudge flag is off, which it is in every seed until counsel.

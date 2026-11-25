@@ -158,7 +158,7 @@ function errorCode(error: unknown): string {
 }
 
 /** Run `fn` over `rows`, at most {@link SEND_CONCURRENCY} at a time. */
-async function inChunks<T, R>(rows: T[], fn: (row: T) => Promise<R>): Promise<R[]> {
+export async function inChunks<T, R>(rows: T[], fn: (row: T) => Promise<R>): Promise<R[]> {
 	const results: R[] = [];
 	for (let i = 0; i < rows.length; i += SEND_CONCURRENCY) {
 		results.push(...await Promise.all(rows.slice(i, i + SEND_CONCURRENCY).map(fn)));

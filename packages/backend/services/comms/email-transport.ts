@@ -34,7 +34,7 @@ const CATEGORY_LINE: Readonly<Record<NotificationCategory, string>> = {
 };
 
 /** Where a person chooses which emails they get. */
-const PREFERENCES_PATH = "/settings/notifications";
+export const PREFERENCES_PATH = "/settings/notifications";
 
 /** The message for one delivery. `unsubscribe` is the one-click URL (Marketing only), else null. */
 export function buildNotificationEmail(

@@ -1,7 +1,13 @@
 import { assertEquals } from "@std/assert";
 import type { DispatchTally } from "@projective/types/comms";
 import { ok } from "@server/services/ServiceResult.ts";
-import { answerDispatch, answerDispatchSweep, type DispatchDoorDeps } from "./dispatch-ssr.ts";
+import {
+	answerDigestSweep,
+	answerDispatch,
+	answerDispatchSweep,
+	type DigestDoorDeps,
+	type DispatchDoorDeps,
+} from "./dispatch-ssr.ts";
 
 /** The dispatcher's two doors: a wrong bearer is a 404 before anything is read; the right one, 200 and a count. */
 
@@ -91,4 +97,36 @@ Deno.test("POST /api/comms/cron/dispatch — 404 without the bearer; with it, on
 	await answerDispatchSweep(post("/api/comms/cron/dispatch", SECRET), url("?limit=99999"), deps);
 	await answerDispatchSweep(post("/api/comms/cron/dispatch", SECRET), url("?limit=nope"), deps);
 	assertEquals(deps.calls, [[null, 200], [null, 500], [null, 200]]);
+});
+
+Deno.test("POST /api/comms/cron/digests — 404 without the bearer; with it, one pass bounded to 1–500, default 50", async () => {
+	const url = (q: string) => new URL(`http://localhost:3000/api/comms/cron/digests${q}`);
+	const calls: number[] = [];
+	const deps: DigestDoorDeps = {
+		isAuthorised: (authorization) => authorization === `Bearer ${SECRET}`,
+		send: (limit) => {
+			calls.push(limit);
+			return Promise.resolve(ok(TALLY));
+		},
+	};
+	for (const bearer of [null, "t".repeat(40), "XXXX-XXXX"]) {
+		const res = await answerDigestSweep(
+			post("/api/comms/cron/digests", bearer),
+			url("?limit=50"),
+			deps,
+		);
+		assertEquals(res.status, 404, String(bearer));
+	}
+	assertEquals(calls.length, 0);
+
+	const res = await answerDigestSweep(
+		post("/api/comms/cron/digests", SECRET),
+		url("?limit=50"),
+		deps,
+	);
+	assertEquals(res.status, 200);
+	assertEquals((await res.json()).sent, 1);
+	await answerDigestSweep(post("/api/comms/cron/digests", SECRET), url("?limit=99999"), deps);
+	await answerDigestSweep(post("/api/comms/cron/digests", SECRET), url(""), deps);
+	assertEquals(calls, [50, 500, 50]);
 });

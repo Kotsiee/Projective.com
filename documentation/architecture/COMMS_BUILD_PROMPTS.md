@@ -74,7 +74,7 @@ E11, E14) is 🟡 when it is built and proved locally, and ✅ only when CD2 pro
 project. PRD-E6, PRD-C15 and PRD-M3 set that precedent.
 
 **What each tier needs from §E.** MVP needs MS3 (PRD-E3). UAT also needs MS4, MS5 and CD2's E4–E6
-cases. Rows with no work order here: E15 (PROJECTS NO2), E18 (PROJECTS NO3) and E16 (none yet);
+cases. Rows with no work order here: E15 (PROJECTS NO2 ✅, #565), E18 (PROJECTS NO3) and E16 (none yet);
 PRD-E13 and E17 closed with PROJECTS CH3 (#560).
 
 ### 0.2 Run order
@@ -784,7 +784,7 @@ STEPS:
         mail's one-click unsubscribe → unsubscribed_at set.
      g. projects mail (USER_FLOWS PJ-17, 60, 61, 71, 72), each case once its prompt has merged: a
         stage.invite email (after PROJECTS NO1), a schedule.event_invite email and push, an
-        event.reminder_email, a digest (after PROJECTS NO2), and a guest invitation through the
+        event.reminder_email, a digest (PROJECTS NO2 ✅, #565), and a guest invitation through the
         transport PROJECTS NO4 gives it.
   3. Flip each proved row to ✅ with the date, "staging" and the smoke run's ids. A case that
      could not run keeps its 🟡 and says what is missing. Production repeats EPI §8.5 setup 4 and

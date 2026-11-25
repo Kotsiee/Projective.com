@@ -316,7 +316,8 @@ export interface ServerEnv {
 	 * The bearer token the notification dispatcher's two doors check, from `COMMS_DISPATCH_SECRET`
 	 * (Decision #344 (a); #339 ruling N3 (c)): `POST /api/comms/dispatch`, which the
 	 * `comms.notifications` trigger posts to through pg_net, and `POST /api/comms/cron/dispatch`, the
-	 * `comms-dispatch-sweep` job. Vault holds the same value under the same name. Like the cron routes
+	 * `comms-dispatch-sweep` job; the digest sender's `POST /api/comms/cron/digests` (`comms-digest-send`,
+	 * PROJECTS NO2) checks it too. Vault holds the same value under the same name. Like the cron routes
 	 * they answer 404 to anything else, including every request while this is unset, the `XXXX-XXXX`
 	 * placeholder or shorter than 32 characters; the dispatcher counts as not running until it is set.
 	 */

@@ -227,6 +227,7 @@ pending reminder.
 | `comms-compact-events`  | daily 03:47  | `fn_compact_delivery_events()` | Empties the `raw` body of callbacks older than 30 days; keeps the row (it is the idempotency key). |
 | `comms-dispatch-sweep`  | every minute | http: `POST /api/comms/cron/dispatch?limit=200` (`COMMS_DISPATCH_SECRET`) | The dispatcher's retry sweep: sends what the trigger's post missed and retries failures past their backoff, through `fn_claim_deliveries`. Claims nothing while `comms.dispatch_webhook` is off. |
 | `comms-basket-nudges`   | daily 10:17  | `fn_enqueue_basket_nudges(500)` | Queues one `basket.abandoned` per idle personal basket, within consent (CK5). Queues nothing while `comms.basket_nudge` is off. |
+| `comms-digest-send`     | every 10 min from :03 | http: `POST /api/comms/cron/digests?limit=50` (`COMMS_DISPATCH_SECRET`) | Mails each built digest once through `fn_claim_digests` and `DigestMailService` (PROJECTS NO2). Claims nothing while `comms.dispatch_webhook` is off. |
 
 `fn_escalate_unread` is idempotent by construction: a `NOT EXISTS` guard on an existing `email`
 delivery row is what stops every tick sending another copy. It adds the email only where the
@@ -239,6 +240,33 @@ period — the category row's `digest_frequency`, else the global one, as the ro
 rolls up the digestible rows of only those categories whose email is on (read through
 `fn_category_channel_on`, so Marketing joins a digest only by its own yes), so a per-category digest
 is no longer lost (CAS N10).
+
+**The digest is mailed (PROJECTS NO2, PRD-E15).** Two service-role definers (`search_path = ''`)
+behind the `comms-digest-send` job:
+
+- `comms.fn_claim_digests(p_limit integer DEFAULT 50) → TABLE (digest_id, user_id, period,
+  window_start, window_end, status, reason, attempts, address, total, counts, items, marketing)`.
+  While `comms.dispatch_webhook` is on, it takes up to `p_limit` (≤ 500) `pending` digests whose
+  `claimed_until` has passed, `FOR UPDATE SKIP LOCKED`, and decides each again, because the person
+  may have changed something since the build. It closes `skipped` with a `skipped_reason`: `expired`
+  (built more than 24 hours ago), `no_target` (no primary verified address), `suppressed_destination`
+  (a hard bounce, ruling N3 (b)), `snoozed` (`muted_until` ahead), or `no_items`. It first drops each
+  notice since archived, of a category whose email is now off (`fn_category_channel_on`), of a type
+  now muted for email, and Marketing for an address that unsubscribed. A sender that died holding the
+  fifth lease closes it `failed` (`lease_lapsed`). Otherwise it leases the digest for 15 minutes
+  (`attempts + 1`) and returns its address, its `counts` by category and up to 50 `items`
+  (`title`, `action_url`, `category`). It never returns a body or a payload, and `marketing` says a
+  one-click unsubscribe is owed. Quiet hours do not hold it: they withhold push and SMS only
+  (PRODUCT_SPEC rule 2).
+- `comms.fn_record_digest_result(p_digest uuid, p_ok boolean, p_provider_ref text, p_error text) →
+  boolean`. It moves only a leased digest: sent (`sent_at`, Resend's id), or a failure kept
+  `pending` with its code and held 2^attempts minutes, the fifth closing it `failed`. It answers
+  false for anything else, so a replay changes nothing.
+
+`DigestMailService.send` (`packages/backend/services/comms/`) mails each leased digest through the
+dispatcher's Resend transport: counts, titles and absolute same-origin links, the digest id as the
+Idempotency-Key, and the RFC 8058 pair when Marketing is listed. It sends nothing without a mail
+transport. Probes: `digest_claim.sql` and `digest_claim_race.sql` (two senders, one lease).
 
 `comms.fn_local_now(timezone, at)` is the safe local-clock helper the digest gate uses — a bad IANA
 zone degrades to UTC instead of aborting the run for every other user.

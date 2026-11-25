@@ -1129,6 +1129,202 @@ BEGIN
 END;
 $$;
 
+-- (b1) The digest claim (PROJECTS NO2; PRD-E15). (b) builds a digest; this hands each pending one to
+-- exactly one sender (FOR UPDATE SKIP LOCKED) while comms.dispatch_webhook is on and leases it for 15
+-- minutes (attempts + 1); DigestMailService mails it and records the outcome through (b2). The person
+-- may have changed something since the build, so each digest is decided again here. It closes skipped
+-- when it is more than a day old (expired), has no primary verified address (no_target), its address
+-- is blocked by a hard bounce (suppressed_destination, ruling N3 (b)), its person is snoozed
+-- (snoozed), or nothing is left of it (no_items) once these drop out: each notice since archived, of a
+-- category whose email is now off (fn_category_channel_on), of a type now muted for email, and of
+-- Marketing for an address that unsubscribed. Quiet hours do not hold it: they withhold push and SMS
+-- only (PRODUCT_SPEC rule 2). A lease that lapses at the fifth attempt closes it failed (lease_lapsed).
+-- A leased digest comes back with its address (for the send and nothing else), its counts by category
+-- and up to 50 items, each a title, a same-origin path and a category; never a body or a payload.
+CREATE OR REPLACE FUNCTION comms.fn_claim_digests(p_limit integer DEFAULT 50)
+RETURNS TABLE (
+    digest_id uuid,
+    user_id uuid,
+    period comms.digest_frequency,
+    window_start timestamptz,
+    window_end timestamptz,
+    status text,
+    reason text,
+    attempts smallint,
+    address text,
+    total integer,
+    counts jsonb,
+    items jsonb,
+    marketing boolean
+)
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+#variable_conflict use_column
+DECLARE
+    g comms.notification_digests%ROWTYPE;
+    v_prefs comms.notification_prefs%ROWTYPE;
+    v_address text;
+    v_reason text;
+    v_status text;
+    v_kept uuid[];
+BEGIN
+    IF NOT comms.fn_dispatch_enabled() OR COALESCE(p_limit, 0) < 1 THEN
+        RETURN;
+    END IF;
+
+    FOR g IN
+        SELECT d.*
+          FROM comms.notification_digests d
+         WHERE d.status = 'pending'
+           AND (d.claimed_until IS NULL OR d.claimed_until <= pg_catalog.now())
+         ORDER BY d.created_at, d.id
+         LIMIT LEAST(p_limit, 500)
+           FOR UPDATE SKIP LOCKED
+    LOOP
+        v_reason := NULL;
+        v_address := NULL;
+        v_kept := '{}';
+        SELECT * INTO v_prefs FROM comms.notification_prefs np WHERE np.user_id = g.user_id;
+        SELECT ue.email INTO v_address
+          FROM org.user_emails ue
+         WHERE ue.user_id = g.user_id AND ue.is_primary AND ue.verified_at IS NOT NULL;
+
+        IF g.attempts >= 5 THEN
+            v_reason := 'lease_lapsed';
+        ELSIF g.created_at <= pg_catalog.now() - interval '24 hours' THEN
+            v_reason := 'expired';
+        ELSIF v_address IS NULL THEN
+            v_reason := 'no_target';
+        ELSIF comms.fn_is_suppressed('email', v_address, 'system') THEN
+            v_reason := 'suppressed_destination';
+        ELSIF v_prefs.muted_until > pg_catalog.now() THEN
+            v_reason := 'snoozed';
+        ELSE
+            SELECT COALESCE(pg_catalog.array_agg(n.id ORDER BY n.created_at DESC, n.id), '{}')
+              INTO v_kept
+              FROM comms.notifications n
+              LEFT JOIN comms.notification_category_prefs c ON c.user_id = n.user_id AND c.category = n.category
+             WHERE n.id = ANY (g.notification_ids)
+               AND n.user_id = g.user_id
+               AND n.archived_at IS NULL
+               AND comms.fn_category_channel_on(n.category, c.email, v_prefs.email)
+               AND NOT EXISTS (
+                   SELECT 1 FROM comms.notification_type_mutes m
+                    WHERE m.user_id = n.user_id
+                      AND m.type_key = n.type
+                      AND (m.muted_until IS NULL OR m.muted_until > pg_catalog.now())
+                      AND (COALESCE(pg_catalog.cardinality(m.channels), 0) = 0 OR 'email' = ANY (m.channels))
+               )
+               AND (n.category <> 'marketing' OR NOT comms.fn_is_suppressed('email', v_address, 'marketing'));
+            IF pg_catalog.cardinality(v_kept) = 0 THEN
+                v_reason := 'no_items';
+            END IF;
+        END IF;
+
+        digest_id := g.id;
+        user_id := g.user_id;
+        period := g.period;
+        window_start := g.window_start;
+        window_end := g.window_end;
+        reason := v_reason;
+        address := NULL;
+        total := NULL;
+        counts := NULL;
+        items := NULL;
+        marketing := NULL;
+
+        IF v_reason IS NULL THEN
+            UPDATE comms.notification_digests d
+               SET claimed_until = pg_catalog.now() + interval '15 minutes', attempts = d.attempts + 1
+             WHERE d.id = g.id;
+            status := 'pending';
+            attempts := g.attempts + 1;
+            address := v_address;
+            total := pg_catalog.cardinality(v_kept);
+            SELECT pg_catalog.jsonb_object_agg(x.category, x.cnt), pg_catalog.bool_or(x.category = 'marketing')
+              INTO counts, marketing
+              FROM (SELECT n.category::text AS category, pg_catalog.count(*) AS cnt
+                      FROM comms.notifications n
+                     WHERE n.id = ANY (v_kept)
+                     GROUP BY n.category) x;
+            SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+                       'title', y.title, 'action_url', y.action_url, 'category', y.category) ORDER BY y.ord), '[]'::jsonb)
+              INTO items
+              FROM (SELECT n.title, n.action_url, n.category, k.ord
+                      FROM pg_catalog.unnest(v_kept) WITH ORDINALITY AS k(id, ord)
+                      JOIN comms.notifications n ON n.id = k.id
+                     ORDER BY k.ord
+                     LIMIT 50) y;
+        ELSE
+            v_status := CASE WHEN v_reason = 'lease_lapsed' THEN 'failed' ELSE 'skipped' END;
+            UPDATE comms.notification_digests d
+               SET status = v_status,
+                   skipped_reason = CASE WHEN v_status = 'skipped' THEN v_reason END,
+                   last_error = CASE WHEN v_status = 'failed' THEN v_reason ELSE d.last_error END,
+                   claimed_until = NULL
+             WHERE d.id = g.id;
+            status := v_status;
+            attempts := g.attempts;
+        END IF;
+        RETURN NEXT;
+    END LOOP;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.fn_claim_digests(integer) IS
+    'Claims up to p_limit (at most 500) pending notification digests with FOR UPDATE SKIP LOCKED while comms.dispatch_webhook is on, and decides each again: skipped when older than 24 hours (expired), with no primary verified address (no_target), with a hard-bounced address (suppressed_destination), while snoozed (snoozed), or when nothing is left (no_items) once archived notices, categories whose email is now off, types muted for email and, for an unsubscribed address, Marketing drop out; failed when a lease lapsed at the fifth attempt (lease_lapsed); otherwise leased for 15 minutes (attempts + 1) and returned with its address, counts by category and up to 50 items of title, action_url and category, never a body. Quiet hours do not hold an email. PROJECTS NO2. Service role only.';
+
+-- (b2) One digest send's outcome (PROJECTS NO2). Only a leased digest moves (pending, tried at least
+-- once): a send marks it sent with Resend's message id; a failure keeps it pending with the error's
+-- code (at most 200 characters, never an address) and holds it for 2^attempts minutes, and the fifth
+-- failure closes it failed. Either way the lease is released. Anything else (sent, skipped, failed,
+-- never claimed, unknown) answers false and changes nothing, so a retried record never re-opens a
+-- digest.
+CREATE OR REPLACE FUNCTION comms.fn_record_digest_result(
+    p_digest uuid,
+    p_ok boolean,
+    p_provider_ref text DEFAULT NULL,
+    p_error text DEFAULT NULL
+) RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    g comms.notification_digests%ROWTYPE;
+    v_error text := pg_catalog.left(COALESCE(NULLIF(pg_catalog.btrim(p_error), ''), 'send_failed'), 200);
+BEGIN
+    SELECT * INTO g FROM comms.notification_digests d WHERE d.id = p_digest FOR UPDATE;
+    IF NOT FOUND OR g.status <> 'pending' OR g.attempts = 0 THEN
+        RETURN false;
+    END IF;
+
+    IF p_ok THEN
+        UPDATE comms.notification_digests d
+           SET status = 'sent', sent_at = pg_catalog.now(), provider_ref = p_provider_ref,
+               claimed_until = NULL, last_error = NULL
+         WHERE d.id = g.id;
+    ELSIF g.attempts >= 5 THEN
+        UPDATE comms.notification_digests d
+           SET status = 'failed', claimed_until = NULL, last_error = v_error
+         WHERE d.id = g.id;
+    ELSE
+        UPDATE comms.notification_digests d
+           SET claimed_until = pg_catalog.now() + pg_catalog.make_interval(mins => (2 ^ g.attempts)::integer),
+               last_error = v_error
+         WHERE d.id = g.id;
+    END IF;
+    RETURN true;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.fn_record_digest_result(uuid, boolean, text, text) IS
+    'Records one digest send: p_ok marks a leased digest sent (sent_at, Resend''s message id); a failure keeps it pending with its error code and holds it 2^attempts minutes, and the fifth failure closes it failed. Releases the lease. Answers false and changes nothing for a digest that is not leased (sent, skipped, failed, never claimed or unknown). PROJECTS NO2. Service role only.';
+
 -- (c) Expiry sweep: a reminder that has come and gone stops cluttering the inbox. Archives, never
 -- deletes (root CLAUDE.md §5).
 CREATE OR REPLACE FUNCTION comms.fn_sweep_expired()

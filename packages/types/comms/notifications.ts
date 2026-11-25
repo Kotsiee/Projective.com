@@ -373,10 +373,51 @@ export const NotificationDigestSchema = z.object({
 	/** Per-category counts + headline items for the email template. */
 	summary: z.record(z.string(), z.unknown()),
 	sentAt: timestamp.nullable(),
+	/** Sends tried (PROJECTS NO2); the fifth failure closes the digest `failed`. */
+	attempts: z.number().int().min(0),
+	/** The lease, or a failed try's backoff: not claimable before it. */
+	claimedUntil: timestamp.nullable(),
+	/** Resend's message id once sent. */
+	providerRef: z.string().nullable(),
+	/** The last send's error code; never an address or a body. */
+	lastError: z.string().nullable(),
+	/** Why a `skipped` digest closed unsent: `expired` | `no_target` | `suppressed_destination` | `snoozed` | `no_items`. */
+	skippedReason: z.string().nullable(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
 });
 export type NotificationDigest = z.infer<typeof NotificationDigestSchema>;
+
+/** One line of a digest email: a title, a same-origin path or null, and its category. Never a body. */
+export const DigestItemSchema = z.object({
+	title: z.string(),
+	action_url: z.string().nullable(),
+	category: NotificationCategory,
+});
+export type DigestItem = z.infer<typeof DigestItemSchema>;
+
+/**
+ * A row of `comms.fn_claim_digests` (PROJECTS NO2), as Postgres sends it. A leased digest is `pending`
+ * with its address, counts and items; a `skipped` or `failed` one carries its `reason` and nothing to
+ * send.
+ */
+export const ClaimedDigestRowSchema = z.object({
+	digest_id: uuid,
+	user_id: uuid,
+	period: z.enum(["daily", "weekly"]),
+	window_start: timestamp,
+	window_end: timestamp,
+	status: z.enum(["pending", "skipped", "failed"]),
+	reason: z.string().nullable(),
+	attempts: z.number().int().min(0),
+	address: z.string().nullable(),
+	total: z.number().int().min(0).nullable(),
+	counts: z.record(z.string(), z.number().int().min(0)).nullable(),
+	items: z.array(DigestItemSchema).nullable(),
+	/** Whether a Marketing item is listed, so the mail owes its one-click unsubscribe. */
+	marketing: z.boolean().nullable(),
+});
+export type ClaimedDigestRow = z.infer<typeof ClaimedDigestRowSchema>;
 // #endregion
 
 // #region Provider callbacks & suppressions

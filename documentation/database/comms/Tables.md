@@ -256,6 +256,20 @@ The rolled-up delivery a `digest_frequency` user gets instead of N individual se
 `(user_id, period, window_start)`, so a double cron tick produces one email. `status = 'skipped'`
 records an empty window, making the job provably idempotent rather than silently absent.
 
+**The send (PROJECTS NO2, 2026-11-25).** `comms.fn_claim_digests` leases a `pending` digest to one
+sender and `comms.fn_record_digest_result` records the outcome; `status` keeps its four values (a
+leased digest stays `pending`):
+
+| Column           | Type        | Notes                                                                                              |
+| :--------------- | :---------- | :------------------------------------------------------------------------------------------------- |
+| `attempts`       | smallint    | Sends tried, `≥ 0`. The fifth failure closes the digest `failed`.                                  |
+| `claimed_until`  | timestamptz | The 15-minute lease; after a failed try, the end of its 2^attempts-minute backoff. Not claimable before it. |
+| `provider_ref`   | text        | Resend's message id once `sent`.                                                                   |
+| `last_error`     | text        | The last failed send's code (`lease_lapsed` when a sender died holding the fifth lease); never an address or a body. |
+| `skipped_reason` | text        | Why a digest closed unsent: `expired`, `no_target`, `suppressed_destination`, `snoozed` or `no_items`. |
+
+Owner-read (`Users view own digests`); written only by the two definers and the builder.
+
 ### `comms.delivery_events`
 
 Inbound gateway callbacks (delivered / bounced / complaint / device unregistered).

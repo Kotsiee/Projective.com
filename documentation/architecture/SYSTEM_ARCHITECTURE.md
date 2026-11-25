@@ -2673,6 +2673,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `integrations-renew-channels`       | hourly :35                        | `POST /api/integrations/cron/channels?limit=100` · `INTEGRATIONS_CRON_SECRET` | Integrations — `IntegrationsBackendService.renewChannels` (#343 C4) | Claims each channel within 24 h of lapsing once (`expiring`, `SKIP LOCKED`); a third failure degrades its connection.
 | `integrations-calendar-sync`        | every 5 min                       | `POST /api/integrations/cron/sync?limit=50` · `INTEGRATIONS_CRON_SECRET` | Integrations — `CalendarSyncBackendService.syncDue` (#383 R3) | Claims each calendar a push marked due or an hour unread, under a 10-minute lease (`SKIP LOCKED`); a read lands in one call and only while its claim is held, so a repeat changes nothing.
 | `comms-dispatch-sweep`              | every minute                      | `POST /api/comms/cron/dispatch?limit=200` · `COMMS_DISPATCH_SECRET` | Comms — `NotificationDispatchService.dispatch` (Decision #344 (a)) | Claims through `comms.fn_claim_deliveries` (`SKIP LOCKED`, a 15-minute lease on a queued row, results recorded forward only), so an overlapping run sends nothing twice; claims nothing while `comms.dispatch_webhook` is off.
+| `comms-digest-send`                 | every 10 min from :03             | `POST /api/comms/cron/digests?limit=50` · `COMMS_DISPATCH_SECRET` | Comms — `DigestMailService.send` (PROJECTS NO2) | Claims through `comms.fn_claim_digests` (`SKIP LOCKED`, a 15-minute lease, the digest decided again against preferences, snooze and suppression), records each send through `comms.fn_record_digest_result` (2^attempts-minute backoff, failed at the fifth), so an overlapping run sends nothing twice; claims nothing while `comms.dispatch_webhook` is off. |
 | `ops-deliver-alerts`                | every 5 min                       | `POST /api/ops/cron/alerts?limit=50` · `OPS_CRON_SECRET` | Ops — `OpsAlertService.deliver` (MR4, Decision #461; OPS5) | Folds under an advisory lock and records each fold (`ops.alert_seen`), leases a due alert for 5 minutes and records each send forward only, so an overlapping run sends nothing twice; a failed send stays pending and backs off. Three channels that fail apart (webhook, email digest, in-app notice to every operator); the in-app notices and their record are one transaction. |
 | `search-embeddings-backfill`        | hourly :38                        | `POST /api/search/cron/embeddings?limit=50` · `SEARCH_CRON_SECRET` | Search — `runScheduledBackfill` (COMMS SR2, CAS S14) | Embeds up to 50 public items whose stored vector is missing or stale; a stored vector is skipped by its text hash and model, so a repeated run embeds nothing twice. A no-op while embeddings are off. |
 | `newsletter-provider-sync`          | every 5 min, from :02             | `POST /api/newsletter/cron/sync?limit=50` · `COMMS_DISPATCH_SECRET` | Newsletter — `NewsletterProviderSync.run` (CD1 step 5, Decision #480 Q1 A) | Reads `community.newsletter_sync_batch` (no rows while `newsletter.provider_sync` is off) and stamps each provider call against the row version it read (`record_newsletter_sync`), so a re-run, or a change made during one, converges; the provider calls are idempotent by shape (a create of an existing address is answered by a lookup). Ends a pass at a 429 or after 60 s. |
@@ -2779,6 +2780,7 @@ Event (RPC / trigger / cron)
                       └─ security.audit_logs                                    (financial/security events)
 pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps   (registered in 00005060 — §Scheduled jobs)
         └ comms-dispatch-sweep (http, every minute) ──► POST /api/comms/cron/dispatch   (re-drives and retries)
+        └ comms-digest-send (http, every 10 min) ──► POST /api/comms/cron/digests       (mails built digests)
 ```
 
 **Boundaries that matter:**
@@ -2889,7 +2891,7 @@ shows the notification and opens only a same-origin path on a click. The web app
 iOS deliver to a Home-Screen app.
 
 **Still to build:** SMS (NT5, Twilio), a transport in the same registry with its provider
-credentials; the daily and weekly digest emails (PRD-E15); and device health for push
+credentials; and device health for push
 (`failure_count` is never incremented, so `fn_reap_dead_devices` reaps nothing, PRD-E18).
 
 ---

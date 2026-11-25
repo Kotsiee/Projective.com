@@ -126,7 +126,13 @@ aligned on time and location.
   On an iPhone or iPad, alerts need
   Projective added to the Home Screen first, and Settings says so. A notification click opens only
   a page inside Projective. The SMS setting shows only once the SMS provider (Twilio) is configured.
-  **Not built yet:** SMS, and the daily and weekly digest emails (Decision #339, rulings P3 and N3).
+  A person who chose a daily or weekly digest gets one email at their local digest hour: how many
+  notices arrived in each category, then each one's title and a link into Projective, and never what
+  a notice says. It leaves out whatever they have since dismissed, turned off or muted for email.
+  Nothing goes to an address that bounced, and nothing while they are snoozed. Quiet hours do not
+  hold it back, because quiet hours withhold push and SMS only. A digest that cannot be sent within a
+  day is dropped; the inbox still has every notice (PROJECTS NO2).
+  **Not built yet:** SMS (Decision #339, ruling P3).
 - **Counter-proposals are bounded.** An attendee may hold at most three unapproved time proposals at
   once (the host's own are not counted), and a replacement slot keeps the original event's length: a
   move is a move, never an extension. No replacement runs longer than 24 hours, so an event longer

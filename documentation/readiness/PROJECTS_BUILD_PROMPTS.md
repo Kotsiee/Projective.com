@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 11 open, 1 partly done (FL1, #564), 14 done (§0 ledger).
-> Runnable now: NO1–NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 10 open, 1 partly done (FL1, #564), 15 done (§0 ledger).
+> Runnable now: NO1, NO3, NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -67,6 +67,7 @@ A prompt that lands gets a row here.
 | CH3 | Inside a project every DM and group opens in place, and reading marks it read: `comms.project_channel_reads` + `comms.mark_room_read` + `comms.unread_rooms` behind `POST /api/projects/messages/read` (the send's own pair; a `cht-` channel marks the thread, so `/messages` clears too) and the `ProjectChat` island's after-paint read; `comms.project_dm_threads` (groups, no 500 cap); the `cht-` Files and Members tabs; `comms.dm_thread_projects` + `comms.bring_dm_into_project` (the other told, `message.brought_into_project`) + `comms.take_dm_out_of_project` (stamps kept) behind `POST | DELETE /api/projects/messages/dm`, the Members "Message" action and the header's Take out; probe `room_read_marks.sql` | `619a3885` (#560) | `b14e115f` |
 | CH1 | Authors edit and delete their messages through doors: `comms.edit_message` (within `message_edit_window_minutes`, 15) and `comms.delete_message` (a tombstone at any time), definers that keep every replaced text in the append-only `comms.message_revisions` and refuse an archived room or one a live dispute freezes (the stage's rooms and the project's General room, PM423); the `edit_own_messages` policy and every client `UPDATE` on the message tables gone; `dm_messages.edited_at`; `comms.message_edit_rules`, `comms.get_message_revisions` (operators); the vault manifest v2 carries each message's revision trail by hash; `PATCH`/`DELETE /api/messages/[id]`; the bubble's Edit and Delete for everyone, `MessageEditor`, `DeleteMessageDialog`, the Edited mark and the tombstone; dev axis `chatEdits`; probe `message_edit.sql` | `2e8df2a4` (#562) | `a48975b5` |
 | CH2 | A team's own room and a business's room on every stage they work on, opened in the transaction that makes them due: `comms.project_channels.team_id` + `ck_project_channels_team_room` + `uq_project_channels_private_room`; `comms.open_private_rooms` from three triggers (a team seat going live, a stage inserted, a project re-pointed at a business) and the lazy `get_stage_channels`; `can_access_scope`'s team arm is one team's (4-arg, `p_team_id`), the solo arm gone; the tree's Business group (`ProjectChannels.business`, `ChannelKind` `business`), team rooms joined by `team_id`; probe `private_rooms.sql` | `1958096c` (#561) | `47db5bca` |
+| NO2 | The daily and weekly digests are mailed once each, as counts, titles and links and never a body: `comms.notification_digests` gains `attempts`, `claimed_until`, `provider_ref`, `last_error`, `skipped_reason`; `comms.fn_claim_digests` (`SKIP LOCKED`, a 15-minute lease, each digest decided again against preferences, snooze and suppression) and `comms.fn_record_digest_result` (2^attempts backoff, failed at the fifth); `DigestMailService` through the dispatcher's Resend transport, `POST /api/comms/cron/digests`, job `comms-digest-send`; probes `digest_claim.sql`, `digest_claim_race.sql` | (#565) | `0c7aa8dc` |
 
 ### 0.1 Row → work order
 
@@ -145,7 +146,7 @@ The operator's ruling is MW-59; it is not this file's row.
 | Row   | Now · Crit · Gate  | Work order                | The row flips (or its note clears) when                                                 |
 | :---- | :----------------- | :------------------------ | :-------------------------------------------------------------------------------------- |
 | PJ-59 | ✅ · High · MVP    | PJZ                       | The note says what is true: email and push dispatch locally; the drawer polls until MS3 |
-| PJ-60 | 🟡 · Crit · UAT    | **NO2** + CD2             | Digests are mailed, and a hosted send is recorded                                       |
+| PJ-60 | 🟡 · Crit · UAT    | CD2 (NO2 ✅, #565)         | A hosted send is recorded                                                               |
 | PJ-61 | 🟡 · Normal · PROD | COMMS NT5 + **NO3** + CD2 | SMS runs behind its configuration; dead devices are dropped; hosted VAPID keys          |
 | PJ-62 | ❌ · High · UAT    | COMMS MS4                 | `message.new` and `message.mention` notify, and a muted thread stays quiet              |
 
@@ -183,7 +184,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
 | Messaging                      |   61% | MS5 61% → P2d 67% (CH1 ✅, #562; CH3 ✅, #560) → CH2 ✅ (#561) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
-| Notifications                  |   50% | MS4 75% → NO2 + CD2 94% → NT5 + NO3 100%                                                                          |
+| Notifications                  |   50% | MS4 75% → CD2 94% → NT5 + NO3 100% (NO2 ✅, #565)                                                                    |
 | Files & assets                 |   60% | LK1 65% → FL3 75% → FL4 85% → FL2 + you 90% → SN1 + SN2 + FL1 100%                                                |
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
 
@@ -191,7 +192,7 @@ after PM-WP1. The paths follow §0.2's order:
 26, 27, 29, 30, 47, 49 and 57 (PJ-23 ✅, TK2). Their work orders, in order: D7a + P6, S3, WP9, WP6, NO1
 (+ CD2), and the chat chain (MS3, MS5, P2d, SN3, the T&S P-chain; CH1 ✅, #562).
 
-**What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a) and PJ-60 (NO2 + CD2) (PJ-43 ✅, EX2 + EX3).
+**What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a) and PJ-60 (CD2; NO2 ✅, #565) (PJ-43 ✅, EX2 + EX3).
 Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a, EX1,
 FL3, FL4, CFG2 and LP1.
 
@@ -236,7 +237,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. CH3 ✅ (#560) and CH4 ✅ (#559); next **NO2**, **FL4**, **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), **NO4**, **NO1**, and **FL3**'s
+11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); next **FL4**, **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), **NO4**, **NO1**, and **FL3**'s
     slug.
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
@@ -275,10 +276,10 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00002011` (projects policies)                           | PM WP4b, WP5a, WP9                                           | —                                                                 |
 | `00000017` + `00001260` (disputes)                       | PM-WP4a step 6                                               | FBP DB21; MR3                                                     |
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | —                                                            | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
-| `00001310` (notification engine)                         | NO2                                                          | T&S                                                               |
+| `00001310` (notification engine)                         | — (NO2 ✅, #565)                                            | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
 | `00005010` (notification catalogue)                      | EX1, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1                  | COMMS MS4                                                         |
-| `00005060` (jobs)                                        | FL1, NO2; PM WP5a, D7b, GH1                                  | MR5; T&S SN2                                                      |
+| `00005060` (jobs)                                        | FL1; PM WP5a, D7b, GH1                                       | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
 | `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1      | COMMS NT5; T&S R3                                                 |
 | `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | —                                                            | COMMS MS3, MS5; T&S R2                                            |
@@ -689,42 +690,6 @@ SYSTEM_ARCHITECTURE.md if a param is added; the decision row.
 
 §1.2 rows: **PJ-17** stays 🟡 ("the hosted send, CD2, and counsel's switch"). Its stale "never
 delivered" text corrected.
-
-### NO2 — Digests are mailed
-
-Narrows PJ-60; CD2 closes it.
-
-```text
-PROMPT NO2: The notification digests that are built every hour and day are claimed once and
-mailed, with titles and links only, never message bodies
-
-ROLE: Backend engineer. Queue S: 00001310, 00005060 (one writer).
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - comms.fn_build_digests (00001310:1035; insert :1092; jobs 00005060:161-166) writes pending
-    digest rows, and nothing claims or mails them. The table has no queued state.
-  - Escalation already inserts an email delivery (00001310:~1001-1008). The dispatcher is NT2
-    (ee275e93); the email transport and bounces are NT3 (153f20d9).
-  - A pattern to copy: MR4's ops.fn_claim_alerts email digest (#507).
-  - Rulings: #344 (a), #339 N3 (b). PRD-E15 has no work order.
-
-STEPS:
-  1. Red first: supabase/probes/digest_claim.sql. A built digest is never claimed; two
-     concurrent claimers must take it exactly once.
-  2. A lease claim (FOR UPDATE SKIP LOCKED, claimed_until, attempts), a send through the
-     dispatcher's email transport, then sent or failed with a retry ceiling. Honour quiet hours,
-     preferences and suppression.
-  3. The template lists counts, titles and links, and never a message body.
-  4. The job row (one writer for 00005060).
-
-ACCEPTANCE: the probe is green; locally, a seeded persona with digest preferences receives one
-digest email; screenshots of the email.
-
-SAME CHANGE: documentation/database/comms/*; PRODUCTION_READINESS.md (PRD-E15); the decision
-row.
-```
-
-§1.2 rows: **PJ-60** stays 🟡 ("the hosted send, CD2"); PRD-E15 → ✅ locally.
 
 ### NO3 — A push device that keeps failing is dropped
 

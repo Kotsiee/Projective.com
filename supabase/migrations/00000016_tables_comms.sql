@@ -742,13 +742,22 @@ CREATE TABLE comms.notification_digests (
     item_count integer NOT NULL DEFAULT 0,
     summary jsonb NOT NULL DEFAULT '{}'::jsonb,
     sent_at timestamptz,
+    -- The send (PROJECTS NO2): sends tried, the lease (a failed try also holds the row here until its
+    -- 2^attempts-minute backoff ends), Resend's message id, the last error code (never an address or a
+    -- body), and why a digest closed unsent.
+    attempts smallint NOT NULL DEFAULT 0,
+    claimed_until timestamptz,
+    provider_ref text,
+    last_error text,
+    skipped_reason text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT notification_digests_user_id_fkey
         FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
     CONSTRAINT notification_digests_status_check CHECK (status IN ('pending', 'sent', 'skipped', 'failed')),
     CONSTRAINT notification_digests_window_check CHECK (window_end > window_start),
-    CONSTRAINT notification_digests_item_count_check CHECK (item_count >= 0)
+    CONSTRAINT notification_digests_item_count_check CHECK (item_count >= 0),
+    CONSTRAINT notification_digests_attempts_check CHECK (attempts >= 0)
 );
 
 CREATE TABLE comms.delivery_events (
