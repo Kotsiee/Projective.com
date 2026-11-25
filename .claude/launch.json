@@ -610,6 +610,17 @@
 			"port": 13971
 		},
 		{
+			"name": "web-fl2-live",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '3000'; deno task dev --port 3000 --strictPort"
+			],
+			"port": 3000,
+			"autoPort": false
+		},
+		{
 			"name": "web-ch4",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [

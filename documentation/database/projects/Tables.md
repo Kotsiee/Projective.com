@@ -611,6 +611,15 @@ invitation and copies neither its address nor its token. RLS is on with no polic
 revokes the schema's default grant from `anon` and `authenticated`: only the definer doors read or
 write it. Zod: `InvitationMailRowSchema`.
 
+| Column          | Type        | Notes                                                                                       |
+| :-------------- | :---------- | :------------------------------------------------------------------------------------------ |
+| `id`            | uuid PK     | `gen_random_uuid()`.                                                                        |
+| `invitation_id` | uuid UNIQUE | NOT NULL. FK → `projects.project_invitations.id` ON DELETE CASCADE. One mail per invitation (`uq_invitation_mail_invitation`): never a reminder. |
+| `attempts`      | smallint    | NOT NULL, default 0, ≥ 0. Claims taken.                                                     |
+| `claimed_at`    | timestamptz | The sender's lease; a claim older than five minutes is taken again.                         |
+| `sent_at`       | timestamptz | The transport accepted it (or, in development, logged it).                                  |
+| `failed_at`     | timestamptz | Set at the fifth refused attempt; not tried again.                                          |
+| `created_at`    | timestamptz | NOT NULL, default `now()`. The 14-day once-per-address window counts from it.              |
 
 ### `projects.stage_invite_links`
 
