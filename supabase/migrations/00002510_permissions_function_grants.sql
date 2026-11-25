@@ -2503,8 +2503,8 @@ REVOKE ALL ON FUNCTION scheduling.fn_forget_guest_addresses () FROM PUBLIC, anon
 GRANT EXECUTE ON FUNCTION scheduling.fn_forget_guest_addresses () TO service_role;
 REVOKE ALL ON FUNCTION scheduling.claim_guest_mail (integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION scheduling.claim_guest_mail (integer) TO service_role;
-REVOKE ALL ON FUNCTION scheduling.finish_guest_mail (uuid, boolean) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION scheduling.finish_guest_mail (uuid, boolean) TO service_role;
+REVOKE ALL ON FUNCTION scheduling.finish_guest_mail (uuid, boolean, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.finish_guest_mail (uuid, boolean, text) TO service_role;
 REVOKE ALL ON FUNCTION scheduling.guest_invitation (text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION scheduling.guest_invitation (text) TO service_role;
 REVOKE ALL ON FUNCTION scheduling.guest_answer (text, scheduling.rsvp_response)

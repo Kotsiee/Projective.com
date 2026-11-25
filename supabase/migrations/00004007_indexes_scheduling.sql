@@ -14,6 +14,9 @@ CREATE INDEX IF NOT EXISTS idx_guest_links_seat ON scheduling.guest_links (atten
 CREATE INDEX IF NOT EXISTS idx_guest_mail_seat ON scheduling.guest_mail (attendee_id);
 CREATE INDEX IF NOT EXISTS idx_guest_mail_due ON scheduling.guest_mail (due_at)
     WHERE sent_at IS NULL AND failed_at IS NULL;
+-- A provider's bounce finds its guest message by Resend's id (comms.fn_record_delivery_event).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_guest_mail_provider_ref ON scheduling.guest_mail (provider_ref)
+    WHERE provider_ref IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_presence_events_room ON scheduling.presence_events (room_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_presence_events_age ON scheduling.presence_events (occurred_at);
 CREATE INDEX IF NOT EXISTS idx_event_mirrors_due ON scheduling.event_mirrors (dirty_at)

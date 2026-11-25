@@ -2887,6 +2887,14 @@ Resend's signed webhook (`POST /api/comms/webhooks/resend`, `DeliveryEventServic
   (`account.email_undeliverable`; Settings → Account offers **Confirm again**, which lifts it).
 - **A complaint** suppresses Marketing only.
 
+**Calendar guest mail** (Decision #391) leaves through the same transport and honours the same list
+(PROJECTS NO4, #391 (o) closed):
+- `scheduling.claim_guest_mail` mails no address `fn_is_suppressed` refuses for `schedule`; that
+  message stops, and its host sees "Email not delivered". `guest_request_code` mints no code for one.
+- Each send keeps Resend's id (`deliverMailWithReceipt` → `scheduling.guest_mail.provider_ref`). The
+  webhook matches it, so a guest's hard bounce suppresses the address and tells the host, though no
+  delivery row exists.
+
 **Push is built (COMMS NT4).** `transport-webpush.ts` sends to a browser's push service while the
 three VAPID keys are well formed (§Environment Variable Contract):
 - an ES256 VAPID JWT for the endpoint's origin, 12 hours long;
@@ -4510,7 +4518,10 @@ The application relies on a strict set of environment variables. The canonical s
 > `POST /api/comms/webhooks/resend`, and the route refuses every delivery while it is unset or the
 > placeholder. A hard bounce suppresses the address for every category, and a complaint or a
 > one-click unsubscribe (`/api/comms/unsubscribe`) suppresses it for Marketing only
-> (§The Notification Engine).
+> (§The Notification Engine). `MAIL_FROM_INVITES` is the sender of mail to somebody with no account
+> (calendar guests, `inviteTransport()`), on a subdomain of its own such as
+> `Projective <invites@invites.<domain>>`, so invitations a host abuses cannot hurt sign-up mail
+> (Decision #391 (n)); unset or the placeholder, that mail is from `MAIL_FROM`. Optional everywhere.
 
 > **Web Push — VAPID, off until it has keys (COMMS NT4).** `VAPID_PUBLIC_KEY` (the base64url raw
 > P-256 point, 65 bytes), `VAPID_PRIVATE_KEY` (its base64url scalar, 32 bytes) and `VAPID_SUBJECT`

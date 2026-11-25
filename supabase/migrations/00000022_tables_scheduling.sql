@@ -319,8 +319,12 @@ CREATE TABLE scheduling.guest_mail (
     due_at timestamptz NOT NULL DEFAULT now(),
     claimed_at timestamptz,
     sent_at timestamptz,
-    -- The provider refused it every time. The host is told (scheduling.get_guest_addresses).
+    -- The provider refused it every time, the address is suppressed, or it bounced hard. The host is
+    -- told (scheduling.get_guest_addresses).
     failed_at timestamptz,
+    -- Resend's message id for the send, which its webhook quotes, so a bounce finds this row and its
+    -- address (comms.fn_record_delivery_event).
+    provider_ref text,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT ck_guest_mail_kind CHECK (kind IN ('invite', 'moved', 'withdrawn'))
 );

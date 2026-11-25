@@ -230,6 +230,7 @@ export const ENV_MANIFEST: readonly EnvEntry[] = [
 	// Mail and push
 	app("RESEND_API_KEY", "secret", HOSTED),
 	app("MAIL_FROM", "config", HOSTED),
+	app("MAIL_FROM_INVITES", "config"),
 	app("RESEND_WEBHOOK_SECRET", "secret", HOSTED),
 	app("VAPID_PUBLIC_KEY", "config"),
 	app("VAPID_PRIVATE_KEY", "secret"),

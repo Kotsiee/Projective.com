@@ -434,6 +434,12 @@ export interface ServerEnv {
 	/** Who mail is from, `Projective <no-reply@notify.<domain>>`, from `MAIL_FROM`. */
 	mailFrom: string | undefined;
 	/**
+	 * Who mail to somebody with no account is from, on its own subdomain (Decision #391 (n)):
+	 * `Projective <invites@invites.<domain>>`, from `MAIL_FROM_INVITES`. Unset, the placeholder or not
+	 * an address, that mail is from `MAIL_FROM` (`services/mail/transport.ts` `inviteTransport`).
+	 */
+	mailFromInvites: string | undefined;
+	/**
 	 * The signing secret of the Resend webhook endpoint (`whsec_…`, Svix), from `RESEND_WEBHOOK_SECRET`
 	 * (COMMS NT3; providers spec §8.5 setup 6). Server-only. It signs every
 	 * `POST {APP_URL}/api/comms/webhooks/resend` delivery; while it is unset, the `XXXX-XXXX`
@@ -533,6 +539,7 @@ export function serverEnv(): ServerEnv {
 		s3PlatformAccountId: firstEnv("S3_PLATFORM_ACCOUNT_ID"),
 		resendApiKey: firstEnv("RESEND_API_KEY"),
 		mailFrom: firstEnv("MAIL_FROM"),
+		mailFromInvites: firstEnv("MAIL_FROM_INVITES"),
 		resendWebhookSecret: firstEnv("RESEND_WEBHOOK_SECRET"),
 		vapidPublicKey: firstEnv("VAPID_PUBLIC_KEY"),
 		vapidPrivateKey: firstEnv("VAPID_PRIVATE_KEY"),

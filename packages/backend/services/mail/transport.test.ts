@@ -1,5 +1,11 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { configuredTransport, mailCanLeave, resendTransport } from "./transport.ts";
+import {
+	configuredTransport,
+	deliverMailWithReceipt,
+	inviteTransport,
+	mailCanLeave,
+	resendTransport,
+} from "./transport.ts";
 
 /** Run `fn` with these variables set, an `undefined` one removed, and put them back. */
 function withEnv(vars: Record<string, string | undefined>, fn: () => void): void {
@@ -91,4 +97,55 @@ Deno.test("mailCanLeave — production with no transport promises nothing", () =
 		{ RESEND_API_KEY: "re_real", MAIL_FROM: "a@b.example", DENO_ENV: "production" },
 		() => assertEquals(mailCanLeave(), true),
 	);
+});
+
+Deno.test("deliverMailWithReceipt — a sent message carries the provider's id; nothing else does", async () => {
+	const quiet = { info: () => {}, warn: () => {} };
+	const accepted = { send: () => Promise.resolve({ id: "4ef9a417" }) };
+	const refused = { send: () => Promise.reject(new Error("Resend answered 422")) };
+	assertEquals(
+		await deliverMailWithReceipt(MESSAGE, "test", "dev", { ...quiet, transport: accepted }),
+		{ outcome: "sent", id: "4ef9a417" },
+	);
+	assertEquals(
+		await deliverMailWithReceipt(MESSAGE, "test", "dev", { ...quiet, transport: refused }),
+		{ outcome: "unavailable", id: null },
+	);
+	assertEquals(
+		await deliverMailWithReceipt(MESSAGE, "test", "dev", {
+			...quiet,
+			transport: null,
+			appEnv: "development",
+		}),
+		{ outcome: "logged", id: null },
+	);
+});
+
+Deno.test("inviteTransport — invitations leave from MAIL_FROM_INVITES, else from MAIL_FROM", async () => {
+	const froms: unknown[] = [];
+	const real = globalThis.fetch;
+	globalThis.fetch = ((_url: string, init: RequestInit) => {
+		froms.push(JSON.parse(String(init.body)).from);
+		return Promise.resolve(new Response("{}", { status: 200 }));
+	}) as typeof fetch;
+	const transports: ReturnType<typeof inviteTransport>[] = [];
+	try {
+		const base = {
+			RESEND_API_KEY: "re_real",
+			MAIL_FROM: "Projective <no-reply@notify.example.com>",
+		};
+		withEnv({ ...base, MAIL_FROM_INVITES: "Projective <invites@invites.example.com>" }, () => {
+			transports.push(inviteTransport());
+		});
+		withEnv({ ...base, MAIL_FROM_INVITES: "XXXX-XXXX" }, () => transports.push(inviteTransport()));
+		withEnv({ ...base, MAIL_FROM_INVITES: undefined }, () => transports.push(inviteTransport()));
+		for (const transport of transports) await transport?.send(MESSAGE);
+	} finally {
+		globalThis.fetch = real;
+	}
+	assertEquals(froms, [
+		"Projective <invites@invites.example.com>",
+		"Projective <no-reply@notify.example.com>",
+		"Projective <no-reply@notify.example.com>",
+	]);
 });

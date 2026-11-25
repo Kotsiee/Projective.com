@@ -1752,6 +1752,7 @@ DECLARE
     v_owner_email uuid;
     v_active comms.channel_suppressions%ROWTYPE;
     v_widened boolean := false;
+    v_guest text;
 BEGIN
     IF COALESCE(btrim(p_provider), '') = '' OR COALESCE(btrim(p_provider_event_id), '') = ''
        OR COALESCE(btrim(p_event_type), '') = '' THEN
@@ -1802,6 +1803,15 @@ BEGIN
                SET status = 'failed', failed_at = pg_catalog.now(), error = 'hard_bounce',
                    attempts = GREATEST(d.attempts, 5)
              WHERE d.id = v_delivery.id AND d.status IN ('queued', 'sent', 'delivered');
+        ELSIF COALESCE(p_provider_ref, '') <> '' THEN
+            -- A calendar guest's message carries the same id (Decision #391 (o)): it never arrived,
+            -- so its host is told, and its seat names the address when the event does not.
+            UPDATE scheduling.guest_mail m
+               SET failed_at = COALESCE(m.failed_at, pg_catalog.now())
+              FROM scheduling.event_attendees a
+             WHERE m.provider_ref = p_provider_ref AND a.id = m.attendee_id
+            RETURNING lower(a.email) INTO v_guest;
+            v_address := COALESCE(NULLIF(v_address, ''), v_guest, '');
         END IF;
         IF v_address = '' THEN
             RETURN 'hard_bounce';
@@ -1868,7 +1878,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION comms.fn_record_delivery_event(text, text, text, text, text, text, timestamptz) IS
-    'Applies one verified provider event in one transaction with its (provider, provider_event_id) claim, so a replay returns ''replayed'' and changes nothing. email.delivered marks the delivery delivered; a permanent email.bounced fails the delivery for good, suppresses the address for email in every category (widening a marketing-only row) and, the first time, sends its owner the mandatory account.email_undeliverable; email.complained suppresses the address for Marketing only; email.failed and email.suppressed fail the delivery; anything else is only recorded. Returns delivered | hard_bounce | complaint | failed | recorded | replayed. Service role only.';
+    'Applies one verified provider event in one transaction with its (provider, provider_event_id) claim, so a replay returns ''replayed'' and changes nothing. email.delivered marks the delivery delivered; a permanent email.bounced fails the delivery for good (or, by the same provider id, a calendar guest''s scheduling.guest_mail row, whose seat names the address when the event does not), suppresses the address for email in every category (widening a marketing-only row) and, the first time, sends its owner the mandatory account.email_undeliverable; email.complained suppresses the address for Marketing only; email.failed and email.suppressed fail the delivery; anything else is only recorded. Returns delivered | hard_bounce | complaint | failed | recorded | replayed. Service role only.';
 
 -- (b) The account's one-click marketing unsubscribe (RFC 8058, POST /api/comms/unsubscribe). The
 -- signed link names the person, never an address: their primary verified address is suppressed for

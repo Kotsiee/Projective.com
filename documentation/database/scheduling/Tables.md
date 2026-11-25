@@ -260,11 +260,13 @@ the seat is withdrawn or claimed, and a guest asked again gets a new link. The c
 inbox before a call sits here too: `code_hash`, `code_expires_at` (the entry's end), `code_sent_at`,
 and two brakes on whoever holds a link, `code_sends` (10) and `code_misses` (5, reset by a new code).
 
-**`scheduling.guest_mail`** is what still has to reach a guest's inbox, written in the transaction of
-the move it announces. It names a seat rather than copying an address. `kind` is `invite`, `moved` or
-`withdrawn`. `due_at` holds back a new time that is over its address's limit. `claimed_at` and
-`attempts` are the sweep's; `sent_at` ends a row, and `failed_at`, after five refusals, is what the
-host sees as "Email not delivered".
+**`scheduling.guest_mail`** is what still has to reach a guest's inbox, written in the transaction
+of the move it announces. It names a seat rather than copying an address. `kind` is `invite`,
+`moved` or `withdrawn`. `due_at` holds back a new time that is over its address's limit.
+`claimed_at` and `attempts` are the sweep's; `sent_at` ends a row, and `failed_at` is what the host
+sees as "Email not delivered": five refusals, an address the suppression list refuses, or a hard
+bounce. `provider_ref` is Resend's message id for the send (unique while set), which its webhook
+quotes, so `comms.fn_record_delivery_event` finds the row and its address (Decision #391 (o)).
 
 **`scheduling.guest_mail_quota`** is what each person and each address has used today, PK
 `(subject, day)`, `subject` being a user's id or an address's hash. A row of its own rather than a

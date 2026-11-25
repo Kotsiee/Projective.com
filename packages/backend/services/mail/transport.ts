@@ -7,7 +7,8 @@ import { serverEnv } from "../../core/env.ts";
  * The transport is Resend, reached with one `fetch` so there is no dependency to carry. It is on only
  * with a real key and a sender: a `re_…` key from `RESEND_API_KEY` and an address in `MAIL_FROM`, so
  * the `XXXX-XXXX` placeholder counts as absent. {@link deliverMail} answers honestly with an
- * {@link EmailDeliveryOutcome} whichever way that goes:
+ * {@link EmailDeliveryOutcome} whichever way that goes ({@link deliverMailWithReceipt} adds Resend's
+ * message id, so a bounce can be matched to the send):
  *
  * - **`sent`** — the transport accepted the message.
  * - **`logged`** — no transport, outside production: a development line goes to the server console,
@@ -85,11 +86,22 @@ export function resendTransport(
 	};
 }
 
-/** The transport this environment is configured with, or `null` while it has none. */
-export function configuredTransport(): MailTransport | null {
-	const { resendApiKey, mailFrom } = serverEnv();
-	if (!resendApiKey?.startsWith("re_") || !mailFrom?.includes("@")) return null;
-	return resendTransport(resendApiKey, mailFrom);
+/** The transport this environment is configured with, sending from `from`, or `null` while it has none. */
+export function configuredTransport(
+	from: string | undefined = serverEnv().mailFrom,
+): MailTransport | null {
+	const { resendApiKey } = serverEnv();
+	if (!resendApiKey?.startsWith("re_") || !from?.includes("@")) return null;
+	return resendTransport(resendApiKey, from);
+}
+
+/**
+ * The transport for mail to somebody with no account (Decision #391 (n)): from `MAIL_FROM_INVITES`,
+ * its own subdomain, so invitations a host abuses cannot hurt sign-up mail; `MAIL_FROM` while unset.
+ */
+export function inviteTransport(): MailTransport | null {
+	const { mailFromInvites, mailFrom } = serverEnv();
+	return configuredTransport(mailFromInvites?.includes("@") ? mailFromInvites : mailFrom);
 }
 
 /**
@@ -122,32 +134,50 @@ function defaultDeps(): MailerDeps {
 	};
 }
 
+/** How a message left, and the provider's id for it, which its bounce webhook quotes back. */
+export interface MailDelivery {
+	outcome: EmailDeliveryOutcome;
+	/** Resend's message id (`data.email_id` on its webhook); null unless `sent` with one. */
+	id: string | null;
+}
+
 /**
- * Send `message`, and say how it left (see the module doc). Never throws: a transport failure is
- * `unavailable`. `what` names the message in a warning; `devLine` is what development logs instead.
+ * Send `message`, and say how it left (see the module doc) with the provider's message id, for a
+ * sender that matches a later bounce to it. Never throws: a transport failure is `unavailable`.
+ * `what` names the message in a warning; `devLine` is what development logs instead.
  */
+export async function deliverMailWithReceipt(
+	message: MailMessage,
+	what: string,
+	devLine: string,
+	deps: Partial<MailerDeps> = {},
+): Promise<MailDelivery> {
+	const { appEnv, transport, info, warn } = { ...defaultDeps(), ...deps };
+	if (transport) {
+		try {
+			const receipt = await transport.send(message);
+			return { outcome: "sent", id: receipt?.id ?? null };
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			warn(`[mail] the ${what} could not be sent: ${reason}`);
+			return { outcome: "unavailable", id: null };
+		}
+	}
+	if (appEnv === "production") {
+		warn(`[mail] no email transport is configured; a ${what} was not sent.`);
+		return { outcome: "unavailable", id: null };
+	}
+	info(devLine);
+	return { outcome: "logged", id: null };
+}
+
+/** {@link deliverMailWithReceipt}'s outcome alone, for a sender that keeps no provider id. */
 export async function deliverMail(
 	message: MailMessage,
 	what: string,
 	devLine: string,
 	deps: Partial<MailerDeps> = {},
 ): Promise<EmailDeliveryOutcome> {
-	const { appEnv, transport, info, warn } = { ...defaultDeps(), ...deps };
-	if (transport) {
-		try {
-			await transport.send(message);
-			return "sent";
-		} catch (error) {
-			const reason = error instanceof Error ? error.message : String(error);
-			warn(`[mail] the ${what} could not be sent: ${reason}`);
-			return "unavailable";
-		}
-	}
-	if (appEnv === "production") {
-		warn(`[mail] no email transport is configured; a ${what} was not sent.`);
-		return "unavailable";
-	}
-	info(devLine);
-	return "logged";
+	return (await deliverMailWithReceipt(message, what, devLine, deps)).outcome;
 }
 // #endregion

@@ -7,7 +7,7 @@
 > (§0.2), and holds the prompts no domain owns.
 >
 > **Verified against code 2026-11-23 at `f2e25929`.** 4 open, 3 partly done (FL1, #564; FL3, #563; FL2, #568), 19 done (§0 ledger).
-> Runnable now: NO4 and FL1–FL3, each up to its own 🧑 stop.
+> Runnable now: FL1–FL3, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -72,6 +72,7 @@ A prompt that lands gets a row here.
 | NO3 | A push device is dropped only when the push service says it is gone, after 5 consecutive failures whose first is at least 24 hours old, or after 180 days with nothing delivered: `comms.device_tokens.failing_since`; `fn_record_delivery_result` keeps the streak's start and a success resets it and refreshes `last_seen_at`; `fn_reap_dead_devices` waits out an outage (`search_path = ''`); Settings → This device says "This browser stopped receiving notifications" with Turn on again (`/devices/status` `stopped`, `restartPush`), dev axis Push permission → Stopped; probe `push_device_health.sql` | `ca1793c4` (#567) | `0e9cb82a` |
 | EX1 | A project completes when its last money settles or when its client completes it, and completing it opens its reviews: `projects.fn_complete_project` (the one writer of `completed`), `fn_project_complete_blocked`, `can_complete_project`, `preview_project_complete`, `complete_project`, `reopen_project`; `approve_stage` completes the engagement once no stage is unsettled and every ticket has ended, its handover notice reaching every seat holder; the ended-engagement escrow guard refuses a completed engagement (extending is the client's logged Reopen); `GET`/`POST /api/projects/:id/complete`, `POST /reopen`; `CompleteProjectDialog`, `ReopenProjectDialog`; probe `project_completion.sql` | `dc354519` (#569) | `9c56ec06` |
 | FL4 | A person grant tells that person, every grant is listed in Shared with me, and a link cannot outlive its file's tier (#570, stop 30 as recommended; (e) deferred, PJ-78): `files.set_item_access` emits `file.shared` for a new person grant on a file left above Only you (catalogued in `00005010`, digestible); `files.list_shared_with_me` behind `/files?source=shared` (`SharedWithMe`, the lane's and Browse menu's row); `trg_files_items_revoke_links_on_tier_drop` revokes a file's links when it goes to Only you or Specific people, and `fn_resolve_share` opens a file link only while the file is `link` or `public`; both tier writes answer 409 `links_would_stop` with the count until `stopLinks`, confirmed in the Access tab, the hub's privacy control and in place in `ShareDialog`; probe `file_sharing.sql` | `f70469ab` (#570) | `aaa6fd99` |
+| NO4 | Guest mail honours the suppression list and its bounces, and leaves from a sender of its own: `scheduling.claim_guest_mail` mails no address `comms.fn_is_suppressed` refuses (the message stops, the host is told); `guest_request_code` answers `undeliverable`; `deliverMailWithReceipt` keeps Resend's id in `scheduling.guest_mail.provider_ref` (`uq_guest_mail_provider_ref`) through `finish_guest_mail (uuid, boolean, text)`, and `fn_record_delivery_event` matches it on a hard bounce; guest mail leaves through `inviteTransport()`, from `MAIL_FROM_INVITES` or else `MAIL_FROM` (#391 (n) ruled); probe `guest_mail_suppression.sql` | (this commit) (#571) | `3fd9fc56` |
 
 ### 0.1 Row → work order
 
@@ -170,7 +171,7 @@ The operator's ruling is MW-59; it is not this file's row.
 | :---- | :---------------- | :----------------------------- | :-------------------------------------------------------------------------- |
 | PJ-69 | ✅ · High · UAT   | PJZ                            | The note says email and push are built locally and the hosted send is CD2's |
 | PJ-71 | 🟡 · High · UAT   | COMMS CD2 (an invitation case) | A hosted send of an invitation is recorded                                  |
-| PJ-72 | 🟡 · Normal · UAT | **NO4** + CD2                  | Guest mail honours bounces and suppression; a hosted send is recorded       |
+| PJ-72 | 🟡 · Normal · UAT | CD2 (NO4 ✅, #571)           | A hosted send is recorded                                                   |
 | PJ-75 | 🟡 · High · UAT   | OPS CFG2                       | Vault keys rotate with a rewrap                                             |
 | PJ-76 | 🟡 · High · UAT   | **LP1** (you)                  | Microsoft consent, busy read and mirror run on a live tenant                |
 | PJ-77 | 🟡 · High · UAT   | **LP1** (you)                  | A room on each provider is created, joined and read for presence            |
@@ -190,7 +191,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Messaging                      |   61% | MS5 61% → P2d 67% (CH1 ✅, #562; CH3 ✅, #560) → CH2 ✅ (#561) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → CD2 94% → NT5 100% (NO2 ✅, #565; NO3 ✅, #567)                                                                    |
 | Files & assets                 |   64% | LK1 68% → FL3 77% → FL2 + you 82% → SN1 + SN2 + FL1 91% → blocking (PJ-78, no work order) 100% (FL4 ✅, #570)   |
-| Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
+| Calendar, integrations & rooms |   68% | CFG2 75% → CD2 86% → LP1 100% (NO4 ✅, #571)                                                                    |
 
 **What MVP needs from this cluster:** the eight Critical · MVP rows not yet ✅, which are PJ-17,
 26, 27, 29, 30, 47, 49 and 57 (PJ-23 ✅, TK2). Their work orders, in order: D7a + P6, S3, WP9, WP6, CD2
@@ -241,7 +242,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** ✅ (#569, §0.0): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); FL4 ✅ (#570); next **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), **NO4** (NO1 ✅, #566), and **FL3**'s
+11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); FL4 ✅ (#570); NO1 ✅ (#566) and NO4 ✅ (#571); next **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), and **FL3**'s
     slug.
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
@@ -314,7 +315,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 23 | Who may bring a pair DM into a project                                                                                                       | CH3 ✅ (#560) | **Ruled #560:** as recommended: either participant, while both are on the project; the other is told; either may take it out, which hides it for both and keeps every stamp |
 | 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1 ✅ (#566) | **Ruled #566:** as recommended: one transactional invite behind `project_invite_mail_enabled`, off until counsel; `application.received` emails. No hourly digest exists; ruled keep as built (#566 (a)): in a person's daily or weekly digest when they take one, else one email per application |
 | 25 | When a push device is dropped                                                                                                                | NO3 ✅ (#567) | **Ruled #567:** as recommended: at once on 404 / 410; otherwise after 5 consecutive failures whose first is at least 24 h old; a successful push refreshes `last_seen_at`; Settings says so |
-| 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                                     | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
+| 26 | Guest invitations on their own mail subdomain (#391 (n)) | NO4 ✅ (#571) | **Ruled #571:** yes, as recommended: `MAIL_FROM_INVITES`, falling back to `MAIL_FROM` while unset; the DNS is yours |
 | 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ ruled  | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
 | 28 | #394 (a) one Google connection or two; which connectors ship for UAT | FL2 ✅ (#568) | **Ruled #568:** as recommended: one Google client, two connections (`google_drive` beside `google`); Google Drive and S3 ship for UAT, and Dropbox, OneDrive and Frame.io are Planned |
 | 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3 (#563)    | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
@@ -558,43 +559,6 @@ row (clear EX4's Not built yet); documentation/database/{ops,projects}/*; Zod; t
 ---
 
 ## 6. Notices
-
-### NO4 — Guest invitations honour bounces and suppression
-
-Narrows PJ-72; CD2 closes it.
-
-```text
-PROMPT NO4: Mail to a calendar guest goes through the same transport as every other email, so a
-bounce is read and a suppressed address is never mailed
-
-ROLE: Backend engineer. App lane.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - The scheduling-guest-mail job (00005060:47) → cron/guest-mail.ts →
-    GuestBackendService.sendDue (:193) → deliverMail. configuredTransport()
-    (mail/transport.ts:89-92) needs RESEND_API_KEY (re_…) and MAIL_FROM; with no transport,
-    production offers no address (:99-101).
-  - Guest mail bypasses the NT2 dispatcher, so NT3's bounces and suppression miss it.
-    GuestBackendService reads neither (#391 (o), open). #391 (n): invitations on their own
-    subdomain.
-
-🧑 DECISION (step 4 only): a separate mail subdomain for invitations (#391 (n)). Recommended:
-yes. The DNS is mine; build the From address as an env key.
-
-STEPS:
-  1. Red first: a test. A suppressed guest address is still mailed.
-  2. Store Resend's message id on each guest send and match it in fn_record_delivery_event, so a
-     bounce marks the guest's address.
-  3. Check suppression before every guest send.
-  4. Add the From address as an env key (SYSTEM_ARCHITECTURE.md §Environment Variable Contract
-     and .env.example, XXXX-XXXX).
-
-ACCEPTANCE: the test is green; locally, a bounced guest address is never mailed again.
-
-SAME CHANGE: SYSTEM_ARCHITECTURE.md; the decision row (#391 (o) closed).
-```
-
-§1.2 rows: **PJ-72** stays 🟡 ("the hosted send, CD2"), its text corrected.
 
 ---
 

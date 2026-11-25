@@ -17,8 +17,8 @@ const ROW: GuestMailRow = {
 	host_name: "Ada Lin",
 };
 
-/** A sweep over `rows` whose every delivery answers `outcome`, recording what the doors heard. */
-function sweep(rows: GuestMailRow[], outcome: EmailDeliveryOutcome) {
+/** A sweep over `rows` whose every delivery answers `outcome` (and `id`), recording what the doors heard. */
+function sweep(rows: GuestMailRow[], outcome: EmailDeliveryOutcome, id: string | null = null) {
 	const finished: unknown[] = [];
 	const lines: string[] = [];
 	const sent: MailMessage[] = [];
@@ -34,7 +34,7 @@ function sweep(rows: GuestMailRow[], outcome: EmailDeliveryOutcome) {
 		deliver: (message, _what, devLine) => {
 			sent.push(message);
 			lines.push(devLine);
-			return Promise.resolve(outcome);
+			return Promise.resolve({ outcome, id });
 		},
 	});
 	return { run, finished, lines, sent };
@@ -44,14 +44,24 @@ Deno.test("sendDue — what left is finished as sent", async () => {
 	const { run, finished, sent } = sweep([ROW], "sent");
 	const result = await run;
 	assertEquals(result.data, { sent: 1, failed: 0 });
-	assertEquals(finished, [{ p_mail: "m1", p_sent: true }]);
+	assertEquals(finished, [{ p_mail: "m1", p_sent: true, p_provider_ref: null }]);
 	assertEquals(sent[0].to, "guest@example.com");
+});
+
+Deno.test("sendDue — Resend's id is kept with the send, so its bounce finds the guest", async () => {
+	const { run, finished } = sweep([ROW], "sent", "4ef9a417-02e9-4d39-ad75-9611e0fcc33c");
+	await run;
+	assertEquals(finished, [{
+		p_mail: "m1",
+		p_sent: true,
+		p_provider_ref: "4ef9a417-02e9-4d39-ad75-9611e0fcc33c",
+	}]);
 });
 
 Deno.test("sendDue — a development console counts as delivered, and shows the link", async () => {
 	const { run, finished, lines } = sweep([ROW], "logged");
 	await run;
-	assertEquals(finished, [{ p_mail: "m1", p_sent: true }]);
+	assertEquals(finished, [{ p_mail: "m1", p_sent: true, p_provider_ref: null }]);
 	assert(lines[0].includes(`/rsvp/${ROW.token}`));
 });
 
@@ -59,13 +69,13 @@ Deno.test("sendDue — what could not go is left to be tried again", async () =>
 	const { run, finished } = sweep([ROW], "unavailable");
 	const result = await run;
 	assertEquals(result.data, { sent: 0, failed: 1 });
-	assertEquals(finished, [{ p_mail: "m1", p_sent: false }]);
+	assertEquals(finished, [{ p_mail: "m1", p_sent: false, p_provider_ref: null }]);
 });
 
 Deno.test("sendDue — a zone Intl does not know cannot stop the sweep", async () => {
 	const { run, finished } = sweep([{ ...ROW, timezone: "posix/Mars/Olympus" }], "sent");
 	assertEquals((await run).data, { sent: 1, failed: 0 });
-	assertEquals(finished, [{ p_mail: "m1", p_sent: true }]);
+	assertEquals(finished, [{ p_mail: "m1", p_sent: true, p_provider_ref: null }]);
 });
 
 Deno.test("invitation — a token of the wrong shape is a dead link, before any read", async () => {

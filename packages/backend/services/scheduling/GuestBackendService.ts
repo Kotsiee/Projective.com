@@ -17,7 +17,7 @@ import {
 	type GuestMailRow,
 	guestMessage,
 } from "../mail/guest-mailer.ts";
-import { deliverMail } from "../mail/transport.ts";
+import { deliverMail, deliverMailWithReceipt, inviteTransport } from "../mail/transport.ts";
 import { writeRefusal } from "./live-entries.ts";
 
 /**
@@ -62,7 +62,7 @@ const serviceDoor: Door = doorOf(getServiceClient);
 /** What {@link GuestBackendService.sendDue} reads from its surroundings. */
 export interface GuestMailDeps {
 	door: Door;
-	deliver: typeof deliverMail;
+	deliver: typeof deliverMailWithReceipt;
 	appUrl: string;
 }
 
@@ -134,6 +134,11 @@ export class GuestBackendService {
 				message: "That's too many codes for this link. Ask your host to invite you again.",
 			});
 		}
+		if (answer.state === "undeliverable") {
+			return fail(409, {
+				message: "Email to this address bounced, so we can't send a code to it.",
+			});
+		}
 		if (answer.state !== "sent" || !answer.code || !answer.email) {
 			return fail(409, { message: "This room isn't open to you yet." });
 		}
@@ -141,6 +146,7 @@ export class GuestBackendService {
 			guestCodeMessage(answer.email, answer.title ?? "your event", answer.code),
 			"guest join code",
 			`[dev mail] Join code for ${answer.email}: ${answer.code}`,
+			{ transport: inviteTransport() },
 		);
 		return outcome === "unavailable"
 			? fail(503, { message: "We couldn't email your code. Try again in a moment." })
@@ -194,7 +200,8 @@ export class GuestBackendService {
 		limit = 50,
 		deps: GuestMailDeps = {
 			door: serviceDoor,
-			deliver: deliverMail,
+			deliver: (message, what, devLine) =>
+				deliverMailWithReceipt(message, what, devLine, { transport: inviteTransport() }),
 			appUrl: serverEnv().appUrl,
 		},
 	): Promise<ServiceResult<{ sent: number; failed: number }>> {
@@ -207,7 +214,7 @@ export class GuestBackendService {
 		let failed = 0;
 		for (const row of (data ?? []) as GuestMailRow[]) {
 			const message = guestMessage(row, deps.appUrl);
-			const outcome = await deps.deliver(
+			const { outcome, id } = await deps.deliver(
 				message,
 				"guest email",
 				`[dev mail] ${message.subject} to ${row.email} -> ${guestLink(deps.appUrl, row.token)}`,
@@ -216,6 +223,8 @@ export class GuestBackendService {
 			const finished = await deps.door("finish_guest_mail", {
 				p_mail: row.mail_id,
 				p_sent: delivered,
+				// Resend's id, which its bounce webhook quotes (comms.fn_record_delivery_event).
+				p_provider_ref: id,
 			});
 			if (finished.error) console.error("[guests:send]", finished.error.message);
 			if (delivered) sent++;

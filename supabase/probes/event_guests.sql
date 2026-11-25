@@ -221,7 +221,7 @@ BEGIN
 
     -- 6 mail
     FOREACH v_text IN ARRAY ARRAY[
-        'claim_guest_mail(integer)', 'finish_guest_mail(uuid,boolean)', 'guest_invitation(text)',
+        'claim_guest_mail(integer)', 'finish_guest_mail(uuid,boolean,text)', 'guest_invitation(text)',
         'guest_answer(text,scheduling.rsvp_response)', 'guest_request_code(text)',
         'guest_room_join(text,text,text)', 'guest_opt_out(text)'
     ] LOOP

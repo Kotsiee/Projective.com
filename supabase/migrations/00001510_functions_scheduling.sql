@@ -2129,6 +2129,8 @@ $$;
 -- Nothing goes to an address that opted out. A claim a crashed run left behind, or a send that failed,
 -- is taken again after five minutes. A new time over its address's limit waits a day, and because
 -- it is still queued, further moves add nothing and it says the latest time when it goes.
+-- Nor does anything go to an address the suppression list refuses (a hard bounce, #391 (o)): that
+-- message stops for good, so its host is told.
 CREATE OR REPLACE FUNCTION scheduling.claim_guest_mail(p_limit integer DEFAULT 50)
 RETURNS TABLE (
     mail_id uuid, kind text, email text, token text, title text, starts_at timestamptz,
@@ -2173,6 +2175,10 @@ BEGIN
             DELETE FROM scheduling.guest_mail x WHERE x.id = m.id;
             CONTINUE;
         END IF;
+        IF comms.fn_is_suppressed('email', a.email, 'schedule') THEN
+            UPDATE scheduling.guest_mail x SET failed_at = pg_catalog.now() WHERE x.id = m.id;
+            CONTINUE;
+        END IF;
         IF m.kind = 'moved' AND NOT scheduling.fn_spend_guest_quota(scheduling.fn_guest_hash(a.email), 1, 10) THEN
             UPDATE scheduling.guest_mail x
                SET due_at = pg_catalog.now() + interval '1 day', claimed_at = NULL, attempts = 0
@@ -2206,8 +2212,9 @@ BEGIN
 END;
 $$;
 
--- Record how a claimed message went. Five refusals in a row and it stops, so the host can be told.
-CREATE OR REPLACE FUNCTION scheduling.finish_guest_mail(p_mail uuid, p_sent boolean)
+-- Record how a claimed message went, with the provider's message id for its bounce to find. Five
+-- refusals in a row and it stops, so the host can be told.
+CREATE OR REPLACE FUNCTION scheduling.finish_guest_mail(p_mail uuid, p_sent boolean, p_provider_ref text)
 RETURNS void
 LANGUAGE sql
 VOLATILE
@@ -2216,7 +2223,8 @@ SET search_path = ''
 AS $$
     UPDATE scheduling.guest_mail m
        SET sent_at = CASE WHEN p_sent THEN pg_catalog.now() END,
-           failed_at = CASE WHEN NOT p_sent AND m.attempts >= 5 THEN pg_catalog.now() END
+           failed_at = CASE WHEN NOT p_sent AND m.attempts >= 5 THEN pg_catalog.now() END,
+           provider_ref = CASE WHEN p_sent THEN NULLIF(pg_catalog.btrim(p_provider_ref), '') END
      WHERE m.id = p_mail;
 $$;
 
@@ -2314,7 +2322,8 @@ $$;
 
 -- Mint the code that proves a guest reads the invited inbox, to be mailed by the caller and stored
 -- only as a hash. It lasts until the room closes, so somebody who drops out can come back with it.
--- `wait` and `limit` are the brakes on using a link to fill a guest's inbox.
+-- `wait` and `limit` are the brakes on using a link to fill a guest's inbox; `undeliverable` is an
+-- address the suppression list refuses (#391 (o)).
 CREATE OR REPLACE FUNCTION scheduling.guest_request_code(p_token text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -2335,6 +2344,9 @@ BEGIN
     SELECT * INTO l FROM scheduling.guest_links x WHERE x.id = l.id FOR UPDATE;
     SELECT * INTO a FROM scheduling.event_attendees x WHERE x.id = l.attendee_id;
     SELECT * INTO e FROM scheduling.events x WHERE x.id = a.event_id;
+    IF comms.fn_is_suppressed('email', a.email, 'schedule') THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'undeliverable');
+    END IF;
     IF scheduling.fn_guest_room_state(a, e) IS DISTINCT FROM 'open' THEN
         RETURN pg_catalog.jsonb_build_object('state', 'closed');
     END IF;
