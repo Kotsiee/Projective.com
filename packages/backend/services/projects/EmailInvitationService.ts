@@ -14,7 +14,7 @@ import {
 	type InvitationMailRow,
 	invitationMessage,
 } from "../mail/invitation-mailer.ts";
-import { deliverMail } from "../mail/transport.ts";
+import { deliverMail, inviteTransport } from "../mail/transport.ts";
 import { handshakeRefusal } from "./live-applications.ts";
 import { clampOr, projectsDb } from "./live-support.ts";
 
@@ -161,7 +161,9 @@ export class EmailInvitationService {
 		limit = SENT_WHILE_WAITING,
 		deps: InvitationMailDeps = {
 			door: serviceDoor,
-			deliver: deliverMail,
+			// Mail to someone with no account leaves from the invites sender, as guest mail does (#571).
+			deliver: (message, what, devLine) =>
+				deliverMail(message, what, devLine, { transport: inviteTransport() }),
 			appUrl: serverEnv().appUrl,
 		},
 	): Promise<ServiceResult<{ sent: number; failed: number }>> {
