@@ -1352,6 +1352,28 @@ dismissed_at timestamp with time zone,
   -- would hide a live invitation from the one person who can withdraw it.
   CONSTRAINT ck_project_invitations_dismissed CHECK (dismissed_at IS NULL OR status <> 'pending')
 );
+
+-- What still has to reach an invited address that no verified account holds (PROJECTS NO1). Written by
+-- `projects.invite_by_email` in the invitation's own transaction, only while the ⚖️ switch
+-- `project_invite_mail_enabled` is on, and sent by the service role (`claim_invitation_mail`, then
+-- `finish_invitation_mail`). It names the invitation rather than copying its address or token, so the
+-- queue holds nothing a reader could use. ONE row per invitation: an invitation is mailed once and
+-- never reminded. RLS on with no policy (00002001): only the definer doors read or write it.
+CREATE TABLE projects.invitation_mail (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  invitation_id uuid NOT NULL,
+  attempts smallint NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  -- A claim's lease. A claim older than five minutes is taken again, so a sender that died mid-send
+  -- does not strand the message.
+  claimed_at timestamp with time zone,
+  sent_at timestamp with time zone,
+  -- The provider refused it five times in a row; it is not tried again.
+  failed_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT invitation_mail_pkey PRIMARY KEY (id),
+  CONSTRAINT uq_invitation_mail_invitation UNIQUE (invitation_id),
+  CONSTRAINT invitation_mail_invitation_id_fkey FOREIGN KEY (invitation_id) REFERENCES projects.project_invitations(id) ON DELETE CASCADE
+);
 -- #endregion
 -- #region Service instantiations ("Add to Projects" on a Pipeline listing)
 -- One row per project `marketplace.instantiate_service_blueprint` minted: the request that made it.

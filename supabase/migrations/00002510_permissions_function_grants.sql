@@ -1661,6 +1661,17 @@ GRANT EXECUTE ON FUNCTION projects.resolve_invite_link (text) TO authenticated;
 REVOKE ALL ON FUNCTION projects.redeem_invite_link (text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.redeem_invite_link (text, text) TO authenticated;
 
+-- Email invitations answered by their link, and their mail (PROJECTS NO1): the landing read and the
+-- answer check the addressee themselves; claim and finish are the sender's, the service role alone.
+REVOKE ALL ON FUNCTION projects.email_invitation (text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.email_invitation (text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.answer_email_invitation (text, boolean) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.answer_email_invitation (text, boolean) TO authenticated;
+REVOKE ALL ON FUNCTION projects.claim_invitation_mail (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.claim_invitation_mail (integer) TO service_role;
+REVOKE ALL ON FUNCTION projects.finish_invitation_mail (uuid, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.finish_invitation_mail (uuid, boolean) TO service_role;
+
 -- Internal: called by the two doors above as their owner, never an RPC of its own.
 REVOKE ALL ON FUNCTION projects.fn_invite_link_state (projects.stage_invite_links, uuid)
 FROM PUBLIC, anon, authenticated, service_role;

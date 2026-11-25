@@ -1,7 +1,7 @@
 /*
- * invite-landing.css — the `/invite/[token]` page (Decision #145): one centred column of text with a
- * single optional form. Static content is never boxed (§3 gate 6); the only filled element is the
- * note field, a control.
+ * invite-landing.css — the `/invite/[token]` page (Decision #145; PROJECTS NO1): one centred column of
+ * text with a single optional form, a stage link's note or an email invitation's Accept and Decline.
+ * Static content is never boxed (§3 gate 6); the only filled elements are controls.
  */
 
 .invite-landing {
@@ -101,4 +101,12 @@
 
 .invite-landing__next:hover {
 	text-decoration: underline;
+}
+
+/* An email invitation's answer (PROJECTS NO1): Accept, the one fill, then the outlined Decline. */
+.invite-landing__answer {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin-block-start: var(--space-4);
 }

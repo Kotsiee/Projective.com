@@ -318,6 +318,15 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > digest preferences are the router's to honour. A refused re-invitation inside the cooldown names
 > the instant it lifts (`details.reopensAt`, from the RPC's `reopens_at=` DETAIL).
 >
+> **An email-addressed invitation reaches its answer by its link** (PROJECTS NO1, Decision #566). No
+> new state: it is `pending` until answered like any other. Its `/invite/<token>` answers only for an
+> account holding the invited address verified, and answering an open one first BINDS it to that
+> account (`target_user_id` set, `target_email` cleared), so the 48-day cooldown after a decline
+> counts against that person. The one email an address with no verified account is owed
+> (`projects.invitation_mail`, behind the ⚖️ `project_invite_mail_enabled`) is a delivery record, not
+> a lifecycle: queued with the invitation, sent once, dropped unsent if the invitation stops being an
+> open offer first.
+>
 > **Post-onboarding immutability is a CONSTRAINT over the stage-assignment row above, not a
 > lifecycle of its own** — which is why it has no row. Once a seat has genuinely been taken, the
 > engagement's **project type** freezes project-wide and each stage's **ticket price** freezes with

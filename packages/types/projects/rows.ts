@@ -258,3 +258,21 @@ export const StageSubmissionRowSchema = z.object({
 });
 export type StageSubmissionRow = z.infer<typeof StageSubmissionRowSchema>;
 // #endregion
+
+// #region projects.invitation_mail
+/**
+ * A row of `projects.invitation_mail` (PROJECTS NO1): the one mail an email invitation to an address
+ * with no verified account is owed. It names the invitation and copies neither its address nor its
+ * token. `claimedAt` is the sender's five-minute lease; `failedAt` marks a fifth refused attempt.
+ */
+export const InvitationMailRowSchema = z.object({
+	id: uuid,
+	invitationId: uuid,
+	attempts: z.number().int().nonnegative(),
+	claimedAt: timestamp.nullable(),
+	sentAt: timestamp.nullable(),
+	failedAt: timestamp.nullable(),
+	createdAt: timestamp,
+});
+export type InvitationMailRow = z.infer<typeof InvitationMailRowSchema>;
+// #endregion

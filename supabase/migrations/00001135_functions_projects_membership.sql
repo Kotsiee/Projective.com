@@ -230,9 +230,18 @@ COMMENT ON FUNCTION projects.set_ticket_manager(uuid, uuid, boolean) IS
 -- for anyone who can create a project. This is the rule `org.invite_workspace_member` follows.
 --
 -- The holder of a VERIFIED matching address is still told, through the router (`stage.invite`), in
--- the same transaction as the row. The lookup happens here, in definer context, and nothing about
--- its outcome reaches the caller: the function returns the same id whether or not anyone matched.
--- An unverified address is never notified, for the reason the invitee SELECT policy gives.
+-- the same transaction as the row, and the notice links to the invitation's own `/invite/<token>`,
+-- where `answer_email_invitation` lets them answer (§2b). The lookup happens here, in definer context,
+-- and nothing about its outcome reaches the caller: the function returns the same id whether or not
+-- anyone matched. An unverified address is never notified, for the reason the invitee SELECT policy
+-- gives.
+--
+-- An address no verified account holds is MAILED instead (PROJECTS NO1): one row in
+-- `projects.invitation_mail`, in this transaction, sent by the service role's claim. Only while the ⚖️
+-- switch `project_invite_mail_enabled` is on (seeded off until counsel confirms the lawful basis),
+-- never to a suppressed address, and once per (project, address) within an invitation's 14-day life,
+-- so cancelling and inviting again does not mail the same inbox twice. The send itself is inside the
+-- invite caps already: each invitation spends one of the inviter's hire allowance before it exists.
 --
 -- Staffing authority (`can_manage_project_members`), like `invite_to_project`: an admin or a manager
 -- may invite, and only review authority may offer the admin or manager role. One open offer per
@@ -246,7 +255,7 @@ CREATE OR REPLACE FUNCTION projects.invite_by_email(
 RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, projects, comms, org, auth
+SET search_path = ''
 AS $$
 DECLARE
     v_actor        uuid := auth.uid();
@@ -257,8 +266,8 @@ DECLARE
     v_stage_price  bigint;
     v_holder       uuid;
     v_inviter_name text;
-    v_inviter_slug text;
     v_id           uuid;
+    v_token        text;
 BEGIN
     IF v_actor IS NULL THEN
         RAISE EXCEPTION 'Sign in to invite someone to a project.' USING ERRCODE = '42501';
@@ -310,7 +319,7 @@ BEGIN
             p_project_id, p_stage_id, v_email, p_role, v_actor, encode(extensions.gen_random_bytes(32), 'hex'),
             v_placeholder, 'pending', now() + interval '14 days'
         )
-        RETURNING id INTO v_id;
+        RETURNING id, token INTO v_id, v_token;
     EXCEPTION WHEN unique_violation THEN
         RAISE EXCEPTION 'An invitation to this address for this stage is already pending.' USING ERRCODE = 'unique_violation';
     END;
@@ -334,10 +343,9 @@ BEGIN
     LIMIT 1;
 
     IF v_holder IS NOT NULL THEN
-        SELECT trim(coalesce(up.first_name, '') || ' ' || coalesce(up.last_name, '')), up.username
-            INTO v_inviter_name, v_inviter_slug
+        SELECT NULLIF(trim(coalesce(up.first_name, '') || ' ' || coalesce(up.last_name, '')), '')
+            INTO v_inviter_name
         FROM org.users_public up WHERE up.user_id = v_actor;
-        v_inviter_name := NULLIF(v_inviter_name, '');
 
         PERFORM comms.fn_notify(
             v_holder,
@@ -359,8 +367,19 @@ BEGIN
             'project',
             p_project_id,
             NULL,
-            CASE WHEN v_inviter_slug IS NOT NULL THEN '/messages/dm-' || v_inviter_slug ELSE NULL END
+            '/invite/' || v_token
         );
+    ELSIF COALESCE((SELECT (pp.value #>> '{}')::boolean FROM security.platform_params pp
+                     WHERE pp.key = 'project_invite_mail_enabled'), false)
+          AND NOT comms.fn_is_suppressed('email'::comms.notification_channel, v_email,
+                                         'work'::comms.notification_category)
+          AND NOT EXISTS (
+              SELECT 1 FROM projects.invitation_mail m
+                JOIN projects.project_invitations i ON i.id = m.invitation_id
+               WHERE i.project_id = p_project_id AND lower(i.target_email) = v_email
+                 AND m.created_at > now() - interval '14 days'
+          ) THEN
+        INSERT INTO projects.invitation_mail (invitation_id) VALUES (v_id);
     END IF;
 
     RETURN v_id;
@@ -368,7 +387,241 @@ END;
 $$;
 
 COMMENT ON FUNCTION projects.invite_by_email(uuid, uuid, text, text) IS
-'Issues one email-addressed project (or stage) invitation as the project''s staffing authority (can_manage_project_members; only review authority may offer admin or manager). The row stays addressed by email (never resolved to an identity the inviter could read back); the holder of a matching VERIFIED address is notified with `stage.invite` through comms.fn_notify in the same transaction. Records project_activity and security.audit_logs.';
+'Issues one email-addressed project (or stage) invitation as the project''s staffing authority (can_manage_project_members; only review authority may offer admin or manager). The row stays addressed by email (never resolved to an identity the inviter could read back). The holder of a matching VERIFIED address is notified with `stage.invite`, linked to /invite/<token>; any other address is queued one mail in projects.invitation_mail while project_invite_mail_enabled is on and the address is not suppressed (PROJECTS NO1). Records project_activity and security.audit_logs.';
+-- #endregion
+
+-- #region 2b. Email invitations answered by their link (PROJECTS NO1)
+-- An email invitation's token is its link: `/invite/<token>`, mailed to the address or carried by the
+-- verified holder's `stage.invite`. The token alone opens nothing. The invitation answers only for the
+-- account it is addressed to, which for an email-addressed row is any account holding that address
+-- VERIFIED, the rule the invitee SELECT policy on project_invitations already applies, for the same
+-- reason: anyone may add an arbitrary address to their own account unverified. A forwarded link, or an
+-- account made with another address, reads `not_yours`; the inviter never answers their own.
+--
+-- projects.email_invitation(token) -> jsonb
+-- The landing read. States: invalid (no such token) · not_yours (with a masked hint of the address,
+-- the project's title and the inviter, nothing more) · open · accepted · declined · expired ·
+-- withdrawn.
+CREATE OR REPLACE FUNCTION projects.email_invitation(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_actor   uuid := auth.uid();
+    v_inv     projects.project_invitations%ROWTYPE;
+    v_project projects.projects%ROWTYPE;
+    v_stage   text;
+    v_inviter text;
+    v_local   text;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to open this invitation.' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT * INTO v_inv FROM projects.project_invitations i WHERE i.token = p_token;
+    IF NOT FOUND THEN
+        RETURN pg_catalog.jsonb_build_object('state', 'invalid');
+    END IF;
+    SELECT * INTO v_project FROM projects.projects p WHERE p.id = v_inv.project_id;
+    SELECT NULLIF(pg_catalog.btrim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), '')
+      INTO v_inviter
+      FROM org.users_public u WHERE u.user_id = v_inv.inviter_user_id;
+
+    IF v_inv.inviter_user_id = v_actor OR NOT (
+        v_inv.target_user_id IS NOT DISTINCT FROM v_actor
+        OR (v_inv.target_user_id IS NULL AND EXISTS (
+            SELECT 1 FROM org.user_emails e
+             WHERE e.user_id = v_actor AND e.verified_at IS NOT NULL
+               AND lower(e.email) = lower(v_inv.target_email)))
+    ) THEN
+        v_local := pg_catalog.split_part(v_inv.target_email, '@', 1);
+        RETURN pg_catalog.jsonb_build_object(
+            'state', 'not_yours',
+            'project_title', v_project.title,
+            'inviter_name', v_inviter,
+            'address_hint', CASE WHEN v_inv.target_email IS NOT NULL THEN
+                pg_catalog.left(v_local, 1) || '•••@' || pg_catalog.split_part(v_inv.target_email, '@', 2) END
+        );
+    END IF;
+
+    IF v_inv.project_stage_id IS NOT NULL THEN
+        SELECT s.name INTO v_stage FROM projects.project_stages s WHERE s.id = v_inv.project_stage_id;
+    END IF;
+    RETURN pg_catalog.jsonb_build_object(
+        'state', CASE
+            WHEN v_inv.status = 'pending' AND v_inv.expires_at IS NOT NULL AND v_inv.expires_at <= now() THEN 'expired'
+            WHEN v_inv.status = 'pending' THEN 'open'
+            WHEN v_inv.status = 'revoked' THEN 'withdrawn'
+            ELSE v_inv.status
+        END,
+        'project_slug', v_project.slug,
+        'project_title', v_project.title,
+        'stage_name', v_stage,
+        'inviter_name', v_inviter,
+        'role', v_inv.role,
+        'expires_at', v_inv.expires_at
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.email_invitation(text) IS
+'The /invite/<token> landing read for a project invitation: invalid · not_yours · open · accepted · declined · expired · withdrawn. An email-addressed row is the caller''s only when they hold its address verified; not_yours carries a masked address hint, the project title and the inviter. Signed-in callers only (PROJECTS NO1).';
+
+-- projects.answer_email_invitation(token, accept) -> jsonb
+-- The invitee answers by the link. An open email-addressed row is first bound to the answering account
+-- (`target_user_id` set, `target_email` cleared, as ck_project_invitations_addressee requires one), so
+-- the acceptance body, the roster and the decline cooldown all read one identity, and the binding is
+-- audited. Then the one acceptance body, `fn_apply_invitation_decision`, answers it with every gate it
+-- already holds (expiry, payout readiness for paid work, the client-trust consent, the seat lock).
+CREATE OR REPLACE FUNCTION projects.answer_email_invitation(p_token text, p_accept boolean)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_actor uuid := auth.uid();
+    v_inv   projects.project_invitations%ROWTYPE;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to answer this invitation.' USING ERRCODE = '42501';
+    END IF;
+    IF p_accept IS NULL THEN
+        RAISE EXCEPTION 'Say whether you accept this invitation.' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_inv FROM projects.project_invitations i WHERE i.token = p_token FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'This invitation link is not valid.' USING ERRCODE = 'no_data_found';
+    END IF;
+    IF v_inv.inviter_user_id = v_actor OR NOT (
+        v_inv.target_user_id IS NOT DISTINCT FROM v_actor
+        OR (v_inv.target_user_id IS NULL AND EXISTS (
+            SELECT 1 FROM org.user_emails e
+             WHERE e.user_id = v_actor AND e.verified_at IS NOT NULL
+               AND lower(e.email) = lower(v_inv.target_email)))
+    ) THEN
+        RAISE EXCEPTION 'This invitation was sent to another address. Sign in with that address, or add and verify it in Settings.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF v_inv.target_user_id IS NULL AND v_inv.status = 'pending' THEN
+        BEGIN
+            UPDATE projects.project_invitations
+               SET target_user_id = v_actor, target_email = NULL
+             WHERE id = v_inv.id;
+        EXCEPTION WHEN unique_violation THEN
+            RAISE EXCEPTION 'You already have an open invitation to this stage. Answer that one instead.'
+                USING ERRCODE = 'unique_violation';
+        END;
+        INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+        VALUES (v_actor, 'project.invitation_claimed', 'projects.project_invitations', v_inv.id,
+                pg_catalog.jsonb_build_object('project_id', v_inv.project_id, 'stage_id', v_inv.project_stage_id,
+                                              'by_email', true));
+    END IF;
+
+    RETURN projects.fn_apply_invitation_decision(v_inv.id, p_accept, v_actor);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.answer_email_invitation(text, boolean) IS
+'The invitee accepts or declines a project invitation by its /invite/<token> link. Refused 42501 unless the caller is its addressee (an email-addressed row: a verified matching address; never the inviter). An open email-addressed row is bound to the caller first (audited project.invitation_claimed), then projects.fn_apply_invitation_decision answers it (PROJECTS NO1).';
+
+-- projects.claim_invitation_mail(limit) -> the messages to send now (service role)
+-- Leases up to `p_limit` queued mails (five minutes, so a sender that died is retried) and answers what
+-- each one says. Nothing while the ⚖️ switch is off; what waits stays queued. A mail whose invitation
+-- is no longer an open offer to an address (cancelled, answered, lapsed, taken by an account) or whose
+-- address has been suppressed since is dropped unsent. Every text an inviter wrote goes through
+-- scheduling.fn_guest_safe_text, because this leaves under Projective's name for an inbox that never
+-- asked for it.
+CREATE OR REPLACE FUNCTION projects.claim_invitation_mail(p_limit integer DEFAULT 25)
+RETURNS TABLE (
+    mail_id uuid, email text, token text, project_title text, stage_name text, inviter_name text,
+    role text, expires_at timestamptz
+)
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    m projects.invitation_mail;
+    i projects.project_invitations;
+BEGIN
+    IF NOT COALESCE((SELECT (pp.value #>> '{}')::boolean FROM security.platform_params pp
+                      WHERE pp.key = 'project_invite_mail_enabled'), false) THEN
+        RETURN;
+    END IF;
+
+    FOR m IN
+        UPDATE projects.invitation_mail u
+           SET claimed_at = pg_catalog.now(), attempts = u.attempts + 1
+         WHERE u.id IN (
+             SELECT x.id FROM projects.invitation_mail x
+              WHERE x.sent_at IS NULL AND x.failed_at IS NULL
+                AND (x.claimed_at IS NULL OR x.claimed_at < pg_catalog.now() - interval '5 minutes')
+              ORDER BY x.created_at
+              LIMIT GREATEST(COALESCE(p_limit, 25), 1)
+                FOR UPDATE SKIP LOCKED
+         )
+        RETURNING u.*
+    LOOP
+        SELECT * INTO i FROM projects.project_invitations x WHERE x.id = m.invitation_id;
+        IF i.status <> 'pending' OR i.target_email IS NULL
+           OR (i.expires_at IS NOT NULL AND i.expires_at <= pg_catalog.now())
+           OR comms.fn_is_suppressed('email'::comms.notification_channel, i.target_email,
+                                     'work'::comms.notification_category) THEN
+            DELETE FROM projects.invitation_mail x WHERE x.id = m.id;
+            CONTINUE;
+        END IF;
+
+        mail_id := m.id;
+        email := i.target_email;
+        token := i.token;
+        role := i.role;
+        expires_at := i.expires_at;
+        SELECT scheduling.fn_guest_safe_text(COALESCE(NULLIF(p.title, ''), 'A project'))
+          INTO project_title
+          FROM projects.projects p WHERE p.id = i.project_id;
+        stage_name := NULL;
+        IF i.project_stage_id IS NOT NULL THEN
+            SELECT scheduling.fn_guest_safe_text(s.name) INTO stage_name
+              FROM projects.project_stages s WHERE s.id = i.project_stage_id;
+        END IF;
+        SELECT scheduling.fn_guest_safe_text(COALESCE(
+            NULLIF(pg_catalog.btrim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''),
+            u.username
+        )) INTO inviter_name
+          FROM org.users_public u WHERE u.user_id = i.inviter_user_id;
+        RETURN NEXT;
+    END LOOP;
+END;
+$$;
+
+COMMENT ON FUNCTION projects.claim_invitation_mail(integer) IS
+'Service role: leases queued invitation mail (five minutes) and answers address, token, project, stage, inviter, role and expiry for each; nothing while project_invite_mail_enabled is off. Drops, unsent, a mail whose invitation is no longer an open offer to an address or whose address is now suppressed (PROJECTS NO1).';
+
+-- projects.finish_invitation_mail(mail, sent) — how a claimed message went. Five refusals in a row
+-- and it stops.
+CREATE OR REPLACE FUNCTION projects.finish_invitation_mail(p_mail uuid, p_sent boolean)
+RETURNS void
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    UPDATE projects.invitation_mail m
+       SET sent_at = CASE WHEN p_sent THEN pg_catalog.now() END,
+           failed_at = CASE WHEN NOT p_sent AND m.attempts >= 5 THEN pg_catalog.now() END
+     WHERE m.id = p_mail;
+$$;
+
+COMMENT ON FUNCTION projects.finish_invitation_mail(uuid, boolean) IS
+'Service role: records a claimed invitation mail as sent, or as failed after its fifth refused attempt (PROJECTS NO1).';
 -- #endregion
 
 -- #region 3. act_on_invitation

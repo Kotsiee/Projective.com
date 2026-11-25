@@ -52,6 +52,15 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Blanks a guest''s address 30 days after their entry ends or their seat is withdrawn.')
 ON CONFLICT (name) DO NOTHING;
 
+-- Mail for an email invitation to an address with no account (PROJECTS NO1), the same shape: queued by
+-- projects.invite_by_email, sent straight after the invite, and swept here for what could not go. On
+-- the dispatcher's bearer. Hands out nothing while project_invite_mail_enabled is off ⚖️.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('projects-invitation-mail', 'http', '* * * * *',
+        NULL, '/api/projects/cron/invitation-mail?limit=25', 'COMMS_DISPATCH_SECRET',
+        'Sends the one email an email invitation owes an address no verified account holds, and retries a refused send up to five times (EmailInvitationService.sendDue through projects.claim_invitation_mail). Claims nothing while project_invite_mail_enabled is off.')
+ON CONFLICT (name) DO NOTHING;
+
 -- The ledger reconciliation (M3, Decision #186), the conservation check that follows it (ruling M2 (A),
 -- FBP DB16) and the pending-window sweep (M4, Decision #191) are registered only where their function
 -- exists, so this seed is correct whichever order those changes

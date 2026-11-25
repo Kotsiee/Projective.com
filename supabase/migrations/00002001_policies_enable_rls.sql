@@ -233,6 +233,10 @@ ALTER TABLE projects.project_required_skills ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE projects.project_invitations ENABLE ROW LEVEL SECURITY;
 
+-- The invitation mail queue (PROJECTS NO1) has no policy: invite_by_email writes it and the service
+-- role's claim and finish doors read it, all definers.
+ALTER TABLE projects.invitation_mail ENABLE ROW LEVEL SECURITY;
+
 -- The stage invite link's token is a capability like an invitation's; managers read it, nobody writes
 -- it directly (the definer doors in 00001135 §4 do).
 ALTER TABLE projects.stage_invite_links ENABLE ROW LEVEL SECURITY;

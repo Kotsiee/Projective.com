@@ -9,6 +9,7 @@ import type {
 	RedeemInviteLink,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
+import type { AnswerEmailInvitation, EmailInvitationAnswered } from "@projective/types/projects";
 
 /**
  * RequestService — the THIN client side of the hiring handshake: a freelancer applies to a stage, an
@@ -24,6 +25,13 @@ export const RequestService = {
 	/** Ask to join a stage through its invite link (Decision #145); files a pending request. */
 	redeemInviteLink(payload: RedeemInviteLink): Promise<ProjectsResult<InviteLinkRedeemed>> {
 		return postProjects<InviteLinkRedeemed>("/api/projects/invite-links/redeem", payload);
+	},
+
+	/** Accept or decline an email invitation by its link (PROJECTS NO1). */
+	answerEmailInvitation(
+		payload: AnswerEmailInvitation,
+	): Promise<ProjectsResult<EmailInvitationAnswered>> {
+		return postProjects<EmailInvitationAnswered>("/api/projects/invites/email", payload);
 	},
 
 	/** Accept or decline every invitation of one request together. */

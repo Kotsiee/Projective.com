@@ -2145,8 +2145,50 @@ resolved row would tell the inviter whose account owns the address (the rule
 derived as `invite_to_project` derives it. Records `invitation_sent` on `project_activity` and
 `project.member_invited` on `security.audit_logs`. The holder of a **verified** matching
 `org.user_emails` address (never the caller) is sent `stage.invite` through `comms.fn_notify` in the
-same transaction; nothing about whether anyone matched reaches the caller. Refuses a NULL `auth.uid()`
-first; `EXECUTE`: `authenticated`, `service_role`.
+same transaction, linked to the invitation's own `/invite/<token>`; nothing about whether anyone
+matched reaches the caller. Any other address is queued one row in `projects.invitation_mail` (PROJECTS
+NO1, Decision #566) while `project_invite_mail_enabled` is on, unless `comms.fn_is_suppressed` holds
+the address or the same (project, address) was queued a mail in the last 14 days. `search_path = ''`.
+Refuses a NULL `auth.uid()` first; `EXECUTE`: `authenticated`, `service_role`.
+
+### `projects.email_invitation(p_token text) → jsonb`
+
+`00001135` §2b (PROJECTS NO1, Decision #566). The `/invite/<token>` landing read for a project
+invitation, signed-in callers only (`42501` for a NULL `auth.uid()`). An unknown token answers
+`{"state":"invalid"}`. The row is the caller's when `target_user_id` is theirs, or when it is
+email-addressed and they hold `target_email` **verified** (the invitee SELECT policy's rule); never
+the inviter's. Anyone else reads `not_yours` with the project's title, the inviter's name and a masked
+`address_hint` (`j•••@example.com`), nothing to act on. The addressee reads `open` · `accepted` ·
+`declined` · `expired` (a pending row past `expires_at` too) · `withdrawn` (revoked), with
+`project_slug`, `project_title`, `stage_name`, `inviter_name`, `role` and `expires_at`. STABLE
+definer, `search_path = ''`; `EXECUTE`: `authenticated` only.
+
+### `projects.answer_email_invitation(p_token text, p_accept boolean) → jsonb`
+
+`00001135` §2b (PROJECTS NO1, Decision #566). The addressee accepts or declines by the link
+(`POST /api/projects/invites/email`). `42501` for a NULL `auth.uid()` or anyone but the addressee
+(the rule above), `22023` for a NULL answer, `P0002` for an unknown token. An open email-addressed row
+is first **bound** to the caller (`target_user_id` set, `target_email` cleared, as
+`ck_project_invitations_addressee` requires one; a second open offer to the same seat re-raised
+`unique_violation`) and the binding audited (`project.invitation_claimed`). Then
+`fn_apply_invitation_decision` answers it with every gate it holds, so a second answer is refused
+`23514` as there. Returns that function's jsonb. Definer, `search_path = ''`; `EXECUTE`:
+`authenticated` only.
+
+### `projects.claim_invitation_mail(p_limit integer DEFAULT 25) → TABLE (mail_id, email, token, project_title, stage_name, inviter_name, role, expires_at)`
+
+`00001135` §2b (PROJECTS NO1, Decision #566). The sender's claim (`EmailInvitationService.sendDue`).
+Answers nothing while `project_invite_mail_enabled` is off, and what waits stays queued. Otherwise
+leases up to `p_limit` unsent, unfailed rows of `projects.invitation_mail` (`FOR UPDATE SKIP LOCKED`;
+a claim older than five minutes is taken again; `attempts + 1`) and deletes, unsent, any whose
+invitation is no longer an open offer to an address (cancelled, answered, lapsed, bound to an account)
+or whose address is now suppressed. Every text an inviter wrote passes `scheduling.fn_guest_safe_text`.
+Definer, `search_path = ''`; `EXECUTE`: `service_role` only.
+
+### `projects.finish_invitation_mail(p_mail uuid, p_sent boolean) → void`
+
+`00001135` §2b (PROJECTS NO1, Decision #566). Records a claimed mail `sent_at`, or `failed_at` once
+its fifth attempt is refused. Definer, `search_path = ''`; `EXECUTE`: `service_role` only.
 
 ### `projects.set_member_role(p_project_id uuid, p_participant_id uuid, p_role text) → jsonb`
 
@@ -2184,7 +2226,7 @@ Locks the participant row; idempotent (`changed: false`). Writes `security.audit
 
 **The one implementation of an invitation's answer.** Locks the row; refuses anything not `pending`
 (and marks a lapsed `expires_at` as `expired` before refusing); refuses an email-addressed row (those
-are accepted through their link). A **decline** stamps `declined_at`, logs `invitation_declined` and
+are answered by their link: `answer_email_invitation` binds the row to its addressee first, #566). A **decline** stamps `declined_at`, logs `invitation_declined` and
 notifies the inviter (`invitation.declined`). An **accept** stamps `accepted_at`, enrols the invitee
 as a `project_participants` row (`role = 'assignee'` for a freelancer — the staffing RPC's own
 vocabulary — else the invitation's role verbatim), takes the stage seat for a freelancer invited to a

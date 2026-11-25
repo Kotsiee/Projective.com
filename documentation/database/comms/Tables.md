@@ -96,6 +96,11 @@ link (their `action_url_template` is NULL because the router cannot address a pr
 invitation is the same product event addressed to the whole engagement — with the inviter's DM
 (`/messages/dm-{username}`) as its link, since the catalog's `/projects/{context_id}` template mints
 a uuid address the router no longer serves.
+`projects.invite_by_email` emits it too, to the verified holder of the invited address only, and
+links to the invitation's own `/invite/<token>`, where the holder answers it; an address with no
+verified account is mailed that link once instead, outside this catalog, through
+`projects.invitation_mail` (PROJECTS NO1, Decision #566). `application.received` carries the email
+channel since #566: in a daily or weekly digest for whoever has one, else sent with the notice.
 
 ⚠️ **Deliberately NOT referenced by a foreign key** from `comms.notifications.type`. An unregistered
 key must never raise inside a money-movement RPC — `fn_notify` auto-registers it as

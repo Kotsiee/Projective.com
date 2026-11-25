@@ -1058,6 +1058,11 @@ REVOKE INSERT, UPDATE ON projects.waitlists FROM anon, authenticated;
 -- of a sitting stays readable under its policy.
 REVOKE SELECT ON projects.session_events FROM anon, authenticated;
 
+-- The invitation mail queue (PROJECTS NO1, Decision #566) is the definer doors' alone:
+-- projects.invite_by_email writes it, the service role's claim and finish read and settle it. No
+-- client reads or writes it, so the schema's default grant is taken back.
+REVOKE ALL ON projects.invitation_mail FROM anon, authenticated;
+
 GRANT SELECT (
     id,
     cohort_id,

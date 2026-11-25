@@ -47,6 +47,7 @@ import {
 	setMemberRoleRow,
 	setTicketManagerRow,
 } from "./live-membership.ts";
+import { EmailInvitationService } from "./EmailInvitationService.ts";
 import { fetchProjectOverview } from "./live-overview.ts";
 import { rollupFundingState } from "../finance/funding-state.ts";
 import {
@@ -2411,6 +2412,10 @@ export class ProjectBackendService {
 		);
 		if (live !== undefined) {
 			if (!live.ok || !live.data) return live;
+			// An address with no verified account is owed its invitation email (PROJECTS NO1).
+			if (input.recipients.some((recipient) => !recipientAddress(recipient).startsWith("@"))) {
+				await EmailInvitationService.sendDue();
+			}
 			return ok(live.data, { message: invitesSentMessage(live.data), status: 201 });
 		}
 

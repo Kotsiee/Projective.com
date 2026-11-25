@@ -593,6 +593,25 @@ token**. The SELECT policy is therefore limited to the project's staffing author
 (`can_manage_project_members` — the owner, the client business, an appointed admin or manager) and to
 the invited identity — see [Policies.md](Policies.md) before widening it.
 
+**An email-addressed row is answered by its link** (PROJECTS NO1, Decision #566): `/invite/<token>`,
+through `projects.answer_email_invitation`, by an account holding `target_email` verified. Answering
+an open one first binds it to that account (`target_user_id` set, `target_email` cleared, as the
+addressee CHECK requires exactly one), so the acceptance body, the roster and the decline cooldown
+all read one identity.
+
+### `projects.invitation_mail`
+
+The one email an email invitation owes an address no verified account holds (PROJECTS NO1, Decision
+#566). Written by `projects.invite_by_email` in the invitation's own transaction, only while
+`security.platform_params.project_invite_mail_enabled` is on (seeded off ⚖️), never for a suppressed
+address, and at most once per (project, address) in 14 days. Sent by the service role:
+`projects.claim_invitation_mail` leases rows and drops, unsent, any whose invitation is no longer an
+open offer to an address; `projects.finish_invitation_mail` records the outcome. It names the
+invitation and copies neither its address nor its token. RLS is on with no policy, and `00002520`
+revokes the schema's default grant from `anon` and `authenticated`: only the definer doors read or
+write it. Zod: `InvitationMailRowSchema`.
+
+
 ### `projects.stage_invite_links`
 
 A stage's shareable invite link (Decision #145). Holding it lets a signed-in person **ask** to join

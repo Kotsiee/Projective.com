@@ -9,6 +9,7 @@ import type { z } from "zod";
 import { columnDrift, readRepoFile, tableColumns } from "../core/table-contract.ts";
 import { TicketStatus } from "./board.ts";
 import {
+	InvitationMailRowSchema,
 	ProjectStageRowSchema,
 	StageAssigneeType,
 	StageAssignmentRowSchema,
@@ -91,4 +92,33 @@ Deno.test({
 			...StageAssignmentRowSchema.shape.status.options,
 		]);
 	},
+});
+
+Deno.test("projects.invitation_mail ⇄ InvitationMailRowSchema: zero drift", () => {
+	const drift = columnDrift(
+		tableColumns(TABLES_SQL, "projects.invitation_mail"),
+		Object.keys(InvitationMailRowSchema.shape),
+	);
+	assertEquals(drift, { missingKeys: [], extraKeys: [], staleAllowlist: [] });
+});
+
+Deno.test("the invitation mail sender answers every field the mailer reads", () => {
+	const fns = readRepoFile("supabase/migrations/00001135_functions_projects_membership.sql");
+	const at = fns.indexOf("CREATE OR REPLACE FUNCTION projects.claim_invitation_mail(");
+	assert(at >= 0, "claim_invitation_mail is defined in 00001135");
+	const returns = fns.slice(
+		fns.indexOf("RETURNS TABLE (", at) + 15,
+		fns.indexOf(")\nLANGUAGE", at),
+	);
+	const columns = [...returns.matchAll(/(\w+)\s+(?:uuid|text|timestamptz)/g)].map((m) => m[1]);
+	assertEquals(columns, [
+		"mail_id",
+		"email",
+		"token",
+		"project_title",
+		"stage_name",
+		"inviter_name",
+		"role",
+		"expires_at",
+	]);
 });

@@ -132,7 +132,7 @@ These cannot run in parallel because they edit the same files:
 - **`features/devtools` + `dev-seam.ts`.** SR3 here (and NT5 only if it edits the axis); other
   tracks' axis-adding steps elsewhere.
 - **`00005010` (the notification catalog).** Several tracks add rows to it (C·WP3 notices, F·DB4's
-  schedule-failure notice, P·WP1's claim-TTL notices, PROJECTS EX1, NO1, FL4; EX2's landed, #548). One writer at a
+  schedule-failure notice, P·WP1's claim-TTL notices, FL4; EX2's landed, #548; PROJECTS NO1's, #566; EX1 needed none, #569). One writer at a
   time; here MS4 → NT5.
 - **The shared cache primitives (RED WP10a, landed `7f6b43d5`).** MS3 consumes the KV version keys
   (`bumpCacheVersion`, `cacheVersion`, `cacheVersionTag` in `packages/backend/core/kv.ts`) and SR3
@@ -783,7 +783,8 @@ STEPS:
         news.<domain>; Confirm → confirmed, and the contact appears in the provider list; the
         mail's one-click unsubscribe → unsubscribed_at set.
      g. projects mail (USER_FLOWS PJ-17, 60, 61, 71, 72), each case once its prompt has merged: a
-        stage.invite email (after PROJECTS NO1), a schedule.event_invite email and push, an
+        stage.invite email and the mail to an address with no account (PROJECTS NO1 ✅, #566;
+        that mail needs `project_invite_mail_enabled`, off until counsel), a schedule.event_invite email and push, an
         event.reminder_email, a digest (PROJECTS NO2 ✅, #565), and a guest invitation through the
         transport PROJECTS NO4 gives it.
   3. Flip each proved row to ✅ with the date, "staging" and the smoke run's ids. A case that

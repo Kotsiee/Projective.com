@@ -324,6 +324,14 @@ The token is the capability to ASK to join a stage — redeeming it files a requ
 so it is still never a blanket read. No write policy: minting, resetting, revoking and redeeming are
 the definer doors in `00001135` §4 (Decision #145).
 
+### `projects.invitation_mail`
+
+RLS on (`00002001`), **no policy at all** and no client grant (`00002520` revokes the schema default from
+`anon` and `authenticated`; PROJECTS NO1, Decision #566): `projects.invite_by_email`
+writes it and the service role's `claim_invitation_mail` / `finish_invitation_mail` read and settle it,
+all definers. A client role reads zero rows. The queue names an invitation and copies neither its
+address nor its token.
+
 ### `projects.service_instantiations`
 
 | Policy                                     | Command  | Rule                          |
@@ -458,7 +466,8 @@ and at least one policy in `00002011`; none is RLS-off and none is RLS-on with z
 
 Tables whose only writes are definer functions (no client write policy, by design): `ticket_history`,
 `project_applications`, `project_application_targets`, `stage_open_seat_skills`,
-`project_status_history`, `stage_invite_links`, `session_attendance`.
+`project_status_history`, `stage_invite_links`, `session_attendance`. `invitation_mail` has no policy
+of any kind, read or write.
 
 **Policy defects.**
 

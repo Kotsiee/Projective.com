@@ -6,8 +6,8 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 7 open, 3 partly done (FL1, #564; FL3, #563; FL2, #568), 16 done (§0 ledger).
-> Runnable now: NO1, NO4 and FL1–FL4, each up to its own 🧑 stop.
+> **Verified against code 2026-11-23 at `f2e25929`.** 6 open, 3 partly done (FL1, #564; FL3, #563; FL2, #568), 17 done (§0 ledger).
+> Runnable now: NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
 > (§1's closing duty; [`build-prompts.md`](../reference/build-prompts.md) §2).
@@ -67,6 +67,7 @@ A prompt that lands gets a row here.
 | CH3 | Inside a project every DM and group opens in place, and reading marks it read: `comms.project_channel_reads` + `comms.mark_room_read` + `comms.unread_rooms` behind `POST /api/projects/messages/read` (the send's own pair; a `cht-` channel marks the thread, so `/messages` clears too) and the `ProjectChat` island's after-paint read; `comms.project_dm_threads` (groups, no 500 cap); the `cht-` Files and Members tabs; `comms.dm_thread_projects` + `comms.bring_dm_into_project` (the other told, `message.brought_into_project`) + `comms.take_dm_out_of_project` (stamps kept) behind `POST | DELETE /api/projects/messages/dm`, the Members "Message" action and the header's Take out; probe `room_read_marks.sql` | `619a3885` (#560) | `b14e115f` |
 | CH1 | Authors edit and delete their messages through doors: `comms.edit_message` (within `message_edit_window_minutes`, 15) and `comms.delete_message` (a tombstone at any time), definers that keep every replaced text in the append-only `comms.message_revisions` and refuse an archived room or one a live dispute freezes (the stage's rooms and the project's General room, PM423); the `edit_own_messages` policy and every client `UPDATE` on the message tables gone; `dm_messages.edited_at`; `comms.message_edit_rules`, `comms.get_message_revisions` (operators); the vault manifest v2 carries each message's revision trail by hash; `PATCH`/`DELETE /api/messages/[id]`; the bubble's Edit and Delete for everyone, `MessageEditor`, `DeleteMessageDialog`, the Edited mark and the tombstone; dev axis `chatEdits`; probe `message_edit.sql` | `2e8df2a4` (#562) | `a48975b5` |
 | CH2 | A team's own room and a business's room on every stage they work on, opened in the transaction that makes them due: `comms.project_channels.team_id` + `ck_project_channels_team_room` + `uq_project_channels_private_room`; `comms.open_private_rooms` from three triggers (a team seat going live, a stage inserted, a project re-pointed at a business) and the lazy `get_stage_channels`; `can_access_scope`'s team arm is one team's (4-arg, `p_team_id`), the solo arm gone; the tree's Business group (`ProjectChannels.business`, `ChannelKind` `business`), team rooms joined by `team_id`; probe `private_rooms.sql` | `1958096c` (#561) | `47db5bca` |
+| NO1 | An email invitation is answered by its own `/invite/<token>` link, by the account holding the invited address verified: `projects.email_invitation` (invalid · not_yours with a masked hint · open · accepted · declined · expired · withdrawn) and `projects.answer_email_invitation` (binds an open email row to the caller, audited, then `fn_apply_invitation_decision`), the `EmailInvitationLanding` island and `POST /api/projects/invites/email`; an address no verified account holds is mailed the link once, never when suppressed, at most once per (project, address) in 14 days, behind ⚖️ `project_invite_mail_enabled` (seeded off): `projects.invitation_mail`, `claim_invitation_mail` / `finish_invitation_mail`, `services/mail/invitation-mailer.ts`, `EmailInvitationService.sendDue` after an invite and from the `projects-invitation-mail` job; a verified holder's `stage.invite` links to the invitation; `application.received` emails; probe `invitation_email.sql` | (#566) | `e95669e9` |
 | NO2 | The daily and weekly digests are mailed once each, as counts, titles and links and never a body: `comms.notification_digests` gains `attempts`, `claimed_until`, `provider_ref`, `last_error`, `skipped_reason`; `comms.fn_claim_digests` (`SKIP LOCKED`, a 15-minute lease, each digest decided again against preferences, snooze and suppression) and `comms.fn_record_digest_result` (2^attempts backoff, failed at the fifth); `DigestMailService` through the dispatcher's Resend transport, `POST /api/comms/cron/digests`, job `comms-digest-send`; probes `digest_claim.sql`, `digest_claim_race.sql` | `04ebee7a` (#565) | `0c7aa8dc` |
 | NO3 | A push device is dropped only when the push service says it is gone, after 5 consecutive failures whose first is at least 24 hours old, or after 180 days with nothing delivered: `comms.device_tokens.failing_since`; `fn_record_delivery_result` keeps the streak's start and a success resets it and refreshes `last_seen_at`; `fn_reap_dead_devices` waits out an outage (`search_path = ''`); Settings → This device says "This browser stopped receiving notifications" with Turn on again (`/devices/status` `stopped`, `restartPush`), dev axis Push permission → Stopped; probe `push_device_health.sql` | `ca1793c4` (#567) | `0e9cb82a` |
 
@@ -90,8 +91,8 @@ PJ-74 are ⏸ (§0.4).
 
 | Row   | Now · Crit · Gate | Work order                        | The row flips (or its note clears) when                                       |
 | :---- | :---------------- | :-------------------------------- | :---------------------------------------------------------------------------- |
-| PJ-15 | ✅ · Crit · MVP   | PJZ (stale note); NO1 (email, 🧑) | The note says what is true: push is built locally, the hosted send is CD2's   |
-| PJ-17 | 🟡 · Crit · MVP   | **NO1** (⚖️) + CD2                | An address with no account receives its invitation; a hosted send is recorded |
+| PJ-15 | ✅ · Crit · MVP   | PJZ (stale note); NO1 ✅ (#566) | The note says what is true: push is built locally, the hosted send is CD2's   |
+| PJ-17 | 🟡 · Crit · MVP   | NO1 ✅ (#566) + counsel (⚖️) + CD2 | Counsel's answer lets `project_invite_mail_enabled` go on; a hosted send is recorded |
 | PJ-21 | 🟡 · Crit · UAT   | PM-WP4b step 3 (⏳ WP4a)          | A removal refunds or splits the held escrow by the state of the work          |
 
 **Tickets & delivery** (59%)
@@ -180,7 +181,7 @@ after PM-WP1. The paths follow §0.2's order:
 | :----------------------------- | ----: | :---------------------------------------------------------------------------------------------------------------- |
 | Project setup                  |  100% | ✅ (ST1, ST6)                                                                                                      |
 | Stages                         |   81% | D7a 88% → WP4b 94% → D7b 100%                                                                                     |
-| Hiring & members               |   83% | WP4b 92% → NO1 + CD2 + counsel 100%                                                                               |
+| Hiring & members               |   83% | WP4b 92% → CD2 + counsel 100% (NO1 ✅, #566)                                                                               |
 | Tickets & delivery             |   59% | WP8 62% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100% (TK2 ✅, #557)               |
 | Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
@@ -190,8 +191,8 @@ after PM-WP1. The paths follow §0.2's order:
 | Calendar, integrations & rooms |   68% | CFG2 75% → CD2 82% → NO4 86% → LP1 100%                                                                           |
 
 **What MVP needs from this cluster:** the eight Critical · MVP rows not yet ✅, which are PJ-17,
-26, 27, 29, 30, 47, 49 and 57 (PJ-23 ✅, TK2). Their work orders, in order: D7a + P6, S3, WP9, WP6, NO1
-(+ CD2), and the chat chain (MS3, MS5, P2d, SN3, the T&S P-chain; CH1 ✅, #562).
+26, 27, 29, 30, 47, 49 and 57 (PJ-23 ✅, TK2). Their work orders, in order: D7a + P6, S3, WP9, WP6, CD2
++ counsel (NO1 ✅, #566), and the chat chain (MS3, MS5, P2d, SN3, the T&S P-chain; CH1 ✅, #562).
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a) and PJ-60 (CD2; NO2 ✅, #565) (PJ-43 ✅, EX2 + EX3).
 Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a, EX1,
@@ -238,7 +239,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 8. **EX1** (★00001150, ⏳ GH1): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
-11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); next **FL4**, **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), **NO4**, **NO1**, and **FL3**'s
+11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); next **FL4**, **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), **NO4** (NO1 ✅, #566), and **FL3**'s
     slug.
 12. **EX4** (⏳ PM-WP5a and T&S R3, R4; R1 landed).
 
@@ -278,7 +279,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00000016`, `00002012`, `00001300`, `00001840` (comms)   | —                                                            | COMMS MS3, MS4, MS5; T&S P1d, P2a–c, P2d                          |
 | `00001310` (notification engine)                         | — (NO2 ✅, #565)                                            | T&S                                                               |
 | `00001160` (files)                                       | FL1, FL3, FL4                                                | T&S SN2; T&S LK1 (services only)                                  |
-| `00005010` (notification catalogue)                      | EX1, NO1, FL4; PM WP4a, WP5a, WP6, D7b, GH1                  | COMMS MS4                                                         |
+| `00005010` (notification catalogue)                      | FL4; PM WP4a, WP5a, WP6, D7b, GH1                       | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | FL1; PM WP5a, D7b, GH1                                       | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
 | `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1      | COMMS NT5; T&S R3                                                 |
@@ -309,7 +310,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 21 | The message edit and delete rule; ⚖️ keeping an original after "delete for everyone"                                                         | CH1 ✅ (#562) | **Ruled #562:** as recommended (A): edit for 15 minutes; delete for everyone at any time; originals kept; nothing in an archived room changes, nor in the disputed stage's rooms or the project's General room while the dispute is live |
 | 22 | Who gets team and business rooms, and when                                                                                                   | CH2 ✅ (#561) | **Ruled #561:** eagerly, as recommended: a team's room when its seat on a stage goes live, a business's on every stage of a business-client project. And a new contradiction, ruled: one room per team, so a second team or a solo freelancer on the stage never reads it; a released seat keeps nothing |
 | 23 | Who may bring a pair DM into a project                                                                                                       | CH3 ✅ (#560) | **Ruled #560:** as recommended: either participant, while both are on the project; the other is told; either may take it out, which hides it for both and keeps every stamp |
-| 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1           | Yes, as a transactional invite behind a switch until counsel answers; `application.received` joins the hourly digest                                                                                                     |
+| 24 | ⚖️ Mailing an invitation to an address with no account; does `application.received` email?                                                   | NO1 ✅ (#566) | **Ruled #566:** as recommended: one transactional invite behind `project_invite_mail_enabled`, off until counsel; `application.received` emails. No hourly digest exists, so the digest half rests on #566 (a), open |
 | 25 | When a push device is dropped                                                                                                                | NO3 ✅ (#567) | **Ruled #567:** as recommended: at once on 404 / 410; otherwise after 5 consecutive failures whose first is at least 24 h old; a successful push refreshes `last_seen_at`; Settings says so |
 | 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                                     | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
 | 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ ruled  | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
@@ -321,7 +322,8 @@ block, so a question you defer still stops the build at the right step. The PM p
 
 **For counsel** (build behind a switch that stays off; never switch it on):
 
-- NO1's lawful basis for mailing someone who has no account.
+- NO1's lawful basis for mailing someone who has no account (built behind
+  `project_invite_mail_enabled`, seeded off, #566).
 - CH1 (built with no purge, #562): keeping a message's original after its author deletes it for
   everyone. This is evidence retention against erasure.
 - EX3 (built with no purge, #558): the Evidence Vault's retention period, and the weight of the dispute summary PDF.
@@ -644,53 +646,6 @@ row (clear EX4's Not built yet); documentation/database/{ops,projects}/*; Zod; t
 
 ## 6. Notices
 
-### NO1 — An emailed invitation reaches someone who has no account yet
-
-Narrows PJ-17; CD2 and counsel close it.
-
-```text
-PROMPT NO1: Inviting an email address with no Projective account sends that address its
-invitation, within the invite caps and the suppression list
-
-ROLE: Full-stack engineer. Queue S: 00001135, 00005010.
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - stage.invite is in-app + push + email (00005010:39), emitted by invite_to_project
-    (00001130:2340-2360) and invite_by_email (00001135:342-360), and dispatched locally through
-    NT2 → NT3 (email) and NT4 (push) once comms.dispatch_webhook is on.
-  - Only a verified account holder is notified (00001135:232-236, :330-340). The token in
-    projects.project_invitations is never mailed, so an address with no account gets nothing.
-  - The caps: ≤ 10 per stage, with cooldowns (PJ-17). The transport and suppression: NT3
-    (email-transport.ts; a hard bounce blocks the address). An invite link already routes:
-    /invite/:token (PJ-19). Find how an invitation to an unknown address is redeemed at sign-up
-    (/join). If no path exists, stop and tell me.
-  - application.received is in-app + push and digestible (00005010:56); it has no email channel.
-
-🧑 DECISION (before step 2). Put both to me:
-  1. ⚖️ Mail an address with no account? Recommended: yes. Send one transactional invitation per
-     invite (no reminders), naming the inviter, behind a switch that stays off until counsel
-     confirms the lawful basis.
-  2. Should application.received email? Recommended: yes, through the hourly digest.
-
-STEPS:
-  1. Red first: a probe and a test. An invite to an unknown address produces no outbound mail.
-  2. An outbound invitation email keyed on the invitation's address and token, through the NT3
-     transport, refused for a suppressed address and counted against the existing caps. A
-     platform param holds the ⚖️ switch, seeded off.
-  3. The sign-up path lands the new account on its invitation.
-  4. Under ruling 2, add the email channel to application.received.
-
-ACCEPTANCE: with the switch on in your local DB only, an invite to a new address reaches the
-local mail catcher (or the Resend test address), and signing up from it lands on the invitation;
-with it off, nothing is sent; screenshots of the email.
-
-SAME CHANGE: PRODUCT_SPEC.md (invitations); documentation/database/{projects,comms}/*;
-SYSTEM_ARCHITECTURE.md if a param is added; the decision row.
-```
-
-§1.2 rows: **PJ-17** stays 🟡 ("the hosted send, CD2, and counsel's switch"). Its stale "never
-delivered" text corrected.
-
 ### NO4 — Guest invitations honour bounces and suppression
 
 Narrows PJ-72; CD2 closes it.
@@ -739,8 +694,8 @@ Narrows PJ-63; T&S SN1 and SN2 close it.
 **Status (2026-11-25, #564):** steps 1 and 2 landed: the rollup and the quota gate count every WebP
 tier (probe `storage_usage_variants.sql`), and the backfill is the one `fn_recompute_usage`
 statement in `database/files/Functions.md`. Stop 27 is ruled (#564): 30 days, the quota on in UAT,
-flipped by you. Steps 3 and 4 wait only for NO1 and EX1 to land `00005060`, `00005001` and
-`00002510`.
+flipped by you. Steps 3 and 4 wait only for EX1 to land `00005060`, `00005001` and `00002510`
+(NO1 ✅, #566).
 
 ```text
 PROMPT FL1: The storage quota counts every stored byte, the image variants included, and a

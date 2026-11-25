@@ -2472,6 +2472,23 @@ There are two primary ways an engagement begins:
   > access lists the roster, a role changed or a member removed where the viewer may. Opening or
   > sending never leaves the page (Decisions #318, #405).
 
+  > **An email invitation is answered by its own link, by whoever holds that address.** An
+  > invitation sent to an email address stays addressed to the address: the inviter never learns
+  > whose account it belongs to. Its link (`/invite/…`) opens it. Someone with a verified account at
+  > that address is told in the app (`stage.invite`), and the notice is the link. An address with no
+  > verified account is **emailed the link once**, naming who invited them, to what and as which
+  > role, and when it expires. It is never reminded, never sent to an address that has bounced, and
+  > never sent twice to the same address for the same project within the invitation's 14 days; each
+  > send is one of the inviter's capped invitations. The link answers only for an account holding
+  > the invited address **verified**: a stranger who has the link, or an account made with another
+  > address, is told which address it was sent to (masked) and offered nothing to accept. A
+  > newcomer signs up from the link with that address and lands back on it to **Accept** or
+  > **Decline**, under the same rules as any invitation (payout setup for paid work, the client's
+  > trust score when the client is warned). Accepting puts them on the project. ⚖️ **The email to an
+  > address with no account is held off** (`project_invite_mail_enabled`) until counsel confirms the
+  > lawful basis for mailing someone who has no account; until then such an address is invited but
+  > not emailed (PROJECTS NO1, Decision #566).
+
 ##### Discovery & Courtesy Calls (the third path)
 
 Before either party commits to a negotiation, they may simply **talk**. A discovery call is a

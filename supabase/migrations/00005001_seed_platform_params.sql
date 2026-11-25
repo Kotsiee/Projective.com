@@ -399,3 +399,15 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Minutes after sending in which the author may edit a room message or a DM, any number of times (comms.edit_message, PROJECTS CH1). Deleting for everyone has no window. Mirrored in TS as MESSAGE_EDIT_WINDOW_MINUTES under a parity test; missing or not a number, 15 applies.')
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
+
+-- #region [invitations] Mailing an invitation to an address with no account (PROJECTS NO1 ⚖️)
+-- One transactional email per email invitation, to an address no verified account holds, naming the
+-- inviter and carrying the invitation's own link. Held OFF until counsel confirms the lawful basis for
+-- mailing someone who has no account: while off, projects.invite_by_email queues nothing and
+-- projects.claim_invitation_mail hands nothing out. Never switched on by a build; the owner turns it
+-- on per environment once counsel has answered.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('project_invite_mail_enabled', 'false'::jsonb,
+        'When true, an email invitation to an address no verified account holds is mailed once, with its /invite/<token> link (projects.invite_by_email queues it, projects.claim_invitation_mail sends it; PROJECTS NO1). Off until counsel confirms the lawful basis; the owner switches it on per environment.')
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
