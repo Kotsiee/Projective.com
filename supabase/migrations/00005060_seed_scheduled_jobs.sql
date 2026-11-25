@@ -207,7 +207,7 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'Archives (never deletes) every notification past its expires_at.'),
     ('comms-reap-devices', 'sql', '32 3 * * *',
         'SELECT comms.fn_reap_dead_devices();', NULL, NULL,
-        'Soft-revokes each push device with 5 or more gateway failures or unseen for 180 days, and clears its keys.'),
+        'Soft-revokes each push device with 5 consecutive failures whose first is at least 24 hours old, or with nothing delivered for 180 days, and clears its keys (Decision #567).'),
     ('comms-compact-events', 'sql', '47 3 * * *',
         'SELECT comms.fn_compact_delivery_events();', NULL, NULL,
         'Empties the raw provider body of delivery callbacks older than 30 days; the row stays, as it is the idempotency key.')
