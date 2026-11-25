@@ -263,7 +263,14 @@ token.
 - **Never metered.** `fn_recompute_usage` and `fn_check_storage_quota` count `source = 'supabase'`
   only; the provider meters its own bytes.
 - **Its object address is synthesised** — `bucket_id` / `storage_path` carry no stored object; see
-  the `UNIQUE (bucket_id, storage_path)` flag above.
+  the `UNIQUE (bucket_id, storage_path)` flag above. A mount takes `link` / its own id, as a link does.
+- **Written by the service role only** (PROJECTS FL2). "Add to Library" (`POST /api/integrations/import`)
+  reads the object's facts from its provider under the caller's own connection, proves the library and
+  the native folder under the caller's session, and `mountAsset` (`services/files/live-library-writes.ts`)
+  writes the row `uploaded`, `private`, with `mime_type` `application/octet-stream` (the adapter row
+  carries a category, not the provider's type). The one-per-object key makes adding it again the same
+  row, filed where it was asked for; a soft-deleted mount comes back; one in another library is refused
+  (409), never moved out of it.
 
 ---
 

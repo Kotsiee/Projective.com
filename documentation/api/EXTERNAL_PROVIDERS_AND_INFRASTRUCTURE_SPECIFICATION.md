@@ -1281,8 +1281,10 @@ switch is per-provider data with no schema change.
 person owns, `calendar.app.created` to write the separate
 Projective calendar, `meetings.space.created` to mint rooms, and `meetings.space.readonly` if
 reading attendance needs it. Request `access_type=offline` and
-`prompt=consent` on the first connection so a refresh token is issued. Add
-`include_granted_scopes=true` so a later Drive consent adds to the grant instead of replacing it.
+`prompt=consent` on the first connection so a refresh token is issued, and
+`include_granted_scopes=true`. Drive is its own connection (`google_drive`) on the same client, not
+an addition to this grant: one client, two connections (Decision #394 (a), ruled in PROJECTS FL2).
+Its consent omits `include_granted_scopes`, so its token reaches files only.
 
 **Meet rooms** (Decision #383, rulings R3 and R5; Decision #392). Call
 `POST https://meet.googleapis.com/v2/spaces` with `config.accessType = OPEN` on a free room, so an
@@ -2132,6 +2134,15 @@ confused-deputy guard):
 	}]
 }
 ```
+
+**The credential form (PROJECTS FL2).** S3 ships for UAT beside Google Drive; Dropbox, OneDrive &
+SharePoint and Frame.io stay off (Planned) until their apps exist. Settings → Integrations → Cloud
+storage opens the person's connection `pending` first (`POST /api/integrations/s3/open`,
+`integrations.fn_open_s3_connection`), so the form can show the account (`S3_PLATFORM_ACCOUNT_ID`,
+the `XXXX-XXXX` above) and the ExternalId before the role exists. Saving
+(`POST /api/integrations/s3/save`) lists the bucket once with what was typed and stores nothing if it
+refuses; an S3-compatible key pair is sealed into `access_token` + `api_secret`, an AWS row holds no
+secret. The role needs only `s3:ListBucket` on the bucket (with the prefix) and `s3:GetObject` under it.
 
 ---
 

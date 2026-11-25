@@ -9,11 +9,14 @@ import type {
 	ProviderKind,
 	SealedSecret,
 } from "@projective/types/integrations";
+import type { AssetListParams } from "@projective/types/files";
 import type { ReadActor } from "../read-actor.ts";
+import { childNodesOf, listElsewhere } from "../files/live-locations.ts";
 import { hmacSha256Hex } from "../sessions/presence/adapter.ts";
 import { useWebhookFailureDoor } from "../ops/OpsHealthService.ts";
 import { IntegrationsBackendService as Service } from "./IntegrationsBackendService.ts";
 import { seal, unseal } from "./token-vault.ts";
+import { clearAssumedRoles } from "./adapters/aws.ts";
 
 // #region Kit
 const ADA: ReadActor = {
@@ -23,6 +26,8 @@ const ADA: ReadActor = {
 	accessToken: "ada-jwt",
 } as ReadActor;
 const MALLORY: ReadActor = { ...ADA, userId: "b1000000-0000-4000-8000-000000000001" };
+/** The signed-in actor the hub's location reads take. */
+type HubActor = ReadActor & { accessToken: string };
 const CONNECTION = "c0a8012e-0000-4000-8000-000000000001";
 const ZOOM_SECRET = "zoom-webhook-secret";
 const CALLBACK = "https://app.example.test/api/integrations/callback";
@@ -1585,7 +1590,7 @@ Deno.test("browseLocation: the trail names each level on the first page, and onl
 					mimeType: DRIVE_FOLDER,
 				}),
 		}, async (calls) => {
-			const input = { connectionId: CONNECTION, folderIds: ["F1", "F2"], limit: 10 };
+			const input = { connectionId: CONNECTION, folderIds: ["F1", "F2"], limit: 10, query: null };
 			const first = await Service.browseLocation({ ...input, cursor: null }, ADA);
 			assertEquals(first.data?.connection.providerLabel, "Google Drive");
 			assertEquals(first.data?.trail.map((f) => f.id), ["F1", "F2"]);
@@ -1598,6 +1603,331 @@ Deno.test("browseLocation: the trail names each level on the first page, and onl
 			const later = await Service.browseLocation({ ...input, cursor: "tok" }, ADA);
 			assertEquals(later.data?.trail, []);
 			assertEquals(calls.slice(before).filter((c) => c.host !== "postgrest.fake").length, 1);
+		});
+	}));
+
+// #region Import
+const FOLDER = "f0000000-0000-4000-8000-0000000000f1";
+const OTHER_FOLDER = "f0000000-0000-4000-8000-0000000000f2";
+const ITEM = "e0000000-0000-4000-8000-0000000000e1";
+
+/** A library folder of Ada's own, as the folder reads see it. */
+function adaFolder(id: string) {
+	return {
+		id,
+		name: "Briefs",
+		parent_folder_id: null,
+		path: [],
+		owner_type: "user",
+		owner_user_id: ADA.userId,
+		owner_entity_id: null,
+		source: "supabase",
+		external_folder_id: null,
+		visibility: "private",
+		color: null,
+		created_at: "2026-11-01T00:00:00.000Z",
+		updated_at: "2026-11-01T00:00:00.000Z",
+	};
+}
+
+/** The world a mount runs in: Ada's Drive, her folders, and `prior` as the object's existing row. */
+async function mountWorld(prior: Record<string, unknown> | null) {
+	const claim = await driveClaim();
+	const db: Record<string, DbRoute> = {
+		"integrations.v_my_connections": () => [driveRow()],
+		"integrations.rpc.fn_claim_connection_token": () => claim,
+		"files.folders": (call) => [adaFolder(call.url.searchParams.get("id")?.slice(3) ?? FOLDER)],
+		"files.download_events": () => [],
+		"files.share_links": () => [],
+		"files.items": (call) => {
+			if (call.method !== "GET") return [];
+			if (call.url.searchParams.has("external_file_id")) return prior ? [prior] : [];
+			return [{
+				id: ITEM,
+				owner_user_id: ADA.userId,
+				owner_type: "user",
+				owner_entity_id: null,
+				folder_id: FOLDER,
+				bucket_id: "link",
+				storage_path: ITEM,
+				display_name: "brief.pdf",
+				original_name: "brief.pdf",
+				mime_type: "application/octet-stream",
+				size_bytes: 5,
+				category: "Document",
+				status: "uploaded",
+				source: "google_drive",
+				visibility: "private",
+				external_web_url: "https://drive.google.com/file/d/P1/view",
+				download_count: 0,
+				starred: false,
+				metadata: {},
+				created_at: "2026-11-25T00:00:00.000Z",
+				updated_at: "2026-11-25T00:00:00.000Z",
+			}];
+		},
+	};
+	const provider: ProviderRoute = () =>
+		json({
+			id: "P1",
+			name: "brief.pdf",
+			mimeType: "application/pdf",
+			size: "5",
+			parents: ["D1"],
+			webViewLink: "https://drive.google.com/file/d/P1/view",
+			version: "7",
+		});
+	return { db, provider };
+}
+
+const IMPORT = {
+	connectionId: CONNECTION,
+	externalFileId: "P1",
+	folderId: FOLDER,
+	ownerType: "user" as const,
+	ownerId: ADA.userId,
+};
+
+/** The writes to `files.items`, and whose credentials sent them. */
+const itemWrites = (calls: Call[]) => named(calls, "files.items").filter((c) => c.method !== "GET");
+
+Deno.test("import: a Drive file is filed in the chosen folder as a reference, written by the service role", () =>
+	world({}, async () => {
+		await world(await mountWorld(null), async (calls) => {
+			const res = await Service.importAsset(IMPORT, ADA);
+			assert(res.ok, res.message);
+			assertEquals(res.status, 201);
+			assertEquals(res.data?.source, "google_drive");
+			assertEquals(res.data?.canManage, false);
+			const [write] = itemWrites(calls);
+			assertEquals(write.method, "POST");
+			assertFalse(write.headers.get("authorization")?.includes("ada-jwt"));
+			const row = write.json;
+			assertEquals(
+				[row.source, row.source_connection_id, row.external_file_id, row.folder_id, row.size_bytes],
+				["google_drive", CONNECTION, "P1", FOLDER, 5],
+			);
+			assertEquals([row.owner_type, row.owner_entity_id, row.visibility, row.external_etag], [
+				"user",
+				null,
+				"private",
+				"7",
+			]);
+			assertEquals(
+				named(calls, "/drive/v3/files/P1")[0].headers.get("authorization"),
+				"Bearer drive-token",
+			);
+		});
+	}));
+
+Deno.test("import: the same file again is the same row, filed where it was asked for; a removed one comes back", () =>
+	world({}, async () => {
+		const prior = {
+			id: ITEM,
+			owner_type: "user",
+			owner_entity_id: null,
+			deleted_at: "2026-11-20T00:00:00Z",
+		};
+		await world(await mountWorld(prior), async (calls) => {
+			const res = await Service.importAsset({ ...IMPORT, folderId: OTHER_FOLDER }, ADA);
+			assert(res.ok, res.message);
+			assertEquals(res.status, 200);
+			const writes = itemWrites(calls);
+			assertEquals(writes.map((w) => w.method), ["PATCH"]);
+			assertEquals(writes[0].url.searchParams.get("id"), `eq.${ITEM}`);
+			assertEquals([writes[0].json.folder_id, writes[0].json.deleted_at], [OTHER_FOLDER, null]);
+		});
+	}));
+
+Deno.test("import: a file already in another library stays there, and nothing is written", () =>
+	world({}, async () => {
+		const prior = { id: ITEM, owner_type: "team", owner_entity_id: "t1", deleted_at: null };
+		await world(await mountWorld(prior), async (calls) => {
+			const res = await Service.importAsset(IMPORT, ADA);
+			assertEquals(res.status, 409);
+			assertEquals(res.message, "That file is already in another library.");
+			assertEquals(itemWrites(calls), []);
+		});
+	}));
+
+Deno.test("import: someone else's library is refused before any token is read", () =>
+	world({ db: {} }, async (calls) => {
+		const res = await Service.importAsset({ ...IMPORT, ownerId: MALLORY.userId }, ADA);
+		assertEquals(res.status, 403);
+		assertEquals(calls.length, 0);
+	}));
+// #endregion
+
+// #region S3 credential form
+const ROLE = "arn:aws:iam::123456789012:role/projective-read";
+const S3_ENV = {
+	S3_ACCESS_KEY_ID: "AKIAPLATFORM",
+	S3_SECRET_ACCESS_KEY: "platform-secret",
+	S3_PLATFORM_ACCOUNT_ID: "210987654321",
+};
+
+/** Ada's S3 connection, `pending` until a store lands. */
+function s3World(status = "pending") {
+	let stored = false;
+	const row = () => ({
+		...connectionRow("s3"),
+		provider_label: "S3-compatible storage",
+		provider_category: "storage",
+		provider_capabilities: ["storage"],
+		status: stored ? "active" : status,
+		granted_kinds: stored ? ["storage"] : [],
+		external_account_id: null,
+	});
+	const db: Record<string, DbRoute> = {
+		"integrations.v_my_connections": () => [row()],
+		"integrations.rpc.fn_store_s3_connection": () => {
+			stored = true;
+			return true;
+		},
+	};
+	return db;
+}
+
+const AWS_SAVE = {
+	connectionId: CONNECTION,
+	config: {
+		endpoint: null,
+		region: "eu-west-2",
+		bucket: "studio-assets",
+		prefix: "briefs/",
+		pathStyle: false,
+		roleArn: ROLE,
+	},
+	keys: null,
+};
+
+const STS_OK =
+	`<AssumeRoleResponse><AssumeRoleResult><Credentials><AccessKeyId>ASIATEMP</AccessKeyId>` +
+	`<SecretAccessKey>temp</SecretAccessKey><SessionToken>tok</SessionToken>` +
+	`<Expiration>2099-01-01T00:00:00Z</Expiration></Credentials></AssumeRoleResult></AssumeRoleResponse>`;
+const LIST_OK =
+	`<ListBucketResult><Name>studio-assets</Name><IsTruncated>false</IsTruncated></ListBucketResult>`;
+
+Deno.test("s3 open: the caller's pending connection comes back with its ExternalId and the platform account", () =>
+	world({
+		env: S3_ENV,
+		db: { "integrations.rpc.fn_open_s3_connection": () => CONNECTION },
+	}, async (calls) => {
+		const res = await Service.startS3Connection(ADA);
+		assert(res.ok, res.message);
+		assertEquals(res.data, {
+			connectionId: CONNECTION,
+			externalId: `projective-${CONNECTION}`,
+			platformAccountId: "210987654321",
+		});
+		const [open] = named(calls, "integrations.rpc.fn_open_s3_connection");
+		assertEquals(open.headers.get("authorization"), "Bearer ada-jwt");
+	}));
+
+Deno.test("s3 save: an AWS bucket is listed through its role before it is stored, with no key", () => {
+	clearAssumedRoles();
+	return world({
+		env: S3_ENV,
+		db: s3World(),
+		provider: (call) => new Response(call.url.hostname.startsWith("sts.") ? STS_OK : LIST_OK),
+	}, async (calls) => {
+		const res = await Service.saveS3Connection(AWS_SAVE, ADA);
+		assert(res.ok, res.message);
+		assertEquals([res.status, res.data?.status], [201, "active"]);
+		const sts = calls.find((c) => c.url.hostname.startsWith("sts."));
+		const assume = sts?.text ? new URLSearchParams(sts.text) : sts?.url.searchParams;
+		assertEquals([assume?.get("RoleArn"), assume?.get("ExternalId")], [
+			ROLE,
+			`projective-${CONNECTION}`,
+		]);
+		const listed = calls.find((c) => c.url.hostname === "studio-assets.s3.eu-west-2.amazonaws.com");
+		assertEquals(listed?.url.searchParams.get("prefix"), "briefs/");
+		const [store] = named(calls, "integrations.rpc.fn_store_s3_connection");
+		assertEquals(store.json.p_secret, null);
+		assertEquals(store.json.p_user_id, ADA.userId);
+		assertEquals(store.json.p_account_id, "aws/studio-assets/briefs/");
+		assertFalse("endpoint" in store.json.p_config);
+		assertFalse(store.headers.get("authorization")?.includes("ada-jwt"));
+	});
+});
+
+Deno.test("s3 save: a bucket that refuses the role is stored nowhere, and says why", () => {
+	clearAssumedRoles();
+	return world({
+		env: S3_ENV,
+		db: s3World(),
+		provider: (call) =>
+			call.url.hostname.startsWith("sts.")
+				? new Response("<ErrorResponse><Error><Code>AccessDenied</Code></Error></ErrorResponse>", {
+					status: 403,
+				})
+				: new Response(LIST_OK),
+	}, async (calls) => {
+		const res = await Service.saveS3Connection(AWS_SAVE, ADA);
+		assertEquals(res.status, 422);
+		assertStringIncludes(res.message ?? "", "trust policy");
+		assertEquals(named(calls, "integrations.rpc.fn_store_s3_connection").length, 0);
+	});
+});
+
+Deno.test("s3 save: a connection already set up is refused before any bucket is asked", () =>
+	world({ env: S3_ENV, db: s3World("active") }, async (calls) => {
+		const res = await Service.saveS3Connection(AWS_SAVE, ADA);
+		assertEquals(res.status, 409);
+		assertEquals(calls.filter((c) => c.host !== "postgrest.fake").length, 0);
+	}));
+// #endregion
+
+Deno.test("drive tree: a folder's children follow Drive's cursor past the first page, folders only", () =>
+	world({}, async () => {
+		const claim = await driveClaim();
+		await world({
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.rpc.fn_claim_connection_token": () => claim,
+			},
+			provider: (call) =>
+				call.url.searchParams.get("pageToken") === "p2"
+					? json({ files: [{ id: "F2", name: "Later", mimeType: DRIVE_FOLDER }] })
+					: json({
+						nextPageToken: "p2",
+						files: [{ id: "F1", name: "First", mimeType: DRIVE_FOLDER }],
+					}),
+		}, async (calls) => {
+			const res = await childNodesOf(ADA as HubActor, ["drives", CONNECTION, "F0"]);
+			assert(res.ok, res.ok ? "" : res.message);
+			assertEquals(res.data.map((node) => node.segment), ["F1", "F2"]);
+			const lists = named(calls, "/drive/v3/files");
+			assertEquals(lists.length, 2);
+			for (const list of lists) {
+				assertStringIncludes(list.url.searchParams.get("q") ?? "", `mimeType = '${DRIVE_FOLDER}'`);
+			}
+		});
+	}));
+
+Deno.test("drive search: the hub's search is Drive's to match, so its pages are pages of matches", () =>
+	world({}, async () => {
+		const claim = await driveClaim();
+		await world({
+			db: {
+				"integrations.v_my_connections": () => [driveRow()],
+				"integrations.rpc.fn_claim_connection_token": () => claim,
+			},
+			provider: () =>
+				json({
+					nextPageToken: "more",
+					files: [{ id: "P1", name: "Brief.pdf", mimeType: "application/pdf", size: "5" }],
+				}),
+		}, async (calls) => {
+			const res = await listElsewhere(ADA as HubActor, {
+				path: ["drives", CONNECTION, "F1"],
+				query: " Brief ",
+			} as AssetListParams);
+			assert(res?.ok, res?.ok ? "" : res?.message);
+			assertEquals(res.data.items.map((item) => item.name), ["Brief.pdf"]);
+			assertEquals(res.data.nextCursor, "more");
+			const [list] = named(calls, "/drive/v3/files");
+			assertStringIncludes(list.url.searchParams.get("q") ?? "", "and name contains 'brief'");
 		});
 	}));
 

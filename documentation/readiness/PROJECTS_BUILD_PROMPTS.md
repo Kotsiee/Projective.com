@@ -6,7 +6,7 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 8 open, 2 partly done (FL1, #564; FL3, #563), 16 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 7 open, 3 partly done (FL1, #564; FL3, #563; FL2, #568), 16 done (§0 ledger).
 > Runnable now: NO1, NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -157,7 +157,7 @@ The operator's ruling is MW-59; it is not this file's row.
 | :---- | :---------------- | :----------------------------- | :--------------------------------------------------------------------------------------------------------- |
 | PJ-63 | 🟡 · High · MVP   | T&S SN1 → SN2; **FL1** steps 3–4 (27 ruled) | Uploads are scanned; stale and deleted objects leave the bucket (every byte metered, #564)  |
 | PJ-64 | 🟡 · Normal · UAT | T&S LK1                        | Offline or with no key, a link reads "unchecked" and goes through `/exit`                                  |
-| PJ-65 | 🟡 · Normal · UAT | **FL2** (+ you: provider apps) | A Drive file imports; the tree pages; the S3 form exists; every other connector is proved or ruled Planned |
+| PJ-65 | 🟡 · Normal · UAT | **FL2** step 5 (with you) | The live Drive round trip is recorded: consent, browse, Add to Library, open (steps 1–4 landed, #568) |
 | PJ-66 | 🟡 · High · UAT   | **FL3** (🧑; steps 1, 3 #563)  | A `fil-` slug routes; the inspector has its own CSP (a raw PDF is sandboxed, #563)                         |
 | PJ-68 | 🟡 · High · UAT   | **FL4** (🧑)                   | A grant tells its grantee, and a share link cannot outlive its tier                                        |
 
@@ -245,7 +245,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 **App lane** (up to three at once, file-disjoint):
 
 - **PM-WP8** now.
-- **FL2**.
+- **FL2** step 5, with you (steps 1–4 landed, #568).
 - **FL3** step 4, the inspector's CSP (its stream half landed, #563), once stop 29 is ruled.
 - **PJZ** last.
 
@@ -253,7 +253,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 
 - **LP1**, which needs a public HTTPS origin: OPS6 (#512) or a tunnel.
 - **COMMS CD2**, deferred twice (#484).
-- The provider apps for FL2.
+- FL2 step 5: the live Drive round trip on your account.
 - Counsel's answers for NO1, EX3 and CH1 (§0.3).
 
 **Other tracks' prompts these rows wait on** run in their own files' order:
@@ -313,7 +313,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 25 | When a push device is dropped                                                                                                                | NO3 ✅ (#567) | **Ruled #567:** as recommended: at once on 404 / 410; otherwise after 5 consecutive failures whose first is at least 24 h old; a successful push refreshes `last_seen_at`; Settings says so |
 | 26 | Guest invitations on their own mail subdomain (#391 (n))                                                                                     | NO4           | Yes; the DNS is yours                                                                                                                                                                                                    |
 | 27 | Retention of soft-deleted files; when `storage_quota_enforced` flips (#58)                                                                   | FL1 ✅ ruled  | **Ruled #564:** as recommended: purge the bytes after 30 days and keep the row; the quota on in UAT, flipped by you                                                                                                    |
-| 28 | #394 (a) one Google connection or two; which connectors ship for UAT                                                                         | FL2           | (a) as #394 recommends; Drive and S3 ship, and Dropbox, OneDrive and Frame.io stay Planned                                                                                                                               |
+| 28 | #394 (a) one Google connection or two; which connectors ship for UAT | FL2 ✅ (#568) | **Ruled #568:** as recommended: one Google client, two connections (`google_drive` beside `google`); Google Drive and S3 ship for UAT, and Dropbox, OneDrive and Frame.io are Planned |
 | 29 | #161 (a) a `fil-` slug and the old uuid links; **new contradiction**: F26's "no frames" vs #401's preview ladder                             | FL3 (#563)    | A `fil-` slug, with old links 404ing per #88 (or one release of 301s, your call); the inspector CSP allows only the ladder's frames                                                                                      |
 | 30 | #402 (d) who a grant notifies; (k) re-ruled, so a tier drop revokes links; (e) a block check on person grants                                | FL4           | Person grants notify; group grants appear in Shared with me; a tier drop revokes after a confirm; a blocked pair refuses                                                                                                 |
 | 31 | An owner-present run on your Zoom, Microsoft and Google accounts                                                                             | LP1           | Yes, in one sitting, once a public HTTPS origin exists                                                                                                                                                                   |
@@ -784,51 +784,35 @@ half closed); PRODUCT_SPEC.md (retention); the decision row.
 
 Closes PJ-65 (🟡 → ✅) once you have walked it.
 
+**Status (2026-11-25, #568):** steps 1–4 landed. A Drive file is added to the library as a reference
+("Add to Library", a service-role mount, one row per object per connection); the tree's children page
+by cursor and a drive's search is Drive's own; S3 connects on its credential form
+(`fn_open_s3_connection` / `fn_store_s3_connection`, probe `s3_connection.sql`). Stop 28 is ruled
+(#568): one Google client, two connections; Google Drive and S3 ship for UAT, and Dropbox, OneDrive
+and Frame.io are Planned. Step 5 is left, and it needs you.
+
 ```text
-PROMPT FL2: A file in a connected Google Drive can be brought into the library, the drive tree
-pages, the S3 credential form exists, and every other connector is proved or ruled Planned
+PROMPT FL2 (step 5 of 5): the live Drive round trip, with the owner present
 
-ROLE: Full-stack engineer. App lane (a definer for the mount, if needed, goes to Queue S).
+ROLE: Full-stack engineer, with the owner. App lane.
 
-CONTEXT (verified at e1ff027b; re-check every line):
-  - IntegrationsBackendService.importAsset always answers 503 (:1086-1103), though the route
-    exists (routes/api/integrations/import.ts). Mounting needs the service role: a client mount
-    INSERT is refused by fn_guard_pipeline_columns (#313). #313 said browse and importAsset were
-    not wired; #394 wired browse only.
-  - live-locations.ts: a folder's own listing pages by cursor (:63-68), but the tree's children
-    take the first page only (:114-118), and search narrows only the provider's page (:88-89).
-  - S3: startConnection answers 422 "Use the credential form for this provider" (:706-710), and
-    no such form exists. #314: STS AssumeRole with ExternalId projective-{connection id}; a vault
-    key pair for S3-compatible stores; pinnedRequest.
-  - Dropbox, OneDrive, Frame.io and S3 are seeded off (00005050:135-161), google_drive on
-    (:226); their env keys are DROPBOX_*, FRAMEIO_* and MICROSOFT_INTEGRATION_* (env.ts:380-400).
-  - #394's open flags: (a) one Google connection or two (a source conflict); (b) drive.readonly
-    is a restricted scope needing CASA for production; (c) the live Drive round trip is
-    unexercised.
-
-🧑 DECISION (before step 1). Put both to me:
-  1. #394 (a), with its own recommendation.
-  2. Which connectors ship for UAT. Recommended: Google Drive and S3; Dropbox, OneDrive and
-     Frame.io stay off and are marked Planned in PRODUCT_SPEC until their apps exist.
+CONTEXT (verified at #568):
+  - IntegrationsBackendService.importAsset mounts through mountAsset (live-library-writes.ts);
+    the hub's drive files carry "Add to Library". Everything was exercised against faked Google
+    answers only (#394 (c)).
+  - #568's flags (b) no folder choice from the hub and (c) no way to remove a mount are open and
+    are not this step.
 
 STEPS:
-  1. Red first: a test. Import answers 503.
-  2. importAsset mounts (or copies, as #313 rules; read it) the external file into the chosen
-     library folder through a service-role door, deduplicated by external id.
-  3. The tree's children page by cursor; search goes into adapter.list.
-  4. The S3 credential form and its door, per #314.
   5. With me present: the live Drive round trip on my account (consent, browse, import, open),
      recorded like #386 with no secret printed.
 
-ACCEPTANCE: the tests are green; the live round trip is recorded; screenshots of import and of
-the S3 form.
-
-SAME CHANGE: PRODUCT_SPEC.md (connectors, as ruled); documentation/database/files/*;
-EXTERNAL_PROVIDERS_AND_INFRASTRUCTURE_SPECIFICATION.md; ROUTING.md; the decision row.
+ACCEPTANCE: the live round trip is recorded; a screenshot of Add to Library and of the mounted
+file in the library.
 ```
 
-§1.2 rows: **PJ-65** → ✅ once Drive import is walked live and the rest are ruled Planned. Otherwise
-🟡, naming what is left. Correct its "first page only" text.
+§1.2 rows: **PJ-65** → ✅ once Drive import is walked live (the rest are ruled Planned, #568).
+Otherwise 🟡, naming what is left.
 
 ### FL3 — The File Inspector routes by slug, sandboxes a raw PDF, and has its own CSP
 

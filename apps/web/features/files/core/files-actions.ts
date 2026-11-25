@@ -155,6 +155,24 @@ export async function removeRows({ assetIds, folderIds }: PendingRemoval): Promi
 	else commitFiles();
 }
 
+/**
+ * Add a drive file to the acting library's root as a reference: nothing is copied, and the library's
+ * allowance does not move. Says whether it landed.
+ */
+export async function addToLibrary(asset: AssetItem): Promise<boolean> {
+	const ref = asset.external;
+	if (!ref) return false;
+	return await write(
+		() =>
+			IntegrationsService.importAsset({
+				connectionId: ref.connectionId,
+				externalFileId: ref.externalFileId,
+				folderId: null,
+			}),
+		"That file could not be added.",
+	);
+}
+
 /** Disconnect a drive. Standing inside it, the address steps out to the library. */
 export async function disconnectDrive(connectionId: string): Promise<void> {
 	const closed = await write(

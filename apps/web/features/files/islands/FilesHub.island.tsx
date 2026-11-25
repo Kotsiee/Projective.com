@@ -18,7 +18,7 @@ import "../styles/files-hub.css";
 import type { ReadonlySignal } from "@preact/signals";
 import { VirtualGrid } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
-import { InlineNotice, Tooltip } from "@projective/ui/feedback";
+import { InlineNotice, Toast, Tooltip, useToast } from "@projective/ui/feedback";
 import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
 import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { Icon, type IconName } from "@projective/ui/icons";
@@ -67,6 +67,7 @@ import {
 	rowsOf,
 } from "../core/files-keyboard.ts";
 import {
+	addToLibrary,
 	download,
 	moveRows,
 	openInNewTab,
@@ -739,6 +740,15 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	// #endregion
 
 	// #region Menus
+	const toast = useToast();
+
+	/** A drive file filed in the library: the drive view does not change, so the toast says it landed. */
+	async function addDriveFile(asset: AssetItem): Promise<void> {
+		if (await addToLibrary(asset)) {
+			toast.show({ severity: "success", summary: "Added to your Library", detail: asset.name });
+		}
+	}
+
 	function askRemoval(name: string, assetIds: string[], folderIds: string[]): void {
 		pendingRemoval.value = { assetIds, folderIds, name };
 		removalOpen.value = true;
@@ -770,6 +780,14 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 			command: () => openInNewTab(asset),
 		},
 		{ key: "download", label: "Download", icon: "download", command: () => void download(asset) },
+		...(asset.external
+			? [{
+				key: "add",
+				label: "Add to Library",
+				icon: "plus" as const,
+				command: () => void addDriveFile(asset),
+			}]
+			: []),
 		shareRow({
 			title: asset.name,
 			href: shareHrefOf(asset),
@@ -1282,6 +1300,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 				onToggleStar={toggleStar}
 				context={{ kind: "files" }}
 			/>
+			{seeded.value ? <Toast position="bottom-center" /> : null}
 		</div>
 	);
 }

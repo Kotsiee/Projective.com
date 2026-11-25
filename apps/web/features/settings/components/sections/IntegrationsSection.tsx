@@ -2,7 +2,11 @@ import type { JSX } from "preact";
 import { useContext, useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { InlineNotice } from "@projective/ui/feedback";
-import type { ConnectionsView, UserConnection } from "@projective/types/integrations";
+import type {
+	ConnectionsView,
+	S3ConnectionStart,
+	UserConnection,
+} from "@projective/types/integrations";
 import type { SettingsSectionDataOf } from "@projective/types/settings";
 import { IntegrationsService } from "@features/files/core/IntegrationsService.ts";
 import { type DevCalendarConnection, readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
@@ -12,6 +16,8 @@ import {
 	type IntegrationGroup,
 	type IntegrationGroupKey,
 	integrationRows,
+	type S3Draft,
+	s3SavePayload,
 	withoutConsentMarker,
 } from "../../core/integrations-model.ts";
 import { sectionMeta } from "../../core/settings-registry.ts";
@@ -27,6 +33,7 @@ import {
 	type IntegrationRowActions,
 	IntegrationRowView,
 } from "./integrations/IntegrationRowView.tsx";
+import { S3SetupForm } from "./integrations/S3SetupForm.tsx";
 
 /** Props for {@link IntegrationsSection}. */
 export interface IntegrationsSectionProps {
@@ -97,6 +104,9 @@ export function IntegrationsSection(props: IntegrationsSectionProps): JSX.Elemen
 	const outcome = useSignal<SaveState>(IDLE);
 	const blockStatus = useSignal<BlockStatus | null>(null);
 	const simulated = useSignal<DevCalendarConnection>("auto");
+	const s3Setup = useSignal<S3ConnectionStart | null>(null);
+	const s3Saving = useSignal(false);
+	const s3Error = useSignal<string | null>(null);
 
 	useEffect(() => {
 		const marker = IntegrationsService.completionFrom(currentHref());
@@ -138,6 +148,9 @@ export function IntegrationsSection(props: IntegrationsSectionProps): JSX.Elemen
 
 	async function connect(group: IntegrationGroupKey, slug: string): Promise<void> {
 		if (starting.value) return;
+		if (view.value?.providers.find((p) => p.slug === slug)?.authScheme === "aws_sigv4") {
+			return openS3(group, slug);
+		}
 		starting.value = slug;
 		report(group, { tone: "busy", text: "Opening the sign-in page…" });
 		const res = await IntegrationsService.start({
@@ -153,6 +166,39 @@ export function IntegrationsSection(props: IntegrationsSectionProps): JSX.Elemen
 			tone: "error",
 			text: res.message ?? "That connection couldn't be started.",
 		});
+	}
+
+	/** S3 has no consent screen: open its pending connection and show the credential form here. */
+	async function openS3(group: IntegrationGroupKey, slug: string): Promise<void> {
+		starting.value = slug;
+		report(group, { tone: "busy", text: "Opening the form…" });
+		const res = await IntegrationsService.openS3();
+		starting.value = null;
+		if (!res.ok || !res.data) {
+			report(group, { tone: "error", text: res.message ?? "That storage couldn't be connected." });
+			return;
+		}
+		s3Setup.value = res.data;
+		s3Error.value = null;
+		report(group, IDLE);
+		await refresh(group);
+	}
+
+	async function saveS3(group: IntegrationGroupKey, draft: S3Draft): Promise<void> {
+		const setup = s3Setup.value;
+		if (!setup) return;
+		s3Saving.value = true;
+		s3Error.value = null;
+		const res = await IntegrationsService.saveS3(s3SavePayload(setup.connectionId, draft));
+		s3Saving.value = false;
+		if (!res.ok) {
+			s3Error.value = res.message ?? "That storage couldn't be connected.";
+			return;
+		}
+		s3Setup.value = null;
+		if (await refresh(group)) {
+			report(group, { tone: "saved", text: "Storage connected. It's in Files now." });
+		}
 	}
 
 	async function disconnect(group: IntegrationGroupKey, c: UserConnection): Promise<void> {
@@ -212,7 +258,8 @@ export function IntegrationsSection(props: IntegrationsSectionProps): JSX.Elemen
 	const v = view.value;
 	const sim = simulated.value;
 	const override = sim === "auto" ? null : [simulatedCalendar(sim)];
-	const locked = starting.value !== null || revoking.value !== null || writing.value;
+	const locked = starting.value !== null || revoking.value !== null || writing.value ||
+		s3Saving.value;
 
 	function block(group: IntegrationGroup, data: ConnectionsView): JSX.Element | null {
 		const rows = integrationRows(data, group, group.kind === "calendar" ? override : null);
@@ -249,6 +296,18 @@ export function IntegrationsSection(props: IntegrationsSectionProps): JSX.Elemen
 						</ul>
 					)
 					: <p class="stg-note">{group.empty}</p>}
+				{group.key === "storage" && s3Setup.value
+					? (
+						<S3SetupForm
+							key={s3Setup.value.connectionId}
+							start={s3Setup.value}
+							saving={s3Saving.value}
+							error={s3Error.value}
+							onSave={(draft) => void saveS3(group.key, draft)}
+							onCancel={() => (s3Setup.value = null)}
+						/>
+					)
+					: null}
 				<SaveStatus state={status} />
 			</SettingsBlock>
 		);

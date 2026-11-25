@@ -248,6 +248,84 @@ BEGIN
 END;
 $$;
 
+-- Open the caller's S3 connection `pending`, or answer the one already open (Decision #314). S3 has no
+-- consent screen: the connection must exist first, because an AWS role's trust policy names its id as
+-- the ExternalId. Runs as the signed-in caller and binds the row to auth.uid(), as fn_open_consent
+-- does. A pending row has no account yet, so the account's unique key allows one per person.
+CREATE OR REPLACE FUNCTION integrations.fn_open_s3_connection()
+RETURNS uuid
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_user uuid := auth.uid();
+    v_id uuid;
+BEGIN
+    IF v_user IS NULL THEN
+        RAISE EXCEPTION 'Sign in to connect storage.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM integrations.providers p WHERE p.slug = 's3' AND p.is_enabled
+    ) THEN
+        RAISE EXCEPTION 'S3-compatible storage is not offered.' USING ERRCODE = '55000';
+    END IF;
+    INSERT INTO integrations.user_connections AS c (user_id, provider_slug, status)
+    VALUES (v_user, 's3', 'pending')
+    ON CONFLICT ON CONSTRAINT uq_user_connection DO UPDATE SET
+        status = 'pending',
+        revoked_at = NULL
+    RETURNING c.id INTO v_id;
+    RETURN v_id;
+END;
+$$;
+
+-- Finish a pending S3 connection: its non-secret addressing, the account it names, an S3-compatible
+-- endpoint's sealed key pair (NULL for an AWS bucket, reached by role), and its audit line, in one
+-- transaction. The app calls it as the service role once the bucket has answered a listing, with the
+-- user the caller's own session read the row for; any other row writes nothing and answers false. A
+-- bucket and prefix the person already connected is the account key's 23505.
+CREATE OR REPLACE FUNCTION integrations.fn_store_s3_connection(
+    p_connection_id uuid,
+    p_user_id uuid,
+    p_account_id text,
+    p_account_label text,
+    p_config jsonb,
+    p_secret jsonb
+)
+RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    UPDATE integrations.user_connections c
+       SET status = 'active',
+           granted_kinds = ARRAY['storage']::integrations.provider_kind[],
+           external_account_id = p_account_id,
+           external_account_label = p_account_label,
+           config = p_config,
+           connected_at = pg_catalog.now(),
+           last_error = NULL,
+           error_count = 0
+     WHERE c.id = p_connection_id
+       AND c.user_id = p_user_id
+       AND c.provider_slug = 's3'
+       AND c.status = 'pending';
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+    IF p_secret IS NOT NULL THEN
+        PERFORM integrations.fn_write_secret(p_connection_id, p_secret, NULL, NULL);
+    END IF;
+    INSERT INTO integrations.connection_audit (connection_id, user_id, provider_slug, action)
+    VALUES (p_connection_id, p_user_id, 's3', 'connected');
+    RETURN true;
+END;
+$$;
+
 -- Claim the connections due a refresh (providers spec §7.6) and answer each with its sealed row and
 -- its provider's auth_config. Due: the access token ends within 15 minutes on a connection in use, or
 -- no refresh for 30 days, which outruns Google's idle lapse and finds a revoked grant early. A fresh

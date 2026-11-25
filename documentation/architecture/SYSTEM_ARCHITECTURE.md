@@ -1769,6 +1769,14 @@ Seven decisions in that shape carry weight:
      its own.** It signs one STS `AssumeRole` call (regional `sts.{region}.amazonaws.com`,
      `DurationSeconds=3600`, `RoleSessionName=projective-{connection id}`). Every bucket request is
      then signed with the temporary credentials returned.
+   - **The connection is made on a form, not a consent screen** (Settings → Integrations → Cloud
+     storage, PROJECTS FL2). `POST /api/integrations/s3/open` opens the caller's row `pending` through
+     `integrations.fn_open_s3_connection` (under the caller's JWT), so the form can show its ExternalId
+     and `S3_PLATFORM_ACCOUNT_ID` before any bucket exists. `POST /api/integrations/s3/save` lists the
+     bucket once with what was typed, seals an S3-compatible key pair (`access_token` + `api_secret`),
+     and stores the row through `integrations.fn_store_s3_connection` (service role, only that user's
+     own pending S3 row). `withStorage` then reads an S3-compatible pair from the vault per call; an
+     AWS row holds no secret.
    - **Sessions are cached in-process per connection and role.** A cached session is reused only
      while at least 60 s remain for a request, and 16 min for a pre-signed download, so a 15-minute
      URL never outlives its session. Concurrent callers share one call, and a failure is never
@@ -1823,6 +1831,13 @@ A connector location is addressed by the provider's opaque `folderId`, one per l
 `/files/*` segments: each segment is percent-encoded independently (`ROUTING.md`), and a prefix holding
 `/` would read back as a different tree. Such a location answers as a read-only `hub` page
 (`services/files/live-locations.ts`), so the body renders it with the components it already has.
+Its search is the provider's (`StorageAdapter.list`'s `ListFilter`, Drive's `name contains`), so the
+provider's paging runs over the matches, and the tree reads every page of a folder's subfolders
+(`everyFolder`, ten pages at most). Adding a drive file to the library ("Add to Library",
+`POST /api/integrations/import`) mounts a REFERENCE: the server reads the object's facts from the
+provider and `mountAsset` (`services/files/live-library-writes.ts`) writes the row as the service role
+after the caller's session has proved the library and the folder, one row per object per connection
+(`items_external_unique`).
 
 #### Link ingest is the most dangerous path, and it is gated shut
 
@@ -4580,8 +4595,9 @@ ZOOM_CLIENT_SECRET=XXXX-XXXX
 ZOOM_WEBHOOK_SECRET=XXXX-XXXX
 
 # Storage connectors (asset management) — each is a SEPARATE consent from sign-in and from the
-# calendar/conferencing grants above. Google Drive reuses GOOGLE_INTEGRATION_* (one connection,
-# two capabilities: `storage` + `calendar`); OneDrive / SharePoint reuses MICROSOFT_INTEGRATION_*
+# calendar/conferencing grants above. Google Drive reuses GOOGLE_INTEGRATION_* (one client, two
+# connections: `google_drive` for files beside `google`, Decision #394 (a) ruled in FL2); OneDrive /
+# SharePoint reuses MICROSOFT_INTEGRATION_*
 # (the same Entra app, consenting to `Files.Read.All`); the rest need their own app credentials.
 # FRAMEIO_* is an Adobe Developer Console OAuth credential — the V4 API authorizes through Adobe IMS,
 # and the legacy developer.frame.io app stops working on 2026-12-01 (Decision #313).
@@ -4597,6 +4613,10 @@ FRAMEIO_CLIENT_SECRET=XXXX-XXXX
 # stored per connection in integrations.user_connections.config, never here.
 S3_ACCESS_KEY_ID=XXXX-XXXX
 S3_SECRET_ACCESS_KEY=XXXX-XXXX
+# Projective's own 12-digit AWS account id (not a secret): the principal a customer's role trust policy
+# names, shown on the S3 credential form beside the connection's ExternalId. XXXX-XXXX = absent: the
+# form says AWS buckets are off here, and S3-compatible endpoints still connect.
+S3_PLATFORM_ACCOUNT_ID=XXXX-XXXX
 
 # Link safety — a Google Web Risk API key (files/link-reputation.ts; Decision #340, ruling T5), read
 # at call time, sent only in the x-goog-api-key header and never inlined; absent or the placeholder

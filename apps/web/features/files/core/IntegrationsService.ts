@@ -8,10 +8,14 @@ import {
 	type IntegrationProvider,
 	type RevokeConnection,
 	RevokeConnectionSchema,
+	type S3ConnectionStart,
+	type SaveS3Connection,
+	SaveS3ConnectionSchema,
 	type SetSyncDirection,
 	SetSyncDirectionSchema,
 	type StartConnection,
 	StartConnectionSchema,
+	type UserConnection,
 } from "@projective/types/integrations";
 import {
 	type AssetItem,
@@ -162,6 +166,23 @@ export const IntegrationsService = {
 		return postFiles<{ revoked: boolean }>("/api/integrations/revoke", parsed.data);
 	},
 
+	/**
+	 * Open (or reopen) the caller's pending S3 connection, for the credential form: its id, the
+	 * ExternalId and the platform account an AWS role's trust policy names (Decision #314).
+	 */
+	openS3(): Promise<FilesResult<S3ConnectionStart>> {
+		return postFiles<S3ConnectionStart>("/api/integrations/s3/open", {});
+	},
+
+	/** Finish a pending S3 connection; the server lists the bucket once before storing anything. */
+	saveS3(input: SaveS3Connection): Promise<FilesResult<UserConnection>> {
+		const parsed = SaveS3ConnectionSchema.safeParse(input);
+		if (!parsed.success) {
+			return Promise.resolve(invalid(parsed.error, "That storage could not be connected."));
+		}
+		return postFiles<UserConnection>("/api/integrations/s3/save", parsed.data);
+	},
+
 	/** Turn a connection's separate Projective calendar on (`bidirectional`) or off (`inbound`). */
 	setSyncDirection(input: SetSyncDirection): Promise<FilesResult<{ changed: boolean }>> {
 		const parsed = SetSyncDirectionSchema.safeParse(input);
@@ -207,8 +228,9 @@ export const IntegrationsService = {
 	 * quota, never ours, and the row comes back read-only. The returned {@link AssetItem} is a normal
 	 * hub row, so a caller can drop it straight into the grid it is already rendering.
 	 *
-	 * `owner` names the library to file it into and is a REQUEST the server authorises against the
-	 * session — a mount into a library the caller does not hold is refused there, not here. There is no
+	 * `owner` names the library to file it into (omitted, the acting library) and is a REQUEST the
+	 * server authorises against the session — a mount into a library the caller does not hold is
+	 * refused there, not here. There is no
 	 * `RevokeConnectionSchema`-style Zod shape for this payload in the SSOT yet, so the route holds the
 	 * authoritative one and TypeScript holds this end; adding an `ImportAssetSchema` to
 	 * `@projective/types/integrations` would let both ends validate the same declaration.
@@ -217,14 +239,14 @@ export const IntegrationsService = {
 		connectionId: string;
 		externalFileId: string;
 		folderId: string | null;
-		owner: { ownerType: AssetOwnerType; ownerId: string };
+		owner?: { ownerType: AssetOwnerType; ownerId: string };
 	}): Promise<FilesResult<AssetItem>> {
 		return postFiles<AssetItem>("/api/integrations/import", {
 			connectionId: input.connectionId,
 			externalFileId: input.externalFileId,
 			folderId: input.folderId,
-			ownerType: input.owner.ownerType,
-			ownerId: input.owner.ownerId,
+			ownerType: input.owner?.ownerType,
+			ownerId: input.owner?.ownerId,
 		});
 	},
 	// #endregion

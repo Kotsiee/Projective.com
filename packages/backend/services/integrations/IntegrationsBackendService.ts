@@ -1,4 +1,4 @@
-import type { AssetItem } from "@projective/types/files";
+import type { AssetFolder, AssetItem } from "@projective/types/files";
 import type {
 	ConnectionSecretRow,
 	ConnectionsView,
@@ -8,6 +8,8 @@ import type {
 	IntegrationProvider,
 	ProviderKind,
 	RevokeConnection,
+	S3ConnectionStart,
+	SaveS3Connection,
 	SetSyncDirection,
 	StartConnection,
 	UserConnection,
@@ -25,7 +27,8 @@ import {
 	isIntegrationsBackendLive,
 } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
-import { mayFileInto } from "../files/live-library.ts";
+import { canFileInto, ownerOfActor } from "../files/live-library.ts";
+import { mountAsset } from "../files/live-library-writes.ts";
 import { PRESENCE_ADAPTERS, type PresenceAdapter } from "../sessions/presence/mod.ts";
 import { SessionBackendService } from "../sessions/SessionBackendService.ts";
 import { recordWebhookFailure } from "../ops/OpsHealthService.ts";
@@ -49,9 +52,13 @@ import {
 import { seal, unseal } from "./token-vault.ts";
 import {
 	createStorageAdapter,
+	type DrivePath,
+	type ListFilter,
+	s3ExternalIdOf,
 	type StorageAdapter,
 	StorageAdapterError,
 	type StorageAdapterErrorCode,
+	type StorageCredential,
 	type StorageThumbnail,
 } from "./adapters/mod.ts";
 
@@ -68,10 +75,10 @@ import {
  * its OAuth client in the environment; without one, {@link startConnection} refuses in words. The
  * runtime is Fresh routes plus pg_cron http jobs, never Edge Functions (Decision #343, ruling C4 (a)),
  * and each transaction is a service-role definer in `00001500`. What a connected calendar syncs is
- * `CalendarSyncBackendService`; this service only marks one due and closes it. Browsing carries the
- * connection's stored credential to its provider for one call, through `./adapters`; mounting an
- * object still answers that it is not available here. A refusal in words is the honest state; a
- * simulated drive is not.
+ * `CalendarSyncBackendService`; this service only marks one due and closes it. Browsing and mounting
+ * carry the connection's stored credential to its provider for one call, through `./adapters`; a
+ * mount is a reference the service role files into a library. A refusal in words is the honest
+ * state; a simulated drive is not.
  *
  * ### Rules this service holds
  *
@@ -96,6 +103,24 @@ const NOT_LIVE = "Connections aren't live in this environment.";
 const FORGED = "The delivery's signature didn't verify.";
 /** The page a browse asks a provider for when the caller names none. */
 const BROWSE_PAGE = 100;
+const S3_NOT_LIVE = "Connecting S3-compatible storage isn't set up in this environment yet.";
+const S3_ALREADY_SET = "This storage is already connected. Disconnect it to change it.";
+
+/**
+ * How the S3 form's one test listing is refused, by the adapter's code. `misconfigured` keeps the
+ * adapter's own sentence, which names the field at fault and never a URL, header or key.
+ */
+const S3_REFUSALS: Partial<Record<StorageAdapterErrorCode, string>> = {
+	unauthorized:
+		"The bucket refused these credentials. Check the key pair, or the role's trust policy.",
+	forbidden:
+		"The bucket refused these credentials. Check the key pair, or the role's trust policy.",
+	not_found: "There's no such bucket at that address.",
+	rate_limited: "The storage service is busy. Try again in a moment.",
+	provider_error: "The storage service couldn't be reached. Try again in a moment.",
+	unavailable:
+		"AWS buckets aren't enabled in this environment yet. An S3-compatible endpoint still works.",
+};
 
 /**
  * Card pictures per person per minute. A grid fetches four at a time while it scrolls; this only stops
@@ -285,12 +310,37 @@ const STORAGE_REFUSALS: Readonly<
 };
 
 /**
+ * The credential a storage connection acts under, claimed for one call: a bearer token, an
+ * S3-compatible endpoint's key pair from the vault, or `null` for an AWS bucket, which is reached by
+ * assuming its role and holds no key (Decision #314). `undefined` when nothing usable is stored.
+ */
+async function storageCredential(
+	connection: UserConnection,
+): Promise<StorageCredential | null | undefined> {
+	if (connection.providerSlug !== "s3") {
+		const accessToken = await IntegrationsBackendService.accessToken(connection.id);
+		return accessToken ? { scheme: "bearer", accessToken } : undefined;
+	}
+	if (!connection.config?.endpoint) return null;
+	const { data, error } = await integrationsDb().rpc("fn_claim_connection_token", {
+		p_connection_id: connection.id,
+	});
+	if (error) throw new Error(`integrations.fn_claim_connection_token failed: ${error.message}`);
+	const secret = (data as { secret?: ConnectionSecretRow } | null)?.secret;
+	if (!secret) return undefined;
+	const [accessKeyId, secretAccessKey] = await Promise.all([
+		unseal(connection.id, secret, "access_token"),
+		unseal(connection.id, secret, "api_secret"),
+	]);
+	return accessKeyId && secretAccessKey
+		? { scheme: "aws_sigv4", accessKeyId, secretAccessKey, sessionToken: null }
+		: undefined;
+}
+
+/**
  * Run one provider call under the caller's own storage connection. The credential is claimed here,
  * lives for this call and leaves through nothing but the adapter's request; a provider's refusal comes
  * back in words, and anything else is the caller's 503.
- *
- * shortcut: bearer connections only, because no S3 connection can exist until a credential form does;
- * read its key pair from the vault here then.
  */
 async function withStorage<T>(
 	actor: Actor,
@@ -305,10 +355,9 @@ async function withStorage<T>(
 		return fail(status, { message: words(connection.providerLabel) }) as ServiceResult<T>;
 	};
 	if (!isIntegrationsBackendLive()) return refusal("unavailable");
-	const accessToken = await IntegrationsBackendService.accessToken(connection.id);
-	if (!accessToken) return refusal("unauthorized");
+	const credential = await storageCredential(connection);
+	if (credential === undefined) return refusal("unauthorized");
 	try {
-		const credential = { scheme: "bearer", accessToken } as const;
 		return ok(await run(createStorageAdapter({ connection, credential }), connection));
 	} catch (error) {
 		if (error instanceof StorageAdapterError) {
@@ -723,14 +772,43 @@ export interface DriveLocation {
 async function listLevel(
 	adapter: StorageAdapter,
 	params: DriveBrowseParams,
+	filter?: ListFilter,
 ): Promise<DriveBrowsePage> {
 	const location = { folderId: params.folderId ?? null, path: params.path ?? null };
 	const { entries, folders, hasMore, nextCursor } = await adapter.list(
 		location,
 		params.cursor ?? null,
 		params.limit ?? BROWSE_PAGE,
+		filter,
 	);
 	return { entries, folders, hasMore, nextCursor };
+}
+
+/** The most provider pages one tree expansion follows, at {@link FOLDER_PAGE} each. */
+export const FOLDER_PAGES_MAX = 10;
+/** The page a folders-only read asks for: each adapter clamps it to its provider's own maximum. */
+const FOLDER_PAGE = 1000;
+
+/**
+ * Every subfolder of one drive location, following the provider's cursor page after page, because a
+ * folder's subfolders can sit past its first page (Drive pages folders first, Dropbox and S3 do not).
+ *
+ * shortcut: stops after {@link FOLDER_PAGES_MAX} pages (10,000 Drive folders); give the tree a "More"
+ * row with the cursor if a real drive outgrows it.
+ */
+export async function everyFolder(
+	adapter: StorageAdapter,
+	location: DrivePath,
+): Promise<AssetFolder[]> {
+	const folders: AssetFolder[] = [];
+	let cursor: string | null = null;
+	for (let page = 0; page < FOLDER_PAGES_MAX; page++) {
+		const listing = await adapter.list(location, cursor, FOLDER_PAGE, { foldersOnly: true });
+		folders.push(...listing.folders);
+		if (!listing.hasMore || !listing.nextCursor) break;
+		cursor = listing.nextCursor;
+	}
+	return folders;
 }
 
 export class IntegrationsBackendService {
@@ -1058,6 +1136,112 @@ export class IntegrationsBackendService {
 
 	// #endregion
 
+	// #region S3 credential form
+
+	/**
+	 * Open the caller's S3 connection `pending`, or answer the one already open, so the form can show
+	 * the ExternalId an AWS role's trust policy must name before any bucket is reached (Decision #314).
+	 * `fn_open_s3_connection` writes it under the caller's JWT, for the reason {@link startConnection}
+	 * gives.
+	 */
+	static startS3Connection(actor: ReadActor): Promise<ServiceResult<S3ConnectionStart>> {
+		return signedIn("s3-start", actor, async (a) => {
+			if (!isIntegrationsBackendLive()) {
+				return fail<S3ConnectionStart>(503, { message: S3_NOT_LIVE });
+			}
+			const { data, error } = await getUserClient(a.accessToken).schema("integrations")
+				.rpc("fn_open_s3_connection");
+			if (error?.code === "55000") {
+				return fail<S3ConnectionStart>(409, {
+					message: "S3-compatible storage isn't available to connect yet.",
+				});
+			}
+			if (error) throw new Error(`integrations.fn_open_s3_connection failed: ${error.message}`);
+			const connectionId = data as string;
+			const account = serverEnv().s3PlatformAccountId?.trim() ?? "";
+			return ok({
+				connectionId,
+				externalId: s3ExternalIdOf(connectionId),
+				platformAccountId: /^\d{12}$/.test(account) ? account : null,
+			});
+		});
+	}
+
+	/**
+	 * Finish the caller's pending S3 connection: its addressing and, for an S3-compatible endpoint, its
+	 * key pair, proved by one listing of the bucket before anything is stored. The keys are sealed under
+	 * the connection; the service role stores the row through `fn_store_s3_connection`, for the user
+	 * whose own session read it.
+	 */
+	static saveS3Connection(
+		input: SaveS3Connection,
+		actor: ReadActor,
+	): Promise<ServiceResult<UserConnection>> {
+		return signedIn("s3-save", actor, async (a) => {
+			const pending = await ownConnection(a, input.connectionId);
+			if (!pending || pending.providerSlug !== "s3") {
+				return fail<UserConnection>(404, { message: "No such connection." });
+			}
+			if (pending.status !== "pending") {
+				return fail<UserConnection>(409, { message: S3_ALREADY_SET });
+			}
+			if (!isIntegrationsBackendLive()) return fail<UserConnection>(503, { message: S3_NOT_LIVE });
+
+			const c = input.config;
+			// `config` is a flat scalar record: an absent endpoint or role is left out, never `null`.
+			const config = Object.fromEntries(
+				Object.entries(c).filter(([, value]) => value !== null && value !== undefined),
+			) as Record<string, string | boolean>;
+			const credential: StorageCredential | null = input.keys
+				? { scheme: "aws_sigv4", ...input.keys, sessionToken: null }
+				: null;
+			const proving = {
+				...pending,
+				config,
+				status: "active",
+				grantedKinds: ["storage"],
+			} as UserConnection;
+			try {
+				await createStorageAdapter({ connection: proving, credential })
+					.list({ folderId: null, path: null }, null, 1);
+			} catch (error) {
+				if (!(error instanceof StorageAdapterError)) throw error;
+				console.error("[integrations:s3-save]", error.message);
+				return fail<UserConnection>(error.code === "unavailable" ? 503 : 422, {
+					message: S3_REFUSALS[error.code] ?? error.message,
+				});
+			}
+
+			const secret = input.keys
+				? await seal(pending.id, {
+					access_token: input.keys.accessKeyId,
+					api_secret: input.keys.secretAccessKey,
+				})
+				: null;
+			const { data, error } = await integrationsDb().rpc("fn_store_s3_connection", {
+				p_connection_id: pending.id,
+				p_user_id: pending.userId,
+				p_account_id: `${c.endpoint ?? "aws"}/${c.bucket}/${c.prefix}`,
+				p_account_label: c.prefix ? `${c.bucket}/${c.prefix}` : c.bucket,
+				p_config: config,
+				p_secret: secret,
+			});
+			if (error?.code === "23505") {
+				return fail<UserConnection>(409, {
+					message: "That bucket and prefix are already connected.",
+				});
+			}
+			if (error) throw new Error(`integrations.fn_store_s3_connection failed: ${error.message}`);
+			if (data !== true) return fail<UserConnection>(409, { message: S3_ALREADY_SET });
+			const stored = await ownConnection(a, pending.id);
+			return stored
+				? ok(stored, { status: 201 })
+				: fail<UserConnection>(503, { message: UNREACHABLE });
+		});
+	}
+
+	// #endregion
+
 	// #region Browsing + mounting
 
 	/** Browse one level of a connected drive, under the caller's own storage-granted connection. */
@@ -1073,22 +1257,53 @@ export class IntegrationsBackendService {
 	}
 
 	/**
+	 * Every subfolder of one location of a connected drive, for the navigation tree, under the caller's
+	 * own storage-granted connection ({@link everyFolder}).
+	 */
+	static browseFolders(
+		input: { connectionId: string; folderId: string | null },
+		actor: ReadActor,
+	): Promise<ServiceResult<AssetFolder[]>> {
+		return signedIn(
+			"browse-folders",
+			actor,
+			(a) =>
+				withStorage(
+					a,
+					input.connectionId,
+					(adapter) => everyFolder(adapter, { folderId: input.folderId, path: null }),
+				),
+		);
+	}
+
+	/**
 	 * One location of a connected drive for the hub: the level at the end of `folderIds`, the drive's
 	 * own name and the names along the way, read in one claim of the connection's token. The trail is
-	 * first-page only, because a later page extends a location already on screen.
+	 * first-page only, because a later page extends a location already on screen. A `query` is the
+	 * provider's to match, so its paging runs over the matches.
 	 */
 	static browseLocation(
-		input: { connectionId: string; folderIds: string[]; cursor: string | null; limit: number },
+		input: {
+			connectionId: string;
+			folderIds: string[];
+			cursor: string | null;
+			limit: number;
+			query: string | null;
+		},
 		actor: ReadActor,
 	): Promise<ServiceResult<DriveLocation>> {
-		const { connectionId, folderIds, cursor, limit } = input;
+		const { connectionId, folderIds, cursor, limit, query } = input;
 		return signedIn(
 			"browse-location",
 			actor,
 			(a) =>
 				withStorage(a, connectionId, async (adapter, connection) => {
 					const [page, trail] = await Promise.all([
-						listLevel(adapter, { connectionId, folderId: folderIds.at(-1) ?? null, cursor, limit }),
+						listLevel(
+							adapter,
+							{ connectionId, folderId: folderIds.at(-1) ?? null, cursor, limit },
+							{ query },
+						),
 						cursor ? [] : Promise.all(folderIds.map((id) => adapter.folder?.(id) ?? null)),
 					]);
 					return {
@@ -1132,26 +1347,41 @@ export class IntegrationsBackendService {
 	}
 
 	/**
-	 * Mount a connected object into the acting library — a REFERENCE, never a copy. Two authorities must
-	 * agree: the connection must be the caller's and granted for files, and the destination library must
-	 * be the one the session acts for.
+	 * Mount a connected object into a library — a REFERENCE, never a copy (Decision #313). Two
+	 * authorities must agree: the connection must be the caller's and granted for files, and the
+	 * destination library must be one the caller holds (the acting library when none is named). The
+	 * object's facts are the provider's, read here under the connection's token; the row is written by
+	 * {@link mountAsset}.
 	 */
 	static importAsset(input: {
 		connectionId: string;
 		externalFileId: string;
 		folderId: string | null;
-		ownerType: "user" | "team" | "business" | "enterprise";
-		ownerId: string;
+		ownerType?: "user" | "team" | "business" | "enterprise";
+		ownerId?: string;
 	}, actor: ReadActor): Promise<ServiceResult<AssetItem>> {
 		return signedIn("import", actor, async (a) => {
-			if (!mayFileInto(a, { ownerType: input.ownerType, ownerId: input.ownerId })) {
+			const owner = input.ownerType && input.ownerId
+				? { ownerType: input.ownerType, ownerId: input.ownerId }
+				: ownerOfActor(a);
+			if (!(await canFileInto(a, owner))) {
 				return fail(403, { message: "You can't add files to that library." }) as ServiceResult<AssetItem>;
 			}
-			const checked = await storageConnection(a, input.connectionId);
-			if (!checked.ok) return checked as unknown as ServiceResult<AssetItem>;
-			return fail(503, {
-				message: `Adding files from ${checked.data!.providerLabel} isn't available in this environment yet.`,
-			}) as ServiceResult<AssetItem>;
+			const read = await withStorage(a, input.connectionId, async (adapter, connection) => ({
+				asset: await adapter.metadata(input.externalFileId),
+				label: connection.providerLabel,
+			}));
+			if (!read.ok) return read as unknown as ServiceResult<AssetItem>;
+			const { asset, label } = read.data!;
+			if (!asset) {
+				return fail(404, { message: `That isn't in ${label} any more.` }) as ServiceResult<
+					AssetItem
+				>;
+			}
+			const mounted = await mountAsset(a, owner, input.folderId, input.connectionId, asset);
+			return mounted.ok
+				? ok(mounted.data, { status: mounted.status, message: mounted.message })
+				: fail<AssetItem>(mounted.status, { message: mounted.message });
 		});
 	}
 

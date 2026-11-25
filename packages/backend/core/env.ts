@@ -420,6 +420,12 @@ export interface ServerEnv {
 	/** The secret half of {@link ServerEnv.s3AccessKeyId}, from `S3_SECRET_ACCESS_KEY`. */
 	s3SecretAccessKey: string | undefined;
 	/**
+	 * Projective's own 12-digit AWS account id, from `S3_PLATFORM_ACCOUNT_ID`: the principal an AWS
+	 * `s3` connection's role trust policy names, shown on the S3 credential form (Decision #314 (d)).
+	 * Not a secret. Absent, or anything but twelve digits, and the form says AWS buckets are off here.
+	 */
+	s3PlatformAccountId: string | undefined;
+	/**
 	 * The Resend API key (`re_…`), from `RESEND_API_KEY` (providers spec §8.5). Server-only: it is sent
 	 * only as the `Authorization` header of a send. The `XXXX-XXXX` placeholder counts as absent, and
 	 * absent leaves mail `logged` in development and `unavailable` in production (`services/mail/transport.ts`).
@@ -524,6 +530,7 @@ export function serverEnv(): ServerEnv {
 		frameioClientSecret: firstEnv("FRAMEIO_CLIENT_SECRET"),
 		s3AccessKeyId: firstEnv("S3_ACCESS_KEY_ID"),
 		s3SecretAccessKey: firstEnv("S3_SECRET_ACCESS_KEY"),
+		s3PlatformAccountId: firstEnv("S3_PLATFORM_ACCOUNT_ID"),
 		resendApiKey: firstEnv("RESEND_API_KEY"),
 		mailFrom: firstEnv("MAIL_FROM"),
 		resendWebhookSecret: firstEnv("RESEND_WEBHOOK_SECRET"),

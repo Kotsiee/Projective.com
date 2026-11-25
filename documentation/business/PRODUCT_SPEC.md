@@ -4670,6 +4670,24 @@ because a hotlink would report every viewer's IP address to a host the link's au
 are checked for safety before they are embedded or followed, and a link that fails that check is
 shown as blocked rather than quietly rendered.
 
+### Connected drives
+
+A person connects a drive in Settings → Integrations → Cloud storage and browses it in Files beside
+the library. **Google Drive** and **S3** (an AWS bucket, or an S3-compatible store such as R2 or MinIO)
+ship for UAT (PROJECTS FL2, ruled 2026-11-25). **Dropbox, OneDrive & SharePoint and Frame.io are
+Planned**: their clients exist but stay switched off until each provider's app is registered.
+
+- **Google Drive is its own connection**, beside the Google calendar connection: one Google sign-in
+  per purpose, so connecting a calendar never grants access to files, and the reverse (Decision #394
+  (a), ruled in FL2).
+- **S3 connects on a form, not a sign-in screen.** An AWS bucket is reached by assuming an IAM role the
+  customer creates, whose trust policy names Projective's account and the ExternalId the form shows; no
+  AWS key is ever stored. An S3-compatible store is reached by its own key pair, which is encrypted when
+  saved and never shown again. The form lists the bucket once before it saves anything.
+- **Add to Library** files a drive file in the library as a reference: nothing is copied, it does not
+  count against the storage quota, it stays read-only in Files, and it opens where it lives. Adding it
+  again is the same entry; a file already in another library stays there.
+
 ### Deduplication and download history
 
 A file is fingerprinted in the browser **before** its bytes are uploaded, so an exact duplicate is

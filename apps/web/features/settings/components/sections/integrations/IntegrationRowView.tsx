@@ -138,11 +138,17 @@ function ConnectedRowView(props: IntegrationRowViewProps & { row: ConnectedRow }
 									severity="neutral"
 									label={props.starting === c.providerSlug
 										? "Opening…"
+										: c.status === "pending"
+										? "Finish setup"
 										: row.consent === "reconnect"
 										? "Reconnect"
 										: "Connect again"}
 									aria-label={`${
-										row.consent === "reconnect" ? "Reconnect" : "Connect again"
+										c.status === "pending"
+											? "Finish setting up"
+											: row.consent === "reconnect"
+											? "Reconnect"
+											: "Connect again"
 									} ${c.providerLabel}`}
 									disabled={props.locked || props.simulated}
 									onClick={() => act.connect(c.providerSlug)}

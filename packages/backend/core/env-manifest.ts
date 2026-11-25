@@ -211,6 +211,7 @@ export const ENV_MANIFEST: readonly EnvEntry[] = [
 	app("ENCRYPTION_KEY", "secret", HOSTED),
 	app("S3_ACCESS_KEY_ID", "secret"),
 	app("S3_SECRET_ACCESS_KEY", "secret"),
+	app("S3_PLATFORM_ACCOUNT_ID", "config"),
 
 	// Integrations (connection OAuth)
 	app("GOOGLE_INTEGRATION_CLIENT_ID", "config"),

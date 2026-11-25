@@ -600,6 +600,12 @@ REVOKE ALL ON FUNCTION integrations.fn_sweep_consent_states () FROM PUBLIC, anon
 GRANT EXECUTE ON FUNCTION integrations.fn_sweep_consent_states () TO service_role;
 REVOKE ALL ON FUNCTION integrations.fn_store_connection (uuid, uuid, text, text, text, integrations.provider_kind[], text[], timestamptz, timestamptz, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION integrations.fn_store_connection (uuid, uuid, text, text, text, integrations.provider_kind[], text[], timestamptz, timestamptz, jsonb) TO service_role;
+-- The S3 form's two doors (Decision #314): the caller opens their own pending row; the service role
+-- stores it once the bucket has answered.
+REVOKE ALL ON FUNCTION integrations.fn_open_s3_connection () FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION integrations.fn_open_s3_connection () TO authenticated;
+REVOKE ALL ON FUNCTION integrations.fn_store_s3_connection (uuid, uuid, text, text, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION integrations.fn_store_s3_connection (uuid, uuid, text, text, jsonb, jsonb) TO service_role;
 REVOKE ALL ON FUNCTION integrations.fn_claim_connections_for_refresh (integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION integrations.fn_claim_connections_for_refresh (integer) TO service_role;
 REVOKE ALL ON FUNCTION integrations.fn_commit_refresh (uuid, bytea, jsonb, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;

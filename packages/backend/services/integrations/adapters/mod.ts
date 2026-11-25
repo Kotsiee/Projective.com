@@ -13,6 +13,7 @@ import {
 
 export type {
 	DrivePath,
+	ListFilter,
 	StorageAdapter,
 	StorageAdapterContext,
 	StorageAdapterErrorCode,

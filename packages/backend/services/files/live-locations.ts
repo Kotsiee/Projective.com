@@ -65,6 +65,7 @@ async function listDrive(
 		folderIds,
 		cursor: params.cursor ?? null,
 		limit: Math.min(params.limit ?? DRIVE_PAGE, DRIVE_PAGE_MAX),
+		query: needleOf(params) || null,
 	}, actor);
 	if (!res.ok || !res.data) return refused(res);
 	const { page, connection, trail } = res.data;
@@ -84,8 +85,9 @@ async function listDrive(
 		})),
 	];
 
-	// shortcut: search and the facet filters narrow the page the provider sent, and the sort stays the
-	// provider's; pass them to `adapter.list` when a drive folder outgrows one page.
+	// The provider searched; matching the name again here covers an adapter that cannot.
+	// shortcut: the facet filters narrow the page the provider sent and the sort stays the provider's;
+	// pass them to `adapter.list` when a faceted drive read must page past its first page.
 	const needle = needleOf(params);
 	const items = page.entries.filter((asset) => assetMatches(asset, params));
 	return {
@@ -111,17 +113,14 @@ async function driveChildren(
 	actor: Actor,
 	address: { connectionId: string; folderIds: string[] },
 ): Promise<Outcome<AssetTreeNode[]>> {
-	const res = await IntegrationsBackendService.browse({
+	const res = await IntegrationsBackendService.browseFolders({
 		connectionId: address.connectionId,
 		folderId: address.folderIds.at(-1) ?? null,
-		// shortcut: the first page only, where Drive sorts folders first; page it when a drive folder
-		// holds more than this many subfolders.
-		limit: DRIVE_PAGE_MAX,
 	}, actor);
 	if (!res.ok || !res.data) return refused(res);
 	return {
 		ok: true,
-		data: res.data.folders.map((folder) => ({
+		data: res.data.map((folder) => ({
 			segment: folder.externalFolderId ?? folder.id,
 			kind: "dir",
 			nodeKind: "mount",

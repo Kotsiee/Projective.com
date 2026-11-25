@@ -766,6 +766,108 @@ export async function attachLink(actor: Actor, input: LinkAttach): Promise<Resul
 
 // #endregion
 
+// #region Mounts
+
+/** A mount's prior row, as the one-per-object constraint finds it. */
+interface MountRow {
+	id: string;
+	owner_type: string;
+	owner_entity_id: string | null;
+	deleted_at: string | null;
+}
+
+/**
+ * File a connected drive's object into a library the caller holds, as a REFERENCE (Decision #313):
+ * no bytes move, the provider meters its size (the quota counts `supabase` rows only), and it opens
+ * at the provider. The row is the connector's, so the service role writes it, as a finished upload's
+ * is: the guard refuses a client mount, because its provider facts and the address it opens would
+ * then be the client's word. The caller has proved the connection theirs; this proves the library
+ * and the folder under their session.
+ *
+ * One row per object per connection (`items_external_unique`): adding it again files that row in the
+ * folder now chosen, a removed one comes back, and one in another library is refused rather than
+ * taken away from it.
+ */
+export async function mountAsset(
+	actor: Actor,
+	owner: FilesOwner,
+	folderId: string | null,
+	connectionId: string,
+	asset: AssetItem,
+): Promise<Result<AssetItem>> {
+	if (!asset.external) throw new Error("a connector asset carries no external reference");
+	const target = await targetFolder(actor, folderId);
+	if (
+		target === undefined ||
+		(target && (target.owner_type !== owner.ownerType ||
+			(target.owner_entity_id ?? target.owner_user_id) !== owner.ownerId))
+	) {
+		return { ok: false, status: 404, message: "That folder isn't in this library." };
+	}
+	if (owner.ownerType !== "user") {
+		const archived = await filesDb(actor).rpc("fn_library_archived", {
+			p_owner_type: owner.ownerType,
+			p_owner_entity_id: owner.ownerId,
+		});
+		if (archived.error) {
+			throw new Error(`files.fn_library_archived failed: ${archived.error.message}`);
+		}
+		if (archived.data === true) {
+			return { ok: false, status: 403, message: "An archived library is read-only." };
+		}
+	}
+
+	const db = getServiceClient().schema("files");
+	const found = await db.from("items").select("id, owner_type, owner_entity_id, deleted_at")
+		.eq("source_connection_id", connectionId).eq("external_file_id", asset.external.externalFileId)
+		.maybeSingle();
+	if (found.error) throw new Error(`files.items read failed: ${found.error.message}`);
+	const prior = found.data as MountRow | null;
+	const library = ownerColumns(actor, owner);
+	if (
+		prior && !prior.deleted_at &&
+		(prior.owner_type !== library.owner_type || prior.owner_entity_id !== library.owner_entity_id)
+	) {
+		return { ok: false, status: 409, message: "That file is already in another library." };
+	}
+
+	const facts = {
+		...library,
+		folder_id: target?.id ?? null,
+		display_name: clamp(asset.name, 200),
+		size_bytes: asset.sizeBytes,
+		category: asset.category,
+		source: asset.source,
+		status: "uploaded",
+		external_parent_id: asset.external.externalParentId,
+		external_web_url: asset.external.externalWebUrl,
+		external_etag: asset.external.externalEtag,
+		deleted_at: null,
+	};
+	const id = prior?.id ?? crypto.randomUUID();
+	const { error } = prior
+		? await db.from("items").update(facts).eq("id", prior.id)
+		: await db.from("items").insert({
+			id,
+			...facts,
+			...linkStorageAddress(id),
+			original_name: clamp(asset.name, 200),
+			// shortcut: the adapter's row carries its category, not the provider's MIME type; carry one on
+			// `StorageAdapter.metadata` when a mounted row's viewer needs it.
+			mime_type: "application/octet-stream",
+			visibility: "private",
+			source_connection_id: connectionId,
+			external_file_id: asset.external.externalFileId,
+		});
+	if (error) throw new Error(`files.items mount write failed: ${error.message}`);
+	const item = await readAsset(actor, id);
+	return item
+		? { ok: true, status: prior ? 200 : 201, data: item, message: "Added to the library." }
+		: { ok: false, status: 503, message: "The file was added but could not be read back." };
+}
+
+// #endregion
+
 // #region Shares
 
 /** A server-minted share slug: 24 random bytes, base64url — 192 bits, the credential itself. */

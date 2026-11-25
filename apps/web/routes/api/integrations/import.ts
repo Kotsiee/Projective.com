@@ -44,8 +44,12 @@ const ImportAssetSchema = z.object({
 	externalFileId: z.string().min(1).max(1024),
 	/** `null` files it at the library root, which is a real destination and not "unset". */
 	folderId: z.string().max(120).nullable(),
-	ownerType: AssetOwnerType,
-	ownerId: z.string().min(1).max(80),
+	/** Both or neither: neither names the acting library, the only one `/files` shows a drive beside. */
+	ownerType: AssetOwnerType.optional(),
+	ownerId: z.string().min(1).max(80).optional(),
+}).refine((input) => (input.ownerType === undefined) === (input.ownerId === undefined), {
+	message: "Name the library's owner type and id together.",
+	path: ["ownerId"],
 });
 // #endregion
 

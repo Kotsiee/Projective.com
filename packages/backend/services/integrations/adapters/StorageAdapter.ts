@@ -39,6 +39,18 @@ export interface DrivePath {
 	path: string | null;
 }
 
+/**
+ * What a listing asks the PROVIDER to narrow by, so its paging runs over the narrowed set: a filter
+ * applied to one page afterwards hides every match on the pages after it. An adapter whose provider
+ * cannot narrow a folder's own listing ignores a field, and its caller filters the page again.
+ */
+export interface ListFilter {
+	/** Name text, as the provider matches it (Drive matches the start of the name's words). */
+	query?: string | null;
+	/** Folders only, for the navigation tree. */
+	foldersOnly?: boolean;
+}
+
 /** One level of a connected drive, already projected into the hub's row shapes. */
 export interface StorageListing {
 	entries: AssetItem[];
@@ -68,8 +80,13 @@ export interface StorageAdapter {
 	readonly slug: string;
 	/** The `AssetSource` a row it produces carries. */
 	readonly source: AssetSource;
-	/** List one level. */
-	list(path: DrivePath, cursor: string | null, limit: number): Promise<StorageListing>;
+	/** List one level, narrowed by the provider where it can ({@link ListFilter}). */
+	list(
+		path: DrivePath,
+		cursor: string | null,
+		limit: number,
+		filter?: ListFilter,
+	): Promise<StorageListing>;
 	/** One object's full row, or `null` when the provider no longer has it. */
 	metadata(id: string): Promise<AssetItem | null>;
 	/**

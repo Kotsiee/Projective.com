@@ -160,9 +160,10 @@ VALUES
     -- access-key pair and every request is REQUEST-SIGNED, which is why `aws_sigv4` exists as its
     -- own auth_scheme rather than being folded into `api_key`. No webhooks (bucket notifications
     -- are configured on the customer's side and delivered to their own endpoint, not ours).
+    -- Enabled: it ships for UAT beside Google Drive, connected through the Settings credential form.
     ('s3', 'S3-compatible storage', 'storage',
         ARRAY['storage']::integrations.provider_kind[], 'aws_sigv4',
-        false, 'direct', false, ARRAY[]::text[]),
+        true, 'direct', false, ARRAY[]::text[]),
     ('notion', 'Notion', 'productivity',
         ARRAY['docs']::integrations.provider_kind[], 'oauth2',
         false, 'direct', false, ARRAY[]::text[]),

@@ -228,6 +228,36 @@ export const S3ConnectionConfigSchema = z.object({
 export type S3ConnectionConfig = z.infer<typeof S3ConnectionConfigSchema>;
 
 /**
+ * What opening an S3 connection answers (Decision #314): the pending connection, and what an AWS
+ * role's trust policy must name before any bucket is reached.
+ */
+export const S3ConnectionStartSchema = z.object({
+	connectionId: uuid,
+	/** `projective-{connectionId}`, derived and never typed in: the confused-deputy guard. */
+	externalId: z.string().max(80),
+	/** Projective's AWS account for the trust policy; `null` where AWS buckets are not enabled. */
+	platformAccountId: z.string().regex(/^\d{12}$/).nullable(),
+});
+export type S3ConnectionStart = z.infer<typeof S3ConnectionStartSchema>;
+
+/**
+ * Finish a pending S3 connection. An S3-compatible endpoint signs with its own key pair, which is
+ * sealed in the vault and never projected; an AWS bucket is reached by its role and takes none.
+ */
+export const SaveS3ConnectionSchema = z.object({
+	connectionId: uuid,
+	config: S3ConnectionConfigSchema,
+	keys: z.object({
+		accessKeyId: z.string().min(1).max(128),
+		secretAccessKey: z.string().min(1).max(256),
+	}).nullable(),
+}).refine((s) => !!s.config.endpoint === (s.keys !== null), {
+	path: ["keys"],
+	message: "An S3-compatible endpoint needs its key pair; an AWS bucket takes none.",
+});
+export type SaveS3Connection = z.infer<typeof SaveS3ConnectionSchema>;
+
+/**
  * The `config` a `google_drive` connection carries. `driveId` scopes it to one shared drive (whose id
  * is also its root folder's); absent = the person's My Drive.
  */

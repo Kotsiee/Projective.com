@@ -3,6 +3,7 @@ import type {
 	ConnectionsView,
 	IntegrationProvider,
 	ProviderKind,
+	SaveS3Connection,
 	UserConnection,
 } from "@projective/types/integrations";
 import { connectionIsRecoverable, connectionSupports } from "@projective/types/integrations";
@@ -131,7 +132,8 @@ export function integrationRows(
 	const connected: ConnectedRow[] = live.map((connection) => ({
 		state: "connected",
 		connection,
-		consent: consentFor(connection.status),
+		// S3 has no consent screen: a pending row is a form left unfinished, so it offers the form again.
+		consent: isUnfinishedS3(connection) ? "connect" : consentFor(connection.status),
 		canPublish: group.kind === "calendar" && connectionSupports(connection, "calendar"),
 	}));
 	const available: AvailableRow[] = view.providers
@@ -142,6 +144,51 @@ export function integrationRows(
 	return [...connected, ...available];
 }
 
+// #endregion
+
+// #region S3 credential form
+/** Whether a connection is an S3 connection whose credential form was opened and not finished. */
+export function isUnfinishedS3(connection: UserConnection): boolean {
+	return connection.providerSlug === "s3" && connection.status === "pending";
+}
+
+/** Where an S3 bucket lives: AWS, reached by assuming a role, or an S3-compatible endpoint, by key pair. */
+export type S3Host = "aws" | "compatible";
+
+/** The S3 credential form's fields, as typed. */
+export interface S3Draft {
+	host: S3Host;
+	endpoint: string;
+	region: string;
+	bucket: string;
+	prefix: string;
+	pathStyle: boolean;
+	roleArn: string;
+	accessKeyId: string;
+	secretAccessKey: string;
+}
+
+/**
+ * The save a draft makes (Decision #314): an AWS bucket names its role and sends no key; an
+ * S3-compatible endpoint sends its key pair and names no role. The secret is sent as typed.
+ */
+export function s3SavePayload(connectionId: string, draft: S3Draft): SaveS3Connection {
+	const aws = draft.host === "aws";
+	return {
+		connectionId,
+		config: {
+			endpoint: aws ? null : draft.endpoint.trim(),
+			region: draft.region.trim(),
+			bucket: draft.bucket.trim(),
+			prefix: draft.prefix.trim(),
+			pathStyle: !aws && draft.pathStyle,
+			roleArn: aws ? draft.roleArn.trim() : null,
+		},
+		keys: aws
+			? null
+			: { accessKeyId: draft.accessKeyId.trim(), secretAccessKey: draft.secretAccessKey },
+	};
+}
 // #endregion
 
 // #region Consent round trip

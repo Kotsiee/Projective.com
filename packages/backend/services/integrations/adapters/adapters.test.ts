@@ -244,6 +244,37 @@ Deno.test("google drive: a shared drive is scoped by corpora, and paging resumes
 	assertEquals(params.get("pageToken"), "tok-2");
 });
 
+Deno.test("google drive: a search and a folders-only read narrow Drive's own query", async () => {
+	const { calls, net } = fakeNet(() =>
+		json({
+			files: [
+				{ id: "F1", name: "Briefs", mimeType: "application/vnd.google-apps.folder" },
+				{
+					id: "S1",
+					name: "to a file",
+					mimeType: "application/vnd.google-apps.shortcut",
+					shortcutDetails: { targetId: "P9", targetMimeType: "image/png" },
+				},
+			],
+		})
+	);
+	const drive = createGoogleDriveAdapter(ctxOf("google_drive", net));
+	await drive.list({ folderId: "F0", path: null }, null, 10, { query: " it's " });
+	assertEquals(
+		calls[0].url.searchParams.get("q"),
+		"'F0' in parents and trashed = false and name contains 'it\\'s'",
+	);
+	const tree = contract(
+		await drive.list({ folderId: "F0", path: null }, null, 10, { foldersOnly: true }),
+	);
+	assertEquals(
+		calls[1].url.searchParams.get("q"),
+		"'F0' in parents and trashed = false and (mimeType = 'application/vnd.google-apps.folder' or " +
+			"mimeType = 'application/vnd.google-apps.shortcut')",
+	);
+	assertEquals([tree.folders.map((f) => f.externalFolderId), tree.entries], [["F1"], []]);
+});
+
 Deno.test("google drive: a folder's name is one narrow read, and a file is not a folder", async () => {
 	const { calls, net } = fakeNet((call) =>
 		call.url.pathname.endsWith("/F1")

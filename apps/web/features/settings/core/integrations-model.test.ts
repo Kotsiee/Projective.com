@@ -1,8 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
-import type {
-	ConnectionsView,
-	IntegrationProvider,
-	UserConnection,
+import {
+	type ConnectionsView,
+	type IntegrationProvider,
+	SaveS3ConnectionSchema,
+	type UserConnection,
 } from "@projective/types/integrations";
 import {
 	consentFor,
@@ -12,6 +13,8 @@ import {
 	type IntegrationGroupKey,
 	integrationRows,
 	RETURN_PATH_MAX,
+	type S3Draft,
+	s3SavePayload,
 	withoutConsentMarker,
 } from "./integrations-model.ts";
 
@@ -239,4 +242,64 @@ Deno.test("a disconnect names the provider, and the Projective calendar when one
 		}),
 	);
 	assert(publishing.includes("separate Projective calendar there is deleted"));
+});
+
+Deno.test("an unfinished S3 form offers the form again; any other pending consent offers nothing", () => {
+	const S3 = provider({
+		slug: "s3",
+		category: "storage",
+		capabilities: ["storage"],
+		authScheme: "aws_sigv4",
+	});
+	const pending = (slug: string) =>
+		connection({
+			providerSlug: slug,
+			status: "pending",
+			providerCapabilities: ["storage"],
+			grantedKinds: [],
+		});
+	const [s3] = integrationRows(view([S3], [pending("s3")]), group("storage"));
+	assert(s3.state === "connected");
+	assertEquals(s3.consent, "connect");
+	const [drive] = integrationRows(view([DROPBOX], [pending("dropbox")]), group("storage"));
+	assert(drive.state === "connected");
+	assertEquals(drive.consent, "none");
+});
+
+Deno.test("an AWS bucket saves its role and no key; an S3-compatible endpoint its keys and no role", () => {
+	const draft: S3Draft = {
+		host: "aws",
+		endpoint: "https://ignored.example",
+		region: " eu-west-2 ",
+		bucket: "studio-assets",
+		prefix: "briefs/",
+		pathStyle: true,
+		roleArn: " arn:aws:iam::123456789012:role/projective ",
+		accessKeyId: "ignored",
+		secretAccessKey: "ignored",
+	};
+	const aws = s3SavePayload("6d8f6a1e-2b7c-4f0e-9a51-3c2d1e0f9b84", draft);
+	assertEquals(aws.keys, null);
+	assertEquals(aws.config, {
+		endpoint: null,
+		region: "eu-west-2",
+		bucket: "studio-assets",
+		prefix: "briefs/",
+		pathStyle: false,
+		roleArn: "arn:aws:iam::123456789012:role/projective",
+	});
+	assert(SaveS3ConnectionSchema.safeParse(aws).success);
+
+	const r2 = s3SavePayload("6d8f6a1e-2b7c-4f0e-9a51-3c2d1e0f9b84", {
+		...draft,
+		host: "compatible",
+		endpoint: "https://acct.r2.cloudflarestorage.com",
+		region: "auto",
+		accessKeyId: " AKID ",
+		secretAccessKey: " s3cr3t ",
+	});
+	assertEquals([r2.config.roleArn, r2.config.pathStyle], [null, true]);
+	assertEquals(r2.keys, { accessKeyId: "AKID", secretAccessKey: " s3cr3t " });
+	assert(SaveS3ConnectionSchema.safeParse(r2).success);
+	assert(!SaveS3ConnectionSchema.safeParse({ ...r2, keys: null }).success);
 });

@@ -15,6 +15,7 @@ import {
 } from "./adapter-support.ts";
 import type {
 	DrivePath,
+	ListFilter,
 	StorageAdapter,
 	StorageAdapterContext,
 	StorageListing,
@@ -26,6 +27,8 @@ import type {
  *
  * - **List** — `GET /drive/v3/files` with `q='{parent}' in parents and trashed = false` and an explicit
  *   `fields` mask: Drive's default projection omits `size`, and a row listed without it reads 0 bytes.
+ *   A search (`name contains`) and the tree's folders-only read join the same `q`, so Drive pages
+ *   the narrowed set.
  * - **Shared drives** — `supportsAllDrives=true` on every call, plus `corpora=drive&driveId=…` when the
  *   connection's `config.driveId` names one; without them a person who works entirely in a shared drive
  *   sees an empty connector.
@@ -164,10 +167,22 @@ export function createGoogleDriveAdapter(ctx: StorageAdapterContext): StorageAda
 		slug: "google_drive",
 		source: "google_drive",
 
-		async list(path: DrivePath, cursor: string | null, limit: number): Promise<StorageListing> {
+		async list(
+			path: DrivePath,
+			cursor: string | null,
+			limit: number,
+			filter: ListFilter = {},
+		): Promise<StorageListing> {
 			const parent = path.folderId ?? config.driveId ?? "root";
+			const clauses = [`${quoted(parent)} in parents`, "trashed = false"];
+			const query = filter.query?.trim();
+			if (query) clauses.push(`name contains ${quoted(query)}`);
+			// A shortcut's target type is not queryable, so shortcuts come too and a file's is dropped below.
+			if (filter.foldersOnly) {
+				clauses.push(`(mimeType = ${quoted(FOLDER)} or mimeType = ${quoted(SHORTCUT)})`);
+			}
 			const params: Record<string, string> = {
-				q: `${quoted(parent)} in parents and trashed = false`,
+				q: clauses.join(" and "),
 				fields: `nextPageToken,files(${FILE_FIELDS})`,
 				pageSize: String(pageSize(limit, 1000)),
 				orderBy: "folder,name_natural",
@@ -196,7 +211,7 @@ export function createGoogleDriveAdapter(ctx: StorageAdapterContext): StorageAda
 						itemCount: 0,
 						modifiedAt: file.modifiedTime ?? null,
 					}, now));
-				} else {
+				} else if (!filter.foldersOnly) {
 					listing.entries.push(toAsset(file, now));
 				}
 			}

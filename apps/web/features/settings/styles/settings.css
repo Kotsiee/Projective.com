@@ -658,6 +658,25 @@
 	color: var(--on-surface);
 }
 
+/* The S3 credential form, inline under Cloud storage: two columns that fold to one. */
+.stg-s3 {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+	gap: var(--space-3);
+	padding-block-start: var(--space-3);
+	max-inline-size: var(--measure);
+}
+
+.stg-s3__wide,
+.stg-s3__actions {
+	grid-column: 1 / -1;
+}
+
+.stg-s3__actions {
+	display: flex;
+	gap: var(--space-2);
+}
+
 .stg-inline-fields {
 	display: flex;
 	flex-wrap: wrap;
