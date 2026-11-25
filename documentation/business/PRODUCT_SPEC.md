@@ -2381,7 +2381,9 @@ There are two primary ways an engagement begins:
   > and one staffing role, where the stage lists them — that waits for the client (`pending`,
   > shown as _Awaiting approval_); a freelancer holds at most one pending application per seat, and
   > cannot apply to their own project or to one that is not taking applications. The client is
-  > notified (`application.received`), and a cover note becomes the opening message of the pair's
+  > notified (`application.received`, in the app, by push and by email: in their daily or weekly digest
+  > when they take one, otherwise one email per application, Decision #566), and a cover note becomes
+  > the opening message of the pair's
   > DM, filed in the client's **Requests** (see §E. Direct & Group Conversations). The client
   > answers by confirming the seat, which takes them to fund the stage, or by **declining** it,
   > which tells the applicant and changes nothing else; filling a seat marks its other pending
