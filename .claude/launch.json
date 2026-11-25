@@ -2,6 +2,16 @@
 	"version": "0.0.1",
 	"configurations": [
 		{
+			"name": "web-ex3",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13985'; deno task dev --port 13985 --strictPort"
+			],
+			"port": 13985
+		},
+		{
 			"name": "web-sc6",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [
@@ -598,6 +608,16 @@
 				"$env:PORT = '13971'; deno task dev --port 13971 --strictPort"
 			],
 			"port": 13971
+		},
+		{
+			"name": "web-ch4",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13994'; deno task dev --port 13994 --strictPort"
+			],
+			"port": 13994
 		}
 	]
 }
