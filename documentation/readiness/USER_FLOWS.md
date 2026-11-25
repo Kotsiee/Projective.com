@@ -34,8 +34,8 @@ signed-in person).
 | Tier             |   Score | Flows counted | ✅ |  🟡 | ❌ | Critical not ✅ |
 | :--------------- | ------: | ------------: | -: | --: | -: | --------------: |
 | **Investor MVP** | **85%** |            61 | 44 |  16 |  1 |              13 |
-| **UAT**          | **75%** |           193 | 108 |  73 | 12 |              23 |
-| **Production**   | **68%** |           251 | 114 | 104 | 33 |              34 |
+| **UAT**          | **75%** |           193 | 109 |  73 | 11 |              23 |
+| **Production**   | **68%** |           251 | 115 | 104 | 32 |              34 |
 
 Nine ⏸ flows are excluded. The flow scores run higher than PRODUCTION_READINESS.md's because most
 flows complete end to end today; what they lack sits mostly in the platform layer that file tracks
@@ -45,7 +45,7 @@ flows complete end to end today; what they lack sits mostly in the platform laye
 | :----------------------------------------------- | ----: | -: | -: | -: | -: | ----: |
 | ID — Identity, account, profile & public site    |    56 | 28 | 22 |  4 |  2 |   71% |
 | MK — Discovery, marketplace, checkout & sessions |    63 | 29 | 25 |  7 |  2 |   70% |
-| PJ — Projects, collaboration, files & calendar   |    77 | 36 | 31 |  8 |  2 |   69% |
+| PJ — Projects, collaboration, files & calendar   |    77 | 37 | 31 |  7 |  2 |   71% |
 | MW — Money, workspaces, legal & operator         |    64 | 21 | 26 | 14 |  3 |   61% |
 
 **Critical flows not yet ✅, by the tier they gate:**
@@ -314,7 +314,7 @@ PRODUCTION_READINESS.md.
 | ID    | Flow                          | Persona | Entry                             | Status | Crit     | Gate | What's missing                                                                                                             |
 | :---- | :---------------------------- | :------ | :-------------------------------- | :----- | :------- | :--- | :------------------------------------------------------------------------------------------------------------------------- |
 | PJ-39 | Fair Exit (end a stage early) | Client  | FairExitDialog, `…/fair-exit`     | 🟡     | Critical | UAT  | The client picks 25/50/75%; no derived floor, ticket-level exit or contest (PM-WP4a, 🧑)                                   |
-| PJ-40 | Complete a project            | Client  | —                                 | ❌     | High     | UAT  | Setup allows only `draft\|active\|on_hold` (`types/projects/setup.ts:1704`); a project stays active after its last release |
+| PJ-40 | Complete a project            | Client  | kebab, Overview band, `POST /api/projects/:id/complete` | ✅     | High     | UAT  | #569: completes on its own when the client approves the last stage with every ticket ended (`approve_stage` → `fn_complete_project`), or by the client's Complete, which closes the open work nobody funded and is refused while money is held (PF409) or under a live dispute (PD409); the review offer opens and the other side is told; a completed project takes no new escrow, and the client reopens it to extend (`project_completion.sql`; live as Priya Raman at 1440, 900 and 390) |
 | PJ-41 | Cancel a project              | Client  | kebab, card, `POST /api/projects/:id/cancel` | ✅     | High     | UAT  | #479: settles first (unclaimed back whole, claimed work at the client's Fair Exit tier), then Cancelled; a dispute refuses (PD409); live at 1440 and 390 (the Overview band below the lane breakpoint)                               |
 | PJ-42 | Archive a project             | Client  | kebab, `DELETE /api/projects/:id` | ✅     | Critical | UAT  | #479: refused while escrow is held or reserved (PF409) and Cancel opens in its place (lane, card, `/details` rig; seen at 1440 and 390); archives once settled (`brief_cancel.sql`)                              |
 
@@ -592,3 +592,4 @@ editing (MK-48), session cancel and attendance (MK-52, MK-53) and the operator's
 | 2026-11-25 | NO2 (#565): no row flips; PJ-60 narrowed (the daily and weekly digest emails are claimed once and mailed, as counts, titles and links); it stays 🟡 on the hosted send (CD2) | 85% | 75% | 68% |
 | 2026-11-25 | NO1 (#566): no row flips; PJ-17 narrowed and its stale "never delivered" note corrected (an email invitation is answered by its own link by the account holding the address verified; an address with no account is mailed the link once, never when suppressed, and lands on it after sign-up); it stays 🟡 on counsel's switch and the hosted send (CD2) | 85% | 75% | 68% |
 | 2026-11-25 | FL2 (#568): no row flips; PJ-65 narrowed (a Drive file is added to the library as a reference, the drive tree pages and its search is Drive's own, S3 connects on its credential form, and Dropbox, OneDrive and Frame.io are ruled Planned); it stays 🟡 on the live Drive round trip with you (FL2 step 5) | 85% | 75% | 68% |
+| 2026-11-25 | EX1 (#569): PJ-40 ❌ → ✅ (a project completes when its client approves its last stage or completes it; its reviews open and the freelancer is told; a completed project is extended by reopening it) | 85% | 75% | 68% |

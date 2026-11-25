@@ -807,10 +807,11 @@ refuses an open dispute) and the jobs merge (817dbbd1). It takes the first Wave 
 §0.1's SQL lane, before F·DB6, because it releases money through 00001200 and 00001240; it never
 runs beside an F prompt that edits them. Its release keeps conservation_identity.sql green, and it
 judges a deadline bonus as FBP DB13 will (#468: met when the approved submission was SENT by the
-due date); before DB13 lands a bonus is still refused (DB12), so there is nothing to judge. If
-PROJECTS EX1 has landed, the auto-approve calls EX1's
-projects.fn_complete_project when it settles a project's last money; if not, EX1 wires this path
-itself, so name it in your report.
+due date); before DB13 lands a bonus is still refused (DB12), so there is nothing to judge.
+PROJECTS EX1 has landed (#569): the auto-approve calls projects.fn_complete_project after each
+accepted row (step 3). An acceptance never settles its stage, and an engagement completes only
+once every stage is settled (#569 (a)), so say in your report whether the sweep should also
+approve a stage whose every ticket it has accepted.
 
 FILES:
   - supabase/migrations/00000015_tables_projects.sql (stage_submissions.submitted_at timestamptz)
@@ -851,7 +852,7 @@ STEPS:
      written; both sides get submission.auto_approved. A refusal (PD409, PF402) skips the row and
      writes an ops.log_entries row; the sweep never raises. After each accepted row, call
      projects.fn_complete_project(<project>, NULL, 'Approved automatically') (PROJECTS EX1, Decision
-     #546, which landed before GH1): it completes the engagement only when every stage is settled,
+     #569, which landed before GH1): it completes the engagement only when every stage is settled,
      every ticket has ended and nothing is held, and otherwise does nothing.
   4. Register projects-auto-approve-submissions in 00005060: hourly, on a minute no other job uses.
   5. The reviewer's explorer and the submission card show "Approves automatically on <date>" as
@@ -1120,7 +1121,7 @@ or revisions; a stage reaches paid (approve_stage, 00001150:2329, paid at :2444)
 backlog tickets stay open on it; and review authority may write any stage status directly under the
 FOR ALL policy (00002011:287). Today's TS reads: stageStatus (board.ts:887) and BoardStageRefSchema
 (:930). The project handover trigger is tg_project_handover_on_complete (00001150:2194); PROJECTS
-EX1 builds the project's completion on it, so name `completed` the same way EX1 does. It follows
+EX1 built the project's completion on it, so name `completed` the same way EX1 does. It follows
 PM-D7a (both edit 00001100 and 00001850).
 
 FILES:

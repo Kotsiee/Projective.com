@@ -1586,6 +1586,20 @@ REVOKE ALL ON FUNCTION projects.fn_project_cancel_blocked (uuid) FROM PUBLIC, an
 REVOKE ALL ON FUNCTION projects.fn_activate_funded_service () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_guard_escrow_on_ended_project () FROM PUBLIC, anon, authenticated, service_role;
 
+-- Completing and reopening an engagement (EX1, Decision #546): the read, the preview and both doors
+-- check review authority themselves; the one writer of `completed` and its blocked read are theirs
+-- (and approve_stage's) alone.
+REVOKE ALL ON FUNCTION projects.can_complete_project (uuid) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.can_complete_project (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.preview_project_complete (uuid) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.preview_project_complete (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.complete_project (uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.complete_project (uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.reopen_project (uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION projects.reopen_project (uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fn_complete_project (uuid, uuid, text, boolean) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_project_complete_blocked (uuid) FROM PUBLIC, anon, authenticated, service_role;
+
 -- Internal to review_submission / approve_stage (Decision #194): the settler releases escrow and the
 -- notifier writes to anybody's inbox, so neither is callable directly.
 REVOKE ALL ON FUNCTION projects.fn_settle_ticket_stage (uuid, uuid, text) FROM PUBLIC, anon, authenticated, service_role;

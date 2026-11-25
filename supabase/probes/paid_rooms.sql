@@ -57,7 +57,7 @@ DECLARE v_project uuid; v_stage uuid; v_host uuid; v_a uuid; v_b uuid; v_op uuid
 BEGIN
     SELECT p.id, s.id, p.owner_user_id INTO v_project, v_stage, v_host
       FROM projects.projects p JOIN projects.project_stages s ON s.project_id = p.id
-     WHERE p.owner_user_id IS NOT NULL AND p.owner_team_id IS NULL
+     WHERE p.owner_user_id IS NOT NULL AND p.owner_team_id IS NULL AND p.status::text NOT IN ('completed', 'cancelled', 'archived')
      ORDER BY p.id, s.id LIMIT 1;
     SELECT u.user_id INTO v_a FROM org.users_public u
      WHERE u.user_id <> v_host AND NOT EXISTS (SELECT 1 FROM ops.admin_users au WHERE au.user_id = u.user_id)

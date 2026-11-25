@@ -102,7 +102,7 @@ DECLARE v_project uuid; v_stage uuid; v_host uuid; v_a uuid; v_op uuid;
 BEGIN
     SELECT p.id, p.owner_user_id, s.id INTO v_project, v_host, v_stage
       FROM projects.projects p JOIN projects.project_stages s ON s.project_id = p.id
-     WHERE p.owner_user_id IS NOT NULL
+     WHERE p.owner_user_id IS NOT NULL AND p.status::text NOT IN ('completed', 'cancelled', 'archived')
      ORDER BY p.id, s.id LIMIT 1;
     -- The parties are never operators (the seed carries one, rosalindqvist); the probe makes its own.
     SELECT u.user_id INTO v_a FROM org.users_public u WHERE u.user_id <> v_host

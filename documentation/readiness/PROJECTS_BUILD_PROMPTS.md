@@ -6,7 +6,7 @@
 > domain's file; this file maps every row to its prompt (§0.1), orders the path across those files
 > (§0.2), and holds the prompts no domain owns.
 >
-> **Verified against code 2026-11-23 at `f2e25929`.** 6 open, 3 partly done (FL1, #564; FL3, #563; FL2, #568), 17 done (§0 ledger).
+> **Verified against code 2026-11-23 at `f2e25929`.** 5 open, 3 partly done (FL1, #564; FL3, #563; FL2, #568), 18 done (§0 ledger).
 > Runnable now: NO4 and FL1–FL4, each up to its own 🧑 stop.
 >
 > **This file holds open work only.** A session that runs a prompt prunes it here when it finishes
@@ -70,11 +70,12 @@ A prompt that lands gets a row here.
 | NO1 | An email invitation is answered by its own `/invite/<token>` link, by the account holding the invited address verified: `projects.email_invitation` (invalid · not_yours with a masked hint · open · accepted · declined · expired · withdrawn) and `projects.answer_email_invitation` (binds an open email row to the caller, audited, then `fn_apply_invitation_decision`), the `EmailInvitationLanding` island and `POST /api/projects/invites/email`; an address no verified account holds is mailed the link once, never when suppressed, at most once per (project, address) in 14 days, behind ⚖️ `project_invite_mail_enabled` (seeded off): `projects.invitation_mail`, `claim_invitation_mail` / `finish_invitation_mail`, `services/mail/invitation-mailer.ts`, `EmailInvitationService.sendDue` after an invite and from the `projects-invitation-mail` job; a verified holder's `stage.invite` links to the invitation; `application.received` emails; probe `invitation_email.sql` | (#566) | `e95669e9` |
 | NO2 | The daily and weekly digests are mailed once each, as counts, titles and links and never a body: `comms.notification_digests` gains `attempts`, `claimed_until`, `provider_ref`, `last_error`, `skipped_reason`; `comms.fn_claim_digests` (`SKIP LOCKED`, a 15-minute lease, each digest decided again against preferences, snooze and suppression) and `comms.fn_record_digest_result` (2^attempts backoff, failed at the fifth); `DigestMailService` through the dispatcher's Resend transport, `POST /api/comms/cron/digests`, job `comms-digest-send`; probes `digest_claim.sql`, `digest_claim_race.sql` | `04ebee7a` (#565) | `0c7aa8dc` |
 | NO3 | A push device is dropped only when the push service says it is gone, after 5 consecutive failures whose first is at least 24 hours old, or after 180 days with nothing delivered: `comms.device_tokens.failing_since`; `fn_record_delivery_result` keeps the streak's start and a success resets it and refreshes `last_seen_at`; `fn_reap_dead_devices` waits out an outage (`search_path = ''`); Settings → This device says "This browser stopped receiving notifications" with Turn on again (`/devices/status` `stopped`, `restartPush`), dev axis Push permission → Stopped; probe `push_device_health.sql` | `ca1793c4` (#567) | `0e9cb82a` |
+| EX1 | A project completes when its last money settles or when its client completes it, and completing it opens its reviews: `projects.fn_complete_project` (the one writer of `completed`), `fn_project_complete_blocked`, `can_complete_project`, `preview_project_complete`, `complete_project`, `reopen_project`; `approve_stage` completes the engagement once no stage is unsettled and every ticket has ended, its handover notice reaching every seat holder; the ended-engagement escrow guard refuses a completed engagement (extending is the client's logged Reopen); `GET`/`POST /api/projects/:id/complete`, `POST /reopen`; `CompleteProjectDialog`, `ReopenProjectDialog`; probe `project_completion.sql` | `THISCOMMIT` (#569) | `9c56ec06` |
 
 ### 0.1 Row → work order
 
 Rows not listed are ✅ with no note: PJ-01, 02 (ST1, #551), 03, 04 (ST6, #555), 05, 06, 08, 11 (ST4, #550), 12, 13 (ST3, #547), 16, 18, 19, 20 (ST5, #554), 24, 25 (PM-WP1,
-`07d853f6`, #516), 28, 41, 42, 45, 48 (CH2, #561), 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513); 50 (CH3, #560). PJ-14 and
+`07d853f6`, #516), 28, 40 (EX1, #569), 41, 42, 45, 48 (CH2, #561), 51, 53, 55, 67, 70 and 73 (OPS2, `dd1ee9a2`, #513); 50 (CH3, #560). PJ-14 and
 PJ-74 are ⏸ (§0.4).
 
 **Project setup** (100%): every row ✅.
@@ -114,12 +115,11 @@ PJ-74 are ⏸ (§0.4).
 | PJ-37 | ✅ · Normal · UAT | PM-WP8 step 1             | The timeline API 404s for a Task (note clears)                                                               |
 | PJ-38 | 🟡 · High · UAT   | PM-WP9                    | Slug segments, Zod, and an honest 404 instead of a shorter chain                                             |
 
-**Completion & exit** (65%)
+**Completion & exit** (85%)
 
 | Row   | Now · Crit · Gate | Work order                                    | The row flips when                                                                 |
 | :---- | :---------------- | :-------------------------------------------- | :--------------------------------------------------------------------------------- |
 | PJ-39 | 🟡 · Crit · UAT   | PM-WP4a (🧑 PM #3; with MR2's project cancel) | Fair Exit pays at least its floor: on a stage, on a ticket and in a project cancel |
-| PJ-40 | ❌ · High · UAT   | **EX1** (🧑)                                  | A project completes at its last settlement or by the client, and its reviews open  |
 
 **Disputes** (75%)
 
@@ -183,7 +183,7 @@ after PM-WP1. The paths follow §0.2's order:
 | Stages                         |   81% | D7a 88% → WP4b 94% → D7b 100%                                                                                     |
 | Hiring & members               |   83% | WP4b 92% → CD2 + counsel 100% (NO1 ✅, #566)                                                                               |
 | Tickets & delivery             |   59% | WP8 62% → P6 70% → GH1 77% → S3 80% → WP9 87% → WP4b 89% → WP5a 94% → WP6 100% (TK2 ✅, #557)               |
-| Completion & exit              |   65% | EX1 85% → WP4a 100%                                                                                               |
+| Completion & exit              |   85% | WP4a 100% (EX1 ✅, #569)                                                                                           |
 | Disputes                       |   75% | WP4a 81% → EX4 88% → LP1 100% (EX2 ✅, #548; EX3 ✅, #558)                                                        |
 | Messaging                      |   61% | MS5 61% → P2d 67% (CH1 ✅, #562; CH3 ✅, #560) → CH2 ✅ (#561) → LK1 74% → CH4 ✅ (#559) + SN1 78% → SN3 85% → T&S P-chain + SN6 91% → R2 100% |
 | Notifications                  |   50% | MS4 75% → CD2 94% → NT5 100% (NO2 ✅, #565; NO3 ✅, #567)                                                                    |
@@ -195,7 +195,7 @@ after PM-WP1. The paths follow §0.2's order:
 + counsel (NO1 ✅, #566), and the chat chain (MS3, MS5, P2d, SN3, the T&S P-chain; CH1 ✅, #562).
 
 **What UAT adds:** PJ-21 (WP4b), PJ-31 (GH1), PJ-39 (WP4a) and PJ-60 (CD2; NO2 ✅, #565) (PJ-43 ✅, EX2 + EX3).
-Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a, EX1,
+Those are the Critical · UAT rows. Below them come the High · UAT rows: WP5a,
 FL3, FL4, CFG2 and LP1.
 
 ### 0.2 Run order
@@ -236,7 +236,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 6. **PM-WP9** (★00001150, ⏳ PM-WP8 step 4): PJ-27, PJ-38.
 7. **COMMS MS5** (⏳ MS3): PJ-52. CH1 ✅ (#562) ran ahead of MS3 by your ruling; MS3's live
    delivery must carry its edits and deletes.
-8. **EX1** (★00001150, ⏳ GH1): PJ-40.
+8. **EX1** ✅ (#569, §0.0): PJ-40.
 9. **CH2** ✅ (#561): team and business rooms open with the seat and the stage.
 10. **PM-WP5a**, then **PM-WP6**, then **PM-D7b** (⏳ D7a, P6, GH1).
 11. CH3 ✅ (#560), CH4 ✅ (#559) and NO2 ✅ (#565); next **FL4**, **FL1** steps 3–4 (27 ruled; steps 1–2 ✅ #564), **NO4** (NO1 ✅, #566), and **FL3**'s
@@ -270,7 +270,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 
 | File                                                     | Writers here                                                 | Writers elsewhere (never at the same time)                        |
 | :------------------------------------------------------- | :----------------------------------------------------------- | :---------------------------------------------------------------- |
-| `00001150` (stage funding, submissions, cancel, approve) | EX1; PM GH1, WP4a, WP4b, P6's callers, WP9, D7b         | FBP DB13, DB14                                                    |
+| `00001150` (stage funding, submissions, cancel, approve) | PM GH1, WP4a, WP4b, P6's callers, WP9, D7b              | FBP DB13, DB14                                                    |
 | `00001130` (stages, members, `apply_write_batch`)        | PM D7a, WP4a, WP4b, S3, D7b                             | —                                                                 |
 | `00001110` / `00001120` (ticket guards and doors)        | PM D7a, WP4b, P6, WP5a, WP6, GH1, D7b                   | O·WP5b, O·WP6 (after WP6)                                         |
 | `00001140` (claims, capacity, workload)                  | PM WP5a, D7b                                                 | —                                                                 |
@@ -282,7 +282,7 @@ marked (★00001150) never runs beside a Queue M prompt that holds `00001150`: G
 | `00005010` (notification catalogue)                      | FL4; PM WP4a, WP5a, WP6, D7b, GH1                       | COMMS MS4                                                         |
 | `00005060` (jobs)                                        | FL1; PM WP5a, D7b, GH1                                       | MR5; T&S SN2                                                      |
 | `00002500` / `00002510` / `00002520` (grants)            | every SQL prompt here                                        | every SQL prompt everywhere: one at a time, by name               |
-| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | EX1; PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1      | COMMS NT5; T&S R3                                                 |
+| `features/devtools/**` + `apps/web/utils/dev-seam.ts`    | PM WP4a, WP4b, WP5a, WP5b, WP6, D7b, GH1           | COMMS NT5; T&S R3                                                 |
 | `ChatFeed.island.tsx`, `MessagingBackendService.ts`      | —                                                            | COMMS MS3, MS5; T&S R2                                            |
 | `ProjectBoard.island.tsx`, `board.ts`, `live-board.ts`   | PM WP4b, P6, WP5a, S3, D7b, WP6, WP8                         | O·WP6                                                             |
 | `USER_FLOWS.md`, `PRODUCTION_READINESS.md`               | every prompt                                                 | every readiness track: edit your rows and the computed lines only |
@@ -302,7 +302,7 @@ block, so a question you defer still stops the build at the right step. The PM p
 | 13 | #427 (a): the client creates every ticket on a service engagement                                                                            | ST6 ✅ (#555)  | **Ruled #555:** confirmed: the client creates every ticket on a service engagement, and the details the seller edits exclude tickets (PRODUCT_SPEC.md §Services)                                                         |
 | 14 | Manual assignment: who pins a ticket, and what the pinned freelancer may do                                                                  | ST3 ✅         | **Ruled #547:** B, the pin binds nothing until the freelancer accepts it by claiming (or declines); pins on Manual stages only |
 | 15 | Where the workload gauge sits                                                                                                                | ST4 ✅ (#550)  | **Ruled #550:** as recommended: beside both Claim controls (the ticket view and the board card) and in the freelancer's `/projects` header; `/home` once PRD-A1 lands |
-| 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1 (#546)    | Both: automatically at the last settlement, and by the client's Complete. `completed` stays terminal for money; extending is a logged Reopen                                                                             |
+| 16 | What completes a project; **new contradiction**: PRODUCT_MANAGEMENT.md:255 "stays fundable for extension" vs a terminal `completed`          | EX1 ✅ (#569) | **Ruled #569:** as recommended (owner rulings 1 and 2): both, on its own at the last settlement and by the client's Complete; `completed` stays terminal for money, and extending is the client's logged Reopen |
 | 17 | Stage and ticket disputes: what money is contestable, who raises and when, the Phase-1 offer                                                 | EX2 ✅ (#548) | Held escrow, plus the pending window once DB6 lands; either party, from in_review or within the pending window; a share offer the other side accepts                                                                     |
 | 18 | **New contradictions**: the spec's 48 h offer cooling-off vs the built respondent deadline; §3.1 "work suspended" vs no disputed state       | EX2 ✅ (#549) | Keep the built deadline, with the offer inside it; no new status, a guard freezes moves and claims instead                                                                                                               |
 | 19 | What the Evidence Vault captures, who reads it; ⚖️ its retention                                                                             | EX3 ✅ (#558) | Stage rooms (with revisions), ticket history, submitted file versions and the terms at raise, under a sha256 manifest; parties read the manifest and PDF, operators the raw snapshot; nothing purged until counsel rules |
@@ -492,95 +492,6 @@ Both prompts landed: TK1 (#556) and TK2 (#557); their rows are in §0.0.
 ---
 
 ## 4. Completion, exit & disputes
-
-### EX1 — A project completes
-
-Closes PJ-40 (❌ → ✅).
-
-**Status (2026-11-24, #546):** stopped at the 🧑 DECISION (questions 1 and 2, the NEW contradiction
-logged). Step 1's red probe `project_completion.sql` is written and stays out of `main` while it
-fails. Two premises no longer hold: PM-GH1 has not landed, and TK1 held Queue S on `00001150` and
-`00002510` until it landed (#556), so steps 2–7 wait for the rulings.
-
-```text
-PROMPT EX1: A project completes: automatically when its last money settles, or when the client
-completes it, and completing it opens its reviews
-
-ROLE: Full-stack engineer. Queue S (★00001150, ⏳ PM-GH1): 00001100, 00001150, 00005010,
-00002510 (by name).
-
-CONTEXT (verified at e1ff027b; re-check every line):
-  - The SQL is mostly there. projects.set_project_status (00001100:1185) has a completed branch
-    (:1263-1283): every ticket terminal and nothing held or reserved. It is granted
-    (00002510:103) and writes project_status_history (:1355-1356). Completed is terminal
-    (:1239-1244). tg_project_handover_on_complete (00001820:11-15; function 00001150:2194-2204)
-    waits for it.
-  - Nothing ever writes 'completed'. The only TS caller is UpdateProjectSchema, which allows
-    draft | active | on_hold (types/projects/setup.ts:1704) and feeds live-writes.ts:2042-2047.
-    approve_stage (00001150:2329) unlocks the handover on the last stage (:2486-2494) and leaves
-    the project active. project.completed (00005010:53) has no sender, and no control exists.
-  - set_project_status needs a signed-in reviewer (00001100:1222), so an automatic path (GH1's
-    auto-approve, a sweep) would be refused.
-  - Open tickets in backlog or todo make the completed branch refuse (:1268-1275). Later-stage
-    reservations are refunded as tickets end (fn_ticket_prepay_sync, 00001110:447-463), and
-    unclaimed held escrow is refunded by approve_stage (#474).
-  - MR2's machinery to reuse (#479): fn_project_cancel_blocked (00001150:1576; its dispute and
-    sittings reasons apply), fn_project_held_tickets (:1547), PF409 with HINT, preview → door →
-    dialog (preview_project_cancel :1625, cancel_project :1908, CancelProjectDialog), the notice
-    to the other side (:1953-1990), and fn_settle_project_escrow's closing of open tickets and
-    stages as cancelled (:1723-1735). Fair Exit is not needed to complete.
-  - A bought service's status follows its money (00001100:1218-1221). Session cohorts complete
-    their own rows (00001155:2808-2811), but their project never completes; MK-58 owns group
-    cohort completion.
-  - Reviews: reviews.fn_engagement_targets (00001670:136-139, :160-166) opens a review only on a
-    completed project with a history row (RV1, #487 (7)). Today only the seed reaches it.
-  - The spec: PRODUCT_SPEC.md:1360-1362 and :1667-1670 (the handover at the final release or a
-    forced completion), :3430-3436 (Atomic Reviews), PRODUCT_MANAGEMENT.md:255 and §3.4
-    (:171-187).
-  - A NEW contradiction: PRODUCT_MANAGEMENT.md:255 says a completed project "stays fundable for
-    extension", and trg_escrows_ended_project_guard (00001830:181-186) blocks only cancelled and
-    archived projects. But completed is terminal, so a completed project that takes new escrow
-    could then be neither cancelled nor archived.
-
-🧑 DECISION (before step 2). Log the contradiction as a decision row and put both to me:
-  1. What completes a project. Recommended: both. It completes automatically when the last held
-     or reserved escrow settles with every ticket terminal. The client may also complete it,
-     which closes its open unfunded tickets as cancelled (archived, once PM-WP4b lands).
-  2. Extension. Recommended: completed stays terminal for money, so the escrow guard also
-     refuses a completed project; extending is a Reopen door (completed → active, by the
-     client, history-logged). PRODUCT_MANAGEMENT.md:255 is amended to say so.
-
-STEPS:
-  1. Red first: supabase/probes/project_completion.sql, modelled on brief_cancel.sql. Approve
-     the last stage of a funded project and assert completed (it stays active today).
-  2. An internal definer, projects.fn_complete_project(p_project_id, p_actor), that keeps
-     :1263-1283's checks and writes the history row with its actor (or 'system'). Call it from
-     every door that can settle a project's last money: approve_stage's handover branch, the
-     ticket settlement, and PM-GH1's auto-approve (EX1 runs after GH1, so it wires that path
-     itself).
-  3. The client door: preview_project_complete (what closes; refusals reuse
-     fn_project_cancel_blocked's reasons as PF409 + HINT) and complete_project, granted by name.
-     POST /api/projects/:id/complete mirrors [id]/cancel.ts. Zod; UpdateProjectSchema stays as
-     it is.
-  4. Under ruling 2: the escrow guard refuses a completed project, and reopen_project (and its
-     route) moves completed → active.
-  5. UI: CompleteProjectDialog (preview, then confirm; one dialog) from the kebab, the lane and
-     the Overview, shown only when the server says complete is allowed. The Overview shows a
-     completed project as such (a lifecycle Tag).
-  6. Notify the other side with project.completed (00005010:53), as cancel_project does.
-  7. A Dev Context Switcher axis value for a completed project, if the lifecycle axis lacks it.
-
-ACCEPTANCE: project_completion.sql is green (automatic, client, refused with held money, refused
-with a live dispute, reopen); brief_cancel.sql and every money probe stay green; live, the seeded
-client approves a last stage and the project reads completed, the review offer appears (RV1),
-and the freelancer is told; screenshots.
-
-SAME CHANGE: PRODUCT_MANAGEMENT.md (the project lifecycle; :255 as ruled); PRODUCT_SPEC.md;
-documentation/database/projects/*; Zod; ROUTING.md; the decision row.
-```
-
-§1.2 rows: **PJ-40** ❌ → ✅ (its "only draft|active|on_hold" text corrected). Tell the reviews
-owner that MK-32's live path no longer needs the seed.
 
 ### EX4 — A moderator's workload verdict can be appealed once
 

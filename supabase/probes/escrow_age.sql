@@ -134,7 +134,7 @@ BEGIN
      ORDER BY n LIMIT 1;
     -- A project no bought-service trigger acts on: the owner's own, or one still live.
     SELECT p.id INTO v_project FROM projects.projects p
-     WHERE p.owner_user_id IS NOT NULL AND p.status::text NOT IN ('cancelled', 'archived')
+     WHERE p.owner_user_id IS NOT NULL AND p.status::text NOT IN ('completed', 'cancelled', 'archived')
      ORDER BY p.id LIMIT 1;
     SELECT fp.user_id INTO v_payee FROM org.freelancer_profiles fp ORDER BY fp.user_id LIMIT 1;
     SELECT u.user_id INTO v_payer FROM org.users_public u

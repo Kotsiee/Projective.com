@@ -2170,8 +2170,9 @@ $$;
 
 -- No escrow is held or reserved on an engagement that was cancelled or archived (Decisions #456,
 -- #467, every project kind): the cancellation settled everything, and new money on an ended engagement
--- would have no way back but a dispute. A completed one stays fundable — a finished engagement may be
--- extended (PRODUCT_SPEC §Extension Logic). BEFORE INSERT ON finance.escrows (00001830).
+-- would have no way back but a dispute. A completed one is refused too, because `completed` is terminal
+-- for money: a finished engagement is extended by reopening it first (projects.reopen_project, EX1,
+-- Decision #546; PRODUCT_SPEC §Extension Logic). BEFORE INSERT ON finance.escrows (00001830).
 CREATE OR REPLACE FUNCTION projects.fn_guard_escrow_on_ended_project()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -2186,6 +2187,11 @@ BEGIN
       FROM projects.project_stages ps
       JOIN projects.projects p ON p.id = ps.project_id
      WHERE ps.id = NEW.project_stage_id;
+    IF v_status = 'completed'::project_status THEN
+        RAISE EXCEPTION 'This % is complete. Reopen it to fund more work on it.',
+            CASE WHEN v_client IS NOT NULL THEN 'service' ELSE 'project' END
+            USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
     IF v_status IN ('cancelled'::project_status, 'archived'::project_status) THEN
         RAISE EXCEPTION 'This % has ended, so nothing more can be funded on it.',
             CASE WHEN v_client IS NOT NULL THEN 'service' ELSE 'project' END
@@ -2287,14 +2293,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org;
 
--- Belt-and-braces: a project force-completed through projects.set_project_status (0119) also lifts
--- the protected phase, keeping is_protected_phase consistent with the project lifecycle.
+-- Belt-and-braces: a project completed by projects.fn_complete_project, from any door, also lifts the
+-- protected phase, keeping is_protected_phase consistent with the project lifecycle. Its own empty
+-- search_path, because a trigger runs on its caller's and the completing doors pin ''.
 CREATE OR REPLACE FUNCTION projects.tg_project_handover_on_complete()
 RETURNS trigger
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 BEGIN
-    IF NEW.status = 'completed'::project_status AND NEW.handover_unlocked_at IS NULL THEN
+    IF NEW.status = 'completed'::public.project_status AND NEW.handover_unlocked_at IS NULL THEN
         NEW.handover_unlocked_at := now();
     END IF;
     RETURN NEW;
@@ -2603,7 +2611,21 @@ BEGIN
                 UNION
                 SELECT p.client_user_id FROM projects.projects p
                  WHERE p.id = p_project_id AND p.client_user_id IS NOT NULL
+                UNION
+                SELECT sa.freelancer_profile_id
+                  FROM projects.stage_assignments sa
+                  JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+                 WHERE ps.project_id = p_project_id AND sa.assignee_type = 'freelancer'
+                   AND sa.status IN ('assigned', 'accepted', 'completed')
+                UNION
+                SELECT tm.user_id
+                  FROM projects.stage_assignments sa
+                  JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+                  JOIN org.team_members tm ON tm.team_id = sa.team_id AND tm.status = 'active'
+                 WHERE ps.project_id = p_project_id AND sa.assignee_type = 'team'
+                   AND sa.status IN ('assigned', 'accepted', 'completed')
             LOOP
+                CONTINUE WHEN a.uid IS NULL;
                 PERFORM comms.fn_notify(
                     a.uid, 'project_handover', 'Projective Unlock',
                     'This project is complete — contact sharing is unlocked and every file is ready to download.',
@@ -2611,6 +2633,11 @@ BEGIN
                 );
             END LOOP;
         END IF;
+
+        -- The last money has settled, so the engagement completes when its tickets have all ended (EX1,
+        -- Decision #546). Quiet when the handover notice above has just told everyone; a reopened one,
+        -- whose handover was already lifted, says `project.completed` instead.
+        PERFORM projects.fn_complete_project(p_project_id, auth.uid(), 'Every stage approved and paid', NOT v_unlocked);
     END IF;
 
     RETURN jsonb_build_object(

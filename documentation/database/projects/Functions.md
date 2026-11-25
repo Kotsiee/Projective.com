@@ -1137,7 +1137,7 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.complete_ticket(p_ticket_id uuid) → void`                              | `00001120` | Ticket → `completed`; releases all its held escrow             | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.delete_ticket(p_ticket_id uuid) → void`                                | `00001120` | Releases a claimed ticket's escrow, then hard-deletes the row. Product caller: the board's Delete ticket (`/api/projects/ticket/delete`, Decision #409), which only sends a pristine ticket (`ticketDeletable`) | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances to the next and holds it (the Chain Reaction, when the next stage's `chain_reaction` is on) | `authenticated`                  | signed in + `can_review_project`                             |
-| `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every hired ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; refunds a still-unclaimed prepaid ticket without completing it; stage → `paid` (#194, #213). Returns `released_count` / `refunded_count` (tickets), `total_paid_cents`, `fee_cents`, `refunded_cents`, `splits` | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
+| `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every hired ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; refunds a still-unclaimed prepaid ticket without completing it; stage → `paid` (#194, #213); the last one lifts the handover and completes the engagement (`fn_complete_project`, #546). Returns `released_count` / `refunded_count` (tickets), `total_paid_cents`, `fee_cents`, `refunded_cents`, `splits` | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled`; the tickets left on it → `cancelled`; both sides notified (#198) | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.cancel_project(p_project_id uuid, p_tiers jsonb, p_reason text) → jsonb` (and its bought-service wrapper `cancel_service`) | `00001150` | Any engagement, through `fn_settle_project_escrow`: unclaimed escrow back whole, each stage holding claimed work through `cancel_stage_fair_exit` at its tier, reservations refunded, project → `cancelled`; an open dispute refuses it (`PD409`) (#456, #467; § Cancelling an engagement) | `authenticated`        | signed in + `can_review_project`; project row locked; not blocked (no open dispute, no sitting escrow, no stage mid-payment); a tier for every stage holding claimed work |
 | `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done; a claimed ticket from `claimed` / `in_progress` not even then (#94, `fn_assert_ticket_move`, #293) |
@@ -1245,7 +1245,14 @@ tickets this call paid, `refunded_count` / `refunded_cents` the ones it refunded
 "Stage settled" notification carries both.
 
 `approve_stage`'s handover check (the last settled stage completes the project) ignores archived
-stages (`archived_at`, Decision #163), so a retired stage never holds the handover open.
+stages (`archived_at`, Decision #163), so a retired stage never holds the handover open. Once no
+stage is unsettled it lifts the protected phase, tells everyone who took part (message senders, the
+owner, the client person and every live or completed seat holder, team members included) with
+`project_handover`, and then calls `projects.fn_complete_project` (EX1, Decision #546), which
+completes the engagement when every ticket has ended too: quietly when the handover notice has just
+gone out, with `project.completed` for a reopened engagement whose handover was already lifted. An
+acceptance (`review_submission`) never completes one, because the stage it settles stays unsettled
+until it is approved.
 
 **Refusals** — authority refusals are `42501` (`insufficient_privilege`); the rest carry a specific
 `SQLSTATE` so the fat service can map them to an HTTP status rather than a generic 502:
@@ -1989,8 +1996,9 @@ projects`, bound in `00001820`; `EXECUTE` moot (a trigger).
 `completed` is written by one function and reached two ways (owner ruling 1): on its own, inside the
 door that settles an engagement's last money, and by the client. It is terminal for money: the
 ended-engagement escrow guard refuses a completed engagement, and extending one starts with
-`reopen_project` (owner ruling 2). In `00001100` §3b, except the two callers in `00001150`; grants in
-`00002510`. No money moves in any of them. Probe: `supabase/probes/project_completion.sql`.
+`reopen_project` (owner ruling 2). In `00001100` §3b, except `approve_stage`'s call, the escrow guard
+and the handover trigger in `00001150`; grants in `00002510`. No money moves in any of them.
+Probe: `supabase/probes/project_completion.sql`.
 
 - `projects.fn_project_complete_blocked(p_project_id uuid) → text` — internal, no grant. Why the
   client cannot complete now, or NULL, in the order the door checks: `ended` (completed / cancelled /
